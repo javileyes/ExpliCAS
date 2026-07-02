@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// Execute additive isolation (`left + right = rhs`) with default arithmetic
 /// kernels and runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_add_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
+pub(crate) fn apply_add_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
     T,
     S,
     E,
@@ -70,7 +70,7 @@ where
 /// Execute subtractive isolation (`left - right = rhs`) with default arithmetic
 /// kernels and runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_sub_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
+pub(crate) fn apply_sub_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
     T,
     S,
     E,
@@ -128,7 +128,7 @@ where
 /// Execute multiplicative isolation (`left * right = rhs`) with default
 /// arithmetic kernels and runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_mul_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
+pub(crate) fn apply_mul_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
     T,
     S,
     E,
@@ -200,7 +200,7 @@ where
 /// Execute divisive isolation (`numerator / denominator = rhs`) with default
 /// arithmetic kernels and runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_div_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
+pub(crate) fn apply_div_isolation_strategy_with_default_kernels_and_unified_step_mapper_with_state<
     T,
     S,
     E,

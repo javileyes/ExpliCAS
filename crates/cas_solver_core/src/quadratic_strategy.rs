@@ -27,7 +27,7 @@ pub struct QuadraticPreparedCandidate {
 /// 2) simplify + expand for coefficient extraction,
 /// 3) extract/simplify `(a, b, c)`,
 /// 4) reject degenerate `a == 0`.
-pub fn prepare_quadratic_candidate_from_simplified_polynomial_with_default_coefficient_extraction_with_state<
+pub(crate) fn prepare_quadratic_candidate_from_simplified_polynomial_with_default_coefficient_extraction_with_state<
     T,
     FContextMut,
     FSimplify,
@@ -59,55 +59,11 @@ where
     Some((sim_a, sim_b, sim_c))
 }
 
-/// Prepare quadratic strategy candidate with default coefficient extraction:
-/// 1) normalize equation to `lhs - rhs`,
-/// 2) simplify the polynomial form,
-/// 3) extract/simplify `(a, b, c)`,
-/// 4) reject degenerate `a == 0`.
-pub fn prepare_quadratic_strategy_candidate_with_default_coefficient_extraction_with_state<
-    T,
-    FContextMut,
-    FSimplify,
-    FExpand,
->(
-    state: &mut T,
-    equation: &Equation,
-    var: &str,
-    context_mut: FContextMut,
-    mut simplify_expr: FSimplify,
-    mut expand_expr: FExpand,
-) -> Option<QuadraticPreparedCandidate>
-where
-    FContextMut: Fn(&mut T) -> &mut Context,
-    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
-    FExpand: FnMut(&mut T, ExprId) -> ExprId,
-{
-    let context_mut = &context_mut;
-    let poly_expr = context_mut(state).add(Expr::Sub(equation.lhs, equation.rhs));
-    let sim_poly_expr = simplify_expr(state, poly_expr);
-    let (sim_a, sim_b, sim_c) =
-        prepare_quadratic_candidate_from_simplified_polynomial_with_default_coefficient_extraction_with_state(
-            state,
-            sim_poly_expr,
-            var,
-            |state| context_mut(state),
-            |state, expr| simplify_expr(state, expr),
-            |state, expr| expand_expr(state, expr),
-        )?;
-
-    Some(QuadraticPreparedCandidate {
-        sim_poly_expr,
-        a: sim_a,
-        b: sim_b,
-        c: sim_c,
-    })
-}
-
 /// Execute quadratic strategy after `(a, b, c)` are already extracted/simplified:
 /// 1) build optional didactic main/substeps,
 /// 2) solve coefficient plan with default numeric kernel.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_quadratic_coefficient_pipeline_with_default_didactic_and_numeric_solution_with_state<
+pub(crate) fn execute_quadratic_coefficient_pipeline_with_default_didactic_and_numeric_solution_with_state<
     T,
     S,
     SS,
@@ -192,89 +148,6 @@ where
     Ok((solution_set, steps))
 }
 
-/// Execute quadratic candidate pipeline in one call:
-/// 1) prepare a valid quadratic candidate (`a != 0`) from equation,
-/// 2) if prepared, run didactic + coefficient-plan solving pipeline.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_quadratic_strategy_candidate_pipeline_with_default_coefficient_extraction_and_numeric_solution_with_state<
-    T,
-    S,
-    SS,
-    E,
-    FContextMut,
-    FSetCollect,
-    FSimplify,
-    FExpand,
-    FRender,
-    FMapMain,
-    FMapSub,
-    FMapPlanError,
->(
-    state: &mut T,
-    equation: &Equation,
-    var: &str,
-    is_real_only: bool,
-    include_items: bool,
-    was_collecting: bool,
-    context_mut: FContextMut,
-    set_collecting: FSetCollect,
-    mut simplify_expr: FSimplify,
-    mut expand_expr: FExpand,
-    render_expr: FRender,
-    map_main_item_to_step: FMapMain,
-    map_substep_item_to_step: FMapSub,
-    map_plan_error: FMapPlanError,
-) -> Result<Option<(SolutionSet, Vec<S>)>, E>
-where
-    SS: Clone,
-    FContextMut: Fn(&mut T) -> &mut Context,
-    FSetCollect: FnMut(&mut T, bool),
-    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
-    FExpand: FnMut(&mut T, ExprId) -> ExprId,
-    FRender: Fn(&Context, ExprId) -> String,
-    FMapMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
-    FMapSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
-    FMapPlanError: FnOnce(crate::quadratic_formula::QuadraticCoefficientSolvePlanError) -> E,
-{
-    let context_mut = &context_mut;
-    let prepared =
-        prepare_quadratic_strategy_candidate_with_default_coefficient_extraction_with_state(
-            state,
-            equation,
-            var,
-            |state| context_mut(state),
-            |state, expr| simplify_expr(state, expr),
-            |state, expr| expand_expr(state, expr),
-        );
-    let Some(prepared) = prepared else {
-        return Ok(None);
-    };
-
-    let solved =
-        execute_quadratic_coefficient_pipeline_with_default_didactic_and_numeric_solution_with_state(
-            state,
-            var,
-            equation.op.clone(),
-            prepared.sim_poly_expr,
-            prepared.a,
-            prepared.b,
-            prepared.c,
-            is_real_only,
-            include_items,
-            was_collecting,
-            |state| context_mut(state),
-            set_collecting,
-            |state, expr| simplify_expr(state, expr),
-            render_expr,
-            map_main_item_to_step,
-            map_substep_item_to_step,
-            |state, expr| expand_expr(state, expr),
-            map_plan_error,
-        )?;
-
-    Ok(Some(solved))
-}
-
 /// Execute full quadratic strategy with default pipelines:
 /// 1) normalize and simplify `lhs - rhs`,
 /// 2) try factorized zero-product pipeline (if applicable),
@@ -285,7 +158,7 @@ where
 /// - `Some(Err(...))` when a selected path errors,
 /// - `None` when strategy does not apply.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_with_state<
+pub(crate) fn execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_with_state<
     T,
     S,
     SS,
@@ -406,7 +279,7 @@ where
 /// Execute full quadratic strategy with default pipelines and unified step
 /// mappers for both main steps and substeps.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_and_unified_step_mappers_with_state<
+pub(crate) fn execute_quadratic_strategy_with_default_factorized_and_candidate_pipelines_and_unified_step_mappers_with_state<
     T,
     S,
     SS,
@@ -571,96 +444,6 @@ mod tests {
             err,
             QuadraticCoefficientSolvePlanError::UnsupportedSymbolicInequality
         );
-    }
-
-    #[test]
-    fn prepare_quadratic_strategy_candidate_with_default_coefficient_extraction_with_state_accepts_quadratic(
-    ) {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let one = ctx.num(1);
-        let x2 = ctx.add(Expr::Pow(x, two));
-        let three_x = ctx.add(Expr::Mul(three, x));
-        let lhs = ctx.add(Expr::Add(x2, three_x));
-        let lhs = ctx.add(Expr::Add(lhs, one));
-        let equation = Equation {
-            lhs,
-            rhs: ctx.num(0),
-            op: RelOp::Eq,
-        };
-
-        let prepared =
-            prepare_quadratic_strategy_candidate_with_default_coefficient_extraction_with_state(
-                &mut ctx,
-                &equation,
-                "x",
-                |ctx| ctx,
-                |_ctx, id| id,
-                |_ctx, id| id,
-            )
-            .expect("must prepare quadratic candidate");
-
-        assert!(!is_numeric_zero(&ctx, prepared.a));
-    }
-
-    #[test]
-    fn prepare_quadratic_strategy_candidate_with_default_coefficient_extraction_with_state_rejects_linear(
-    ) {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let one = ctx.num(1);
-        let lhs = ctx.add(Expr::Add(x, one));
-        let equation = Equation {
-            lhs,
-            rhs: ctx.num(0),
-            op: RelOp::Eq,
-        };
-
-        let prepared =
-            prepare_quadratic_strategy_candidate_with_default_coefficient_extraction_with_state(
-                &mut ctx,
-                &equation,
-                "x",
-                |ctx| ctx,
-                |_ctx, id| id,
-                |_ctx, id| id,
-            );
-
-        assert!(prepared.is_none());
-    }
-
-    #[test]
-    fn execute_quadratic_strategy_candidate_pipeline_with_default_coefficient_extraction_and_numeric_solution_with_state_returns_none_for_non_quadratic(
-    ) {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let equation = Equation {
-            lhs: x,
-            rhs: ctx.num(0),
-            op: RelOp::Eq,
-        };
-
-        let solved = execute_quadratic_strategy_candidate_pipeline_with_default_coefficient_extraction_and_numeric_solution_with_state(
-            &mut ctx,
-            &equation,
-            "x",
-            true,
-            false,
-            false,
-            |ctx| ctx,
-            |_ctx, _collecting| {},
-            |_ctx, id| id,
-            |_ctx, id| id,
-            |_ctx, _id| String::new(),
-            |_item, _substeps| String::new(),
-            |_item| String::new(),
-            |_err| "plan error".to_string(),
-        )
-        .expect("pipeline should not error for non-quadratic");
-
-        assert!(solved.is_none());
     }
 
     #[test]

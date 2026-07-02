@@ -3,7 +3,7 @@ use cas_ast::{Equation, ExprId};
 /// Prepare one equation for strategy dispatch using default residual-candidate
 /// acceptance (`accept when smaller or when variable is eliminated`).
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_equation_for_strategy_with_default_residual_acceptance_and_state<
+pub(crate) fn prepare_equation_for_strategy_with_default_residual_acceptance_and_state<
     SState,
     FContainsVar,
     FSimplifyForSolve,

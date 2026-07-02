@@ -94,7 +94,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
 ///
 /// Uses a bounded look-back window and never absorbs medium/high-importance
 /// steps.
-pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
+pub(crate) fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
     find_absorption_indices_before_markers_with(
         steps,
         8, // Max steps to look back.

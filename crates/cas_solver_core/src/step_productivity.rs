@@ -14,7 +14,7 @@ use cas_math::semantic_equality::SemanticEqualityChecker;
 /// - it changes local expression semantically and materially changes the
 ///   reconstructed global expression.
 #[allow(clippy::too_many_arguments)]
-pub fn filter_non_productive_steps_with<
+pub(crate) fn filter_non_productive_steps_with<
     T,
     FAlwaysKeep,
     FBefore,

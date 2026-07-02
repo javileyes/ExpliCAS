@@ -1,5 +1,5 @@
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_solve_strategy_kind_with_runtime_handlers_with_state<
+pub(crate) fn dispatch_solve_strategy_kind_with_runtime_handlers_with_state<
     T,
     R,
     FRationalExponent,

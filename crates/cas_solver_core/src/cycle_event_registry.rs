@@ -8,7 +8,7 @@ thread_local! {
 }
 
 /// Register one cycle event (deduped by fingerprint/rule/level).
-pub fn register_cycle_event(event: crate::cycle_models::CycleEvent) {
+pub(crate) fn register_cycle_event(event: crate::cycle_models::CycleEvent) {
     CYCLE_EVENTS.with(|events| {
         let mut events = events.borrow_mut();
         let exists = events.iter().any(|e| {
@@ -33,7 +33,7 @@ pub fn clear_cycle_events() {
 }
 
 /// Truncate display string with ellipsis.
-pub fn truncate_display(s: &str, max_len: usize) -> String {
+pub(crate) fn truncate_display(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {

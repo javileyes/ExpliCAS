@@ -8,7 +8,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// options while runtime crates provide only the state kernels and recursive
 /// solve/isolation callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_runtime_ctx_and_options_and_state<
+pub(crate) fn dispatch_isolation_with_runtime_ctx_and_options_and_state<
     T,
     FContextRef,
     FContextMut,

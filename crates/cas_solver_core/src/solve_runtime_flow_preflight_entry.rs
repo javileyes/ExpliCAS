@@ -1,4 +1,4 @@
-pub use solve_runtime_flow_preflight_entry_guards::*;
+pub(crate) use solve_runtime_flow_preflight_entry_guards::*;
 pub use solve_runtime_flow_preflight_entry_prepass::*;
 
 #[path = "solve_runtime_flow_preflight_entry_guards.rs"]

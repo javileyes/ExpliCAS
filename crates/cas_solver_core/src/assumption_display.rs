@@ -4,7 +4,7 @@ use crate::step_model::Step;
 /// Format displayable assumption events into compact single-line strings.
 ///
 /// Output format: `"<icon> <label>: <message>"`.
-pub fn format_displayable_assumption_lines(events: &[AssumptionEvent]) -> Vec<String> {
+pub(crate) fn format_displayable_assumption_lines(events: &[AssumptionEvent]) -> Vec<String> {
     events
         .iter()
         .filter(|event| event.kind.should_display())
@@ -28,7 +28,9 @@ pub fn format_displayable_assumption_lines_for_step(step: &Step) -> Vec<String> 
 ///
 /// Output format: one line per kind in stable order:
 /// `Requires`, `Branch`, `Domain`, `Assumes`.
-pub fn format_displayable_assumption_lines_grouped(events: &[AssumptionEvent]) -> Vec<String> {
+pub(crate) fn format_displayable_assumption_lines_grouped(
+    events: &[AssumptionEvent],
+) -> Vec<String> {
     let mut requires = Vec::new();
     let mut branches = Vec::new();
     let mut domain_ext = Vec::new();

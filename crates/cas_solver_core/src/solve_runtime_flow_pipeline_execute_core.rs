@@ -10,7 +10,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// - soft-error classifier,
 /// - discrete-candidate resolution against `(equation, var)`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_default_strategy_order_pipeline_with_state<
+pub(crate) fn execute_default_strategy_order_pipeline_with_state<
     SState,
     S,
     E,

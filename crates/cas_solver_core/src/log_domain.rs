@@ -88,7 +88,7 @@ pub enum LogUnsupportedRoute<'a> {
 }
 
 /// Map a decision to terminal solver action.
-pub fn classify_terminal_action(
+pub(crate) fn classify_terminal_action(
     decision: &LogSolveDecision,
     mode: DomainModeKind,
     wildcard_scope: bool,
@@ -103,7 +103,7 @@ pub fn classify_terminal_action(
 }
 
 /// Classify whether the solver may rewrite `A^x = B` into a log-linear form.
-pub fn classify_log_linear_rewrite_policy<'a>(
+pub(crate) fn classify_log_linear_rewrite_policy<'a>(
     decision: &'a LogSolveDecision,
 ) -> LogLinearRewritePolicy<'a> {
     match decision {
@@ -118,7 +118,7 @@ pub fn classify_log_linear_rewrite_policy<'a>(
 }
 
 /// Classify log-linear rewrite route, folding in the base-one pre-check.
-pub fn classify_log_linear_rewrite_route<'a>(
+pub(crate) fn classify_log_linear_rewrite_route<'a>(
     base_is_one: bool,
     decision: &'a LogSolveDecision,
 ) -> LogLinearRewriteRoute<'a> {
@@ -134,7 +134,7 @@ pub fn classify_log_linear_rewrite_route<'a>(
 }
 
 /// Extract assumptions implied by a decision (empty for non-assume decisions).
-pub fn decision_assumptions(decision: &LogSolveDecision) -> &[LogAssumption] {
+pub(crate) fn decision_assumptions(decision: &LogSolveDecision) -> &[LogAssumption] {
     match decision {
         LogSolveDecision::OkWithAssumptions(assumptions) => assumptions,
         _ => &[],
@@ -142,7 +142,7 @@ pub fn decision_assumptions(decision: &LogSolveDecision) -> &[LogAssumption] {
 }
 
 /// Decide how to handle unsupported logarithmic rewrites.
-pub fn classify_log_unsupported_route<'a>(
+pub(crate) fn classify_log_unsupported_route<'a>(
     decision: &'a LogSolveDecision,
     can_branch: bool,
 ) -> LogUnsupportedRoute<'a> {
@@ -161,7 +161,7 @@ pub fn classify_log_unsupported_route<'a>(
 }
 
 /// Convert one logical assumption into a `ConditionPredicate`.
-pub fn assumption_to_condition_predicate(
+pub(crate) fn assumption_to_condition_predicate(
     assumption: LogAssumption,
     base: ExprId,
     rhs: ExprId,
@@ -173,7 +173,11 @@ pub fn assumption_to_condition_predicate(
 }
 
 /// Select the expression targeted by a logarithmic assumption.
-pub fn assumption_target_expr(assumption: LogAssumption, base: ExprId, rhs: ExprId) -> ExprId {
+pub(crate) fn assumption_target_expr(
+    assumption: LogAssumption,
+    base: ExprId,
+    rhs: ExprId,
+) -> ExprId {
     match assumption {
         LogAssumption::PositiveBase => base,
         LogAssumption::PositiveRhs => rhs,
@@ -181,7 +185,7 @@ pub fn assumption_target_expr(assumption: LogAssumption, base: ExprId, rhs: Expr
 }
 
 /// Convert a list of assumptions into a `ConditionSet`.
-pub fn assumptions_to_condition_set(
+pub(crate) fn assumptions_to_condition_set(
     assumptions: &[LogAssumption],
     base: ExprId,
     rhs: ExprId,
@@ -196,7 +200,7 @@ pub fn assumptions_to_condition_set(
 /// Classify a logarithmic solve step using only proof states and domain mode.
 ///
 /// This function is intentionally context-free and does not inspect AST nodes.
-pub fn classify_log_solve_by_proofs(
+pub(crate) fn classify_log_solve_by_proofs(
     mode: DomainModeKind,
     base_proof: ProofStatus,
     rhs_proof: ProofStatus,
@@ -259,7 +263,7 @@ pub fn classify_log_solve_by_proofs(
 ///
 /// When an expression is already known positive from the solver environment,
 /// we treat it as `Proven` regardless of local proof status.
-pub fn classify_log_solve_with_env(
+pub(crate) fn classify_log_solve_with_env(
     mode: DomainModeKind,
     base_in_env: bool,
     rhs_in_env: bool,
@@ -283,7 +287,7 @@ pub fn classify_log_solve_with_env(
 ///
 /// When not operating in real-only mode, logarithmic rewrite checks are skipped
 /// and the caller may proceed (multi-valued complex handling is outside this policy).
-pub fn classify_log_solve_for_value_domain(
+pub(crate) fn classify_log_solve_for_value_domain(
     value_domain_is_real_only: bool,
     mode: DomainModeKind,
     base_in_env: bool,
@@ -299,7 +303,7 @@ pub fn classify_log_solve_for_value_domain(
 
 /// Classify a log-solve step by proving positivity only when env facts are missing.
 #[allow(clippy::too_many_arguments)]
-pub fn classify_log_solve_with_prover<F>(
+pub(crate) fn classify_log_solve_with_prover<F>(
     ctx: &Context,
     base: ExprId,
     rhs: ExprId,
@@ -333,40 +337,9 @@ where
     )
 }
 
-/// Classify a log-solve step with an external prover type mapped into `ProofStatus`.
-///
-/// Useful for runtime crates where prover APIs return crate-specific proof enums.
-#[allow(clippy::too_many_arguments)]
-pub fn classify_log_solve_with_external_prover<P, FProve, FMap>(
-    ctx: &Context,
-    base: ExprId,
-    rhs: ExprId,
-    value_domain_is_real_only: bool,
-    mode: DomainModeKind,
-    base_in_env: bool,
-    rhs_in_env: bool,
-    mut prove_positive: FProve,
-    mut map_proof_status: FMap,
-) -> LogSolveDecision
-where
-    FProve: FnMut(&Context, ExprId) -> P,
-    FMap: FnMut(P) -> ProofStatus,
-{
-    classify_log_solve_with_prover(
-        ctx,
-        base,
-        rhs,
-        value_domain_is_real_only,
-        mode,
-        base_in_env,
-        rhs_in_env,
-        |core_ctx, expr| map_proof_status(prove_positive(core_ctx, expr)),
-    )
-}
-
 /// Classify a log-solve step with a prover returning [`TriProof`].
 #[allow(clippy::too_many_arguments)]
-pub fn classify_log_solve_with_tri_prover<FProve>(
+pub(crate) fn classify_log_solve_with_tri_prover<FProve>(
     ctx: &Context,
     base: ExprId,
     rhs: ExprId,
@@ -713,45 +686,6 @@ mod tests {
 
         assert_eq!(calls, 0);
         assert_eq!(out, LogSolveDecision::Ok);
-    }
-
-    #[test]
-    fn classify_log_solve_with_external_prover_maps_external_type() {
-        #[derive(Clone, Copy)]
-        enum ExternalProof {
-            Yes,
-            Maybe,
-        }
-
-        let mut ctx = cas_ast::Context::new();
-        let base = ctx.var("b");
-        let rhs = ctx.var("r");
-
-        let out = classify_log_solve_with_external_prover(
-            &ctx,
-            base,
-            rhs,
-            true,
-            DomainModeKind::Assume,
-            false,
-            false,
-            |_core_ctx, expr| {
-                if expr == base {
-                    ExternalProof::Yes
-                } else {
-                    ExternalProof::Maybe
-                }
-            },
-            |proof| match proof {
-                ExternalProof::Yes => ProofStatus::Proven,
-                ExternalProof::Maybe => ProofStatus::Unknown,
-            },
-        );
-
-        assert_eq!(
-            out,
-            LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs])
-        );
     }
 
     #[test]

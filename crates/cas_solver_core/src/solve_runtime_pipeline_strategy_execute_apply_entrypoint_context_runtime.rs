@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// Execute the default strategy pipeline while wiring a direct `apply_strategy`
 /// entrypoint through the current runtime solve context and solver options.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_strategy_pipeline_with_apply_entrypoint_runtime_ctx_and_default_verification_with_state<
+pub(crate) fn execute_strategy_pipeline_with_apply_entrypoint_runtime_ctx_and_default_verification_with_state<
     SState,
     FContainsVar,
     FCollectSteps,

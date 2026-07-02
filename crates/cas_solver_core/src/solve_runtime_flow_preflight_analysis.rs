@@ -10,7 +10,7 @@ use std::hash::Hash;
 ///
 /// so runtime crates pass domain hooks once instead of wiring nested callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn analyze_preflight_and_fork_context_with_existing_condition_derivation<
+pub(crate) fn analyze_preflight_and_fork_context_with_existing_condition_derivation<
     C,
     V,
     Domain,

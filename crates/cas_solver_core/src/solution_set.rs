@@ -218,7 +218,7 @@ fn compare_nth_root_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Orderin
 }
 
 /// Order two expression ids so the first is `<=` the second under `compare_values`.
-pub fn order_pair_by_value(ctx: &Context, a: ExprId, b: ExprId) -> (ExprId, ExprId) {
+pub(crate) fn order_pair_by_value(ctx: &Context, a: ExprId, b: ExprId) -> (ExprId, ExprId) {
     if compare_values(ctx, a, b) == Ordering::Greater {
         (b, a)
     } else {
@@ -227,7 +227,7 @@ pub fn order_pair_by_value(ctx: &Context, a: ExprId, b: ExprId) -> (ExprId, Expr
 }
 
 /// Sort and deduplicate expression ids using canonical structural ordering.
-pub fn sort_and_dedup_exprs(ctx: &Context, exprs: &mut Vec<ExprId>) {
+pub(crate) fn sort_and_dedup_exprs(ctx: &Context, exprs: &mut Vec<ExprId>) {
     exprs.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
     exprs.dedup_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b) == Ordering::Equal);
 }
@@ -290,7 +290,7 @@ pub fn open_positive_domain(ctx: &mut Context) -> SolutionSet {
 }
 
 /// Open negative domain: `(-inf, 0)`.
-pub fn open_negative_domain(ctx: &mut Context) -> SolutionSet {
+pub(crate) fn open_negative_domain(ctx: &mut Context) -> SolutionSet {
     SolutionSet::Continuous(Interval {
         min: neg_inf(ctx),
         min_type: BoundType::Open,
@@ -301,7 +301,7 @@ pub fn open_negative_domain(ctx: &mut Context) -> SolutionSet {
 
 /// Finalize a 2-branch sign split by intersecting each branch with its domain
 /// condition and then unioning both branch results.
-pub fn finalize_sign_split_solution_set(
+pub(crate) fn finalize_sign_split_solution_set(
     ctx: &Context,
     positive_branch: SolutionSet,
     positive_domain: SolutionSet,
@@ -315,7 +315,7 @@ pub fn finalize_sign_split_solution_set(
 
 /// Finalize product-zero inequality split from four solved branch equations:
 /// `(A_case1 ∩ B_case1) ∪ (A_case2 ∩ B_case2)`.
-pub fn finalize_product_zero_inequality_solution_set(
+pub(crate) fn finalize_product_zero_inequality_solution_set(
     ctx: &Context,
     case1_left: SolutionSet,
     case1_right: SolutionSet,
@@ -329,7 +329,7 @@ pub fn finalize_product_zero_inequality_solution_set(
 
 /// Finalize isolated-denominator sign split by applying `x > 0` and `x < 0`
 /// open-domain guards to positive/negative branches.
-pub fn finalize_isolated_denominator_sign_split_solution_set(
+pub(crate) fn finalize_isolated_denominator_sign_split_solution_set(
     ctx: &mut Context,
     positive_branch: SolutionSet,
     negative_branch: SolutionSet,
@@ -385,7 +385,7 @@ fn outside_roots(
 /// Build solution sets for numeric quadratic relations `a*x^2 + b*x + c <op> 0`.
 ///
 /// Assumes `r1 <= r2` when `delta > 0`. For `delta == 0`, `r1` is the repeated root.
-pub fn quadratic_numeric_solution(
+pub(crate) fn quadratic_numeric_solution(
     ctx: &mut Context,
     op: RelOp,
     delta: &BigRational,
@@ -485,7 +485,7 @@ pub fn quadratic_numeric_solution(
     }
 }
 
-pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
+pub(crate) fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
     // Intersection of [a, b] and [c, d] is [max(a,c), min(b,d)]
 
     // Compare mins

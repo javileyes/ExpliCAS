@@ -73,7 +73,7 @@ impl<Equation, Importance, SubStep> SolveStep<Equation, Importance, SubStep> {
 ///
 /// This canonicalizes step narration through the shared cleanup pipeline and
 /// returns a display-enforced container.
-pub fn cleanup_display_solve_steps<Importance, SubStep>(
+pub(crate) fn cleanup_display_solve_steps<Importance, SubStep>(
     ctx: &mut Context,
     steps: Vec<SolveStep<Equation, Importance, SubStep>>,
     detailed: bool,
@@ -118,7 +118,7 @@ pub type DisplaySolveFinalization<Required, Assumption, AssumptionRecord, Scope,
 /// 1) compute diagnostics from shared solve context,
 /// 2) unwrap `(solution_set, raw_steps)`,
 /// 3) run step cleanup/wrapping.
-pub fn finalize_display_solve_with_ctx<
+pub(crate) fn finalize_display_solve_with_ctx<
     DomainEnv,
     Required,
     Assumption,

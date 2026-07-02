@@ -62,7 +62,7 @@ pub fn count_nodes_dedup(ctx: &Context, root: ExprId) -> (usize, usize) {
 }
 
 /// Check if expression contains any `Div(_, 0)` nodes.
-pub fn has_zero_denominator(ctx: &Context, id: ExprId) -> bool {
+pub(crate) fn has_zero_denominator(ctx: &Context, id: ExprId) -> bool {
     let mut stack = vec![id];
     while let Some(node_id) = stack.pop() {
         match ctx.get(node_id) {
@@ -87,7 +87,7 @@ pub fn has_zero_denominator(ctx: &Context, id: ExprId) -> bool {
 }
 
 /// Deep-copy an expression subtree from `src` context into `dst` context.
-pub fn transplant_expr(src: &Context, id: ExprId, dst: &mut Context) -> ExprId {
+pub(crate) fn transplant_expr(src: &Context, id: ExprId, dst: &mut Context) -> ExprId {
     match src.get(id) {
         Expr::Number(n) => dst.add(Expr::Number(n.clone())),
         Expr::Constant(c) => dst.add(Expr::Constant(c.clone())),
@@ -156,7 +156,11 @@ pub fn transplant_expr(src: &Context, id: ExprId, dst: &mut Context) -> ExprId {
 /// Accepts:
 /// - `Number(_)` and `Constant(_)`
 /// - Other ground expressions only when strictly smaller and with no `Div(_, 0)`.
-pub fn is_benign_fold_result(ctx: &Context, result: ExprId, original_node_count: usize) -> bool {
+pub(crate) fn is_benign_fold_result(
+    ctx: &Context,
+    result: ExprId,
+    original_node_count: usize,
+) -> bool {
     match ctx.get(result) {
         Expr::Number(_) | Expr::Constant(_) => true,
         _ => {
@@ -170,7 +174,7 @@ pub fn is_benign_fold_result(ctx: &Context, result: ExprId, original_node_count:
 }
 
 /// Pre-check whether a subtree should be considered for numeric-island folding.
-pub fn precheck_fold_candidate(
+pub(crate) fn precheck_fold_candidate(
     ctx: &Context,
     id: ExprId,
     max_nodes: usize,
@@ -192,7 +196,7 @@ pub fn precheck_fold_candidate(
     IslandFoldPrecheck::Eligible { node_count }
 }
 
-pub fn fold_numeric_islands_with<OnOverLimit, TryFold>(
+pub(crate) fn fold_numeric_islands_with<OnOverLimit, TryFold>(
     ctx: &mut Context,
     root: ExprId,
     max_nodes: usize,
@@ -419,7 +423,7 @@ where
 /// The evaluator returns a temporary `(Context, ExprId)` pair representing the folded result.
 /// This helper accepts the candidate only when it is benign (numeric leaf or strictly smaller
 /// ground expression without `Div(_, 0)`), then transplants the result back into `ctx`.
-pub fn fold_numeric_islands_with_candidate_evaluator<OnOverLimit, EvaluateCandidate>(
+pub(crate) fn fold_numeric_islands_with_candidate_evaluator<OnOverLimit, EvaluateCandidate>(
     ctx: &mut Context,
     root: ExprId,
     max_nodes: usize,
@@ -452,7 +456,7 @@ where
 
 /// Convenience wrapper around [`fold_numeric_islands_with_candidate_evaluator`]
 /// using the crate default island size/depth limits.
-pub fn fold_numeric_islands_with_default_limits_and_candidate_evaluator<
+pub(crate) fn fold_numeric_islands_with_default_limits_and_candidate_evaluator<
     OnOverLimit,
     EvaluateCandidate,
 >(

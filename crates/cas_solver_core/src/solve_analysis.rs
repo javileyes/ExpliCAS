@@ -9,7 +9,7 @@ use crate::solve_outcome::{
 };
 
 /// Check if an expression is symbolic (contains variables/functions/constants).
-pub fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(_) => false,
         Expr::Constant(_) => true,
@@ -24,22 +24,8 @@ pub fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Split discrete solutions into `(symbolic, non_symbolic)` buckets.
-pub fn partition_discrete_symbolic(ctx: &Context, sols: &[ExprId]) -> (Vec<ExprId>, Vec<ExprId>) {
-    let mut symbolic = Vec::new();
-    let mut non_symbolic = Vec::new();
-    for &sol in sols {
-        if is_symbolic_expr(ctx, sol) {
-            symbolic.push(sol);
-        } else {
-            non_symbolic.push(sol);
-        }
-    }
-    (symbolic, non_symbolic)
-}
-
 /// Keep only solutions accepted by a verifier callback.
-pub fn retain_verified_discrete<F>(sols: Vec<ExprId>, mut verify: F) -> Vec<ExprId>
+pub(crate) fn retain_verified_discrete<F>(sols: Vec<ExprId>, mut verify: F) -> Vec<ExprId>
 where
     F: FnMut(ExprId) -> bool,
 {
@@ -52,51 +38,11 @@ where
     out
 }
 
-/// Merge symbolic roots with verified numeric roots.
-///
-/// Returns `symbolic ++ verified_numeric` preserving solver behavior.
-pub fn merge_symbolic_with_verified_numeric<F>(
-    mut symbolic_solutions: Vec<ExprId>,
-    numeric_solutions: Vec<ExprId>,
-    mut verify_numeric: F,
-) -> Vec<ExprId>
-where
-    F: FnMut(ExprId) -> bool,
-{
-    let verified_numeric = retain_verified_discrete(numeric_solutions, &mut verify_numeric);
-    symbolic_solutions.extend(verified_numeric);
-    symbolic_solutions
-}
-
-/// Resolve discrete strategy candidates by preserving symbolic roots and
-/// verifying only numeric roots with caller-provided callbacks.
-pub fn resolve_discrete_strategy_solutions_with<FIsSymbolic, FVerify>(
-    solutions: Vec<ExprId>,
-    mut is_symbolic: FIsSymbolic,
-    mut verify_numeric: FVerify,
-) -> Vec<ExprId>
-where
-    FIsSymbolic: FnMut(ExprId) -> bool,
-    FVerify: FnMut(ExprId) -> bool,
-{
-    let mut symbolic_solutions = Vec::new();
-    let mut numeric_solutions = Vec::new();
-    for solution in solutions {
-        if is_symbolic(solution) {
-            symbolic_solutions.push(solution);
-        } else {
-            numeric_solutions.push(solution);
-        }
-    }
-
-    merge_symbolic_with_verified_numeric(symbolic_solutions, numeric_solutions, &mut verify_numeric)
-}
-
 /// Resolve discrete strategy candidates using one mutable caller state.
 ///
 /// This variant is useful when symbolic classification and numeric verification
 /// both need mutable access to the same runtime state object.
-pub fn resolve_discrete_strategy_solutions_with_state<S, FIsSymbolic, FVerify>(
+pub(crate) fn resolve_discrete_strategy_solutions_with_state<S, FIsSymbolic, FVerify>(
     state: &mut S,
     solutions: Vec<ExprId>,
     mut is_symbolic: FIsSymbolic,
@@ -124,7 +70,7 @@ where
 /// Resolve discrete strategy candidates against one equation:
 /// - keep symbolic candidates untouched,
 /// - verify only numeric candidates against `(equation, var)`.
-pub fn resolve_discrete_strategy_solutions_against_equation_with_state<
+pub(crate) fn resolve_discrete_strategy_solutions_against_equation_with_state<
     S,
     FIsSymbolic,
     FVerifyAgainstEquation,
@@ -150,7 +96,7 @@ where
 
 /// Resolve discrete candidates against an equation and return a `SolutionSet`
 /// paired with the caller-provided strategy steps.
-pub fn resolve_discrete_strategy_result_against_equation_with_state<
+pub(crate) fn resolve_discrete_strategy_result_against_equation_with_state<
     S,
     Step,
     FIsSymbolic,
@@ -223,7 +169,7 @@ pub enum StrategyAttemptSequenceResolution<S, E> {
 ///
 /// This keeps strategy-loop control flow in `cas_solver_core` while leaving
 /// expensive numeric verification to the caller.
-pub fn classify_strategy_attempt_result<S, E, FSoft>(
+pub(crate) fn classify_strategy_attempt_result<S, E, FSoft>(
     strategy_attempt: Option<Result<(SolutionSet, Vec<S>), E>>,
     should_verify_discrete: bool,
     mut is_soft_error: FSoft,
@@ -250,88 +196,12 @@ where
     }
 }
 
-/// Execute a full ordered sequence of strategy attempts.
-///
-/// Each item is `(attempt, should_verify_discrete)` where `attempt` is the raw
-/// strategy result (`None` when the strategy did not apply).
-pub fn run_strategy_attempt_sequence<S, E, I, FSoft>(
-    attempts: I,
-    mut is_soft_error: FSoft,
-) -> StrategyAttemptSequenceResolution<S, E>
-where
-    I: IntoIterator<Item = (Option<Result<(SolutionSet, Vec<S>), E>>, bool)>,
-    FSoft: FnMut(&E) -> bool,
-{
-    let mut last_soft_error: Option<E> = None;
-
-    for (attempt, should_verify_discrete) in attempts {
-        match classify_strategy_attempt_result(attempt, should_verify_discrete, |err| {
-            is_soft_error(err)
-        }) {
-            StrategyAttemptResolution::Skip => continue,
-            StrategyAttemptResolution::Solved {
-                solution_set,
-                steps,
-            } => {
-                return StrategyAttemptSequenceResolution::Solved {
-                    solution_set,
-                    steps,
-                };
-            }
-            StrategyAttemptResolution::NeedsDiscreteVerification { solutions, steps } => {
-                return StrategyAttemptSequenceResolution::NeedsDiscreteVerification {
-                    solutions,
-                    steps,
-                };
-            }
-            StrategyAttemptResolution::SoftError(error) => {
-                last_soft_error = Some(error);
-            }
-            StrategyAttemptResolution::HardError(error) => {
-                return StrategyAttemptSequenceResolution::HardError(error);
-            }
-        }
-    }
-
-    StrategyAttemptSequenceResolution::Exhausted { last_soft_error }
-}
-
-/// Finalize a strategy-attempt sequence into a plain solve result.
-///
-/// Caller provides:
-/// - `resolve_discrete`: how to post-process discrete candidates that require
-///   verification/filtering.
-/// - `no_solution_error`: fallback error when sequence is exhausted without a
-///   soft error.
-pub fn finalize_strategy_attempt_sequence_with<S, E, FResolveDiscrete>(
-    resolution: StrategyAttemptSequenceResolution<S, E>,
-    mut resolve_discrete: FResolveDiscrete,
-    no_solution_error: E,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    FResolveDiscrete: FnMut(Vec<ExprId>, Vec<S>) -> (SolutionSet, Vec<S>),
-{
-    match resolution {
-        StrategyAttemptSequenceResolution::Solved {
-            solution_set,
-            steps,
-        } => Ok((solution_set, steps)),
-        StrategyAttemptSequenceResolution::NeedsDiscreteVerification { solutions, steps } => {
-            Ok(resolve_discrete(solutions, steps))
-        }
-        StrategyAttemptSequenceResolution::HardError(error) => Err(error),
-        StrategyAttemptSequenceResolution::Exhausted { last_soft_error } => {
-            Err(last_soft_error.unwrap_or(no_solution_error))
-        }
-    }
-}
-
 /// Execute strategy sequence by evaluating one strategy at a time against
 /// caller-provided mutable state.
 ///
 /// This avoids pre-collecting attempt vectors at call sites and keeps
 /// strategy-loop orchestration inside `cas_solver_core`.
-pub fn run_strategies_with_state<SState, Strategy, S, E, I, FEvaluate, FSoft>(
+pub(crate) fn run_strategies_with_state<SState, Strategy, S, E, I, FEvaluate, FSoft>(
     state: &mut SState,
     strategies: I,
     mut evaluate_strategy: FEvaluate,
@@ -378,7 +248,7 @@ where
 }
 
 /// Execute + finalize a stateful strategy sequence in one call.
-pub fn execute_strategies_with_state_and_resolution<
+pub(crate) fn execute_strategies_with_state_and_resolution<
     SState,
     Strategy,
     S,
@@ -421,7 +291,7 @@ where
 /// 2) otherwise enter cycle guard,
 /// 3) execute strategy sequence and finalize.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_prepared_equation_strategy_pipeline_with_state<
+pub(crate) fn execute_prepared_equation_strategy_pipeline_with_state<
     SState,
     Strategy,
     S,
@@ -479,31 +349,12 @@ where
 /// Current policy marks as soft when:
 /// - isolation details mention "variable appears on both sides", or
 /// - solver details mention "Cycle detected".
-pub fn is_soft_strategy_error_from_message_parts(
+pub(crate) fn is_soft_strategy_error_from_message_parts(
     isolation_detail: Option<&str>,
     solver_detail: Option<&str>,
 ) -> bool {
     isolation_detail.is_some_and(|detail| detail.contains("variable appears on both sides"))
         || solver_detail.is_some_and(|detail| detail.contains("Cycle detected"))
-}
-
-/// Generic adapter for soft-error policy over arbitrary error types.
-///
-/// Callers provide channel extractors for:
-/// - isolation detail text
-/// - solver detail text
-///
-/// so core policy can remain centralized without depending on runtime error enums.
-pub fn is_soft_strategy_error_with<E, FIsolation, FSolver>(
-    error: &E,
-    mut isolation_detail: FIsolation,
-    mut solver_detail: FSolver,
-) -> bool
-where
-    FIsolation: for<'a> FnMut(&'a E) -> Option<&'a str>,
-    FSolver: for<'a> FnMut(&'a E) -> Option<&'a str>,
-{
-    is_soft_strategy_error_from_message_parts(isolation_detail(error), solver_detail(error))
 }
 
 /// Error contract exposing message fragments used for soft-strategy
@@ -514,7 +365,7 @@ pub trait StrategyErrorMessageParts {
 }
 
 /// Classify whether an error is soft using [`StrategyErrorMessageParts`].
-pub fn is_soft_strategy_error_by_parts<E>(error: &E) -> bool
+pub(crate) fn is_soft_strategy_error_by_parts<E>(error: &E) -> bool
 where
     E: StrategyErrorMessageParts,
 {
@@ -530,14 +381,14 @@ where
 ///
 /// Canonical-shape regressions should be pinned by focused solver/metamorphic
 /// tests instead of panicking on every top-level subtraction.
-pub fn debug_assert_equation_no_top_level_sub(_ctx: &Context, _equation: &Equation) {}
+pub(crate) fn debug_assert_equation_no_top_level_sub(_ctx: &Context, _equation: &Equation) {}
 
 /// Decide whether a rewritten residual should replace the current one.
 ///
 /// Accept when:
 /// - The target variable was eliminated, or
 /// - Tree size was reduced by more than 25% (avoids cosmetic rewrites).
-pub fn should_accept_rewritten_residual(
+pub(crate) fn should_accept_rewritten_residual(
     var_eliminated: bool,
     old_nodes: usize,
     new_nodes: usize,
@@ -555,7 +406,7 @@ pub enum EquationVarPresence {
 }
 
 /// Ensure equation variable-presence check passed, otherwise return caller error.
-pub fn ensure_equation_has_variable_or_error<E, FError>(
+pub(crate) fn ensure_equation_has_variable_or_error<E, FError>(
     presence: EquationVarPresence,
     missing_var_error: FError,
 ) -> Result<(), E>
@@ -570,7 +421,7 @@ where
 }
 
 /// Ensure recursion depth stays within a caller-provided maximum.
-pub fn ensure_recursion_depth_within_limit_or_error<E, FError>(
+pub(crate) fn ensure_recursion_depth_within_limit_or_error<E, FError>(
     current_depth: usize,
     max_depth: usize,
     depth_error: FError,
@@ -588,7 +439,7 @@ where
 /// Validate solve-entry guards for one equation:
 /// - recursion depth bound
 /// - target variable appears in at least one side
-pub fn ensure_solve_entry_for_equation_or_error<E, FDepthError, FMissingVarError>(
+pub(crate) fn ensure_solve_entry_for_equation_or_error<E, FDepthError, FMissingVarError>(
     ctx: &Context,
     equation: &Equation,
     var: &str,
@@ -610,7 +461,7 @@ where
 }
 
 /// Enter equation-fingerprint cycle guard or return caller-provided cycle error.
-pub fn try_enter_equation_cycle_guard_with_error<E, FError>(
+pub(crate) fn try_enter_equation_cycle_guard_with_error<E, FError>(
     ctx: &Context,
     equation: &Equation,
     var: &str,
@@ -626,7 +477,7 @@ where
 /// Collect required conditions for an equation from side-inference and
 /// equation-derived propagation hooks, preserving insertion order while
 /// deduplicating by value.
-pub fn collect_required_conditions_for_equation_with<C, V, FInferSide, FDeriveEq>(
+pub(crate) fn collect_required_conditions_for_equation_with<C, V, FInferSide, FDeriveEq>(
     lhs: ExprId,
     rhs: ExprId,
     value_domain: V,
@@ -663,7 +514,14 @@ where
 
 /// Build a domain view from existing requirements and derive additional
 /// equation-level requirements from it.
-pub fn derive_equation_conditions_from_existing_with<C, Domain, V, FNewDomain, FInsert, FDerive>(
+pub(crate) fn derive_equation_conditions_from_existing_with<
+    C,
+    Domain,
+    V,
+    FNewDomain,
+    FInsert,
+    FDerive,
+>(
     lhs: ExprId,
     rhs: ExprId,
     existing: &[C],
@@ -696,7 +554,7 @@ pub struct EquationPreflight<C> {
 /// Analyze one equation before strategy dispatch:
 /// - collect denominator exclusions containing `var`,
 /// - collect required conditions inferred/derived from equation semantics.
-pub fn analyze_equation_preflight_with<C, V, FInferSide, FDeriveEq>(
+pub(crate) fn analyze_equation_preflight_with<C, V, FInferSide, FDeriveEq>(
     ctx: &Context,
     equation: &Equation,
     var: &str,
@@ -729,7 +587,7 @@ where
 /// Apply required conditions to two sinks:
 /// - one sink receives borrowed conditions (e.g. domain set insertion),
 /// - one sink receives owned conditions (e.g. shared accumulator event).
-pub fn apply_required_conditions_with<C, I, FInsert, FNote>(
+pub(crate) fn apply_required_conditions_with<C, I, FInsert, FNote>(
     conditions: I,
     mut insert_condition: FInsert,
     mut note_condition: FNote,
@@ -756,7 +614,7 @@ pub struct PreflightContext<Ctx> {
 /// Analyze equation preflight data and fork a child context with required
 /// conditions applied into both the domain env and the shared required sink.
 #[allow(clippy::too_many_arguments)]
-pub fn analyze_equation_preflight_and_fork_context_with<
+pub(crate) fn analyze_equation_preflight_and_fork_context_with<
     C,
     V,
     DomainEnv,
@@ -807,7 +665,7 @@ where
 }
 
 /// Classify where `var` appears in an equation.
-pub fn classify_equation_var_presence(
+pub(crate) fn classify_equation_var_presence(
     ctx: &Context,
     equation: &Equation,
     var: &str,
@@ -822,45 +680,11 @@ pub fn classify_equation_var_presence(
     }
 }
 
-/// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
-/// using caller-provided hooks.
-pub fn simplify_equation_sides_for_presence_with<FSimplify, FRecompose>(
-    eq: &Equation,
-    lhs_has_var: bool,
-    rhs_has_var: bool,
-    mut simplify_for_solve: FSimplify,
-    mut try_recompose_pow_quotient: FRecompose,
-) -> Equation
-where
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FRecompose: FnMut(ExprId) -> Option<ExprId>,
-{
-    let mut simplified_eq = eq.clone();
-
-    if lhs_has_var {
-        let sim_lhs = simplify_for_solve(eq.lhs);
-        simplified_eq.lhs = sim_lhs;
-        if let Some(recomposed) = try_recompose_pow_quotient(sim_lhs) {
-            simplified_eq.lhs = recomposed;
-        }
-    }
-
-    if rhs_has_var {
-        let sim_rhs = simplify_for_solve(eq.rhs);
-        simplified_eq.rhs = sim_rhs;
-        if let Some(recomposed) = try_recompose_pow_quotient(sim_rhs) {
-            simplified_eq.rhs = recomposed;
-        }
-    }
-
-    simplified_eq
-}
-
 /// Stateful variant of [`simplify_equation_sides_for_presence_with`].
 ///
 /// This form lets callers avoid interior mutability when both simplify and
 /// recompose hooks need shared mutable state.
-pub fn simplify_equation_sides_for_presence_with_state<S, FSimplify, FRecompose>(
+pub(crate) fn simplify_equation_sides_for_presence_with_state<S, FSimplify, FRecompose>(
     state: &mut S,
     eq: &Equation,
     lhs_has_var: bool,
@@ -893,69 +717,13 @@ where
     simplified_eq
 }
 
-/// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
-/// using caller-provided hooks.
-pub fn simplify_equation_sides_for_var_with<FContains, FSimplify, FRecompose>(
-    eq: &Equation,
-    var: &str,
-    mut contains_var: FContains,
-    simplify_for_solve: FSimplify,
-    try_recompose_pow_quotient: FRecompose,
-) -> Equation
-where
-    FContains: FnMut(ExprId, &str) -> bool,
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FRecompose: FnMut(ExprId) -> Option<ExprId>,
-{
-    let lhs_has_var = contains_var(eq.lhs, var);
-    let rhs_has_var = contains_var(eq.rhs, var);
-    simplify_equation_sides_for_presence_with(
-        eq,
-        lhs_has_var,
-        rhs_has_var,
-        simplify_for_solve,
-        try_recompose_pow_quotient,
-    )
-}
-
-/// Apply ordered equation-side rewrites and re-simplify each changed side.
-///
-/// The sequence is:
-/// 1) structural rewrite attempt
-/// 2) semantic rewrite attempt on the latest side pair
-///
-/// Each successful rewrite updates both sides and runs `simplify_for_solve`
-/// on each changed side before the next phase.
-pub fn apply_equation_pair_rewrite_sequence_with<FStructural, FSemantic, FSimplify>(
-    lhs: ExprId,
-    rhs: ExprId,
-    mut structural_rewrite: FStructural,
-    mut semantic_rewrite: FSemantic,
-    mut simplify_for_solve: FSimplify,
-) -> (ExprId, ExprId)
-where
-    FStructural: FnMut(ExprId, ExprId) -> Option<(ExprId, ExprId)>,
-    FSemantic: FnMut(ExprId, ExprId) -> Option<(ExprId, ExprId)>,
-    FSimplify: FnMut(ExprId) -> ExprId,
-{
-    let mut current_lhs = lhs;
-    let mut current_rhs = rhs;
-
-    if let Some((new_lhs, new_rhs)) = structural_rewrite(current_lhs, current_rhs) {
-        current_lhs = simplify_for_solve(new_lhs);
-        current_rhs = simplify_for_solve(new_rhs);
-    }
-
-    if let Some((new_lhs, new_rhs)) = semantic_rewrite(current_lhs, current_rhs) {
-        current_lhs = simplify_for_solve(new_lhs);
-        current_rhs = simplify_for_solve(new_rhs);
-    }
-
-    (current_lhs, current_rhs)
-}
-
 /// Stateful variant of [`apply_equation_pair_rewrite_sequence_with`].
-pub fn apply_equation_pair_rewrite_sequence_with_state<S, FStructural, FSemantic, FSimplify>(
+pub(crate) fn apply_equation_pair_rewrite_sequence_with_state<
+    S,
+    FStructural,
+    FSemantic,
+    FSimplify,
+>(
     state: &mut S,
     lhs: ExprId,
     rhs: ExprId,
@@ -985,7 +753,7 @@ where
 }
 
 /// Return the candidate residual when the rewrite is meaningfully better.
-pub fn accept_residual_rewrite_candidate(
+pub(crate) fn accept_residual_rewrite_candidate(
     ctx: &Context,
     current: ExprId,
     candidate: ExprId,
@@ -1001,56 +769,9 @@ pub fn accept_residual_rewrite_candidate(
     }
 }
 
-/// Normalize a residual expression by applying the two engine-level fallback rewrites:
-/// 1) algebraic expand + simplify
-/// 2) trig expand mode
-///
-/// A rewrite is accepted only if it eliminates `var` or reduces tree size significantly.
-pub fn normalize_variable_residual_with<
-    FContains,
-    FExpandAlgebraic,
-    FSimplifyForSolve,
-    FExpandTrig,
-    FAcceptCandidate,
->(
-    residual: ExprId,
-    var: &str,
-    mut contains_var: FContains,
-    mut expand_algebraic: FExpandAlgebraic,
-    mut simplify_for_solve: FSimplifyForSolve,
-    mut expand_trig: FExpandTrig,
-    mut accept_candidate: FAcceptCandidate,
-) -> ExprId
-where
-    FContains: FnMut(ExprId, &str) -> bool,
-    FExpandAlgebraic: FnMut(ExprId) -> ExprId,
-    FSimplifyForSolve: FnMut(ExprId) -> ExprId,
-    FExpandTrig: FnMut(ExprId) -> ExprId,
-    FAcceptCandidate: FnMut(ExprId, ExprId, &str) -> Option<ExprId>,
-{
-    let mut current = residual;
-
-    if contains_var(current, var) {
-        let expanded = expand_algebraic(current);
-        let re_simplified = simplify_for_solve(expanded);
-        if let Some(accepted) = accept_candidate(current, re_simplified, var) {
-            current = accepted;
-        }
-    }
-
-    if contains_var(current, var) {
-        let trig_expanded = expand_trig(current);
-        if let Some(accepted) = accept_candidate(current, trig_expanded, var) {
-            current = accepted;
-        }
-    }
-
-    current
-}
-
 /// Stateful variant of [`normalize_variable_residual_with`].
 #[allow(clippy::too_many_arguments)]
-pub fn normalize_variable_residual_with_state<
+pub(crate) fn normalize_variable_residual_with_state<
     S,
     FContains,
     FExpandAlgebraic,
@@ -1109,7 +830,7 @@ pub struct PreparedEquationResidual {
 /// 4) normalize residual with algebraic/trig fallback rewrites,
 /// 5) if residual changed, rewrite equation as `residual = 0`.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_equation_for_strategy_with_state<
+pub(crate) fn prepare_equation_for_strategy_with_state<
     S,
     FContainsVar,
     FSimplifyForSolve,
@@ -1201,14 +922,14 @@ where
 }
 
 /// Extract all denominators that contain the target variable.
-pub fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
+pub(crate) fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
     let mut denoms_set: HashSet<ExprId> = HashSet::new();
     collect_denominators_into_set(ctx, expr, var, &mut denoms_set);
     denoms_set.into_iter().collect()
 }
 
 /// Collect unique denominator expressions containing `var` across equation sides.
-pub fn collect_unique_denominators_with_var(
+pub(crate) fn collect_unique_denominators_with_var(
     ctx: &Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -1256,7 +977,7 @@ fn collect_denominators_into_set(
 }
 
 /// Apply non-zero exclusion guards to a solution set.
-pub fn apply_nonzero_exclusion_guards(
+pub(crate) fn apply_nonzero_exclusion_guards(
     solution_set: SolutionSet,
     exclusions: &[ExprId],
 ) -> SolutionSet {
@@ -1277,7 +998,7 @@ pub fn apply_nonzero_exclusion_guards(
 }
 
 /// Apply non-zero exclusion guards only when exclusions exist.
-pub fn apply_nonzero_exclusion_guards_if_any(
+pub(crate) fn apply_nonzero_exclusion_guards_if_any(
     solution_set: SolutionSet,
     exclusions: &[ExprId],
 ) -> SolutionSet {
@@ -1342,7 +1063,7 @@ fn undetermined_constant_relation(ctx: &mut Context, diff: ExprId, op: &RelOp) -
 /// Resolve a variable-eliminated residual (`diff (op) 0`) to a final solution set,
 /// applying denominator non-zero guards when needed.
 #[allow(clippy::too_many_arguments)]
-pub fn resolve_var_eliminated_residual_with_exclusions<S, FRender, FMapStep>(
+pub(crate) fn resolve_var_eliminated_residual_with_exclusions<S, FRender, FMapStep>(
     ctx: &mut Context,
     diff_simplified: ExprId,
     var: &str,
@@ -1437,7 +1158,7 @@ where
 }
 
 /// Lift guard application over solved `(SolutionSet, payload)` results.
-pub fn guard_solved_result_with_exclusions<T, E>(
+pub(crate) fn guard_solved_result_with_exclusions<T, E>(
     result: Result<(SolutionSet, T), E>,
     exclusions: &[ExprId],
 ) -> Result<(SolutionSet, T), E> {
@@ -1453,7 +1174,7 @@ pub fn guard_solved_result_with_exclusions<T, E>(
 mod tests {
     use super::*;
     use cas_ast::RelOp;
-    use std::cell::{Cell, RefCell};
+    use std::cell::Cell;
 
     #[test]
     fn symbolic_number_vs_variable() {
@@ -1594,16 +1315,6 @@ mod tests {
     }
 
     #[test]
-    fn partition_discrete_symbolic_splits_expected() {
-        let mut ctx = Context::new();
-        let two = ctx.num(2);
-        let x = ctx.var("x");
-        let (symbolic, non_symbolic) = partition_discrete_symbolic(&ctx, &[two, x]);
-        assert_eq!(symbolic, vec![x]);
-        assert_eq!(non_symbolic, vec![two]);
-    }
-
-    #[test]
     fn retain_verified_discrete_keeps_only_verified() {
         let sols = vec![
             cas_ast::ExprId::from_raw(1),
@@ -1649,69 +1360,6 @@ mod tests {
     #[test]
     fn reject_rewritten_residual_on_cosmetic_change() {
         assert!(!should_accept_rewritten_residual(false, 20, 19));
-    }
-
-    #[test]
-    fn merge_symbolic_with_verified_numeric_preserves_order_and_filters_numeric() {
-        let x = cas_ast::ExprId::from_raw(11);
-        let y = cas_ast::ExprId::from_raw(12);
-        let two = cas_ast::ExprId::from_raw(2);
-        let three = cas_ast::ExprId::from_raw(3);
-
-        let out =
-            merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |id| id == three);
-        assert_eq!(out, vec![x, y, three]);
-    }
-
-    #[test]
-    fn merge_symbolic_with_verified_numeric_invokes_numeric_verifier_for_each_candidate() {
-        let x = cas_ast::ExprId::from_raw(11);
-        let y = cas_ast::ExprId::from_raw(12);
-        let two = cas_ast::ExprId::from_raw(2);
-        let three = cas_ast::ExprId::from_raw(3);
-        let calls = Cell::new(0usize);
-        let out = merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |solution| {
-            calls.set(calls.get() + 1);
-            solution == three
-        });
-        assert_eq!(out, vec![x, y, three]);
-        assert_eq!(calls.get(), 2);
-    }
-
-    #[test]
-    fn resolve_discrete_strategy_solutions_preserves_symbolic_and_filters_numeric() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-
-        let out = resolve_discrete_strategy_solutions_with(
-            vec![x, two, y, three],
-            |solution| is_symbolic_expr(&ctx, solution),
-            |sol| sol == three,
-        );
-        assert_eq!(out, vec![x, y, three]);
-    }
-
-    #[test]
-    fn resolve_discrete_strategy_solutions_verifies_only_numeric_candidates() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let calls = Cell::new(0usize);
-
-        let out = resolve_discrete_strategy_solutions_with(
-            vec![x, two, three],
-            |solution| is_symbolic_expr(&ctx, solution),
-            |solution| {
-                calls.set(calls.get() + 1);
-                solution == three
-            },
-        );
-        assert_eq!(out, vec![x, three]);
-        assert_eq!(calls.get(), 2);
     }
 
     #[test]
@@ -2197,86 +1845,6 @@ mod tests {
     }
 
     #[test]
-    fn run_strategy_attempt_sequence_returns_first_solved() {
-        let attempts = vec![
-            (None, true),
-            (Some(Ok((SolutionSet::AllReals, vec!["done"]))), true),
-            (Some(Err("later")), true),
-        ];
-
-        let out =
-            run_strategy_attempt_sequence::<&str, &str, _, _>(attempts, |error| *error == "soft");
-        assert_eq!(
-            out,
-            StrategyAttemptSequenceResolution::Solved {
-                solution_set: SolutionSet::AllReals,
-                steps: vec!["done"],
-            }
-        );
-    }
-
-    #[test]
-    fn run_strategy_attempt_sequence_returns_discrete_verification_when_needed() {
-        let attempts = vec![(
-            Some(Ok((
-                SolutionSet::Discrete(vec![ExprId::from_raw(9)]),
-                vec!["verify"],
-            ))),
-            true,
-        )];
-
-        let out =
-            run_strategy_attempt_sequence::<&str, &str, _, _>(attempts, |error| *error == "soft");
-        assert_eq!(
-            out,
-            StrategyAttemptSequenceResolution::NeedsDiscreteVerification {
-                solutions: vec![ExprId::from_raw(9)],
-                steps: vec!["verify"],
-            }
-        );
-    }
-
-    #[test]
-    fn run_strategy_attempt_sequence_returns_hard_error_immediately() {
-        let attempts = vec![
-            (Some(Err("hard")), true),
-            (Some(Ok((SolutionSet::AllReals, vec!["never"]))), true),
-        ];
-        let out = run_strategy_attempt_sequence(attempts, |error| *error == "soft");
-        assert_eq!(out, StrategyAttemptSequenceResolution::HardError("hard"));
-    }
-
-    #[test]
-    fn run_strategy_attempt_sequence_exhausted_keeps_last_soft_error() {
-        let attempts = vec![
-            (Some(Err("soft-1")), true),
-            (None, true),
-            (Some(Err("soft-2")), true),
-        ];
-        let out = run_strategy_attempt_sequence::<(), &str, _, _>(attempts, |error| {
-            error.starts_with("soft")
-        });
-        assert_eq!(
-            out,
-            StrategyAttemptSequenceResolution::Exhausted {
-                last_soft_error: Some("soft-2")
-            }
-        );
-    }
-
-    #[test]
-    fn run_strategy_attempt_sequence_exhausted_without_soft_error() {
-        let attempts = vec![(None, true), (None, false)];
-        let out = run_strategy_attempt_sequence::<(), &str, _, _>(attempts, |_| false);
-        assert_eq!(
-            out,
-            StrategyAttemptSequenceResolution::Exhausted {
-                last_soft_error: None
-            }
-        );
-    }
-
-    #[test]
     fn run_strategies_with_state_tracks_state_and_stops_on_solved() {
         #[derive(Default)]
         struct State {
@@ -2498,39 +2066,6 @@ mod tests {
     }
 
     #[test]
-    fn is_soft_strategy_error_with_uses_extractors() {
-        let soft_isolation = SoftErrorFixture {
-            isolation_detail: Some("variable appears on both sides during rewrite"),
-            solver_detail: None,
-        };
-        assert!(is_soft_strategy_error_with(
-            &soft_isolation,
-            |err| err.isolation_detail,
-            |err| err.solver_detail,
-        ));
-
-        let soft_cycle = SoftErrorFixture {
-            isolation_detail: None,
-            solver_detail: Some("Cycle detected: equivalent form loop"),
-        };
-        assert!(is_soft_strategy_error_with(
-            &soft_cycle,
-            |err| err.isolation_detail,
-            |err| err.solver_detail,
-        ));
-
-        let hard = SoftErrorFixture {
-            isolation_detail: Some("incompatible branch"),
-            solver_detail: Some("hard failure"),
-        };
-        assert!(!is_soft_strategy_error_with(
-            &hard,
-            |err| err.isolation_detail,
-            |err| err.solver_detail,
-        ));
-    }
-
-    #[test]
     fn is_soft_strategy_error_by_parts_uses_trait_contract() {
         let soft_isolation = SoftErrorFixture {
             isolation_detail: Some("variable appears on both sides during rewrite"),
@@ -2571,124 +2106,6 @@ mod tests {
     }
 
     #[test]
-    fn finalize_strategy_attempt_sequence_with_returns_solved_directly() {
-        let resolved = finalize_strategy_attempt_sequence_with(
-            StrategyAttemptSequenceResolution::Solved {
-                solution_set: SolutionSet::AllReals,
-                steps: vec!["done"],
-            },
-            |_solutions, _steps| (SolutionSet::Empty, Vec::<&str>::new()),
-            "fallback",
-        )
-        .expect("solved result should pass through");
-        assert_eq!(resolved, (SolutionSet::AllReals, vec!["done"]));
-    }
-
-    #[test]
-    fn finalize_strategy_attempt_sequence_with_resolves_discrete_candidates() {
-        let resolved = finalize_strategy_attempt_sequence_with(
-            StrategyAttemptSequenceResolution::NeedsDiscreteVerification {
-                solutions: vec![ExprId::from_raw(3)],
-                steps: vec!["verify"],
-            },
-            |_solutions, steps| (SolutionSet::Discrete(vec![ExprId::from_raw(7)]), steps),
-            "fallback",
-        )
-        .expect("discrete resolution should be delegated");
-        assert_eq!(
-            resolved,
-            (
-                SolutionSet::Discrete(vec![ExprId::from_raw(7)]),
-                vec!["verify"]
-            )
-        );
-    }
-
-    #[test]
-    fn finalize_strategy_attempt_sequence_with_prefers_soft_error_over_fallback() {
-        let err = finalize_strategy_attempt_sequence_with::<(), &str, _>(
-            StrategyAttemptSequenceResolution::Exhausted {
-                last_soft_error: Some("soft"),
-            },
-            |_solutions, _steps| (SolutionSet::Empty, Vec::<()>::new()),
-            "fallback",
-        )
-        .expect_err("soft error should surface");
-        assert_eq!(err, "soft");
-    }
-
-    #[test]
-    fn finalize_strategy_attempt_sequence_with_uses_fallback_when_exhausted_without_soft_error() {
-        let err = finalize_strategy_attempt_sequence_with::<(), &str, _>(
-            StrategyAttemptSequenceResolution::Exhausted {
-                last_soft_error: None,
-            },
-            |_solutions, _steps| (SolutionSet::Empty, Vec::<()>::new()),
-            "fallback",
-        )
-        .expect_err("fallback error should surface");
-        assert_eq!(err, "fallback");
-    }
-
-    #[test]
-    fn simplify_equation_sides_for_var_only_simplifies_sides_with_variable() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let lhs = ctx.add(Expr::Add(x, one));
-        let eq = Equation {
-            lhs,
-            rhs: two,
-            op: RelOp::Eq,
-        };
-        let simplified_calls = RefCell::new(Vec::new());
-
-        let simplified = simplify_equation_sides_for_var_with(
-            &eq,
-            "x",
-            |expr, _| expr == lhs,
-            |expr| {
-                simplified_calls.borrow_mut().push(expr);
-                expr
-            },
-            |_expr| None,
-        );
-        assert_eq!(simplified.lhs, lhs);
-        assert_eq!(simplified.rhs, two);
-        assert_eq!(*simplified_calls.borrow(), vec![lhs]);
-    }
-
-    #[test]
-    fn simplify_equation_sides_for_presence_with_uses_precomputed_presence() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let lhs = ctx.add(Expr::Add(x, one));
-        let eq = Equation {
-            lhs,
-            rhs: two,
-            op: RelOp::Eq,
-        };
-        let simplified_calls = RefCell::new(Vec::new());
-
-        let simplified = simplify_equation_sides_for_presence_with(
-            &eq,
-            true,
-            false,
-            |expr| {
-                simplified_calls.borrow_mut().push(expr);
-                expr
-            },
-            |_expr| None,
-        );
-        assert_eq!(simplified.lhs, lhs);
-        assert_eq!(simplified.rhs, two);
-        assert_eq!(*simplified_calls.borrow(), vec![lhs]);
-    }
-
-    #[test]
     fn simplify_equation_sides_for_presence_with_state_uses_precomputed_presence() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -2716,84 +2133,6 @@ mod tests {
         assert_eq!(simplified.lhs, lhs);
         assert_eq!(simplified.rhs, two);
         assert_eq!(simplified_calls, vec![lhs]);
-    }
-
-    #[test]
-    fn apply_equation_pair_rewrite_sequence_runs_structural_then_semantic() {
-        let mut ctx = Context::new();
-        let lhs0 = ctx.num(1);
-        let rhs0 = ctx.num(2);
-        let lhs1 = ctx.num(3);
-        let rhs1 = ctx.num(4);
-        let lhs1_sim = ctx.num(5);
-        let rhs1_sim = ctx.num(6);
-        let lhs2 = ctx.num(7);
-        let rhs2 = ctx.num(8);
-
-        let seen_semantic = RefCell::new(None::<(ExprId, ExprId)>);
-        let simplify_calls = RefCell::new(Vec::new());
-
-        let (lhs_out, rhs_out) = apply_equation_pair_rewrite_sequence_with(
-            lhs0,
-            rhs0,
-            |lhs, rhs| {
-                if lhs == lhs0 && rhs == rhs0 {
-                    Some((lhs1, rhs1))
-                } else {
-                    None
-                }
-            },
-            |lhs, rhs| {
-                *seen_semantic.borrow_mut() = Some((lhs, rhs));
-                if lhs == lhs1_sim && rhs == rhs1_sim {
-                    Some((lhs2, rhs2))
-                } else {
-                    None
-                }
-            },
-            |expr| {
-                simplify_calls.borrow_mut().push(expr);
-                if expr == lhs1 {
-                    lhs1_sim
-                } else if expr == rhs1 {
-                    rhs1_sim
-                } else {
-                    expr
-                }
-            },
-        );
-
-        assert_eq!(seen_semantic.borrow().as_ref(), Some(&(lhs1_sim, rhs1_sim)));
-        assert_eq!(lhs_out, lhs2);
-        assert_eq!(rhs_out, rhs2);
-        assert_eq!(
-            *simplify_calls.borrow(),
-            vec![lhs1, rhs1, lhs2, rhs2],
-            "each accepted rewrite should simplify both sides"
-        );
-    }
-
-    #[test]
-    fn apply_equation_pair_rewrite_sequence_keeps_original_when_no_rewrites() {
-        let mut ctx = Context::new();
-        let lhs = ctx.num(11);
-        let rhs = ctx.num(12);
-        let simplify_calls = Cell::new(0usize);
-
-        let (lhs_out, rhs_out) = apply_equation_pair_rewrite_sequence_with(
-            lhs,
-            rhs,
-            |_lhs, _rhs| None,
-            |_lhs, _rhs| None,
-            |expr| {
-                simplify_calls.set(simplify_calls.get() + 1);
-                expr
-            },
-        );
-
-        assert_eq!(lhs_out, lhs);
-        assert_eq!(rhs_out, rhs);
-        assert_eq!(simplify_calls.get(), 0);
     }
 
     #[test]
@@ -2878,80 +2217,6 @@ mod tests {
 
         let accepted = accept_residual_rewrite_candidate(&ctx, current, candidate, "x");
         assert_eq!(accepted, None);
-    }
-
-    #[test]
-    fn normalize_variable_residual_stops_after_algebraic_eliminates_variable() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let one = ctx.num(1);
-        let residual = ctx.add(Expr::Add(x, one));
-        let algebraic_calls = Cell::new(0usize);
-        let simplify_calls = Cell::new(0usize);
-        let trig_calls = Cell::new(0usize);
-
-        let normalized = normalize_variable_residual_with(
-            residual,
-            "x",
-            |expr, _| expr == residual,
-            |_expr| {
-                algebraic_calls.set(algebraic_calls.get() + 1);
-                one
-            },
-            |expr| {
-                simplify_calls.set(simplify_calls.get() + 1);
-                expr
-            },
-            |_expr| {
-                trig_calls.set(trig_calls.get() + 1);
-                residual
-            },
-            |current, candidate, var| {
-                accept_residual_rewrite_candidate(&ctx, current, candidate, var)
-            },
-        );
-        assert_eq!(normalized, one);
-        assert_eq!(algebraic_calls.get(), 1);
-        assert_eq!(simplify_calls.get(), 1);
-        assert_eq!(trig_calls.get(), 0);
-    }
-
-    #[test]
-    fn normalize_variable_residual_uses_trig_fallback_when_algebraic_is_not_better() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let one = ctx.num(1);
-        let residual = ctx.add(Expr::Add(x, one));
-        let algebraic_cosmetic = residual;
-        let trig_eliminated = one;
-        let algebraic_calls = Cell::new(0usize);
-        let simplify_calls = Cell::new(0usize);
-        let trig_calls = Cell::new(0usize);
-
-        let normalized = normalize_variable_residual_with(
-            residual,
-            "x",
-            |expr, _| expr == residual,
-            |_expr| {
-                algebraic_calls.set(algebraic_calls.get() + 1);
-                algebraic_cosmetic
-            },
-            |expr| {
-                simplify_calls.set(simplify_calls.get() + 1);
-                expr
-            },
-            |_expr| {
-                trig_calls.set(trig_calls.get() + 1);
-                trig_eliminated
-            },
-            |current, candidate, var| {
-                accept_residual_rewrite_candidate(&ctx, current, candidate, var)
-            },
-        );
-        assert_eq!(normalized, trig_eliminated);
-        assert_eq!(algebraic_calls.get(), 1);
-        assert_eq!(simplify_calls.get(), 1);
-        assert_eq!(trig_calls.get(), 1);
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::hash::Hash;
 /// Build solve preflight context using runtime-provided inference/derivation
 /// callbacks and domain-environment constructors.
 #[allow(clippy::too_many_arguments)]
-pub fn build_preflight_context_with_existing_condition_derivation<
+pub(crate) fn build_preflight_context_with_existing_condition_derivation<
     C,
     V,
     Domain,

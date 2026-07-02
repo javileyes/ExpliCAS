@@ -3573,7 +3573,7 @@ fn is_positive_under_display_conditions(
 }
 
 /// Check if two conditions are equivalent.
-pub fn conditions_equivalent(
+pub(crate) fn conditions_equivalent(
     ctx: &Context,
     c1: &ImplicitCondition,
     c2: &ImplicitCondition,

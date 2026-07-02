@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 /// Verify one candidate solution using conservative domain-mode simplify wiring.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_solution_with_conservative_domain_simplify_with_state<
+pub(crate) fn verify_solution_with_conservative_domain_simplify_with_state<
     T,
     FSubstituteDiff,
     FSimplifyWithOptions,
@@ -65,7 +65,7 @@ where
 /// - numeric-island fold with default guard/limits
 /// - variable/zero/render checks from caller-provided context accessors.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_solution_with_runtime_kernels_with_state<
+pub(crate) fn verify_solution_with_runtime_kernels_with_state<
     T,
     FContext,
     FContextMut,
@@ -126,7 +126,7 @@ where
 /// Verify a full solution set using the same runtime kernels as
 /// [`verify_solution_with_runtime_kernels_with_state`].
 #[allow(clippy::too_many_arguments)]
-pub fn verify_solution_set_with_runtime_kernels_with_state<
+pub(crate) fn verify_solution_set_with_runtime_kernels_with_state<
     T,
     FContext,
     FContextMut,

@@ -13,7 +13,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// Apply one solve strategy kind using the default strategy kernels and
 /// runtime-provided callbacks for recursion, rendering, and diagnostics.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_kind_with_default_kernels_and_state<
+pub(crate) fn apply_strategy_kind_with_default_kernels_and_state<
     T,
     S,
     SS,

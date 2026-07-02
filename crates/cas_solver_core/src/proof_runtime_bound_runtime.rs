@@ -15,7 +15,7 @@ pub trait RuntimeProofSimplifierFactory {
 }
 
 /// Evaluate one ground candidate using a proof-simplifier factory.
-pub fn ground_eval_candidate_with_runtime_proof_simplifier<SState>(
+pub(crate) fn ground_eval_candidate_with_runtime_proof_simplifier<SState>(
     source_ctx: &Context,
     source_expr: ExprId,
     opts: &crate::simplify_options::SimplifyOptions,
@@ -35,7 +35,7 @@ where
 }
 
 /// Evaluate one ground candidate using a host-provided simplifier contract.
-pub fn ground_eval_candidate_with_runtime_simplifier_contract<
+pub(crate) fn ground_eval_candidate_with_runtime_simplifier_contract<
     SState,
     FBuildSimplifier,
     FSetCollectSteps,
@@ -87,7 +87,7 @@ where
 }
 
 /// Prove non-zero using the host runtime simplifier contract.
-pub fn prove_nonzero_with_runtime_simplifier_contract<
+pub(crate) fn prove_nonzero_with_runtime_simplifier_contract<
     SState,
     FBuildSimplifier,
     FSetCollectSteps,
@@ -146,7 +146,7 @@ where
 }
 
 /// Prove positivity using the host runtime simplifier contract.
-pub fn prove_positive_with_runtime_simplifier_contract<
+pub(crate) fn prove_positive_with_runtime_simplifier_contract<
     SState,
     FBuildSimplifier,
     FSetCollectSteps,
@@ -207,7 +207,7 @@ where
 }
 
 /// Prove non-negativity using the host runtime simplifier contract.
-pub fn prove_nonnegative_with_runtime_simplifier_contract<
+pub(crate) fn prove_nonnegative_with_runtime_simplifier_contract<
     SState,
     FBuildSimplifier,
     FSetCollectSteps,

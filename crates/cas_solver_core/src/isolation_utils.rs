@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 
 /// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
 /// Used when solver can't justify a step but wants graceful degradation.
-pub fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
+pub(crate) fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
     let eq_expr = cas_ast::eq::wrap_eq(ctx, lhs, rhs);
     let var_expr = ctx.var(var);
     ctx.call("solve", vec![eq_expr, var_expr])
@@ -28,7 +28,7 @@ pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 ///
 /// Recursively analyzes Mul products using XOR logic:
 /// `(-a) * b` is negative, `(-a) * (-b)` is positive.
-pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
         Expr::Neg(_) => true,
@@ -46,7 +46,7 @@ pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Attempt to recompose a^e / b^e -> (a/b)^e when both powers have the same exponent.
-pub fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Div(num, den) = expr_data {
         let num_data = ctx.get(num).clone();
@@ -74,7 +74,7 @@ pub fn flip_inequality(op: RelOp) -> RelOp {
 }
 
 /// Check if expr is `1/var` pattern (simple reciprocal of target variable).
-pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
+pub(crate) fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
     if let Expr::Div(num, denom) = ctx.get(expr) {
         let is_one = matches!(
             ctx.get(*num),
@@ -89,12 +89,12 @@ pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
 }
 
 /// True iff expression is exactly the target variable.
-pub fn is_target_variable(ctx: &Context, expr: ExprId, var: &str) -> bool {
+pub(crate) fn is_target_variable(ctx: &Context, expr: ExprId, var: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
 }
 
 /// True iff `left * right op 0` should branch into product sign cases.
-pub fn should_split_product_zero_inequality(
+pub(crate) fn should_split_product_zero_inequality(
     ctx: &Context,
     left: ExprId,
     right: ExprId,
@@ -118,7 +118,7 @@ pub fn should_split_product_zero_inequality(
 /// guaranteed, so omitting that redundant check is behaviour-preserving there
 /// while also licensing the Cluster E constant-numerator case `1/(x-2) > 1`
 /// (deliberately routed through the numerator pipeline for the split).
-pub fn should_split_division_denominator_sign_cases(
+pub(crate) fn should_split_division_denominator_sign_cases(
     ctx: &Context,
     numerator: ExprId,
     denominator: ExprId,
@@ -131,7 +131,7 @@ pub fn should_split_division_denominator_sign_cases(
 
 /// True iff already-isolated denominator variable `x op rhs` should split
 /// into `x > 0` and `x < 0` branches.
-pub fn should_split_isolated_denominator_variable(
+pub(crate) fn should_split_isolated_denominator_variable(
     ctx: &Context,
     denominator: ExprId,
     op: &RelOp,
@@ -141,40 +141,21 @@ pub fn should_split_isolated_denominator_variable(
 }
 
 /// True iff reciprocal solve strategy should be attempted for current equation side.
-pub fn should_try_reciprocal_solve(ctx: &Context, lhs: ExprId, op: &RelOp, var: &str) -> bool {
+pub(crate) fn should_try_reciprocal_solve(
+    ctx: &Context,
+    lhs: ExprId,
+    op: &RelOp,
+    var: &str,
+) -> bool {
     matches!(op, RelOp::Eq) && is_simple_reciprocal(ctx, lhs, var)
 }
 
 /// True iff expression is the numeric literal zero.
-pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
     matches!(
         ctx.get(expr),
         Expr::Number(n) if *n == num_rational::BigRational::from_integer(0.into())
     )
-}
-
-/// Check semantic equivalence by simplifying the difference `left - right`.
-///
-/// The caller supplies construction/simplification hooks so this utility can
-/// be reused from higher-level runtimes without coupling to a specific engine.
-pub fn are_equivalent_by_difference_with<FBuildSub, FSimplify, FIsZero>(
-    left: ExprId,
-    right: ExprId,
-    mut build_sub: FBuildSub,
-    mut simplify: FSimplify,
-    mut is_zero: FIsZero,
-) -> bool
-where
-    FBuildSub: FnMut(ExprId, ExprId) -> ExprId,
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FIsZero: FnMut(ExprId) -> bool,
-{
-    if left == right {
-        return true;
-    }
-    let diff = build_sub(left, right);
-    let simplified = simplify(diff);
-    is_zero(simplified)
 }
 
 /// True iff expression is the numeric literal one.
@@ -194,7 +175,7 @@ pub enum NumericSign {
 }
 
 /// Return sign for numeric literal expressions, or `None` for non-numeric nodes.
-pub fn numeric_sign(ctx: &Context, expr: ExprId) -> Option<NumericSign> {
+pub(crate) fn numeric_sign(ctx: &Context, expr: ExprId) -> Option<NumericSign> {
     let Expr::Number(n) = ctx.get(expr) else {
         return None;
     };
@@ -209,7 +190,7 @@ pub fn numeric_sign(ctx: &Context, expr: ExprId) -> Option<NumericSign> {
 }
 
 /// True iff expression is a numeric even integer literal.
-pub fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => n.is_integer() && (n.to_integer() % 2 == 0.into()),
         _ => false,
@@ -221,7 +202,7 @@ pub fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
 /// Accepts either:
 /// - `Number(n)` where `n` is an integer > 0
 /// - `Div(Number(n), Number(d))` that evaluates to an integer > 0
-pub fn is_positive_integer_expr(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_positive_integer_expr(ctx: &Context, expr: ExprId) -> bool {
     let zero = num_rational::BigRational::from_integer(0.into());
     match ctx.get(expr) {
         Expr::Number(n) => n.is_integer() && *n > zero,
@@ -243,7 +224,7 @@ pub fn is_positive_integer_expr(ctx: &Context, expr: ExprId) -> bool {
 /// Extract factors for zero-product splitting:
 /// - `A*B` -> `[A, B]`
 /// - `A^n` with positive-integer `n` -> `[A]`
-pub fn split_zero_product_factors(ctx: &Context, expr: ExprId) -> Option<Vec<ExprId>> {
+pub(crate) fn split_zero_product_factors(ctx: &Context, expr: ExprId) -> Option<Vec<ExprId>> {
     match ctx.get(expr) {
         Expr::Mul(l, r) => Some(vec![*l, *r]),
         Expr::Pow(base, exp) if is_positive_integer_expr(ctx, *exp) => Some(vec![*base]),
@@ -267,7 +248,7 @@ pub struct SingleSideExponentialCandidate {
 }
 
 /// Match `base^exponent` where `base` contains `var` and exponent does not.
-pub fn match_exponential_var_in_base(
+pub(crate) fn match_exponential_var_in_base(
     ctx: &Context,
     expr: ExprId,
     var: &str,
@@ -304,7 +285,7 @@ pub fn match_exponential_var_in_exponent(
 ///
 /// `lhs_has_var` and `rhs_has_var` are provided by the caller to avoid
 /// duplicate containment scans in strategy pipelines.
-pub fn find_single_side_exponential_var_in_exponent(
+pub(crate) fn find_single_side_exponential_var_in_exponent(
     ctx: &Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -333,7 +314,7 @@ pub fn find_single_side_exponential_var_in_exponent(
 ///
 /// For equalities/greater-than forms both branches are alternatives (union).
 /// For less-than forms both constraints must hold simultaneously (intersection).
-pub fn combine_abs_branch_sets(
+pub(crate) fn combine_abs_branch_sets(
     ctx: &Context,
     op: RelOp,
     positive_branch: SolutionSet,
@@ -358,7 +339,7 @@ pub struct SignCaseOps {
 /// `A*B op 0`.
 ///
 /// Returns `None` for non-inequality operators.
-pub fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCaseOps)> {
+pub(crate) fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCaseOps)> {
     match op {
         RelOp::Gt => Some((
             SignCaseOps {
@@ -406,7 +387,7 @@ pub fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCase
 
 /// For inequality `A / B op C`, returns operators for denominator sign split:
 /// `(op_when_B_positive, op_when_B_negative)`.
-pub fn denominator_sign_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
+pub(crate) fn denominator_sign_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
     if is_inequality_relop(&op) {
         Some((op.clone(), flip_inequality(op)))
     } else {
@@ -419,12 +400,12 @@ pub fn denominator_sign_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
 ///
 /// This is the inverse perspective of [`denominator_sign_case_ops`], so
 /// the pair is intentionally swapped.
-pub fn isolated_denominator_variable_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
+pub(crate) fn isolated_denominator_variable_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
     denominator_sign_case_ops(op).map(|(op_when_pos, op_when_neg)| (op_when_neg, op_when_pos))
 }
 
 /// True iff relation operator is an inequality (`<`, `>`, `<=`, `>=`).
-pub fn is_inequality_relop(op: &RelOp) -> bool {
+pub(crate) fn is_inequality_relop(op: &RelOp) -> bool {
     matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
 }
 
@@ -440,7 +421,7 @@ pub fn is_inequality_relop(op: &RelOp) -> bool {
 /// own factored re-entry); or the polynomial is irreducible / not improved by factoring (left to
 /// the existing path, e.g. `x^4-10` stays an exact `(-10^(1/4), 10^(1/4))`). EXACT: reuses the
 /// `BigRational`/`BigInt` polynomial factorer — never an `f64` keep/drop.
-pub fn try_factor_polynomial_inequality(
+pub(crate) fn try_factor_polynomial_inequality(
     ctx: &mut Context,
     eq: &cas_ast::Equation,
     var: &str,
@@ -485,7 +466,7 @@ pub fn try_factor_polynomial_inequality(
 }
 
 /// Flip inequality only when multiplying/dividing by a known negative term.
-pub fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
+pub(crate) fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
     if known_negative {
         flip_inequality(op)
     } else {
@@ -960,30 +941,5 @@ mod tests {
         assert_eq!(apply_sign_flip(RelOp::Gt, true), RelOp::Lt);
         assert_eq!(apply_sign_flip(RelOp::Gt, false), RelOp::Gt);
         assert_eq!(apply_sign_flip(RelOp::Eq, true), RelOp::Eq);
-    }
-
-    #[test]
-    fn test_are_equivalent_by_difference_with_detects_equivalence() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-
-        let equivalent = are_equivalent_by_difference_with(
-            x,
-            y,
-            |lhs, rhs| ctx.add(Expr::Sub(lhs, rhs)),
-            |expr| expr,
-            |expr| expr == x,
-        );
-        assert!(!equivalent);
-
-        let equivalent_same = are_equivalent_by_difference_with(
-            x,
-            x,
-            |lhs, rhs| ctx.add(Expr::Sub(lhs, rhs)),
-            |expr| expr,
-            |_expr| false,
-        );
-        assert!(equivalent_same);
     }
 }

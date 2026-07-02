@@ -7,7 +7,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// runtime solver options, the rational-exponent early strategy, and the
 /// standard solved-result / prepared-equation guards.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_inner_with_runtime_ctx_and_default_rational_preflight_prepare_pipeline_with_state<
+pub(crate) fn solve_inner_with_runtime_ctx_and_default_rational_preflight_prepare_pipeline_with_state<
     SState,
     FContextRef,
     FMapDepthError,

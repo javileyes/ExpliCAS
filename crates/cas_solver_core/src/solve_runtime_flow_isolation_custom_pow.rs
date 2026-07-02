@@ -12,7 +12,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// handlers (`add/sub/mul/div`), while callers provide custom `pow/function`
 /// handlers and recursive solve hooks.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_default_kernels_and_default_arithmetic_routes_and_custom_pow_function_with_state<
+pub(crate) fn dispatch_isolation_with_default_kernels_and_default_arithmetic_routes_and_custom_pow_function_with_state<
     T,
     S,
     E,

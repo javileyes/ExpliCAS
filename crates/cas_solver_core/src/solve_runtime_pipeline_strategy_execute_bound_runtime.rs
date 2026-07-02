@@ -5,7 +5,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// Execute the default strategy pipeline using default runtime-state helpers
 /// while only requiring a direct `apply_strategy` entrypoint.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_strategy_pipeline_with_runtime_state_and_apply_entrypoint_with_state<
+pub(crate) fn execute_strategy_pipeline_with_runtime_state_and_apply_entrypoint_with_state<
     T,
     FApplyStrategyEntry,
 >(

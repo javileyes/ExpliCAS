@@ -7,7 +7,10 @@ use cas_ast::{Equation, Expr, ExprId, RelOp};
 
 /// Rewrite `lhs op rhs` by subtracting `rhs` on both sides:
 /// `lhs + (-rhs) op rhs + (-rhs)`.
-pub fn subtract_rhs_from_both_sides(ctx: &mut cas_ast::Context, equation: &Equation) -> Equation {
+pub(crate) fn subtract_rhs_from_both_sides(
+    ctx: &mut cas_ast::Context,
+    equation: &Equation,
+) -> Equation {
     let neg_rhs = ctx.add(Expr::Neg(equation.rhs));
     let lhs = ctx.add(Expr::Add(equation.lhs, neg_rhs));
     let rhs = ctx.add(Expr::Add(equation.rhs, neg_rhs));
@@ -19,7 +22,7 @@ pub fn subtract_rhs_from_both_sides(ctx: &mut cas_ast::Context, equation: &Equat
 }
 
 /// Swap equation sides and flip inequality direction when needed.
-pub fn swap_sides_with_inequality_flip(equation: &Equation) -> Equation {
+pub(crate) fn swap_sides_with_inequality_flip(equation: &Equation) -> Equation {
     Equation {
         lhs: equation.rhs,
         rhs: equation.lhs,
@@ -28,7 +31,7 @@ pub fn swap_sides_with_inequality_flip(equation: &Equation) -> Equation {
 }
 
 /// Rewrite `(-inner) op rhs` as `inner flip(op) -rhs`.
-pub fn isolate_negated_lhs(
+pub(crate) fn isolate_negated_lhs(
     ctx: &mut cas_ast::Context,
     inner: ExprId,
     rhs: ExprId,
@@ -43,7 +46,7 @@ pub fn isolate_negated_lhs(
 }
 
 /// Rewrite `(kept + moved) op rhs` as `kept op (rhs - moved)`.
-pub fn isolate_add_operand(
+pub(crate) fn isolate_add_operand(
     ctx: &mut cas_ast::Context,
     kept: ExprId,
     moved: ExprId,
@@ -59,7 +62,7 @@ pub fn isolate_add_operand(
 }
 
 /// Rewrite `(minuend - subtrahend) op rhs` as `minuend op (rhs + subtrahend)`.
-pub fn isolate_sub_minuend(
+pub(crate) fn isolate_sub_minuend(
     ctx: &mut cas_ast::Context,
     minuend: ExprId,
     subtrahend: ExprId,
@@ -76,7 +79,7 @@ pub fn isolate_sub_minuend(
 
 /// Rewrite `(minuend - subtrahend) op rhs` as
 /// `subtrahend flip(op) (minuend - rhs)`.
-pub fn isolate_sub_subtrahend(
+pub(crate) fn isolate_sub_subtrahend(
     ctx: &mut cas_ast::Context,
     minuend: ExprId,
     subtrahend: ExprId,
@@ -93,7 +96,7 @@ pub fn isolate_sub_subtrahend(
 
 /// Rewrite `(kept * moved) op rhs` as `kept op (rhs / moved)`,
 /// flipping inequality when `moved` is known negative.
-pub fn isolate_mul_factor(
+pub(crate) fn isolate_mul_factor(
     ctx: &mut cas_ast::Context,
     kept: ExprId,
     moved: ExprId,
@@ -112,7 +115,7 @@ pub fn isolate_mul_factor(
 /// Rewrite `(numerator / denominator) op rhs` as
 /// `numerator op (rhs * denominator)`, flipping inequality when
 /// `denominator` is known negative.
-pub fn isolate_div_numerator(
+pub(crate) fn isolate_div_numerator(
     ctx: &mut cas_ast::Context,
     numerator: ExprId,
     denominator: ExprId,
@@ -130,7 +133,7 @@ pub fn isolate_div_numerator(
 
 /// Rewrite `(numerator / denominator) op rhs` as
 /// `denominator op (numerator / rhs)`.
-pub fn isolate_div_denominator(
+pub(crate) fn isolate_div_denominator(
     ctx: &mut cas_ast::Context,
     denominator: ExprId,
     numerator: ExprId,
@@ -155,7 +158,7 @@ pub enum DivDenominatorIsolationKind {
 /// Rewrite denominator isolation with a safety guard for `rhs = 0`:
 /// - if `rhs == 0`: `denominator op +inf`
 /// - otherwise:     `denominator op numerator/rhs`
-pub fn isolate_div_denominator_with_zero_rhs_guard(
+pub(crate) fn isolate_div_denominator_with_zero_rhs_guard(
     ctx: &mut cas_ast::Context,
     denominator: ExprId,
     numerator: ExprId,
@@ -181,7 +184,7 @@ pub fn isolate_div_denominator_with_zero_rhs_guard(
 
 /// Build both branch equations for absolute-value isolation:
 /// `|arg| op rhs`  ->  `(arg op rhs)` and `(arg flip(op) -rhs)`.
-pub fn isolate_abs_branches(
+pub(crate) fn isolate_abs_branches(
     ctx: &mut cas_ast::Context,
     arg: ExprId,
     rhs: ExprId,
@@ -208,28 +211,12 @@ pub struct SignSplitEquations {
     pub negative: Equation,
 }
 
-/// Clone split operators/LHS and replace both branch RHS with a shared RHS.
-pub fn with_shared_rhs(split: &SignSplitEquations, rhs: ExprId) -> SignSplitEquations {
-    SignSplitEquations {
-        positive: Equation {
-            lhs: split.positive.lhs,
-            rhs,
-            op: split.positive.op.clone(),
-        },
-        negative: Equation {
-            lhs: split.negative.lhs,
-            rhs,
-            op: split.negative.op.clone(),
-        },
-    }
-}
-
 /// Build inequality split for `numerator / denominator op rhs`:
 /// - positive branch: `numerator op (rhs * denominator)`
 /// - negative branch: `numerator flip(op) (rhs * denominator)`
 ///
 /// and sign-domain equations `denominator > 0`, `denominator < 0`.
-pub fn build_division_denominator_sign_split(
+pub(crate) fn build_division_denominator_sign_split(
     ctx: &mut cas_ast::Context,
     numerator: ExprId,
     denominator: ExprId,
@@ -261,7 +248,7 @@ pub fn build_division_denominator_sign_split(
 /// Returns:
 /// - positive branch with op for `lhs > 0`
 /// - negative branch with op for `lhs < 0`
-pub fn build_isolated_denominator_sign_split(
+pub(crate) fn build_isolated_denominator_sign_split(
     lhs: ExprId,
     rhs: ExprId,
     op: RelOp,
@@ -283,7 +270,7 @@ pub fn build_isolated_denominator_sign_split(
 
 /// Build one zero-product sign case:
 /// `left case.left 0` and `right case.right 0`.
-pub fn build_product_zero_sign_case(
+pub(crate) fn build_product_zero_sign_case(
     ctx: &mut cas_ast::Context,
     left: ExprId,
     right: ExprId,
@@ -305,7 +292,7 @@ pub fn build_product_zero_sign_case(
 }
 
 /// Build a sign-domain equation: `expr > 0` when `positive` else `expr < 0`.
-pub fn build_sign_domain_equation(
+pub(crate) fn build_sign_domain_equation(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     positive: bool,
@@ -602,23 +589,5 @@ mod tests {
         // For isolated denominator case, pair is intentionally swapped.
         assert_eq!(split.positive.op, RelOp::Gt);
         assert_eq!(split.negative.op, RelOp::Lt);
-    }
-
-    #[test]
-    fn with_shared_rhs_replaces_branch_rhs_preserving_lhs_and_ops() {
-        let mut ctx = Context::new();
-        let lhs = ctx.var("x");
-        let rhs_a = ctx.var("a");
-        let rhs_b = ctx.var("b");
-        let split = build_isolated_denominator_sign_split(lhs, rhs_a, RelOp::Leq)
-            .expect("inequality split should be available");
-        let rewritten = with_shared_rhs(&split, rhs_b);
-
-        assert_eq!(rewritten.positive.lhs, split.positive.lhs);
-        assert_eq!(rewritten.negative.lhs, split.negative.lhs);
-        assert_eq!(rewritten.positive.op, split.positive.op);
-        assert_eq!(rewritten.negative.op, split.negative.op);
-        assert_eq!(rewritten.positive.rhs, rhs_b);
-        assert_eq!(rewritten.negative.rhs, rhs_b);
     }
 }

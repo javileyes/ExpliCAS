@@ -51,25 +51,25 @@ static PHASE15_SKIPPED_LIMITS: AtomicUsize = AtomicUsize::new(0);
 // Recording (hot path — 1 atomic load + conditional fetch_add)
 // ---------------------------------------------------------------------------
 
-pub fn record_attempted() {
+pub(crate) fn record_attempted() {
     if ENABLED.load(Relaxed) {
         PHASE15_ATTEMPTED.fetch_add(1, Relaxed);
     }
 }
 
-pub fn record_changed() {
+pub(crate) fn record_changed() {
     if ENABLED.load(Relaxed) {
         PHASE15_CHANGED.fetch_add(1, Relaxed);
     }
 }
 
-pub fn record_verified() {
+pub(crate) fn record_verified() {
     if ENABLED.load(Relaxed) {
         PHASE15_VERIFIED.fetch_add(1, Relaxed);
     }
 }
 
-pub fn record_skipped_limits() {
+pub(crate) fn record_skipped_limits() {
     if ENABLED.load(Relaxed) {
         PHASE15_SKIPPED_LIMITS.fetch_add(1, Relaxed);
     }

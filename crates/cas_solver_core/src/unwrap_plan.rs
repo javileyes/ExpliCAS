@@ -77,7 +77,7 @@ pub struct UnwrapDidacticStep {
 }
 
 /// Build narration for variable-base power unwrap rewrites.
-pub fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
+pub(crate) fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
     format!("Raise both sides to 1/{}", exponent_display)
 }
 
@@ -85,7 +85,7 @@ pub fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
 ///
 /// `render_expr` is used only for variable-base power rewrites so callers
 /// can control display format (ASCII, LaTeX, etc.).
-pub fn build_unwrap_execution_plan_with<F>(
+pub(crate) fn build_unwrap_execution_plan_with<F>(
     plan: UnwrapRewritePlan,
     mut render_expr: F,
 ) -> UnwrapExecutionPlan
@@ -147,7 +147,7 @@ where
 /// Plan and build an unwrap execution in one step.
 ///
 /// Returns `None` when no unwrap rewrite is applicable for `request.target`.
-pub fn plan_unwrap_execution_with<FClassify, FRender>(
+pub(crate) fn plan_unwrap_execution_with<FClassify, FRender>(
     ctx: &mut Context,
     request: UnwrapExecutionRequest<'_>,
     mut classify_log_solve: FClassify,
@@ -189,7 +189,7 @@ pub enum UnwrapEntryRouting<S> {
 /// Plan the first applicable unwrap execution for an equation.
 ///
 /// Selection order is deterministic: LHS is attempted first, then RHS.
-pub fn plan_first_unwrap_equation_execution_with<FClassify, FRender>(
+pub(crate) fn plan_first_unwrap_equation_execution_with<FClassify, FRender>(
     ctx: &mut Context,
     equation: &Equation,
     var: &str,
@@ -248,7 +248,7 @@ where
 /// 2) single-side exponential terminal fast-path,
 /// 3) LHS->RHS unwrap execution planning.
 #[allow(clippy::too_many_arguments)]
-pub fn route_unwrap_entry_with_item<FClassify, FRender, FStep, S>(
+pub(crate) fn route_unwrap_entry_with_item<FClassify, FRender, FStep, S>(
     ctx: &mut Context,
     equation: &Equation,
     var: &str,
@@ -311,7 +311,7 @@ where
 /// Resolve one unwrap entry routing into either:
 /// - terminal `(solution_set, steps)`, or
 /// - delegated execution solve result.
-pub fn solve_unwrap_entry_routing_with<E, S, FExecutionSolve>(
+pub(crate) fn solve_unwrap_entry_routing_with<E, S, FExecutionSolve>(
     routing: UnwrapEntryRouting<S>,
     mut solve_execution: FExecutionSolve,
 ) -> Result<(SolutionSet, Vec<S>), E>
@@ -326,7 +326,7 @@ where
 
 /// Optional variant of `solve_unwrap_entry_routing_with` that preserves
 /// `None` when no unwrap route is available.
-pub fn solve_unwrap_entry_routing_option_with<E, S, FExecutionSolve>(
+pub(crate) fn solve_unwrap_entry_routing_option_with<E, S, FExecutionSolve>(
     routing: Option<UnwrapEntryRouting<S>>,
     solve_execution: FExecutionSolve,
 ) -> Option<Result<(SolutionSet, Vec<S>), E>>
@@ -337,33 +337,22 @@ where
     Some(solve_unwrap_entry_routing_with(routing, solve_execution))
 }
 
-/// Collect didactic steps emitted by an unwrap execution in display order.
-pub fn collect_unwrap_execution_didactic_steps(
-    execution: &UnwrapExecutionPlan,
-) -> Vec<UnwrapDidacticStep> {
-    execution
-        .items
-        .iter()
-        .cloned()
-        .map(|item| UnwrapDidacticStep {
-            description: item.description,
-            equation_after: item.equation,
-        })
-        .collect()
-}
-
 /// Collect unwrap execution items in display order.
-pub fn collect_unwrap_execution_items(execution: &UnwrapExecutionPlan) -> Vec<UnwrapExecutionItem> {
+pub(crate) fn collect_unwrap_execution_items(
+    execution: &UnwrapExecutionPlan,
+) -> Vec<UnwrapExecutionItem> {
     execution.items.clone()
 }
 
 /// Return the first unwrap execution item, if any.
-pub fn first_unwrap_execution_item(execution: &UnwrapExecutionPlan) -> Option<UnwrapExecutionItem> {
+pub(crate) fn first_unwrap_execution_item(
+    execution: &UnwrapExecutionPlan,
+) -> Option<UnwrapExecutionItem> {
     collect_unwrap_execution_items(execution).into_iter().next()
 }
 
 /// Collect log-linear assumption records for engine-side reporting.
-pub fn collect_log_linear_assumption_records(
+pub(crate) fn collect_log_linear_assumption_records(
     execution: &UnwrapExecutionPlan,
     other_side: ExprId,
 ) -> Vec<LogLinearAssumptionRecord> {
@@ -395,65 +384,12 @@ pub struct UnwrapSolvedExecution<T> {
 ///
 /// Prefer the last emitted execution item equation (most concrete rewrite),
 /// and fall back to `execution.equation` when item payload is absent.
-pub fn unwrap_rewritten_equation(execution: &UnwrapExecutionPlan) -> Equation {
+pub(crate) fn unwrap_rewritten_equation(execution: &UnwrapExecutionPlan) -> Equation {
     execution
         .items
         .last()
         .map(|item| item.equation.clone())
         .unwrap_or_else(|| execution.equation.clone())
-}
-
-/// Execute a planned unwrap rewrite with caller-provided assumption handling
-/// and recursive solve callback.
-pub fn solve_unwrap_execution_with<E, T, FAssumption, FSolve>(
-    execution: UnwrapExecutionPlan,
-    other_side: ExprId,
-    mut on_assumption: FAssumption,
-    mut solve_equation: FSolve,
-) -> Result<UnwrapSolvedExecution<T>, E>
-where
-    FAssumption: FnMut(LogLinearAssumptionRecord),
-    FSolve: FnMut(&Equation) -> Result<T, E>,
-{
-    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
-    for record in assumption_records.iter().copied() {
-        on_assumption(record);
-    }
-    let rewritten_equation = unwrap_rewritten_equation(&execution);
-    let solved = solve_equation(&rewritten_equation)?;
-    Ok(UnwrapSolvedExecution {
-        execution,
-        assumption_records,
-        rewritten_equation,
-        solved,
-    })
-}
-
-/// Execute a planned unwrap rewrite while passing the aligned optional
-/// execution item to the solve callback.
-pub fn solve_unwrap_execution_with_item<E, T, FAssumption, FSolve>(
-    execution: UnwrapExecutionPlan,
-    other_side: ExprId,
-    mut on_assumption: FAssumption,
-    mut solve_equation: FSolve,
-) -> Result<UnwrapSolvedExecution<T>, E>
-where
-    FAssumption: FnMut(LogLinearAssumptionRecord),
-    FSolve: FnMut(Option<UnwrapExecutionItem>, &Equation) -> Result<T, E>,
-{
-    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
-    for record in assumption_records.iter().copied() {
-        on_assumption(record);
-    }
-    let rewritten_equation = unwrap_rewritten_equation(&execution);
-    let item = first_unwrap_execution_item(&execution);
-    let solved = solve_equation(item, &rewritten_equation)?;
-    Ok(UnwrapSolvedExecution {
-        execution,
-        assumption_records,
-        rewritten_equation,
-        solved,
-    })
 }
 
 /// Solved output for unwrap execution pipeline.
@@ -463,74 +399,19 @@ pub struct UnwrapExecutionPipelineSolved<S> {
     pub steps: Vec<S>,
 }
 
-/// Execute unwrap pipeline with optional first-item step dispatch and recursive solve.
-pub fn solve_unwrap_execution_pipeline_with_item<E, S, FAssume, FSolve, FStep>(
-    execution: UnwrapExecutionPlan,
-    other_side: ExprId,
-    var: &str,
-    include_item: bool,
-    mut note_assumption: FAssume,
-    mut solve_equation: FSolve,
-    mut map_item_to_step: FStep,
-) -> Result<UnwrapExecutionPipelineSolved<S>, E>
-where
-    FAssume: FnMut(LogLinearAssumptionRecord),
-    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(UnwrapExecutionItem) -> S,
-{
-    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
-    for record in assumption_records.iter().copied() {
-        note_assumption(record);
-    }
-    let rewritten_equation = unwrap_rewritten_equation(&execution);
-    let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = first_unwrap_execution_item(&execution) {
-            steps.push(map_item_to_step(item));
-        }
-    }
-    let (solution_set, mut sub_steps) = solve_equation(&rewritten_equation, var)?;
-    steps.append(&mut sub_steps);
-    Ok(UnwrapExecutionPipelineSolved {
-        solution_set,
-        steps,
-    })
-}
-
-/// Execute unwrap pipeline returning plain `(SolutionSet, steps)` output for
-/// engine strategy surfaces.
-pub fn solve_unwrap_execution_result_pipeline_with_item<E, S, FAssume, FSolve, FStep>(
-    execution: UnwrapExecutionPlan,
-    other_side: ExprId,
-    var: &str,
-    include_item: bool,
-    note_assumption: FAssume,
-    solve_equation: FSolve,
-    map_item_to_step: FStep,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    FAssume: FnMut(LogLinearAssumptionRecord),
-    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(UnwrapExecutionItem) -> S,
-{
-    let solved = solve_unwrap_execution_pipeline_with_item(
-        execution,
-        other_side,
-        var,
-        include_item,
-        note_assumption,
-        solve_equation,
-        map_item_to_step,
-    )?;
-    Ok((solved.solution_set, solved.steps))
-}
-
 /// Stateful variant of [`solve_unwrap_execution_pipeline_with_item`].
 ///
 /// This form lets callers thread one mutable state object across assumption and
 /// solve hooks without interior mutability wrappers.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_unwrap_execution_pipeline_with_item_with_state<T, E, S, FAssume, FSolve, FStep>(
+pub(crate) fn solve_unwrap_execution_pipeline_with_item_with_state<
+    T,
+    E,
+    S,
+    FAssume,
+    FSolve,
+    FStep,
+>(
     state: &mut T,
     execution: UnwrapExecutionPlan,
     other_side: ExprId,
@@ -566,7 +447,7 @@ where
 
 /// Stateful variant of [`solve_unwrap_execution_result_pipeline_with_item`].
 #[allow(clippy::too_many_arguments)]
-pub fn solve_unwrap_execution_result_pipeline_with_item_with_state<
+pub(crate) fn solve_unwrap_execution_result_pipeline_with_item_with_state<
     T,
     E,
     S,
@@ -601,45 +482,9 @@ where
     Ok((solved.solution_set, solved.steps))
 }
 
-/// Route-aware wrapper that:
-/// 1) preserves `None` when no unwrap route exists,
-/// 2) returns terminal route payload directly,
-/// 3) executes planned unwrap route through the execution pipeline.
-pub fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item<
-    E,
-    S,
-    FAssume,
-    FSolve,
-    FStep,
->(
-    routing: Option<UnwrapEntryRouting<S>>,
-    var: &str,
-    include_item: bool,
-    mut note_assumption: FAssume,
-    mut solve_equation: FSolve,
-    mut map_item_to_step: FStep,
-) -> Option<Result<(SolutionSet, Vec<S>), E>>
-where
-    FAssume: FnMut(LogLinearAssumptionRecord),
-    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(UnwrapExecutionItem) -> S,
-{
-    solve_unwrap_entry_routing_option_with(routing, |selected| {
-        solve_unwrap_execution_result_pipeline_with_item(
-            selected.execution,
-            selected.other_side,
-            var,
-            include_item,
-            &mut note_assumption,
-            &mut solve_equation,
-            &mut map_item_to_step,
-        )
-    })
-}
-
 /// Stateful variant of
 /// [`solve_unwrap_entry_routing_option_with_execution_pipeline_with_item`].
-pub fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state<
+pub(crate) fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state<
     T,
     E,
     S,
@@ -674,68 +519,8 @@ where
     })
 }
 
-/// Plan/route unwrap entry and execute the selected pipeline in one helper.
-///
-/// This wraps:
-/// 1) `route_unwrap_entry_with_item`, then
-/// 2) `solve_unwrap_entry_routing_option_with_execution_pipeline_with_item`.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_unwrap_entry_pipeline_with_item<
-    E,
-    S,
-    FClassify,
-    FRender,
-    FTerminalStep,
-    FAssume,
-    FSolve,
-    FExecStep,
->(
-    ctx: &mut Context,
-    equation: &Equation,
-    var: &str,
-    mode: DomainModeKind,
-    wildcard_scope: bool,
-    residual_suffix: &str,
-    include_item: bool,
-    mut classify_log_solve: FClassify,
-    mut render_expr: FRender,
-    map_terminal_item_to_step: FTerminalStep,
-    note_assumption: FAssume,
-    solve_equation: FSolve,
-    map_execution_item_to_step: FExecStep,
-) -> Option<Result<(SolutionSet, Vec<S>), E>>
-where
-    FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
-    FRender: FnMut(&Context, ExprId) -> String,
-    FTerminalStep: FnMut(TermIsolationExecutionItem) -> S,
-    FAssume: FnMut(LogLinearAssumptionRecord),
-    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
-    FExecStep: FnMut(UnwrapExecutionItem) -> S,
-{
-    let routing = route_unwrap_entry_with_item(
-        ctx,
-        equation,
-        var,
-        mode,
-        wildcard_scope,
-        residual_suffix,
-        include_item,
-        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
-        |core_ctx, expr| render_expr(core_ctx, expr),
-        map_terminal_item_to_step,
-    );
-    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
-        routing,
-        var,
-        include_item,
-        note_assumption,
-        solve_equation,
-        map_execution_item_to_step,
-    )
-}
-
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
-pub fn plan_unwrap_rewrite<F>(
+pub(crate) fn plan_unwrap_rewrite<F>(
     ctx: &mut Context,
     target: ExprId,
     other: ExprId,
@@ -1217,35 +1002,6 @@ mod tests {
     }
 
     #[test]
-    fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_returns_terminal_directly(
-    ) {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let routed = Some(UnwrapEntryRouting::Terminal(
-            SingleSideExponentialTerminalSolved {
-                solution_set: SolutionSet::Discrete(vec![x]),
-                steps: vec!["terminal".to_string()],
-            },
-        ));
-
-        let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
-            routed,
-            "x",
-            true,
-            |_record| panic!("assumption callback must not run for terminal routing"),
-            |_equation, _var| -> Result<(SolutionSet, Vec<String>), ()> {
-                panic!("equation solver must not run for terminal routing")
-            },
-            |_item| -> String { panic!("item mapper must not run for terminal routing") },
-        )
-        .expect("routing should exist")
-        .expect("terminal route should resolve");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert_eq!(solved.1, vec!["terminal".to_string()]);
-    }
-
-    #[test]
     fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_with_state_returns_terminal_directly(
     ) {
         struct TestState {
@@ -1286,54 +1042,6 @@ mod tests {
         assert_eq!(solved.1, vec!["terminal".to_string()]);
         assert_eq!(state.assumption_calls, 0);
         assert_eq!(state.solve_calls, 0);
-    }
-
-    #[test]
-    fn solve_unwrap_entry_routing_option_with_execution_pipeline_with_item_runs_execution_path() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![LogAssumption::PositiveBase],
-            log_linear_base: Some(x),
-            items: vec![UnwrapExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: y,
-                    op: RelOp::Eq,
-                },
-                description: "unwrap-step".to_string(),
-            }],
-        };
-        let routed = Some(UnwrapEntryRouting::Execution(UnwrapEquationExecution {
-            execution,
-            other_side: y,
-        }));
-
-        let mut noted = Vec::new();
-        let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
-            routed,
-            "x",
-            true,
-            |record| noted.push(record),
-            |_equation, _var| {
-                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
-            },
-            |item| item.description,
-        )
-        .expect("routing should exist")
-        .expect("execution route should solve");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert_eq!(solved.1, vec!["unwrap-step".to_string(), "sub".to_string()]);
-        assert_eq!(noted.len(), 1);
-        assert_eq!(noted[0].assumption, LogAssumption::PositiveBase);
     }
 
     #[test]
@@ -1395,107 +1103,6 @@ mod tests {
         assert_eq!(state.noted.len(), 1);
         assert_eq!(state.noted[0].assumption, LogAssumption::PositiveBase);
         assert_eq!(state.solve_calls, 1);
-    }
-
-    #[test]
-    fn execute_unwrap_entry_pipeline_with_item_returns_none_without_variable_presence() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let equation = Equation {
-            lhs: x,
-            rhs: y,
-            op: RelOp::Eq,
-        };
-
-        let solved = execute_unwrap_entry_pipeline_with_item(
-            &mut ctx,
-            &equation,
-            "z",
-            DomainModeKind::Generic,
-            false,
-            " (residual)",
-            true,
-            |_, _, _| LogSolveDecision::Ok,
-            |_, _| "render".to_string(),
-            |item| item.description,
-            |_record| panic!("assumption callback must not run when routing is None"),
-            |_equation, _var| -> Result<(SolutionSet, Vec<String>), ()> {
-                panic!("solver callback must not run when routing is None")
-            },
-            |item| item.description,
-        );
-
-        assert!(solved.is_none());
-    }
-
-    #[test]
-    fn execute_unwrap_entry_pipeline_with_item_runs_execution_path() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let lhs = ctx.call("ln", vec![x]);
-        let equation = Equation {
-            lhs,
-            rhs: y,
-            op: RelOp::Eq,
-        };
-
-        let mut noted = Vec::new();
-        let solved = execute_unwrap_entry_pipeline_with_item(
-            &mut ctx,
-            &equation,
-            "x",
-            DomainModeKind::Generic,
-            false,
-            " (residual)",
-            true,
-            |_, _, _| LogSolveDecision::Ok,
-            |_, _| "render".to_string(),
-            |item| item.description,
-            |record| noted.push(record),
-            |_equation, _var| {
-                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
-            },
-            |item| item.description,
-        )
-        .expect("routing should exist")
-        .expect("execution should solve");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert!(solved.1.len() >= 2);
-        assert_eq!(solved.1.last().cloned(), Some("sub".to_string()));
-        assert!(noted.is_empty());
-    }
-
-    #[test]
-    fn collect_unwrap_execution_didactic_steps_returns_single_step() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![],
-            log_linear_base: None,
-            items: vec![UnwrapExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: y,
-                    op: RelOp::Eq,
-                },
-                description: "unwrap".to_string(),
-            }],
-        };
-
-        let didactic = collect_unwrap_execution_didactic_steps(&execution);
-        assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0].description, "unwrap");
-        assert_eq!(didactic[0].equation_after, execution.equation);
     }
 
     #[test]
@@ -1662,291 +1269,5 @@ mod tests {
 
         let rewritten = unwrap_rewritten_equation(&execution);
         assert_eq!(rewritten, execution.equation);
-    }
-
-    #[test]
-    fn solve_unwrap_execution_with_emits_assumptions_and_solves_last_equation() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![LogAssumption::PositiveBase],
-            log_linear_base: Some(x),
-            items: vec![
-                UnwrapExecutionItem {
-                    equation: Equation {
-                        lhs: y,
-                        rhs: z,
-                        op: RelOp::Eq,
-                    },
-                    description: "first".to_string(),
-                },
-                UnwrapExecutionItem {
-                    equation: Equation {
-                        lhs: z,
-                        rhs: x,
-                        op: RelOp::Eq,
-                    },
-                    description: "last".to_string(),
-                },
-            ],
-        };
-
-        let mut seen = Vec::new();
-        let solved = solve_unwrap_execution_with(
-            execution,
-            y,
-            |record| seen.push(record),
-            |equation| {
-                assert_eq!(equation.lhs, z);
-                assert_eq!(equation.rhs, x);
-                Ok::<_, ()>("ok")
-            },
-        )
-        .expect("solve should succeed");
-
-        assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].assumption, LogAssumption::PositiveBase);
-        assert_eq!(seen[0].base, x);
-        assert_eq!(seen[0].other_side, y);
-        assert_eq!(solved.solved, "ok");
-        assert_eq!(solved.assumption_records, seen);
-    }
-
-    #[test]
-    fn solve_unwrap_execution_with_item_passes_first_item_and_solves_last_equation() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![LogAssumption::PositiveBase],
-            log_linear_base: Some(x),
-            items: vec![
-                UnwrapExecutionItem {
-                    equation: Equation {
-                        lhs: y,
-                        rhs: z,
-                        op: RelOp::Eq,
-                    },
-                    description: "first".to_string(),
-                },
-                UnwrapExecutionItem {
-                    equation: Equation {
-                        lhs: z,
-                        rhs: x,
-                        op: RelOp::Eq,
-                    },
-                    description: "last".to_string(),
-                },
-            ],
-        };
-
-        let mut seen_item = None;
-        let solved = solve_unwrap_execution_with_item(
-            execution,
-            y,
-            |_record| {},
-            |item, equation| {
-                seen_item = item.map(|entry| entry.description);
-                assert_eq!(equation.lhs, z);
-                assert_eq!(equation.rhs, x);
-                Ok::<_, ()>("ok")
-            },
-        )
-        .expect("solve should succeed");
-
-        assert_eq!(seen_item, Some("first".to_string()));
-        assert_eq!(solved.solved, "ok");
-    }
-
-    #[test]
-    fn solve_unwrap_execution_pipeline_with_item_forwards_assumptions_item_and_substeps() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![LogAssumption::PositiveBase],
-            log_linear_base: Some(x),
-            items: vec![
-                UnwrapExecutionItem {
-                    equation: Equation {
-                        lhs: y,
-                        rhs: z,
-                        op: RelOp::Eq,
-                    },
-                    description: "first".to_string(),
-                },
-                UnwrapExecutionItem {
-                    equation: Equation {
-                        lhs: z,
-                        rhs: x,
-                        op: RelOp::Eq,
-                    },
-                    description: "last".to_string(),
-                },
-            ],
-        };
-
-        let mut assumptions = Vec::new();
-        let mut solve_calls = Vec::new();
-        let solved = solve_unwrap_execution_pipeline_with_item(
-            execution,
-            y,
-            "x",
-            true,
-            |record| assumptions.push(record),
-            |_equation, var| {
-                solve_calls.push(var.to_string());
-                Ok::<_, ()>((SolutionSet::Discrete(vec![z]), vec!["sub-step".to_string()]))
-            },
-            |item| item.description,
-        )
-        .expect("pipeline should succeed");
-
-        assert_eq!(assumptions.len(), 1);
-        assert_eq!(assumptions[0].assumption, LogAssumption::PositiveBase);
-        assert_eq!(assumptions[0].base, x);
-        assert_eq!(assumptions[0].other_side, y);
-        assert_eq!(solve_calls, vec!["x"]);
-        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![z]));
-        assert_eq!(
-            solved.steps,
-            vec!["first".to_string(), "sub-step".to_string()]
-        );
-    }
-
-    #[test]
-    fn solve_unwrap_execution_pipeline_with_item_omits_item_when_disabled() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![],
-            log_linear_base: None,
-            items: vec![UnwrapExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: y,
-                    op: RelOp::Eq,
-                },
-                description: "first".to_string(),
-            }],
-        };
-
-        let mut assumptions = Vec::new();
-        let mut solve_calls = Vec::new();
-        let solved = solve_unwrap_execution_pipeline_with_item(
-            execution,
-            y,
-            "x",
-            false,
-            |record| assumptions.push(record),
-            |_equation, var| {
-                solve_calls.push(var.to_string());
-                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub-step".to_string()]))
-            },
-            |item| item.description,
-        )
-        .expect("pipeline should succeed");
-
-        assert_eq!(assumptions.len(), 0);
-        assert_eq!(solve_calls, vec!["x"]);
-        assert_eq!(solved.steps, vec!["sub-step".to_string()]);
-    }
-
-    #[test]
-    fn solve_unwrap_execution_result_pipeline_with_item_returns_plain_tuple() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![LogAssumption::PositiveBase],
-            log_linear_base: Some(x),
-            items: vec![UnwrapExecutionItem {
-                equation: Equation {
-                    lhs: y,
-                    rhs: z,
-                    op: RelOp::Eq,
-                },
-                description: "first".to_string(),
-            }],
-        };
-
-        let solved = solve_unwrap_execution_result_pipeline_with_item(
-            execution,
-            y,
-            "x",
-            true,
-            |_record| {},
-            |_equation, _var| {
-                Ok::<_, ()>((SolutionSet::Discrete(vec![z]), vec!["sub".to_string()]))
-            },
-            |item| item.description,
-        )
-        .expect("pipeline should succeed");
-
-        assert_eq!(solved.0, SolutionSet::Discrete(vec![z]));
-        assert_eq!(solved.1, vec!["first".to_string(), "sub".to_string()]);
-    }
-
-    #[test]
-    fn solve_unwrap_execution_with_propagates_solver_error() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let execution = UnwrapExecutionPlan {
-            equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            description: "unwrap".to_string(),
-            assumptions: vec![],
-            log_linear_base: None,
-            items: vec![],
-        };
-
-        let err = solve_unwrap_execution_with(
-            execution,
-            y,
-            |_| {},
-            |_equation| Err::<(), _>("solver error"),
-        )
-        .expect_err("expected solver error");
-        assert_eq!(err, "solver error");
     }
 }

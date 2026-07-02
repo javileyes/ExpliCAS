@@ -3,7 +3,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// Apply rational-exponent strategy using default kernel wiring and
 /// runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_rational_exponent_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_rational_exponent_strategy_with_default_kernels_and_state<
     T,
     S,
     E,
@@ -45,7 +45,7 @@ where
 /// Apply collect-terms strategy using default kernel wiring and
 /// runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_collect_terms_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_collect_terms_strategy_with_default_kernels_and_state<
     T,
     S,
     E,
@@ -91,7 +91,7 @@ where
 /// Apply exponential-substitution strategy using default substitution variable
 /// and rewrite-plan derivation.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_substitution_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_substitution_strategy_with_default_kernels_and_state<
     T,
     S,
     E,
@@ -133,7 +133,7 @@ where
 /// Apply rational-roots strategy using default limits, default root sorting,
 /// and runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_rational_roots_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_rational_roots_strategy_with_default_kernels_and_state<
     T,
     S,
     FCollectSteps,
@@ -174,7 +174,7 @@ where
 /// Apply unwrap strategy using default route/residual-hint wiring and
 /// runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_unwrap_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_unwrap_strategy_with_default_kernels_and_state<
     T,
     S,
     E,

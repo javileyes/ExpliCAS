@@ -5,7 +5,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// branches through caller-provided callbacks that receive full equation
 /// context and start with empty branch-local step vectors.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_default_kernels_and_route_callbacks_with_state<
+pub(crate) fn dispatch_isolation_with_default_kernels_and_route_callbacks_with_state<
     T,
     S,
     E,

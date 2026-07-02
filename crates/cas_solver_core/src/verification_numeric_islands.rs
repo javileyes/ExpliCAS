@@ -9,7 +9,7 @@ use cas_ast::{Context, ExprId};
 ///
 /// If `enter_guard()` returns `None`, the fold is skipped and `root` is
 /// returned unchanged.
-pub fn fold_numeric_islands_guarded_with_default_limits_and_candidate_evaluator<
+pub(crate) fn fold_numeric_islands_guarded_with_default_limits_and_candidate_evaluator<
     Guard,
     FEnterGuard,
     EvaluateCandidate,

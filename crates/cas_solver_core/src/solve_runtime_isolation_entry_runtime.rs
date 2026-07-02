@@ -3,7 +3,7 @@
 use cas_ast::SolutionSet;
 
 /// Execute isolation dispatch with the standard depth error used by runtime facades.
-pub fn isolate_with_default_depth_guard_and_error_with_state<T, S, FDispatch>(
+pub(crate) fn isolate_with_default_depth_guard_and_error_with_state<T, S, FDispatch>(
     state: &mut T,
     current_depth: usize,
     dispatch: FDispatch,

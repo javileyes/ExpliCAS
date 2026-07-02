@@ -32,7 +32,7 @@ pub enum IsolationDispatchRoute {
 }
 
 /// Derive dispatch route from the current LHS expression and solve variable.
-pub fn derive_isolation_dispatch_route(
+pub(crate) fn derive_isolation_dispatch_route(
     ctx: &Context,
     lhs: ExprId,
     var: &str,
@@ -55,7 +55,7 @@ pub fn derive_isolation_dispatch_route(
 /// Derive and execute one isolation dispatch route from `(ctx, lhs, var)`
 /// with stateful branch handlers.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolation_dispatch_route_for_var_with_state<
+pub(crate) fn execute_isolation_dispatch_route_for_var_with_state<
     T,
     R,
     E,
@@ -115,7 +115,7 @@ where
 
 /// Execute one isolation dispatch route with stateful branch handlers.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolation_dispatch_route_with_state<
+pub(crate) fn execute_isolation_dispatch_route_with_state<
     T,
     R,
     E,
@@ -168,7 +168,7 @@ where
 /// Execute an isolated-variable entry (`x op rhs`) with default core
 /// outcome resolution and residual fallback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolated_variable_entry_with_default_resolution_with_state<
+pub(crate) fn execute_isolated_variable_entry_with_default_resolution_with_state<
     T,
     S,
     FContextForResolve,
@@ -223,7 +223,7 @@ where
 /// Convenience variant for isolated-variable entry when the same mutable
 /// context accessor is used both for outcome resolution and residual fallback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolated_variable_entry_with_default_resolution_single_context_with_state<
+pub(crate) fn execute_isolated_variable_entry_with_default_resolution_single_context_with_state<
     T,
     S,
     FContextMut,
@@ -267,7 +267,7 @@ where
 ///
 /// while callers provide stateful handlers for arithmetic/function branches.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_with_state<
+pub(crate) fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_with_state<
     T,
     S,
     E,
@@ -389,7 +389,7 @@ where
 /// Execute one full isolation-dispatch step with default isolated/negated
 /// kernels and a unified negated-step mapper callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_and_unified_negated_step_mapper_with_state<
+pub(crate) fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_for_var_and_unified_negated_step_mapper_with_state<
     T,
     S,
     E,
@@ -479,7 +479,7 @@ where
 ///
 /// This keeps engine adapters thin by removing per-call linear-collect wiring.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state<
+pub(crate) fn execute_isolation_dispatch_with_default_isolated_and_negated_entries_and_default_linear_collect_kernels_for_var_and_unified_step_mapper_with_state<
     T,
     S,
     E,
@@ -605,7 +605,7 @@ where
 /// Execute a negated-LHS entry (`-A op rhs`) with default core negation rewrite
 /// planning, then delegate solving of rewritten equation via callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state<
+pub(crate) fn execute_negated_lhs_entry_with_default_plan_and_merge_with_existing_steps_with_state<
     T,
     E,
     S,

@@ -5,6 +5,6 @@
 //! - arithmetic isolation
 //! - power isolation
 
-pub use crate::solve_runtime_flow_isolation_arithmetic::*;
-pub use crate::solve_runtime_flow_isolation_function::*;
-pub use crate::solve_runtime_flow_isolation_pow::*;
+pub(crate) use crate::solve_runtime_flow_isolation_arithmetic::*;
+pub(crate) use crate::solve_runtime_flow_isolation_function::*;
+pub(crate) use crate::solve_runtime_flow_isolation_pow::*;

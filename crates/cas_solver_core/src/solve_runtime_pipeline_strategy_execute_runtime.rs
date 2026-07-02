@@ -4,7 +4,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 
 /// Execute strategy pipeline using shared default step/error mappers.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_strategy_pipeline_with_default_mappers_and_state<
+pub(crate) fn execute_strategy_pipeline_with_default_mappers_and_state<
     SState,
     FContainsVar,
     FCollectSteps,

@@ -109,7 +109,7 @@ where
 
 /// Apply one strategy using the default recursive solve/isolation routes.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_with_runtime_state_and_default_recursive_routes<
+pub(crate) fn apply_strategy_with_runtime_state_and_default_recursive_routes<
     T,
     FSolveReentrant,
     FRegisterBlockedHint,
@@ -177,7 +177,7 @@ where
 /// Guard recursion depth and dispatch isolation using the default recursive
 /// solve/isolation routes.
 #[allow(clippy::too_many_arguments)]
-pub fn isolate_with_default_depth_with_runtime_state_and_default_recursive_routes<
+pub(crate) fn isolate_with_default_depth_with_runtime_state_and_default_recursive_routes<
     T,
     FSolveReentrant,
     FRegisterBlockedHint,
@@ -243,7 +243,7 @@ where
 
 /// Dispatch isolation using the default recursive solve/isolation routes.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_runtime_state_and_default_recursive_routes<
+pub(crate) fn dispatch_isolation_with_runtime_state_and_default_recursive_routes<
     T,
     FSolveReentrant,
     FRegisterBlockedHint,

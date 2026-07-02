@@ -5,9 +5,9 @@
 //! - `analysis`: preflight-domain derivation wrapper.
 //! - `prepare`: equation preparation wrappers.
 
-pub use solve_runtime_flow_preflight_analysis::*;
+pub(crate) use solve_runtime_flow_preflight_analysis::*;
 pub use solve_runtime_flow_preflight_entry::*;
-pub use solve_runtime_flow_preflight_prepare::*;
+pub(crate) use solve_runtime_flow_preflight_prepare::*;
 
 #[path = "solve_runtime_flow_preflight_analysis.rs"]
 mod solve_runtime_flow_preflight_analysis;

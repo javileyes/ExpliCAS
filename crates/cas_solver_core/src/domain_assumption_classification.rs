@@ -9,7 +9,7 @@ use crate::domain_context::DomainContext;
 use cas_ast::Context;
 
 /// Convert an assumption event into an implicit condition, when applicable.
-pub fn assumption_to_condition(event: &AssumptionEvent) -> Option<ImplicitCondition> {
+pub(crate) fn assumption_to_condition(event: &AssumptionEvent) -> Option<ImplicitCondition> {
     assumption_condition_kind(event).map(|(kind, expr_id)| match kind {
         AssumptionConditionKind::NonZero => ImplicitCondition::NonZero(expr_id),
         AssumptionConditionKind::Positive => ImplicitCondition::Positive(expr_id),

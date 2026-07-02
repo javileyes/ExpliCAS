@@ -5,7 +5,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 
 /// Dispatch isolation using shared default route/error/step mappers.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_default_routes_and_mappers_with_state<
+pub(crate) fn dispatch_isolation_with_default_routes_and_mappers_with_state<
     T,
     TTacticOptions,
     FContextRef,

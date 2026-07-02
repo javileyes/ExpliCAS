@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// requiring recursive solve/isolation entrypoints plus the runtime-specific
 /// positive prover and blocked-hint sink.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_runtime_state_and_reentrant_entrypoints_and_state<
+pub(crate) fn dispatch_isolation_with_runtime_state_and_reentrant_entrypoints_and_state<
     T,
     FSolveReentrant,
     FIsolateReentrant,

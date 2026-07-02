@@ -8,7 +8,7 @@ use cas_ast::{Equation, ExprId};
 ///
 /// Runtime crates only provide semantic fallback rewrite and runtime kernels.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_equation_for_strategy_with_default_structural_recompose_and_cancel_and_default_residual_acceptance_with_state<
+pub(crate) fn prepare_equation_for_strategy_with_default_structural_recompose_and_cancel_and_default_residual_acceptance_with_state<
     SState,
     FContainsVar,
     FSimplifyForSolve,

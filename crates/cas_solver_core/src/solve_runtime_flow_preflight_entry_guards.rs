@@ -1,7 +1,7 @@
 use cas_ast::{Equation, SolutionSet};
 
 /// Enforce the default isolation recursion limit.
-pub fn ensure_default_isolation_recursion_depth_or_error<E, FMapError>(
+pub(crate) fn ensure_default_isolation_recursion_depth_or_error<E, FMapError>(
     current_depth: usize,
     map_error: FMapError,
 ) -> Result<(), E>
@@ -16,7 +16,7 @@ where
 }
 
 /// Execute isolation dispatch after enforcing the default recursion guard.
-pub fn execute_isolation_with_default_depth_guard_and_dispatch_with_state<
+pub(crate) fn execute_isolation_with_default_depth_guard_and_dispatch_with_state<
     SState,
     S,
     E,
@@ -39,7 +39,7 @@ where
 /// Enforce default solve-entry guards:
 /// - recursion depth within solver budget
 /// - solve variable present in equation
-pub fn ensure_default_solve_entry_or_error<E, FDepthError, FMissingVarError>(
+pub(crate) fn ensure_default_solve_entry_or_error<E, FDepthError, FMissingVarError>(
     ctx: &cas_ast::Context,
     equation: &Equation,
     var: &str,

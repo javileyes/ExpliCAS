@@ -48,7 +48,7 @@ pub fn pow_kernel_inputs(
 
 /// Build [`PowIsolationKernelConfig`] from core solver options and one
 /// include-item hook.
-pub fn pow_kernel_config_with<FCollectItem>(
+pub(crate) fn pow_kernel_config_with<FCollectItem>(
     mode: DomainModeKind,
     wildcard_scope: bool,
     value_domain_real_only: bool,
@@ -72,7 +72,7 @@ pub struct PowIsolationRuntimeConfig<TTacticOptions> {
 
 /// Build a full runtime power-isolation config with caller-provided tactic
 /// options constructor.
-pub fn pow_runtime_config_with<TTacticOptions, FCollectItem, FBuildTacticOptions>(
+pub(crate) fn pow_runtime_config_with<TTacticOptions, FCollectItem, FBuildTacticOptions>(
     mode: DomainModeKind,
     wildcard_scope: bool,
     value_domain_real_only: bool,

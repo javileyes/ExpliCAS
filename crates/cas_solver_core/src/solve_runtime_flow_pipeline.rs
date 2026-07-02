@@ -4,8 +4,7 @@
 //! - `resolution`: var-elimination and discrete-candidate verification helpers.
 //! - `execute`: strategy-order pipeline wiring and cycle-guard integration.
 
-pub use solve_runtime_flow_pipeline_execute::*;
-pub use solve_runtime_flow_pipeline_resolution::*;
+pub(crate) use solve_runtime_flow_pipeline_execute::*;
 
 #[path = "solve_runtime_flow_pipeline_execute.rs"]
 mod solve_runtime_flow_pipeline_execute;

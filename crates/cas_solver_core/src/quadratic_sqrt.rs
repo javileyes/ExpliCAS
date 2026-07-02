@@ -5,7 +5,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// Converts `sqrt(k * expr) -> m * sqrt(expr)` when `k = m^2`.
 /// Also handles additive forms with common factor, e.g.:
 /// `sqrt(4*a + 4*b) -> 2*sqrt(a + b)`.
-pub fn pull_square_from_sqrt(ctx: &mut Context, sqrt_expr: ExprId) -> ExprId {
+pub(crate) fn pull_square_from_sqrt(ctx: &mut Context, sqrt_expr: ExprId) -> ExprId {
     let expr_data = ctx.get(sqrt_expr).clone();
     let Expr::Pow(base, exp) = expr_data else {
         return sqrt_expr;

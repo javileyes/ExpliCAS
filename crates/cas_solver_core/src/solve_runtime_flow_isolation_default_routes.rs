@@ -12,7 +12,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// Callers provide one recursive equation solver and the domain/error hooks
 /// required by pow/function specializations.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_default_kernels_and_default_arithmetic_pow_function_routes_with_state<
+pub(crate) fn dispatch_isolation_with_default_kernels_and_default_arithmetic_pow_function_routes_with_state<
     T,
     S,
     E,

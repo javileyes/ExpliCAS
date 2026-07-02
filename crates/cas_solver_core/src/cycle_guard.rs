@@ -25,7 +25,7 @@ impl Drop for CycleGuard {
 /// Returns `None` when the fingerprint is already active in the current
 /// call stack (cycle detected). Returns a guard otherwise; dropping the guard
 /// removes the fingerprint.
-pub fn try_enter(fp: u64) -> Option<CycleGuard> {
+pub(crate) fn try_enter(fp: u64) -> Option<CycleGuard> {
     let inserted = SOLVE_SEEN.with(|s| s.borrow_mut().insert(fp));
     if inserted {
         Some(CycleGuard { fp })
@@ -38,7 +38,7 @@ pub fn try_enter(fp: u64) -> Option<CycleGuard> {
 ///
 /// Returns `None` when the same `(var, lhs, rhs)` shape is already active
 /// in the current solve call stack.
-pub fn try_enter_equation_fingerprint(
+pub(crate) fn try_enter_equation_fingerprint(
     ctx: &Context,
     lhs: ExprId,
     rhs: ExprId,

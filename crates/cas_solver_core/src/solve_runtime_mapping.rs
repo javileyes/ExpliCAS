@@ -14,7 +14,7 @@ pub type DefaultSolveStep = crate::solve_aliases::SolveStep<
     DefaultSolveSubStep,
 >;
 
-pub fn medium_step(description: String, equation_after: Equation) -> DefaultSolveStep {
+pub(crate) fn medium_step(description: String, equation_after: Equation) -> DefaultSolveStep {
     DefaultSolveStep::new(
         description,
         equation_after,
@@ -22,7 +22,7 @@ pub fn medium_step(description: String, equation_after: Equation) -> DefaultSolv
     )
 }
 
-pub fn low_substep(description: String, equation_after: Equation) -> DefaultSolveSubStep {
+pub(crate) fn low_substep(description: String, equation_after: Equation) -> DefaultSolveSubStep {
     DefaultSolveSubStep {
         description,
         equation_after,
@@ -30,14 +30,14 @@ pub fn low_substep(description: String, equation_after: Equation) -> DefaultSolv
     }
 }
 
-pub fn attach_substeps(
+pub(crate) fn attach_substeps(
     step: DefaultSolveStep,
     substeps: Vec<DefaultSolveSubStep>,
 ) -> DefaultSolveStep {
     step.with_substeps(substeps)
 }
 
-pub fn map_symbolic_inequalities_not_supported_error(
+pub(crate) fn map_symbolic_inequalities_not_supported_error(
     _plan_error: crate::quadratic_formula::QuadraticCoefficientSolvePlanError,
 ) -> crate::error_model::CasError {
     crate::error_model::CasError::SolverError(
@@ -45,33 +45,38 @@ pub fn map_symbolic_inequalities_not_supported_error(
     )
 }
 
-pub fn map_variable_not_found_solver_error(missing_var: &str) -> crate::error_model::CasError {
+pub(crate) fn map_variable_not_found_solver_error(
+    missing_var: &str,
+) -> crate::error_model::CasError {
     crate::error_model::CasError::VariableNotFound(missing_var.to_string())
 }
 
-pub fn solver_cycle_detected_error() -> crate::error_model::CasError {
+pub(crate) fn solver_cycle_detected_error() -> crate::error_model::CasError {
     crate::error_model::CasError::SolverError(
         "Cycle detected: equation revisited after rewriting (equivalent form loop)".to_string(),
     )
 }
 
-pub fn map_no_strategy_solved_error() -> crate::error_model::CasError {
+pub(crate) fn map_no_strategy_solved_error() -> crate::error_model::CasError {
     crate::error_model::CasError::SolverError("No strategy could solve this equation.".to_string())
 }
 
-pub fn map_isolation_error(var: &str, message: impl AsRef<str>) -> crate::error_model::CasError {
+pub(crate) fn map_isolation_error(
+    var: &str,
+    message: impl AsRef<str>,
+) -> crate::error_model::CasError {
     crate::error_model::CasError::IsolationError(var.to_string(), message.as_ref().to_string())
 }
 
-pub fn map_unsupported_in_real_domain_error(message: &str) -> crate::error_model::CasError {
+pub(crate) fn map_unsupported_in_real_domain_error(message: &str) -> crate::error_model::CasError {
     crate::error_model::CasError::UnsupportedInRealDomain(message.to_string())
 }
 
-pub fn map_unknown_function_error(fn_name: &str) -> crate::error_model::CasError {
+pub(crate) fn map_unknown_function_error(fn_name: &str) -> crate::error_model::CasError {
     crate::error_model::CasError::UnknownFunction(fn_name.to_string())
 }
 
-pub fn map_isolation_cannot_isolate_error<T: std::fmt::Debug>(
+pub(crate) fn map_isolation_cannot_isolate_error<T: std::fmt::Debug>(
     var: &str,
     lhs_expr: T,
 ) -> crate::error_model::CasError {

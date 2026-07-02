@@ -16,7 +16,7 @@ pub fn can_cancel_factor(
 
 /// Rich version of `can_cancel_factor` that emits pedagogical hints when
 /// Strict mode blocks an unknown nonzero condition.
-pub fn can_cancel_factor_with_hint(
+pub(crate) fn can_cancel_factor_with_hint(
     mode: crate::domain_mode::DomainMode,
     proof: crate::domain_proof::Proof,
     key: crate::assumption_model::AssumptionKey,
@@ -71,7 +71,7 @@ pub fn can_apply_analytic(
 
 /// Rich version of `can_apply_analytic` that emits pedagogical hints when
 /// Generic mode blocks an unknown analytic condition.
-pub fn can_apply_analytic_with_hint(
+pub(crate) fn can_apply_analytic_with_hint(
     mode: crate::domain_mode::DomainMode,
     proof: crate::domain_proof::Proof,
     key: crate::assumption_model::AssumptionKey,

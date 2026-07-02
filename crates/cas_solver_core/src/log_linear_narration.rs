@@ -14,17 +14,17 @@ pub struct LogLinearNarrationStep {
 pub const TAKE_LOG_BOTH_SIDES_STEP: &str = "Take log base e of both sides";
 
 /// Compact narration for the log-linear collect/factor step.
-pub fn collect_and_factor_terms_message(var: &str) -> String {
+pub(crate) fn collect_and_factor_terms_message(var: &str) -> String {
     format!("Collect and factor {} terms", var)
 }
 
 /// Check whether a single step description is the log-linear entry marker.
-pub fn is_log_linear_take_log_step(description: &str) -> bool {
+pub(crate) fn is_log_linear_take_log_step(description: &str) -> bool {
     description == TAKE_LOG_BOTH_SIDES_STEP
 }
 
 /// Check if a step stream starts with the log-linear marker using an accessor.
-pub fn is_log_linear_pattern_by<T, FDesc>(steps: &[T], mut desc_of: FDesc) -> bool
+pub(crate) fn is_log_linear_pattern_by<T, FDesc>(steps: &[T], mut desc_of: FDesc) -> bool
 where
     FDesc: FnMut(&T) -> &str,
 {
@@ -35,7 +35,7 @@ where
 }
 
 /// Build the canonical "take log both sides" narration step.
-pub fn build_take_log_entry_step(equation_after: Equation) -> LogLinearNarrationStep {
+pub(crate) fn build_take_log_entry_step(equation_after: Equation) -> LogLinearNarrationStep {
     LogLinearNarrationStep {
         description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
         equation_after,
@@ -43,7 +43,10 @@ pub fn build_take_log_entry_step(equation_after: Equation) -> LogLinearNarration
 }
 
 /// Build compact collect/factor narration step.
-pub fn build_compact_collect_step(var: &str, equation_after: Equation) -> LogLinearNarrationStep {
+pub(crate) fn build_compact_collect_step(
+    var: &str,
+    equation_after: Equation,
+) -> LogLinearNarrationStep {
     LogLinearNarrationStep {
         description: collect_and_factor_terms_message(var),
         equation_after,
@@ -54,7 +57,7 @@ pub fn build_compact_collect_step(var: &str, equation_after: Equation) -> LogLin
 ///
 /// This keeps solver-core decoupled from engine-specific step types while allowing
 /// callers to preserve extra metadata on transformed steps.
-pub fn rewrite_log_linear_steps_by<T, FDesc, FEq, FBuild>(
+pub(crate) fn rewrite_log_linear_steps_by<T, FDesc, FEq, FBuild>(
     ctx: &mut Context,
     steps: Vec<T>,
     detailed: bool,
@@ -123,26 +126,8 @@ where
     result
 }
 
-/// Rewrite log-linear steps for solver-core step payloads.
-pub fn rewrite_log_linear_steps(
-    ctx: &mut Context,
-    steps: Vec<LogLinearNarrationStep>,
-    detailed: bool,
-    var: &str,
-) -> Vec<LogLinearNarrationStep> {
-    rewrite_log_linear_steps_by(
-        ctx,
-        steps,
-        detailed,
-        var,
-        |s| s.description.as_str(),
-        |s| &s.equation_after,
-        |_template, payload| payload,
-    )
-}
-
 /// Strip identity multipliers (`1*expr`/`expr*1`) recursively for cleaner display.
-pub fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub(crate) fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
 
     match expr_data {
@@ -236,7 +221,7 @@ pub fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
 }
 
 /// Apply `strip_mul_one` to both sides of an equation.
-pub fn strip_equation_mul_one(ctx: &mut Context, eq: &Equation) -> Equation {
+pub(crate) fn strip_equation_mul_one(ctx: &mut Context, eq: &Equation) -> Equation {
     Equation {
         lhs: strip_mul_one(ctx, eq.lhs),
         rhs: strip_mul_one(ctx, eq.rhs),
@@ -245,7 +230,7 @@ pub fn strip_equation_mul_one(ctx: &mut Context, eq: &Equation) -> Equation {
 }
 
 /// Expand one distributive pattern `k*(a+b)` or `(a+b)*k`.
-pub fn try_expand_distributive(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_expand_distributive(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Mul(l, r) = ctx.get(expr).clone() {
         if let Expr::Add(a, b) = ctx.get(r).clone() {
             let term1 = ctx.add(Expr::Mul(l, a));
@@ -262,7 +247,7 @@ pub fn try_expand_distributive(ctx: &mut Context, expr: ExprId) -> Option<ExprId
 }
 
 /// Extract `(constant_term, var_term)` from `const + var_term`.
-pub fn try_extract_constant_and_var_term(
+pub(crate) fn try_extract_constant_and_var_term(
     ctx: &Context,
     expr: ExprId,
     var: &str,
@@ -282,7 +267,7 @@ pub fn try_extract_constant_and_var_term(
 }
 
 /// Factor a variable from `var*a ± var*b` into `var*(a ± b)`.
-pub fn try_factor_variable(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+pub(crate) fn try_factor_variable(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     match ctx.get(expr).clone() {
         Expr::Sub(l, r) => {
             let l_coef = try_extract_var_coefficient(ctx, l, var)?;
@@ -315,7 +300,7 @@ fn try_extract_var_coefficient(ctx: &Context, expr: ExprId, var: &str) -> Option
 }
 
 /// Rewrite `ln(a^b)` as `b*ln(a)` for didactic display.
-pub fn try_rewrite_ln_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_ln_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let expr_data = ctx.get(expr).clone();
     match expr_data {
         Expr::Function(fn_id, args) if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 => {
@@ -334,7 +319,7 @@ pub fn try_rewrite_ln_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 ///
 /// The returned steps contain only description + equation; caller decides rendering
 /// concerns such as importance/substeps wrappers.
-pub fn build_detailed_collect_steps(
+pub(crate) fn build_detailed_collect_steps(
     ctx: &mut Context,
     log_eq_opt: Option<&Equation>,
     final_eq: &Equation,
@@ -530,42 +515,6 @@ mod tests {
         let compact = build_compact_collect_step("x", eq.clone());
         assert_eq!(compact.description, "Collect and factor x terms");
         assert_eq!(compact.equation_after, eq);
-    }
-
-    #[test]
-    fn rewrite_log_linear_steps_compact_mode_rewrites_collect_message() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let a = ctx.var("a");
-        let pow = ctx.add(Expr::Pow(a, x));
-        let ln_pow = ctx.call_builtin(BuiltinFn::Ln, vec![pow]);
-        let eq_take_log = Equation {
-            lhs: x,
-            rhs: ln_pow,
-            op: cas_ast::RelOp::Eq,
-        };
-        let eq_collect = Equation {
-            lhs: x,
-            rhs: x,
-            op: cas_ast::RelOp::Eq,
-        };
-
-        let steps = vec![
-            build_take_log_entry_step(eq_take_log),
-            LogLinearNarrationStep {
-                description: "Collect terms in x".to_string(),
-                equation_after: eq_collect.clone(),
-            },
-        ];
-
-        let rewritten = rewrite_log_linear_steps(&mut ctx, steps, false, "x");
-        assert_eq!(rewritten.len(), 2);
-        assert_eq!(rewritten[1].description, "Collect and factor x terms");
-        assert_eq!(rewritten[1].equation_after, eq_collect);
-        assert!(matches!(
-            ctx.get(rewritten[0].equation_after.rhs),
-            Expr::Mul(_, _)
-        ));
     }
 
     #[test]

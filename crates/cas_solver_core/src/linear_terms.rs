@@ -32,7 +32,7 @@ fn apply_sign(ctx: &mut Context, term: ExprId, sign: Sign) -> ExprId {
 ///
 /// Returns `None` when no linear terms are found or when any term is non-linear
 /// in `var`, so linear-collect strategy should not apply.
-pub fn decompose_linear_collect_terms(
+pub(crate) fn decompose_linear_collect_terms(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
@@ -63,7 +63,7 @@ pub fn decompose_linear_collect_terms(
 }
 
 /// Classify a term as `Const`, `Linear(coef)`, or `NonLinear`.
-pub fn split_linear_term(ctx: &mut Context, term: ExprId, var: &str) -> TermClass {
+pub(crate) fn split_linear_term(ctx: &mut Context, term: ExprId, var: &str) -> TermClass {
     if !contains_var(ctx, term, var) {
         return TermClass::Const(term);
     }

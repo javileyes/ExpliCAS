@@ -13,7 +13,7 @@ use std::cell::RefCell;
 /// delegating runtime details (substitution, simplification, rendering) via
 /// closures so higher layers can plug their own engine state.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_solution_with_domain_modes_with_state<
+pub(crate) fn verify_solution_with_domain_modes_with_state<
     T,
     FSubstituteDiff,
     FSimplifyByDomain,
@@ -58,7 +58,7 @@ where
 }
 
 /// Verify a full solution set using a stateful candidate verifier.
-pub fn verify_solution_set_for_equation_with_state<T, FVerifySolution>(
+pub(crate) fn verify_solution_set_for_equation_with_state<T, FVerifySolution>(
     state: &mut T,
     equation: &Equation,
     var: &str,

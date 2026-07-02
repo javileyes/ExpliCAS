@@ -329,7 +329,7 @@ fn is_nonnegative_even_root_form(ctx: &Context, e: ExprId) -> bool {
 /// separately by [`infer_implicit_domain`]. Without it `solve(sqrt(x)=a) → {a²}`
 /// silently drops the `a ≥ 0` caveat (and a numeric `a < 0` is, redundantly with
 /// the existing numeric path, correctly collapsed to "No solution").
-pub fn even_root_range_conditions(
+pub(crate) fn even_root_range_conditions(
     ctx: &Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -368,7 +368,7 @@ fn is_covered_by_stronger_predicate(
 }
 
 /// Format expression for compact diagnostics.
-pub fn format_expr_short(ctx: &Context, expr: ExprId) -> String {
+pub(crate) fn format_expr_short(ctx: &Context, expr: ExprId) -> String {
     match ctx.get(expr) {
         Expr::Variable(sym_id) => ctx.sym_name(*sym_id).to_string(),
         Expr::Number(n) => format!("{}", n),

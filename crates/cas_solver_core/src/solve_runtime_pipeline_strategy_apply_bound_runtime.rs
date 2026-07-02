@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// a crate-local algebraic expand callback plus recursive solve/isolation
 /// entrypoints and the runtime positive prover.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_with_runtime_state_and_reentrant_entrypoints_and_state<
+pub(crate) fn apply_strategy_with_runtime_state_and_reentrant_entrypoints_and_state<
     T,
     FSolveReentrant,
     FIsolateReentrant,

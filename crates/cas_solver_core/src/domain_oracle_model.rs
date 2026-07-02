@@ -40,7 +40,7 @@ pub struct PredicateHintPlan {
 /// - `prove_nonnegative(expr)` answers `expr >= 0`
 ///
 /// `Predicate::Defined(_)` currently maps to `Unknown`.
-pub fn query_predicate_strength_with_provers<FNonZero, FPositive, FNonNegative>(
+pub(crate) fn query_predicate_strength_with_provers<FNonZero, FPositive, FNonNegative>(
     pred: &crate::domain_facts_model::Predicate,
     mut prove_nonzero: FNonZero,
     mut prove_positive: FPositive,
@@ -64,7 +64,7 @@ where
 /// Resolve one predicate to a final cancel decision using prover callbacks.
 ///
 /// This combines `query_predicate_strength_with_provers` and domain policy.
-pub fn allows_with_provers<FNonZero, FPositive, FNonNegative>(
+pub(crate) fn allows_with_provers<FNonZero, FPositive, FNonNegative>(
     mode: crate::domain_mode::DomainMode,
     pred: &crate::domain_facts_model::Predicate,
     prove_nonzero: FNonZero,
@@ -89,7 +89,7 @@ where
 ///
 /// This keeps predicate-to-key/proof routing centralized and reusable between
 /// solver/engine layers.
-pub fn build_predicate_hint_plan_with_provers<FNonZero, FPositive, FNonNegative>(
+pub(crate) fn build_predicate_hint_plan_with_provers<FNonZero, FPositive, FNonNegative>(
     ctx: &Context,
     pred: &crate::domain_facts_model::Predicate,
     mut prove_nonzero: FNonZero,
@@ -142,7 +142,7 @@ where
 /// - prover callbacks
 /// - the two domain gates (definability / analytic)
 #[allow(clippy::too_many_arguments)]
-pub fn resolve_with_hint_plan_and_provers<
+pub(crate) fn resolve_with_hint_plan_and_provers<
     FNonZero,
     FPositive,
     FNonNegative,
@@ -194,7 +194,7 @@ where
 ///
 /// This helper centralizes the full routing:
 /// predicate -> proof/key plan -> definability/analytic gate.
-pub fn allows_with_hint_using_provers<FNonZero, FPositive, FNonNegative>(
+pub(crate) fn allows_with_hint_using_provers<FNonZero, FPositive, FNonNegative>(
     ctx: &Context,
     mode: crate::domain_mode::DomainMode,
     pred: &crate::domain_facts_model::Predicate,

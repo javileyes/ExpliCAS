@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// Apply one strategy while wiring recursive `solve_inner` / isolation
 /// entrypoints through the current runtime solve context and solver options.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_with_runtime_ctx_and_reentrant_entrypoints_and_state<
+pub(crate) fn apply_strategy_with_runtime_ctx_and_reentrant_entrypoints_and_state<
     T,
     FCollectSteps,
     FContextRef,

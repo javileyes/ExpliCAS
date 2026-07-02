@@ -2,7 +2,7 @@ use crate::linear_solution::NonZeroStatus;
 use crate::log_domain::ProofStatus;
 
 /// Convert log-domain proof status into NonZeroStatus used by solution builders.
-pub fn proof_status_to_nonzero_status(status: ProofStatus) -> NonZeroStatus {
+pub(crate) fn proof_status_to_nonzero_status(status: ProofStatus) -> NonZeroStatus {
     match status {
         ProofStatus::Proven => NonZeroStatus::NonZero,
         ProofStatus::Disproven => NonZeroStatus::Zero,

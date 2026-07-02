@@ -13,7 +13,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 ///
 /// Runtime crates provide only the state accessors and kernel callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_inner_with_default_entry_preflight_prepare_and_pipeline_with_state<
+pub(crate) fn solve_inner_with_default_entry_preflight_prepare_and_pipeline_with_state<
     SState,
     Ctx,
     S,

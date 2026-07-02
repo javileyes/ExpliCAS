@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// options, while runtime crates provide the state kernels and recursive
 /// solve/isolation callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_with_runtime_ctx_and_options_and_state<
+pub(crate) fn apply_strategy_with_runtime_ctx_and_options_and_state<
     T,
     FCollectSteps,
     FContextRef,

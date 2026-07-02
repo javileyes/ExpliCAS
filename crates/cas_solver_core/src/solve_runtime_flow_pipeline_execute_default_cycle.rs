@@ -7,7 +7,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 ///
 /// Strategy execution and verification kernels remain runtime-defined.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_default_strategy_order_pipeline_with_default_cycle_guard_and_default_var_elimination_and_discrete_resolution_with_state<
+pub(crate) fn execute_default_strategy_order_pipeline_with_default_cycle_guard_and_default_var_elimination_and_discrete_resolution_with_state<
     SState,
     S,
     E,

@@ -21,7 +21,7 @@ pub const DEFAULT_RATIONAL_ROOTS_MAX_CANDIDATES: usize = 200;
 ///
 /// Returns `None` if the expression is not polynomial in `var`
 /// or its degree exceeds `max_degree`.
-pub fn extract_poly_coefficients(
+pub(crate) fn extract_poly_coefficients(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
@@ -167,7 +167,7 @@ pub fn rational_to_expr(ctx: &mut Context, r: &BigRational) -> ExprId {
 }
 
 /// Normalize rational coefficients to integers by multiplying by LCM of denominators.
-pub fn normalize_to_integers(coeffs: &[BigRational]) -> Vec<BigInt> {
+pub(crate) fn normalize_to_integers(coeffs: &[BigRational]) -> Vec<BigInt> {
     let mut lcm = BigInt::one();
     for c in coeffs {
         if !c.is_zero() {
@@ -183,7 +183,10 @@ pub fn normalize_to_integers(coeffs: &[BigRational]) -> Vec<BigInt> {
 }
 
 /// Generate candidate rational roots using Rational Root Theorem.
-pub fn rational_root_candidates(int_coeffs: &[BigInt], max_candidates: usize) -> Vec<BigRational> {
+pub(crate) fn rational_root_candidates(
+    int_coeffs: &[BigInt],
+    max_candidates: usize,
+) -> Vec<BigRational> {
     let a0 = &int_coeffs[0];
     let an = int_coeffs
         .last()
@@ -259,7 +262,7 @@ fn small_divisors(n: &BigInt) -> Vec<BigInt> {
 }
 
 /// Evaluate polynomial at `x` using Horner's method.
-pub fn horner_eval(coeffs: &[BigRational], x: &BigRational) -> BigRational {
+pub(crate) fn horner_eval(coeffs: &[BigRational], x: &BigRational) -> BigRational {
     let mut result = BigRational::zero();
     for c in coeffs.iter().rev() {
         result = result * x.clone() + c.clone();
@@ -270,7 +273,7 @@ pub fn horner_eval(coeffs: &[BigRational], x: &BigRational) -> BigRational {
 /// Divide polynomial by `(x - root)` using synthetic division.
 ///
 /// Coeff order is `[a0, a1, ..., an]` (low-to-high degree).
-pub fn synthetic_division(coeffs: &[BigRational], root: &BigRational) -> Vec<BigRational> {
+pub(crate) fn synthetic_division(coeffs: &[BigRational], root: &BigRational) -> Vec<BigRational> {
     let n = coeffs.len();
     if n <= 1 {
         return vec![];
@@ -373,7 +376,7 @@ impl RationalRootsExecutionItem {
 }
 
 /// Build narration for Rational Root Theorem strategy activation.
-pub fn rational_roots_strategy_message(degree: usize) -> String {
+pub(crate) fn rational_roots_strategy_message(degree: usize) -> String {
     format!(
         "Applied Rational Root Theorem to degree-{} polynomial",
         degree
@@ -381,7 +384,7 @@ pub fn rational_roots_strategy_message(degree: usize) -> String {
 }
 
 /// Build the full didactic step payload for strategy activation.
-pub fn build_rational_roots_strategy_step(
+pub(crate) fn build_rational_roots_strategy_step(
     equation_after: Equation,
     degree: usize,
 ) -> RationalRootsDidacticStep {
@@ -391,23 +394,15 @@ pub fn build_rational_roots_strategy_step(
     }
 }
 
-/// Build the full step payload for rational-roots strategy activation.
-pub fn build_rational_roots_step(
-    equation_after: Equation,
-    degree: usize,
-) -> RationalRootsDidacticStep {
-    build_rational_roots_strategy_step(equation_after, degree)
-}
-
 /// Collect Rational Root strategy didactic steps in display order.
-pub fn collect_rational_roots_didactic_steps(
+pub(crate) fn collect_rational_roots_didactic_steps(
     step: &RationalRootsDidacticStep,
 ) -> Vec<RationalRootsDidacticStep> {
     vec![step.clone()]
 }
 
 /// Collect Rational Root strategy execution items in display order.
-pub fn collect_rational_roots_execution_items(
+pub(crate) fn collect_rational_roots_execution_items(
     step: &RationalRootsDidacticStep,
 ) -> Vec<RationalRootsExecutionItem> {
     collect_rational_roots_didactic_steps(step)
@@ -420,7 +415,7 @@ pub fn collect_rational_roots_execution_items(
 }
 
 /// Return the first Rational Root strategy execution item, if present.
-pub fn first_rational_roots_execution_item(
+pub(crate) fn first_rational_roots_execution_item(
     step: &RationalRootsDidacticStep,
 ) -> Option<RationalRootsExecutionItem> {
     collect_rational_roots_execution_items(step)
@@ -430,7 +425,7 @@ pub fn first_rational_roots_execution_item(
 
 /// Solve rational-roots strategy step while optionally mapping the execution
 /// item into caller-owned step payloads.
-pub fn solve_rational_roots_step_pipeline_with_item<S, FStep>(
+pub(crate) fn solve_rational_roots_step_pipeline_with_item<S, FStep>(
     step: RationalRootsDidacticStep,
     include_item: bool,
     mut map_item_to_step: FStep,
@@ -453,217 +448,13 @@ pub struct RationalRootsStrategySolved<TStep> {
     pub steps: Vec<TStep>,
 }
 
-/// Solve rational-roots strategy with closure hooks and optional didactic step mapping.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_rational_roots_strategy_with_and_item<
-    S,
-    FBuildDiff,
-    FSimplifyExpr,
-    FExpandExpr,
-    FExtractCoefficients,
-    FSolveNumericPolynomial,
-    FSortAndDedupRoots,
-    FPlanStep,
-    FStep,
->(
-    lhs: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    var: &str,
-    min_degree: usize,
-    max_degree: usize,
-    max_candidates: usize,
-    include_item: bool,
-    mut build_diff: FBuildDiff,
-    mut simplify_expr: FSimplifyExpr,
-    mut expand_expr: FExpandExpr,
-    mut extract_coefficients: FExtractCoefficients,
-    mut solve_numeric_polynomial: FSolveNumericPolynomial,
-    mut sort_and_dedup_roots: FSortAndDedupRoots,
-    mut plan_step: FPlanStep,
-    map_item_to_step: FStep,
-) -> Option<RationalRootsStrategySolved<S>>
-where
-    FBuildDiff: FnMut(ExprId, ExprId) -> ExprId,
-    FSimplifyExpr: FnMut(ExprId) -> ExprId,
-    FExpandExpr: FnMut(ExprId) -> ExprId,
-    FExtractCoefficients: FnMut(ExprId, &str, usize) -> Option<Vec<ExprId>>,
-    FSolveNumericPolynomial:
-        FnMut(&[ExprId], usize, usize, usize) -> Option<NumericPolynomialSolveOutcome>,
-    FSortAndDedupRoots: FnMut(&mut Vec<ExprId>),
-    FPlanStep: FnMut(ExprId, usize) -> RationalRootsDidacticStep,
-    FStep: FnMut(RationalRootsExecutionItem) -> S,
-{
-    if op != RelOp::Eq {
-        return None;
-    }
-
-    let diff = build_diff(lhs, rhs);
-    let diff = simplify_expr(diff);
-    let expanded = expand_expr(diff);
-    let coeffs = extract_coefficients(expanded, var, max_degree)?;
-    let outcome = solve_numeric_polynomial(&coeffs, min_degree, max_degree, max_candidates)?;
-
-    let (degree, mut roots) = match outcome {
-        NumericPolynomialSolveOutcome::AllReals => {
-            return Some(RationalRootsStrategySolved {
-                solution_set: SolutionSet::AllReals,
-                steps: vec![],
-            });
-        }
-        NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
-            degree,
-            roots
-                .into_iter()
-                .map(&mut simplify_expr)
-                .collect::<Vec<_>>(),
-        ),
-    };
-
-    if roots.is_empty() {
-        return None;
-    }
-
-    sort_and_dedup_roots(&mut roots);
-    let step = plan_step(expanded, degree);
-    let steps = solve_rational_roots_step_pipeline_with_item(step, include_item, map_item_to_step);
-
-    Some(RationalRootsStrategySolved {
-        solution_set: SolutionSet::Discrete(roots),
-        steps,
-    })
-}
-
-/// Solve rational-roots strategy returning the plain `(SolutionSet, steps)` tuple
-/// used by engine strategy surfaces.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_rational_roots_strategy_result_with_and_item<
-    S,
-    FBuildDiff,
-    FSimplifyExpr,
-    FExpandExpr,
-    FExtractCoefficients,
-    FSolveNumericPolynomial,
-    FSortAndDedupRoots,
-    FPlanStep,
-    FStep,
->(
-    lhs: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    var: &str,
-    min_degree: usize,
-    max_degree: usize,
-    max_candidates: usize,
-    include_item: bool,
-    build_diff: FBuildDiff,
-    simplify_expr: FSimplifyExpr,
-    expand_expr: FExpandExpr,
-    extract_coefficients: FExtractCoefficients,
-    solve_numeric_polynomial: FSolveNumericPolynomial,
-    sort_and_dedup_roots: FSortAndDedupRoots,
-    plan_step: FPlanStep,
-    map_item_to_step: FStep,
-) -> Option<(SolutionSet, Vec<S>)>
-where
-    FBuildDiff: FnMut(ExprId, ExprId) -> ExprId,
-    FSimplifyExpr: FnMut(ExprId) -> ExprId,
-    FExpandExpr: FnMut(ExprId) -> ExprId,
-    FExtractCoefficients: FnMut(ExprId, &str, usize) -> Option<Vec<ExprId>>,
-    FSolveNumericPolynomial:
-        FnMut(&[ExprId], usize, usize, usize) -> Option<NumericPolynomialSolveOutcome>,
-    FSortAndDedupRoots: FnMut(&mut Vec<ExprId>),
-    FPlanStep: FnMut(ExprId, usize) -> RationalRootsDidacticStep,
-    FStep: FnMut(RationalRootsExecutionItem) -> S,
-{
-    let solved = solve_rational_roots_strategy_with_and_item(
-        lhs,
-        rhs,
-        op,
-        var,
-        min_degree,
-        max_degree,
-        max_candidates,
-        include_item,
-        build_diff,
-        simplify_expr,
-        expand_expr,
-        extract_coefficients,
-        solve_numeric_polynomial,
-        sort_and_dedup_roots,
-        plan_step,
-        map_item_to_step,
-    )?;
-    Some((solved.solution_set, solved.steps))
-}
-
-/// Solve rational-roots strategy for a concrete equation returning the plain
-/// `(SolutionSet, steps)` tuple used by engine strategy surfaces.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_rational_roots_strategy_result_for_equation_with_and_item<
-    S,
-    FBuildDiff,
-    FSimplifyExpr,
-    FExpandExpr,
-    FExtractCoefficients,
-    FSolveNumericPolynomial,
-    FSortAndDedupRoots,
-    FPlanStep,
-    FStep,
->(
-    equation: &Equation,
-    var: &str,
-    min_degree: usize,
-    max_degree: usize,
-    max_candidates: usize,
-    include_item: bool,
-    build_diff: FBuildDiff,
-    simplify_expr: FSimplifyExpr,
-    expand_expr: FExpandExpr,
-    extract_coefficients: FExtractCoefficients,
-    solve_numeric_polynomial: FSolveNumericPolynomial,
-    sort_and_dedup_roots: FSortAndDedupRoots,
-    plan_step: FPlanStep,
-    map_item_to_step: FStep,
-) -> Option<(SolutionSet, Vec<S>)>
-where
-    FBuildDiff: FnMut(ExprId, ExprId) -> ExprId,
-    FSimplifyExpr: FnMut(ExprId) -> ExprId,
-    FExpandExpr: FnMut(ExprId) -> ExprId,
-    FExtractCoefficients: FnMut(ExprId, &str, usize) -> Option<Vec<ExprId>>,
-    FSolveNumericPolynomial:
-        FnMut(&[ExprId], usize, usize, usize) -> Option<NumericPolynomialSolveOutcome>,
-    FSortAndDedupRoots: FnMut(&mut Vec<ExprId>),
-    FPlanStep: FnMut(ExprId, usize) -> RationalRootsDidacticStep,
-    FStep: FnMut(RationalRootsExecutionItem) -> S,
-{
-    solve_rational_roots_strategy_result_with_and_item(
-        equation.lhs,
-        equation.rhs,
-        equation.op.clone(),
-        var,
-        min_degree,
-        max_degree,
-        max_candidates,
-        include_item,
-        build_diff,
-        simplify_expr,
-        expand_expr,
-        extract_coefficients,
-        solve_numeric_polynomial,
-        sort_and_dedup_roots,
-        plan_step,
-        map_item_to_step,
-    )
-}
-
 /// Stateful variant of
 /// [`solve_rational_roots_strategy_result_for_equation_with_and_item`].
 ///
 /// This form lets callers pass one mutable state object across all hooks
 /// without interior mutability wrappers.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_rational_roots_strategy_result_for_equation_with_and_item_with_state<
+pub(crate) fn solve_rational_roots_strategy_result_for_equation_with_and_item_with_state<
     T,
     S,
     FBuildDiff,
@@ -741,7 +532,7 @@ where
 /// - numeric polynomial solve,
 /// - didactic step planning for `expanded_expr = zero_rhs`.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_rational_roots_strategy_result_for_equation_with_default_kernel_with_state<
+pub(crate) fn solve_rational_roots_strategy_result_for_equation_with_default_kernel_with_state<
     T,
     S,
     FContextMut,
@@ -808,7 +599,7 @@ where
 /// - `lhs - rhs` construction + coefficient extraction + numeric solve,
 /// - didactic step planning for `expanded_expr = 0`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_rational_roots_strategy_with_default_limits_and_kernel_with_state<
+pub(crate) fn execute_rational_roots_strategy_with_default_limits_and_kernel_with_state<
     T,
     S,
     FContextMut,
@@ -856,7 +647,7 @@ where
 /// Execute rational-roots strategy with default limits/default kernel hooks
 /// and a unified step-mapper callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_rational_roots_strategy_with_default_limits_and_kernel_and_unified_step_mapper_with_state<
+pub(crate) fn execute_rational_roots_strategy_with_default_limits_and_kernel_and_unified_step_mapper_with_state<
     T,
     S,
     FContextMut,
@@ -899,7 +690,7 @@ where
 /// Execute rational-roots strategy with default limits/default kernel hooks,
 /// default root sorting/deduplication, and unified step mapping.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_rational_roots_strategy_with_default_limits_and_default_root_sorting_and_unified_step_mapper_with_state<
+pub(crate) fn execute_rational_roots_strategy_with_default_limits_and_default_root_sorting_and_unified_step_mapper_with_state<
     T,
     S,
     FContextMut,
@@ -936,25 +727,9 @@ where
     )
 }
 
-/// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
-pub fn plan_rational_roots_strategy_step(
-    ctx: &mut Context,
-    expanded_expr: ExprId,
-    degree: usize,
-) -> RationalRootsDidacticStep {
-    build_rational_roots_strategy_step(
-        Equation {
-            lhs: expanded_expr,
-            rhs: ctx.num(0),
-            op: RelOp::Eq,
-        },
-        degree,
-    )
-}
-
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`
 /// with a precomputed zero expression id.
-pub fn plan_rational_roots_strategy_step_with_zero_rhs(
+pub(crate) fn plan_rational_roots_strategy_step_with_zero_rhs(
     expanded_expr: ExprId,
     degree: usize,
     zero_rhs: ExprId,
@@ -969,21 +744,12 @@ pub fn plan_rational_roots_strategy_step_with_zero_rhs(
     )
 }
 
-/// Plan rational-roots strategy step for equation `expanded_expr = 0`.
-pub fn plan_rational_roots_step(
-    ctx: &mut Context,
-    expanded_expr: ExprId,
-    degree: usize,
-) -> RationalRootsDidacticStep {
-    plan_rational_roots_strategy_step(ctx, expanded_expr, degree)
-}
-
 /// Solve a polynomial represented by coefficient expressions `[a0, a1, ..., an]`.
 ///
 /// Returns `None` when:
 /// - degree is outside `[min_degree, max_degree]`, or
 /// - any coefficient is non-numeric (non-rational).
-pub fn solve_numeric_coeff_polynomial(
+pub(crate) fn solve_numeric_coeff_polynomial(
     ctx: &mut Context,
     coeff_exprs: &[ExprId],
     min_degree: usize,
@@ -1018,7 +784,7 @@ pub fn solve_numeric_coeff_polynomial(
 /// This combines:
 /// - rational-root deflation for high-degree components, and
 /// - residual solving for the remaining degree<=2 polynomial.
-pub fn extract_candidate_roots(
+pub(crate) fn extract_candidate_roots(
     ctx: &mut Context,
     coeffs: Vec<BigRational>,
     max_candidates: usize,
@@ -1041,7 +807,10 @@ pub fn extract_candidate_roots(
 ///
 /// Coeff order is `[a0, a1, ..., an]` (low-to-high degree).
 /// Returns zero, one, or two root expressions.
-pub fn solve_residual_degree_leq_two(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<ExprId> {
+pub(crate) fn solve_residual_degree_leq_two(
+    ctx: &mut Context,
+    coeffs: &[BigRational],
+) -> Vec<ExprId> {
     if coeffs.len() == 3 {
         // Quadratic: a*x^2 + b*x + c = 0
         let a = &coeffs[2];
@@ -1089,181 +858,6 @@ pub fn solve_residual_degree_leq_two(ctx: &mut Context, coeffs: &[BigRational]) 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn solve_rational_roots_strategy_with_and_item_solves_cubic_and_emits_step() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let two = context.num(2);
-        let x2 = context.add(Expr::Pow(x, two));
-        let x3 = context.add(Expr::Mul(x2, x));
-        let lhs = context.add(Expr::Sub(x3, x)); // x^3 - x
-        let zero = context.num(0);
-        let context_cell = std::cell::RefCell::new(context);
-
-        let solved = solve_rational_roots_strategy_with_and_item(
-            lhs,
-            zero,
-            RelOp::Eq,
-            "x",
-            3,
-            10,
-            200,
-            true,
-            |left, right| {
-                let mut context_ref = context_cell.borrow_mut();
-                context_ref.add(Expr::Sub(left, right))
-            },
-            |expr| expr,
-            |expr| expr,
-            |expanded, var, max_degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                extract_poly_coefficients(&mut context_ref, expanded, var, max_degree)
-            },
-            |coeffs, min_degree, max_degree, max_candidates| {
-                let mut context_ref = context_cell.borrow_mut();
-                solve_numeric_coeff_polynomial(
-                    &mut context_ref,
-                    coeffs,
-                    min_degree,
-                    max_degree,
-                    max_candidates,
-                )
-            },
-            |roots| {
-                let context_ref = context_cell.borrow();
-                crate::solution_set::sort_and_dedup_exprs(&context_ref, roots);
-            },
-            |expanded, degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                plan_rational_roots_step(&mut context_ref, expanded, degree)
-            },
-            |item| item.description,
-        )
-        .expect("strategy should solve cubic");
-
-        match solved.solution_set {
-            SolutionSet::Discrete(roots) => assert_eq!(roots.len(), 3),
-            other => panic!("expected discrete roots, got {:?}", other),
-        }
-        assert_eq!(solved.steps.len(), 1);
-        assert!(solved.steps[0].contains("degree-3"));
-    }
-
-    #[test]
-    fn solve_rational_roots_strategy_result_with_and_item_returns_plain_tuple() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let two = context.num(2);
-        let x2 = context.add(Expr::Pow(x, two));
-        let x3 = context.add(Expr::Mul(x2, x));
-        let lhs = context.add(Expr::Sub(x3, x)); // x^3 - x
-        let zero = context.num(0);
-        let context_cell = std::cell::RefCell::new(context);
-
-        let solved = solve_rational_roots_strategy_result_with_and_item(
-            lhs,
-            zero,
-            RelOp::Eq,
-            "x",
-            3,
-            10,
-            200,
-            true,
-            |left, right| {
-                let mut context_ref = context_cell.borrow_mut();
-                context_ref.add(Expr::Sub(left, right))
-            },
-            |expr| expr,
-            |expr| expr,
-            |expanded, var, max_degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                extract_poly_coefficients(&mut context_ref, expanded, var, max_degree)
-            },
-            |coeffs, min_degree, max_degree, max_candidates| {
-                let mut context_ref = context_cell.borrow_mut();
-                solve_numeric_coeff_polynomial(
-                    &mut context_ref,
-                    coeffs,
-                    min_degree,
-                    max_degree,
-                    max_candidates,
-                )
-            },
-            |roots| {
-                let context_ref = context_cell.borrow();
-                crate::solution_set::sort_and_dedup_exprs(&context_ref, roots);
-            },
-            |expanded, degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                plan_rational_roots_step(&mut context_ref, expanded, degree)
-            },
-            |item| item.description,
-        )
-        .expect("strategy should solve cubic");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert_eq!(solved.1.len(), 1);
-    }
-
-    #[test]
-    fn solve_rational_roots_strategy_result_for_equation_with_and_item_returns_plain_tuple() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let two = context.num(2);
-        let x2 = context.add(Expr::Pow(x, two));
-        let x3 = context.add(Expr::Mul(x2, x));
-        let lhs = context.add(Expr::Sub(x3, x)); // x^3 - x
-        let zero = context.num(0);
-        let equation = Equation {
-            lhs,
-            rhs: zero,
-            op: RelOp::Eq,
-        };
-        let context_cell = std::cell::RefCell::new(context);
-
-        let solved = solve_rational_roots_strategy_result_for_equation_with_and_item(
-            &equation,
-            "x",
-            3,
-            10,
-            200,
-            true,
-            |left, right| {
-                let mut context_ref = context_cell.borrow_mut();
-                context_ref.add(Expr::Sub(left, right))
-            },
-            |expr| expr,
-            |expr| expr,
-            |expanded, var, max_degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                extract_poly_coefficients(&mut context_ref, expanded, var, max_degree)
-            },
-            |coeffs, min_degree, max_degree, max_candidates| {
-                let mut context_ref = context_cell.borrow_mut();
-                solve_numeric_coeff_polynomial(
-                    &mut context_ref,
-                    coeffs,
-                    min_degree,
-                    max_degree,
-                    max_candidates,
-                )
-            },
-            |roots| {
-                let context_ref = context_cell.borrow();
-                crate::solution_set::sort_and_dedup_exprs(&context_ref, roots);
-            },
-            |expanded, degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                plan_rational_roots_step(&mut context_ref, expanded, degree)
-            },
-            |item| item.description,
-        )
-        .expect("strategy should solve cubic");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert_eq!(solved.1.len(), 1);
-    }
 
     #[test]
     fn solve_rational_roots_strategy_result_for_equation_with_and_item_with_state_returns_plain_tuple(
@@ -1354,46 +948,6 @@ mod tests {
     }
 
     #[test]
-    fn solve_rational_roots_strategy_result_for_equation_with_and_item_returns_none_for_inequality()
-    {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let one = context.num(1);
-        let equation = Equation {
-            lhs: x,
-            rhs: one,
-            op: RelOp::Gt,
-        };
-        let mut extract_calls = 0usize;
-
-        let out = solve_rational_roots_strategy_result_for_equation_with_and_item(
-            &equation,
-            "x",
-            3,
-            10,
-            200,
-            true,
-            |left, right| {
-                let mut ctx = Context::new();
-                ctx.add(Expr::Sub(left, right))
-            },
-            |expr| expr,
-            |expr| expr,
-            |_expanded, _var, _max_degree| {
-                extract_calls += 1;
-                None
-            },
-            |_coeffs, _min_degree, _max_degree, _max_candidates| None,
-            |_roots| {},
-            |_expanded, _degree| panic!("didactic step must not be planned for inequalities"),
-            |item| item.description,
-        );
-
-        assert!(out.is_none());
-        assert_eq!(extract_calls, 0);
-    }
-
-    #[test]
     fn execute_rational_roots_strategy_with_default_limits_and_kernel_with_state_returns_none_for_inequality(
     ) {
         let mut context = Context::new();
@@ -1453,103 +1007,6 @@ mod tests {
             _ => panic!("expected discrete roots"),
         }
         assert_eq!(solved.1.len(), 1);
-    }
-
-    #[test]
-    fn solve_rational_roots_strategy_with_and_item_rejects_non_equality() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let zero = context.num(0);
-        let context_cell = std::cell::RefCell::new(context);
-
-        let solved = solve_rational_roots_strategy_with_and_item(
-            x,
-            zero,
-            RelOp::Gt,
-            "x",
-            3,
-            10,
-            200,
-            true,
-            |left, right| {
-                let mut context_ref = context_cell.borrow_mut();
-                context_ref.add(Expr::Sub(left, right))
-            },
-            |expr| expr,
-            |expr| expr,
-            |_expanded, _var, _max_degree| {
-                panic!("must short-circuit before coefficient extraction")
-            },
-            |_coeffs, _min_degree, _max_degree, _max_candidates| {
-                panic!("must short-circuit before numeric solve")
-            },
-            |_roots| panic!("must short-circuit before root post-processing"),
-            |_expanded, _degree| panic!("must short-circuit before didactic planning"),
-            |item| item.description,
-        );
-        assert!(solved.is_none());
-    }
-
-    #[test]
-    fn solve_rational_roots_strategy_with_and_item_returns_all_reals_for_zero_poly() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let zero = context.num(0);
-        let two = context.num(2);
-        let x2 = context.add(Expr::Pow(x, two));
-        let x3 = context.add(Expr::Mul(x2, x));
-        let t3 = context.add(Expr::Mul(zero, x3));
-        let t2 = context.add(Expr::Mul(zero, x2));
-        let t1 = context.add(Expr::Mul(zero, x));
-        let sum1 = context.add(Expr::Add(t3, t2));
-        let sum2 = context.add(Expr::Add(t1, zero));
-        let lhs = context.add(Expr::Add(sum1, sum2));
-        let zero = context.num(0);
-        let context_cell = std::cell::RefCell::new(context);
-
-        let solved = solve_rational_roots_strategy_with_and_item(
-            lhs,
-            zero,
-            RelOp::Eq,
-            "x",
-            3,
-            10,
-            200,
-            true,
-            |left, right| {
-                let mut context_ref = context_cell.borrow_mut();
-                context_ref.add(Expr::Sub(left, right))
-            },
-            |expr| expr,
-            |expr| expr,
-            |expanded, var, max_degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                extract_poly_coefficients(&mut context_ref, expanded, var, max_degree)
-            },
-            |coeffs, min_degree, max_degree, max_candidates| {
-                let mut context_ref = context_cell.borrow_mut();
-                solve_numeric_coeff_polynomial(
-                    &mut context_ref,
-                    coeffs,
-                    min_degree,
-                    max_degree,
-                    max_candidates,
-                )
-            },
-            |roots| {
-                let context_ref = context_cell.borrow();
-                crate::solution_set::sort_and_dedup_exprs(&context_ref, roots);
-            },
-            |expanded, degree| {
-                let mut context_ref = context_cell.borrow_mut();
-                plan_rational_roots_step(&mut context_ref, expanded, degree)
-            },
-            |item| item.description,
-        )
-        .expect("strategy should match 0 = 0");
-
-        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
-        assert!(solved.steps.is_empty());
     }
 
     #[test]
@@ -1724,40 +1181,6 @@ mod tests {
     }
 
     #[test]
-    fn build_rational_roots_step_alias_matches_strategy_builder() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let zero = ctx.num(0);
-        let eq = Equation {
-            lhs: x,
-            rhs: zero,
-            op: cas_ast::RelOp::Eq,
-        };
-
-        let step = build_rational_roots_step(eq.clone(), 4);
-        assert_eq!(
-            step.description,
-            "Applied Rational Root Theorem to degree-4 polynomial"
-        );
-        assert_eq!(step.equation_after, eq);
-    }
-
-    #[test]
-    fn plan_rational_roots_strategy_step_builds_zero_rhs_equation() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_strategy_step(&mut ctx, x, 5);
-
-        assert_eq!(
-            step.description,
-            "Applied Rational Root Theorem to degree-5 polynomial"
-        );
-        assert_eq!(step.equation_after.lhs, x);
-        assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));
-        assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
-    }
-
-    #[test]
     fn plan_rational_roots_strategy_step_with_zero_rhs_uses_given_rhs() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1771,77 +1194,5 @@ mod tests {
         assert_eq!(step.equation_after.lhs, x);
         assert_eq!(step.equation_after.rhs, zero);
         assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
-    }
-
-    #[test]
-    fn plan_rational_roots_step_alias_builds_zero_rhs_equation() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_step(&mut ctx, x, 6);
-
-        assert_eq!(
-            step.description,
-            "Applied Rational Root Theorem to degree-6 polynomial"
-        );
-        assert_eq!(step.equation_after.lhs, x);
-        assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));
-        assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
-    }
-
-    #[test]
-    fn collect_rational_roots_didactic_steps_returns_single_step() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_strategy_step(&mut ctx, x, 3);
-        let didactic = collect_rational_roots_didactic_steps(&step);
-        assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], step);
-    }
-
-    #[test]
-    fn collect_rational_roots_execution_items_returns_single_item() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_strategy_step(&mut ctx, x, 3);
-        let items = collect_rational_roots_execution_items(&step);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].equation, step.equation_after);
-        assert_eq!(items[0].description, step.description);
-    }
-
-    #[test]
-    fn first_rational_roots_execution_item_returns_single_item() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_strategy_step(&mut ctx, x, 3);
-        let item =
-            first_rational_roots_execution_item(&step).expect("expected one rational-roots item");
-        assert_eq!(item.equation, step.equation_after);
-        assert_eq!(item.description, step.description);
-    }
-
-    #[test]
-    fn solve_rational_roots_step_pipeline_with_item_maps_item_when_enabled() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_strategy_step(&mut ctx, x, 4);
-
-        let steps =
-            solve_rational_roots_step_pipeline_with_item(step, true, |item| item.description);
-        assert_eq!(steps.len(), 1);
-        assert_eq!(
-            steps[0],
-            "Applied Rational Root Theorem to degree-4 polynomial"
-        );
-    }
-
-    #[test]
-    fn solve_rational_roots_step_pipeline_with_item_omits_item_when_disabled() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let step = plan_rational_roots_strategy_step(&mut ctx, x, 4);
-
-        let steps = solve_rational_roots_step_pipeline_with_item(step, false, |_item| 1u8);
-        assert!(steps.is_empty());
     }
 }

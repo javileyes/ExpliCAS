@@ -51,25 +51,11 @@ pub struct VerifyResult {
     pub guard_description: Option<String>,
 }
 
-/// Verify a solution set using a callback for each discrete candidate.
-///
-/// The callback is invoked only for `SolutionSet::Discrete` entries.
-/// Non-discrete sets are mapped to `NeedsSampling` or `NotCheckable`
-/// summaries depending on how actionable the verification request is.
-pub fn verify_solution_set_with<F>(solutions: &SolutionSet, verify_discrete: &mut F) -> VerifyResult
-where
-    F: FnMut(ExprId) -> VerifyStatus,
-{
-    let mut unit = ();
-    let mut verify_stateful = |_: &mut (), candidate: ExprId| verify_discrete(candidate);
-    verify_solution_set_with_state(&mut unit, solutions, &mut verify_stateful)
-}
-
 /// Stateful variant of [`verify_solution_set_with`].
 ///
 /// Useful for call-sites where per-candidate verification shares mutable state
 /// (e.g., one simplifier instance).
-pub fn verify_solution_set_with_state<T, F>(
+pub(crate) fn verify_solution_set_with_state<T, F>(
     state: &mut T,
     solutions: &SolutionSet,
     verify_discrete: &mut F,
@@ -187,79 +173,13 @@ where
     }
 }
 
-/// Verify one substituted residual with the engine's 2-phase flow:
-/// 1) strict simplify, 2) variable-only island fold + strict retry,
-/// 3) generic simplify fallback only for variable-free strict residuals.
-///
-/// Returns `(verified, strict_residual)` where `strict_residual` is the phase-1
-/// strict simplification output and is intended for error reporting when
-/// verification fails.
-#[allow(clippy::too_many_arguments)]
-pub fn verify_substituted_residual_with_strict_fold_and_generic_fallback<
-    FSimplifyStrict,
-    FSimplifyGeneric,
-    FContainsVariable,
-    FFoldNumericIslands,
-    FIsZero,
-    FRecordAttempted,
-    FRecordChanged,
-    FRecordVerified,
->(
-    diff: ExprId,
-    mut simplify_strict: FSimplifyStrict,
-    mut simplify_generic: FSimplifyGeneric,
-    mut contains_variable: FContainsVariable,
-    mut fold_numeric_islands: FFoldNumericIslands,
-    mut is_zero: FIsZero,
-    mut record_attempted: FRecordAttempted,
-    mut record_changed: FRecordChanged,
-    mut record_verified: FRecordVerified,
-) -> (bool, ExprId)
-where
-    FSimplifyStrict: FnMut(ExprId) -> ExprId,
-    FSimplifyGeneric: FnMut(ExprId) -> ExprId,
-    FContainsVariable: FnMut(ExprId) -> bool,
-    FFoldNumericIslands: FnMut(ExprId) -> ExprId,
-    FIsZero: FnMut(ExprId) -> bool,
-    FRecordAttempted: FnMut(),
-    FRecordChanged: FnMut(),
-    FRecordVerified: FnMut(),
-{
-    let strict_result = simplify_strict(diff);
-    if is_zero(strict_result) {
-        return (true, strict_result);
-    }
-
-    if contains_variable(strict_result) {
-        record_attempted();
-        let folded = fold_numeric_islands(strict_result);
-        if folded != strict_result {
-            record_changed();
-            let folded_result = simplify_strict(folded);
-            if is_zero(folded_result) {
-                record_verified();
-                return (true, strict_result);
-            }
-        }
-    }
-
-    if !contains_variable(strict_result) {
-        let generic_result = simplify_generic(diff);
-        if is_zero(generic_result) {
-            return (true, strict_result);
-        }
-    }
-
-    (false, strict_result)
-}
-
 /// Stateful variant of
 /// [`verify_substituted_residual_with_strict_fold_and_generic_fallback`].
 ///
 /// This form lets callers thread one mutable state object across all hooks
 /// without interior mutability wrappers.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state<
+pub(crate) fn verify_substituted_residual_with_strict_fold_and_generic_fallback_with_state<
     T,
     FSimplifyStrict,
     FSimplifyGeneric,
@@ -324,7 +244,7 @@ where
 /// 2) running strict/fold/generic residual verification,
 /// 3) materializing `VerifyStatus` with rendered residual on failure.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_solution_with_strict_fold_and_generic_fallback_with_state<
+pub(crate) fn verify_solution_with_strict_fold_and_generic_fallback_with_state<
     T,
     FSubstituteDiff,
     FSimplifyStrict,
@@ -393,7 +313,7 @@ where
 /// Same as [`verify_solution_with_strict_fold_and_generic_fallback_with_state`],
 /// but wires verification telemetry to `verify_stats` by default.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state<
+pub(crate) fn verify_solution_with_strict_fold_and_generic_fallback_with_default_stats_and_state<
     T,
     FSubstituteDiff,
     FSimplifyStrict,
@@ -499,7 +419,7 @@ fn simple_guard_set(predicates: &[ConditionPredicate]) -> bool {
 }
 
 /// Compute summary for discrete verification outcomes.
-pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
+pub(crate) fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
         VerifySummary::Empty
     } else if verified_count == total {
@@ -512,7 +432,7 @@ pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
 }
 
 /// Compute summary for aggregated conditional verification outcomes.
-pub fn conditional_summary(
+pub(crate) fn conditional_summary(
     has_verified: bool,
     has_needs_sampling: bool,
     has_not_checkable: bool,
@@ -560,7 +480,6 @@ mod tests {
     use super::*;
     use cas_ast::Context;
     use cas_ast::RelOp;
-    use std::cell::Cell;
 
     #[test]
     fn test_discrete_summary() {
@@ -599,116 +518,6 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_solution_set_with_simple_guarded_all_reals_is_verified_under_guard() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let set = SolutionSet::Conditional(vec![Case::new(
-            cas_ast::ConditionSet::single(cas_ast::ConditionPredicate::NonNegative(x)),
-            SolutionSet::AllReals,
-        )]);
-        let mut verify = |_id: ExprId| VerifyStatus::Verified;
-
-        let result = verify_solution_set_with(&set, &mut verify);
-        assert_eq!(result.summary, VerifySummary::VerifiedUnderGuard);
-        assert_eq!(
-            result.guard_description.as_deref(),
-            Some("verified symbolically under guard (1 guarded non-discrete branch)")
-        );
-    }
-
-    #[test]
-    fn test_verify_solution_set_with_simple_guarded_conditional_and_empty_else_is_verified_under_guard(
-    ) {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let set = SolutionSet::Conditional(vec![
-            Case::new(
-                cas_ast::ConditionSet::single(cas_ast::ConditionPredicate::NonZero(x)),
-                SolutionSet::AllReals,
-            ),
-            Case::new(cas_ast::ConditionSet::empty(), SolutionSet::Empty),
-        ]);
-        let mut verify = |_id: ExprId| VerifyStatus::Verified;
-
-        let result = verify_solution_set_with(&set, &mut verify);
-        assert_eq!(result.summary, VerifySummary::VerifiedUnderGuard);
-        assert_eq!(
-            result.guard_description.as_deref(),
-            Some("verified symbolically under guard (1 guarded non-discrete branch)")
-        );
-    }
-
-    #[test]
-    fn test_verify_solution_set_with_eq_guard_does_not_claim_verified_under_guard() {
-        let mut ctx = Context::new();
-        let a = ctx.var("a");
-        let set = SolutionSet::Conditional(vec![Case::new(
-            cas_ast::ConditionSet::single(cas_ast::ConditionPredicate::EqOne(a)),
-            SolutionSet::AllReals,
-        )]);
-        let mut verify = |_id: ExprId| VerifyStatus::Verified;
-
-        let result = verify_solution_set_with(&set, &mut verify);
-        assert_eq!(result.summary, VerifySummary::NotCheckable);
-    }
-
-    #[test]
-    fn test_verify_solution_set_with_continuous_requires_sampling() {
-        use cas_ast::{BoundType, Interval};
-
-        let mut ctx = Context::new();
-        let zero = ctx.num(0);
-        let one = ctx.num(1);
-        let set = SolutionSet::Continuous(Interval {
-            min: zero,
-            min_type: BoundType::Open,
-            max: one,
-            max_type: BoundType::Closed,
-        });
-        let mut verify = |_id: ExprId| VerifyStatus::Verified;
-
-        let result = verify_solution_set_with(&set, &mut verify);
-        assert_eq!(result.summary, VerifySummary::NeedsSampling);
-        assert_eq!(
-            result.guard_description.as_deref(),
-            Some("verification requires numeric sampling (continuous interval)")
-        );
-    }
-
-    #[test]
-    fn test_verify_solution_set_with_union_requires_sampling() {
-        use cas_ast::{BoundType, Interval};
-
-        let mut ctx = Context::new();
-        let zero = ctx.num(0);
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let set = SolutionSet::Union(vec![
-            Interval {
-                min: zero,
-                min_type: BoundType::Closed,
-                max: one,
-                max_type: BoundType::Open,
-            },
-            Interval {
-                min: two,
-                min_type: BoundType::Open,
-                max: three,
-                max_type: BoundType::Closed,
-            },
-        ]);
-        let mut verify = |_id: ExprId| VerifyStatus::Verified;
-
-        let result = verify_solution_set_with(&set, &mut verify);
-        assert_eq!(result.summary, VerifySummary::NeedsSampling);
-        assert_eq!(
-            result.guard_description.as_deref(),
-            Some("verification requires numeric sampling (union of intervals)")
-        );
-    }
-
-    #[test]
     fn conditional_guard_description_keeps_non_discrete_note_when_discrete_branches_verify() {
         assert_eq!(
             conditional_guard_description(true, true, true).as_deref(),
@@ -724,24 +533,6 @@ mod tests {
             conditional_guard_description(true, false, true).as_deref(),
             Some("some non-discrete branches remain not checkable")
         );
-    }
-
-    #[test]
-    fn test_verify_solution_set_with_discrete() {
-        let mut ctx = Context::new();
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let set = SolutionSet::Discrete(vec![one, two]);
-        let mut calls = 0usize;
-        let mut verify = |_id: ExprId| {
-            calls += 1;
-            VerifyStatus::Verified
-        };
-
-        let result = verify_solution_set_with(&set, &mut verify);
-        assert_eq!(calls, 2);
-        assert_eq!(result.summary, VerifySummary::AllVerified);
-        assert_eq!(result.solutions.len(), 2);
     }
 
     #[test]
@@ -841,126 +632,6 @@ mod tests {
                 && counterexample_hint.is_none()
         ));
         assert_eq!(substitute_calls, 1);
-    }
-
-    #[test]
-    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_verifies_on_strict() {
-        let mut ctx = Context::new();
-        let diff = ctx.num(99);
-        let zero = ctx.num(0);
-        let nonzero = ctx.num(2);
-
-        let (verified, strict_residual) =
-            verify_substituted_residual_with_strict_fold_and_generic_fallback(
-                diff,
-                |_expr| zero,
-                |_expr| nonzero,
-                |_expr| false,
-                |expr| expr,
-                |expr| expr == zero,
-                || {},
-                || {},
-                || {},
-            );
-
-        assert!(verified);
-        assert_eq!(strict_residual, zero);
-    }
-
-    #[test]
-    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_verifies_after_fold() {
-        let mut ctx = Context::new();
-        let diff = ctx.num(100);
-        let strict = ctx.var("x");
-        let folded = ctx.num(7);
-        let zero = ctx.num(0);
-
-        let attempted = Cell::new(0usize);
-        let changed = Cell::new(0usize);
-        let verified_counter = Cell::new(0usize);
-
-        let (verified, strict_residual) =
-            verify_substituted_residual_with_strict_fold_and_generic_fallback(
-                diff,
-                |expr| {
-                    if expr == diff {
-                        strict
-                    } else if expr == folded {
-                        zero
-                    } else {
-                        expr
-                    }
-                },
-                |_expr| ctx.num(5),
-                |expr| expr == strict,
-                |expr| if expr == strict { folded } else { expr },
-                |expr| expr == zero,
-                || attempted.set(attempted.get() + 1),
-                || changed.set(changed.get() + 1),
-                || verified_counter.set(verified_counter.get() + 1),
-            );
-
-        assert!(verified);
-        assert_eq!(strict_residual, strict);
-        assert_eq!(attempted.get(), 1);
-        assert_eq!(changed.get(), 1);
-        assert_eq!(verified_counter.get(), 1);
-    }
-
-    #[test]
-    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_verifies_on_generic_ground(
-    ) {
-        let mut ctx = Context::new();
-        let diff = ctx.num(101);
-        let strict = ctx.num(9);
-        let zero = ctx.num(0);
-
-        let (verified, strict_residual) =
-            verify_substituted_residual_with_strict_fold_and_generic_fallback(
-                diff,
-                |_expr| strict,
-                |_expr| zero,
-                |_expr| false,
-                |expr| expr,
-                |expr| expr == zero,
-                || {},
-                || {},
-                || {},
-            );
-
-        assert!(verified);
-        assert_eq!(strict_residual, strict);
-    }
-
-    #[test]
-    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_returns_unverified() {
-        let mut ctx = Context::new();
-        let diff = ctx.num(102);
-        let strict = ctx.var("x");
-        let zero = ctx.num(0);
-
-        let attempted = Cell::new(0usize);
-        let changed = Cell::new(0usize);
-        let verified_counter = Cell::new(0usize);
-
-        let (verified, strict_residual) =
-            verify_substituted_residual_with_strict_fold_and_generic_fallback(
-                diff,
-                |_expr| strict,
-                |_expr| zero,
-                |expr| expr == strict,
-                |expr| expr,
-                |expr| expr == zero,
-                || attempted.set(attempted.get() + 1),
-                || changed.set(changed.get() + 1),
-                || verified_counter.set(verified_counter.get() + 1),
-            );
-
-        assert!(!verified);
-        assert_eq!(strict_residual, strict);
-        assert_eq!(attempted.get(), 1);
-        assert_eq!(changed.get(), 0);
-        assert_eq!(verified_counter.get(), 0);
     }
 
     #[test]

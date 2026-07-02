@@ -8,7 +8,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// (`mode`, `wildcard_scope`, `value_domain_real_only`, `budget`) and then
 /// delegated to the core pow kernel pipeline.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_pow_isolation_with_default_runtime_config_and_unified_step_mapper_for_var_with_state<
+pub(crate) fn apply_pow_isolation_with_default_runtime_config_and_unified_step_mapper_for_var_with_state<
     T,
     S,
     E,
@@ -128,7 +128,7 @@ where
 /// Execute power isolation with default runtime config and a single recursive
 /// equation solver callback reused across base/shortcut/rewrite/guarded paths.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_pow_isolation_with_default_runtime_config_and_recursive_equation_solver_with_state<
+pub(crate) fn apply_pow_isolation_with_default_runtime_config_and_recursive_equation_solver_with_state<
     T,
     S,
     E,

@@ -25,7 +25,10 @@ where
 }
 
 /// Verify one candidate solution using the runtime-state simplifier contract.
-pub fn verify_solution_with_runtime_state_and_ground_eval_with_state<S, FGroundEvalCandidate>(
+pub(crate) fn verify_solution_with_runtime_state_and_ground_eval_with_state<
+    S,
+    FGroundEvalCandidate,
+>(
     state: &mut S,
     equation: &Equation,
     var: &str,
@@ -75,7 +78,10 @@ where
 }
 
 /// Verify a full solution set using the runtime-state simplifier contract.
-pub fn verify_solution_set_with_runtime_state_and_ground_eval_with_state<S, FGroundEvalCandidate>(
+pub(crate) fn verify_solution_set_with_runtime_state_and_ground_eval_with_state<
+    S,
+    FGroundEvalCandidate,
+>(
     state: &mut S,
     equation: &Equation,
     var: &str,

@@ -7,7 +7,7 @@ use cas_ast::{Equation, ExprId};
 /// the default structural `lhs - rhs` recomposition, and a caller-provided
 /// semantic cancellation fallback.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_equation_for_strategy_with_runtime_context_and_default_structural_recompose_and_cancel_with_state<
+pub(crate) fn prepare_equation_for_strategy_with_runtime_context_and_default_structural_recompose_and_cancel_with_state<
     SState,
     FContainsVar,
     FSimplifyForSolve,
@@ -57,7 +57,9 @@ where
 
 /// Prepare one equation for strategy execution using only
 /// [`RuntimeSolveAdapterState`] plus the default structural recomposition.
-pub fn prepare_equation_for_strategy_with_adapter_state_and_default_structural_recompose<SState>(
+pub(crate) fn prepare_equation_for_strategy_with_adapter_state_and_default_structural_recompose<
+    SState,
+>(
     state: &mut SState,
     equation: &Equation,
     var: &str,

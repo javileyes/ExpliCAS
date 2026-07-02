@@ -5,7 +5,7 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 
 #[allow(clippy::too_many_arguments)]
-pub fn apply_function_isolation_with_default_kernels_and_runtime_trace_and_unified_step_mapper_for_var_with_state<
+pub(crate) fn apply_function_isolation_with_default_kernels_and_runtime_trace_and_unified_step_mapper_for_var_with_state<
     T,
     S,
     E,
@@ -76,7 +76,7 @@ where
 /// Execute function isolation with default kernels and a standard unsupported
 /// inverse error message built from function symbol name.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_function_isolation_with_default_kernels_and_runtime_trace_and_default_unsupported_inverse_message_with_state<
+pub(crate) fn apply_function_isolation_with_default_kernels_and_runtime_trace_and_default_unsupported_inverse_message_with_state<
     T,
     S,
     E,
@@ -159,7 +159,7 @@ where
 /// Execute function isolation with default unsupported-inverse messaging and a
 /// single recursive equation solver reused for all inner isolate calls.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_function_isolation_with_default_kernels_and_runtime_trace_and_default_unsupported_inverse_message_and_recursive_equation_solver_with_state<
+pub(crate) fn apply_function_isolation_with_default_kernels_and_runtime_trace_and_default_unsupported_inverse_message_and_recursive_equation_solver_with_state<
     T,
     S,
     E,

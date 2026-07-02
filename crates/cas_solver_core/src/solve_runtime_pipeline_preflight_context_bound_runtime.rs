@@ -6,7 +6,7 @@ use cas_ast::{Equation, ExprId};
 /// Build a preflight context using the runtime solve context/domain aliases and
 /// the standard implicit-domain accumulation policy.
 #[allow(clippy::too_many_arguments)]
-pub fn build_runtime_solve_preflight_state_with_default_domain_inference_and_derivation<
+pub(crate) fn build_runtime_solve_preflight_state_with_default_domain_inference_and_derivation<
     SState,
     FContextRef,
     FInferImplicitDomain,
@@ -77,7 +77,7 @@ where
 
 /// Build a preflight context using only [`RuntimeSolveAdapterState`] for
 /// domain inference and requirement derivation.
-pub fn build_runtime_solve_preflight_state_with_adapter_state_and_default_domain_derivation<
+pub(crate) fn build_runtime_solve_preflight_state_with_adapter_state_and_default_domain_derivation<
     SState,
 >(
     state: &SState,

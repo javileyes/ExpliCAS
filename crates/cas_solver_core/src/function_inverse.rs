@@ -29,7 +29,7 @@ pub enum FunctionIsolationRouteError {
 }
 
 /// Derive entry routing for function isolation.
-pub fn derive_function_isolation_route(
+pub(crate) fn derive_function_isolation_route(
     ctx: &Context,
     fn_id: SymbolId,
     args: &[ExprId],
@@ -95,27 +95,6 @@ impl UnaryInverseExecutionItem {
     }
 }
 
-/// Collect unary-inverse didactic steps in display order.
-pub fn collect_unary_inverse_didactic_steps(
-    plan: &UnaryInverseIsolationStepPlan,
-) -> Vec<UnaryInverseDidacticStep> {
-    plan.items
-        .iter()
-        .cloned()
-        .map(|item| UnaryInverseDidacticStep {
-            description: item.description,
-            equation_after: item.equation,
-        })
-        .collect()
-}
-
-/// Collect unary-inverse execution items in display order.
-pub fn collect_unary_inverse_execution_items(
-    plan: &UnaryInverseIsolationStepPlan,
-) -> Vec<UnaryInverseExecutionItem> {
-    plan.items.clone()
-}
-
 /// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RhsSimplificationDidacticStep {
@@ -169,7 +148,7 @@ pub struct UnaryInverseSolvedExecution<T> {
 
 /// Collect unary-inverse solve execution items in display order:
 /// rewrite items first, RHS-cleanup items second.
-pub fn collect_unary_inverse_solve_execution_items(
+pub(crate) fn collect_unary_inverse_solve_execution_items(
     execution: &UnaryInverseSolveExecution,
 ) -> Vec<UnaryInverseSolveExecutionItem> {
     execution
@@ -261,7 +240,7 @@ impl UnaryInverseKind {
 /// Rewrite a unary-function equation by applying its inverse:
 /// `f(arg) op other` -> `arg op inverse_f(other)` (when `is_lhs=true`),
 /// or symmetrically when the function is on RHS.
-pub fn rewrite_unary_inverse_equation(
+pub(crate) fn rewrite_unary_inverse_equation(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
@@ -288,7 +267,7 @@ pub fn rewrite_unary_inverse_equation(
 }
 
 /// Same as [`rewrite_unary_inverse_equation`] but restricted to unwrap-safe inverses.
-pub fn rewrite_unary_inverse_equation_for_unwrap(
+pub(crate) fn rewrite_unary_inverse_equation_for_unwrap(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
@@ -308,7 +287,7 @@ pub fn rewrite_unary_inverse_equation_for_unwrap(
 /// Build an unwrap-safe unary inverse rewrite plan.
 ///
 /// Returns `None` when the function is unsupported by `UnwrapStrategy`.
-pub fn plan_unary_inverse_rewrite_for_unwrap(
+pub(crate) fn plan_unary_inverse_rewrite_for_unwrap(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
@@ -325,7 +304,7 @@ pub fn plan_unary_inverse_rewrite_for_unwrap(
 }
 
 /// Build a full unary inverse rewrite plan with narration metadata.
-pub fn plan_unary_inverse_rewrite(
+pub(crate) fn plan_unary_inverse_rewrite(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
@@ -342,16 +321,8 @@ pub fn plan_unary_inverse_rewrite(
     })
 }
 
-/// Build didactic payload from a unary inverse rewrite plan.
-pub fn build_unary_inverse_step(plan: &UnaryInverseRewritePlan) -> UnaryInverseDidacticStep {
-    UnaryInverseDidacticStep {
-        description: plan.step_description.to_string(),
-        equation_after: plan.equation.clone(),
-    }
-}
-
 /// Plan unary inverse isolation with prebuilt didactic payload.
-pub fn plan_unary_inverse_isolation_step(
+pub(crate) fn plan_unary_inverse_isolation_step(
     ctx: &mut Context,
     fn_name: &str,
     arg: ExprId,
@@ -371,80 +342,6 @@ pub fn plan_unary_inverse_isolation_step(
     })
 }
 
-/// Execute unary-inverse isolation with optional RHS cleanup using closure hooks.
-///
-/// Returns `None` when function inversion is unsupported.
-pub fn execute_unary_inverse_with<FPlan, FSimplifyRhs>(
-    fn_name: &str,
-    arg: ExprId,
-    other: ExprId,
-    op: RelOp,
-    is_lhs: bool,
-    mut plan_unary_inverse_step: FPlan,
-    mut simplify_rhs_with_entries: FSimplifyRhs,
-) -> Option<UnaryInverseSolveExecution>
-where
-    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
-    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
-{
-    let plan = plan_unary_inverse_step(fn_name, arg, other, op, is_lhs)?;
-    let rewritten_equation = plan.equation.clone();
-    let mut rhs_cleanup_items = Vec::new();
-    let mut target_rhs = rewritten_equation.rhs;
-
-    if plan.needs_rhs_cleanup {
-        let (simplified_rhs, entries) = simplify_rhs_with_entries(target_rhs);
-        target_rhs = simplified_rhs;
-        rhs_cleanup_items = build_rhs_simplification_execution_items(
-            rewritten_equation.lhs,
-            rewritten_equation.op.clone(),
-            entries,
-        );
-    }
-
-    Some(UnaryInverseSolveExecution {
-        rewrite_items: plan.items,
-        rhs_cleanup_items,
-        rewritten_equation,
-        target_rhs,
-    })
-}
-
-/// Execute recursive solve for unary-inverse rewrite output.
-pub fn solve_unary_inverse_execution_with<E, T, FSolve>(
-    execution: UnaryInverseSolveExecution,
-    mut solve: FSolve,
-) -> Result<UnaryInverseSolvedExecution<T>, E>
-where
-    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<T, E>,
-{
-    let solved = solve(
-        execution.rewritten_equation.lhs,
-        execution.target_rhs,
-        execution.rewritten_equation.op.clone(),
-    )?;
-    Ok(UnaryInverseSolvedExecution { execution, solved })
-}
-
-/// Execute recursive solve for unary-inverse rewrite output while passing
-/// aligned solve execution items to the solve callback.
-pub fn solve_unary_inverse_execution_with_items<E, T, FSolve>(
-    execution: UnaryInverseSolveExecution,
-    mut solve: FSolve,
-) -> Result<UnaryInverseSolvedExecution<T>, E>
-where
-    FSolve: FnMut(Vec<UnaryInverseSolveExecutionItem>, ExprId, ExprId, RelOp) -> Result<T, E>,
-{
-    let items = collect_unary_inverse_solve_execution_items(&execution);
-    let solved = solve(
-        items,
-        execution.rewritten_equation.lhs,
-        execution.target_rhs,
-        execution.rewritten_equation.op.clone(),
-    )?;
-    Ok(UnaryInverseSolvedExecution { execution, solved })
-}
-
 /// Solved result for unary-inverse execution pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryInverseExecutionPipelineSolved<S> {
@@ -453,7 +350,7 @@ pub struct UnaryInverseExecutionPipelineSolved<S> {
 }
 
 /// Execute unary-inverse solve + optional didactic item dispatch.
-pub fn solve_unary_inverse_execution_pipeline_with_items<E, S, FSolve, FStep>(
+pub(crate) fn solve_unary_inverse_execution_pipeline_with_items<E, S, FSolve, FStep>(
     execution: UnaryInverseSolveExecution,
     include_items: bool,
     mut solve: FSolve,
@@ -480,178 +377,9 @@ where
     })
 }
 
-/// Execute unary-inverse planning + solve pipeline with optional didactic item dispatch.
-///
-/// Returns `None` when unary inversion is unsupported for the requested function.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_unary_inverse_pipeline_with_items_with<E, S, FPlan, FSimplifyRhs, FSolve, FStep>(
-    fn_name: &str,
-    arg: ExprId,
-    other: ExprId,
-    op: RelOp,
-    is_lhs: bool,
-    include_items: bool,
-    plan_unary_inverse_step: FPlan,
-    simplify_rhs_with_entries: FSimplifyRhs,
-    solve: FSolve,
-    map_item_to_step: FStep,
-) -> Option<Result<UnaryInverseExecutionPipelineSolved<S>, E>>
-where
-    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
-    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
-    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(UnaryInverseSolveExecutionItem) -> S,
-{
-    let execution = execute_unary_inverse_with(
-        fn_name,
-        arg,
-        other,
-        op,
-        is_lhs,
-        plan_unary_inverse_step,
-        simplify_rhs_with_entries,
-    )?;
-    Some(solve_unary_inverse_execution_pipeline_with_items(
-        execution,
-        include_items,
-        solve,
-        map_item_to_step,
-    ))
-}
-
-/// Execute unary-inverse planning + solve pipeline returning plain strategy
-/// output `(SolutionSet, steps)`.
-///
-/// Returns `None` when unary inversion is unsupported for the requested function.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_unary_inverse_result_pipeline_with_items_with<
-    E,
-    S,
-    FPlan,
-    FSimplifyRhs,
-    FSolve,
-    FStep,
->(
-    fn_name: &str,
-    arg: ExprId,
-    other: ExprId,
-    op: RelOp,
-    is_lhs: bool,
-    include_items: bool,
-    plan_unary_inverse_step: FPlan,
-    simplify_rhs_with_entries: FSimplifyRhs,
-    solve: FSolve,
-    map_item_to_step: FStep,
-) -> Option<Result<(SolutionSet, Vec<S>), E>>
-where
-    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
-    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
-    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(UnaryInverseSolveExecutionItem) -> S,
-{
-    let solved = execute_unary_inverse_pipeline_with_items_with(
-        fn_name,
-        arg,
-        other,
-        op,
-        is_lhs,
-        include_items,
-        plan_unary_inverse_step,
-        simplify_rhs_with_entries,
-        solve,
-        map_item_to_step,
-    )?;
-    Some(solved.map(|payload| (payload.solution_set, payload.steps)))
-}
-
-/// Execute unary-inverse planning + solve pipeline returning plain strategy
-/// output `(SolutionSet, steps)`, or map unsupported inverses into caller
-/// error type via callback.
-#[allow(clippy::too_many_arguments)]
-pub fn execute_unary_inverse_result_pipeline_or_else_with<
-    E,
-    S,
-    FPlan,
-    FSimplifyRhs,
-    FSolve,
-    FStep,
-    FError,
->(
-    fn_name: &str,
-    arg: ExprId,
-    other: ExprId,
-    op: RelOp,
-    is_lhs: bool,
-    include_items: bool,
-    plan_unary_inverse_step: FPlan,
-    simplify_rhs_with_entries: FSimplifyRhs,
-    solve: FSolve,
-    map_item_to_step: FStep,
-    unsupported_error: FError,
-) -> Result<(SolutionSet, Vec<S>), E>
-where
-    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
-    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
-    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
-    FStep: FnMut(UnaryInverseSolveExecutionItem) -> S,
-    FError: FnOnce() -> E,
-{
-    match execute_unary_inverse_result_pipeline_with_items_with(
-        fn_name,
-        arg,
-        other,
-        op,
-        is_lhs,
-        include_items,
-        plan_unary_inverse_step,
-        simplify_rhs_with_entries,
-        solve,
-        map_item_to_step,
-    ) {
-        Some(result) => result,
-        None => Err(unsupported_error()),
-    }
-}
-
-/// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
-pub fn build_rhs_simplification_steps<I>(
-    lhs: ExprId,
-    op: RelOp,
-    entries: I,
-) -> Vec<RhsSimplificationDidacticStep>
-where
-    I: IntoIterator<Item = (String, ExprId)>,
-{
-    entries
-        .into_iter()
-        .map(|(description, rhs_after)| RhsSimplificationDidacticStep {
-            description,
-            equation_after: Equation {
-                lhs,
-                rhs: rhs_after,
-                op: op.clone(),
-            },
-        })
-        .collect()
-}
-
-/// Collect RHS-simplification execution items in display order.
-pub fn collect_rhs_simplification_execution_items(
-    steps: &[RhsSimplificationDidacticStep],
-) -> Vec<RhsSimplificationExecutionItem> {
-    steps
-        .iter()
-        .cloned()
-        .map(|didactic| RhsSimplificationExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
-}
-
 /// Build RHS-simplification execution items directly from `(description, rhs_after)`
 /// tuples, fixing `lhs`/`op` for each generated equation.
-pub fn build_rhs_simplification_execution_items<I>(
+pub(crate) fn build_rhs_simplification_execution_items<I>(
     lhs: ExprId,
     op: RelOp,
     entries: I,
@@ -916,18 +644,6 @@ mod tests {
     }
 
     #[test]
-    fn build_unary_inverse_step_uses_plan_description_and_equation() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let plan = plan_unary_inverse_rewrite(&mut ctx, "sqrt", x, y, RelOp::Eq, true)
-            .expect("sqrt should build plan");
-        let step = build_unary_inverse_step(&plan);
-        assert_eq!(step.description, "Square both sides");
-        assert_eq!(step.equation_after, plan.equation);
-    }
-
-    #[test]
     fn plan_unary_inverse_isolation_step_builds_rewrite_and_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -940,34 +656,6 @@ mod tests {
         assert_eq!(plan.items[0].description, "Take arcsin of both sides");
         assert_eq!(plan.items[0].equation, plan.equation);
         assert!(plan.needs_rhs_cleanup);
-    }
-
-    #[test]
-    fn collect_unary_inverse_didactic_steps_returns_single_step() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let plan = plan_unary_inverse_isolation_step(&mut ctx, "sin", x, y, RelOp::Eq, true)
-            .expect("sin inverse should build isolation plan");
-
-        let didactic = collect_unary_inverse_didactic_steps(&plan);
-        assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0].description, plan.items[0].description);
-        assert_eq!(didactic[0].equation_after, plan.items[0].equation);
-    }
-
-    #[test]
-    fn collect_unary_inverse_execution_items_returns_single_item() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let plan = plan_unary_inverse_isolation_step(&mut ctx, "sin", x, y, RelOp::Eq, true)
-            .expect("sin inverse should build isolation plan");
-
-        let items = collect_unary_inverse_execution_items(&plan);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].description, plan.items[0].description);
     }
 
     #[test]
@@ -993,50 +681,6 @@ mod tests {
     }
 
     #[test]
-    fn build_rhs_simplification_steps_builds_equations_with_fixed_lhs() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-
-        let out = build_rhs_simplification_steps(
-            x,
-            RelOp::Eq,
-            vec![("step-1".to_string(), y), ("step-2".to_string(), z)],
-        );
-
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0].description, "step-1");
-        assert_eq!(out[0].equation_after.lhs, x);
-        assert_eq!(out[0].equation_after.rhs, y);
-        assert_eq!(out[1].description, "step-2");
-        assert_eq!(out[1].equation_after.lhs, x);
-        assert_eq!(out[1].equation_after.rhs, z);
-        assert_eq!(out[1].equation_after.op, RelOp::Eq);
-    }
-
-    #[test]
-    fn collect_rhs_simplification_execution_items_preserves_order() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-
-        let out = build_rhs_simplification_steps(
-            x,
-            RelOp::Eq,
-            vec![("step-1".to_string(), y), ("step-2".to_string(), z)],
-        );
-        let items = collect_rhs_simplification_execution_items(&out);
-
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0].description, "step-1");
-        assert_eq!(items[0].equation, out[0].equation_after);
-        assert_eq!(items[1].description, "step-2");
-        assert_eq!(items[1].equation, out[1].equation_after);
-    }
-
-    #[test]
     fn build_rhs_simplification_execution_items_builds_and_collects_in_one_pass() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1056,156 +700,6 @@ mod tests {
         assert_eq!(items[1].description, "step-2");
         assert_eq!(items[1].equation.lhs, x);
         assert_eq!(items[1].equation.rhs, z);
-    }
-
-    #[test]
-    fn execute_unary_inverse_with_applies_rhs_cleanup_when_needed() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let y = context.var("y");
-        let cleaned = context.var("cleaned");
-        let mut simplify_calls = 0usize;
-
-        let execution = execute_unary_inverse_with(
-            "sin",
-            x,
-            y,
-            RelOp::Eq,
-            true,
-            |fn_name, arg, other, op, is_lhs| {
-                plan_unary_inverse_isolation_step(&mut context, fn_name, arg, other, op, is_lhs)
-            },
-            |rhs| {
-                simplify_calls += 1;
-                (
-                    cleaned,
-                    vec![
-                        ("Simplify RHS".to_string(), rhs),
-                        ("Done".to_string(), cleaned),
-                    ],
-                )
-            },
-        )
-        .expect("sin inverse should execute");
-
-        assert_eq!(simplify_calls, 1);
-        assert_eq!(execution.rewrite_items.len(), 1);
-        assert_eq!(execution.rhs_cleanup_items.len(), 2);
-        assert_eq!(execution.target_rhs, cleaned);
-    }
-
-    #[test]
-    fn solve_unary_inverse_execution_with_invokes_solver_once() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let execution = UnaryInverseSolveExecution {
-            rewrite_items: vec![],
-            rhs_cleanup_items: vec![],
-            rewritten_equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            target_rhs: y,
-        };
-
-        let mut calls = 0usize;
-        let solved = solve_unary_inverse_execution_with(execution, |lhs, rhs, op| {
-            calls += 1;
-            Ok::<_, ()>((lhs, rhs, op))
-        })
-        .expect("solve should succeed");
-
-        assert_eq!(calls, 1);
-        assert_eq!(solved.solved.0, x);
-        assert_eq!(solved.solved.1, y);
-        assert_eq!(solved.solved.2, RelOp::Eq);
-    }
-
-    #[test]
-    fn solve_unary_inverse_execution_with_preserves_execution_payload() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let execution = UnaryInverseSolveExecution {
-            rewrite_items: vec![UnaryInverseExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: y,
-                    op: RelOp::Eq,
-                },
-                description: "rewrite".to_string(),
-            }],
-            rhs_cleanup_items: vec![RhsSimplificationExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: y,
-                    op: RelOp::Eq,
-                },
-                description: "cleanup".to_string(),
-            }],
-            rewritten_equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            target_rhs: y,
-        };
-        let expected = execution.clone();
-
-        let solved = solve_unary_inverse_execution_with(execution, |_lhs, _rhs, _op| {
-            Ok::<_, ()>(SolutionSet::AllReals)
-        })
-        .expect("solve should succeed");
-
-        assert_eq!(solved.execution, expected);
-        assert!(matches!(solved.solved, SolutionSet::AllReals));
-    }
-
-    #[test]
-    fn solve_unary_inverse_execution_with_items_passes_items_and_equation_parts() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let execution = UnaryInverseSolveExecution {
-            rewrite_items: vec![UnaryInverseExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: y,
-                    op: RelOp::Eq,
-                },
-                description: "rewrite".to_string(),
-            }],
-            rhs_cleanup_items: vec![RhsSimplificationExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: z,
-                    op: RelOp::Eq,
-                },
-                description: "cleanup".to_string(),
-            }],
-            rewritten_equation: Equation {
-                lhs: x,
-                rhs: y,
-                op: RelOp::Eq,
-            },
-            target_rhs: z,
-        };
-
-        let solved = solve_unary_inverse_execution_with_items(execution, |items, lhs, rhs, op| {
-            assert_eq!(items.len(), 2);
-            assert_eq!(items[0].description(), "rewrite");
-            assert_eq!(items[1].description(), "cleanup");
-            assert_eq!(lhs, x);
-            assert_eq!(rhs, z);
-            assert_eq!(op, RelOp::Eq);
-            Ok::<_, ()>("ok")
-        })
-        .expect("solve should succeed");
-
-        assert_eq!(solved.solved, "ok");
     }
 
     #[test]
@@ -1304,223 +798,6 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
         assert_eq!(solved.steps, vec!["only".to_string()]);
-    }
-
-    #[test]
-    fn execute_unary_inverse_pipeline_with_items_with_runs_pipeline_for_supported_inverse() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-
-        let mut solve_calls = 0usize;
-        let solved = execute_unary_inverse_pipeline_with_items_with(
-            "ln",
-            x,
-            y,
-            RelOp::Eq,
-            true,
-            true,
-            |_fn_name, _arg, _other, _op, _is_lhs| {
-                Some(UnaryInverseIsolationStepPlan {
-                    equation: Equation {
-                        lhs: x,
-                        rhs: y,
-                        op: RelOp::Eq,
-                    },
-                    items: vec![UnaryInverseExecutionItem {
-                        equation: Equation {
-                            lhs: x,
-                            rhs: y,
-                            op: RelOp::Eq,
-                        },
-                        description: "rewrite".to_string(),
-                    }],
-                    needs_rhs_cleanup: true,
-                })
-            },
-            |_rhs| (z, vec![("cleanup".to_string(), z)]),
-            |lhs, rhs, op| {
-                solve_calls += 1;
-                assert_eq!(lhs, x);
-                assert_eq!(rhs, z);
-                assert_eq!(op, RelOp::Eq);
-                Ok::<_, ()>((
-                    SolutionSet::Discrete(vec![rhs]),
-                    vec!["substep".to_string()],
-                ))
-            },
-            |item| item.description,
-        )
-        .expect("inverse should be supported")
-        .expect("pipeline should solve");
-
-        assert_eq!(solve_calls, 1);
-        assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
-        assert_eq!(
-            solved.steps,
-            vec![
-                "rewrite".to_string(),
-                "cleanup".to_string(),
-                "substep".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn execute_unary_inverse_result_pipeline_with_items_with_returns_plain_tuple() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-
-        let solved = execute_unary_inverse_result_pipeline_with_items_with(
-            "ln",
-            x,
-            y,
-            RelOp::Eq,
-            true,
-            true,
-            |_fn_name, _arg, _other, _op, _is_lhs| {
-                Some(UnaryInverseIsolationStepPlan {
-                    equation: Equation {
-                        lhs: x,
-                        rhs: y,
-                        op: RelOp::Eq,
-                    },
-                    items: vec![UnaryInverseExecutionItem {
-                        equation: Equation {
-                            lhs: x,
-                            rhs: y,
-                            op: RelOp::Eq,
-                        },
-                        description: "rewrite".to_string(),
-                    }],
-                    needs_rhs_cleanup: true,
-                })
-            },
-            |_rhs| (z, vec![("cleanup".to_string(), z)]),
-            |_lhs, rhs, _op| {
-                Ok::<_, ()>((
-                    SolutionSet::Discrete(vec![rhs]),
-                    vec!["substep".to_string()],
-                ))
-            },
-            |item| item.description,
-        )
-        .expect("inverse should be supported")
-        .expect("pipeline should solve");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert_eq!(
-            solved.1,
-            vec![
-                "rewrite".to_string(),
-                "cleanup".to_string(),
-                "substep".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn execute_unary_inverse_result_pipeline_or_else_with_returns_result_for_supported() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-
-        let solved = execute_unary_inverse_result_pipeline_or_else_with(
-            "ln",
-            x,
-            y,
-            RelOp::Eq,
-            true,
-            true,
-            |_fn_name, _arg, _other, _op, _is_lhs| {
-                Some(UnaryInverseIsolationStepPlan {
-                    equation: Equation {
-                        lhs: x,
-                        rhs: y,
-                        op: RelOp::Eq,
-                    },
-                    items: vec![UnaryInverseExecutionItem {
-                        equation: Equation {
-                            lhs: x,
-                            rhs: y,
-                            op: RelOp::Eq,
-                        },
-                        description: "rewrite".to_string(),
-                    }],
-                    needs_rhs_cleanup: true,
-                })
-            },
-            |_rhs| (z, vec![("cleanup".to_string(), z)]),
-            |_lhs, rhs, _op| {
-                Ok::<_, &'static str>((
-                    SolutionSet::Discrete(vec![rhs]),
-                    vec!["substep".to_string()],
-                ))
-            },
-            |item| item.description,
-            || "unsupported",
-        )
-        .expect("supported inverse should produce result");
-
-        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
-        assert_eq!(solved.1.len(), 3);
-    }
-
-    #[test]
-    fn execute_unary_inverse_result_pipeline_or_else_with_maps_unsupported_to_error() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-
-        let err = execute_unary_inverse_result_pipeline_or_else_with(
-            "unknown",
-            x,
-            y,
-            RelOp::Eq,
-            true,
-            true,
-            |_fn_name, _arg, _other, _op, _is_lhs| None,
-            |_rhs| (y, vec![]),
-            |_lhs, _rhs, _op| {
-                Ok::<_, &'static str>((SolutionSet::Empty, vec!["unexpected".to_string()]))
-            },
-            |item| item.description,
-            || "unsupported",
-        )
-        .expect_err("unsupported inverse should map to error");
-
-        assert_eq!(err, "unsupported");
-    }
-
-    #[test]
-    fn execute_unary_inverse_pipeline_with_items_with_returns_none_for_unsupported_inverse() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-
-        let mut solve_calls = 0usize;
-        let out = execute_unary_inverse_pipeline_with_items_with(
-            "unknown",
-            x,
-            y,
-            RelOp::Eq,
-            true,
-            true,
-            |_fn_name, _arg, _other, _op, _is_lhs| None,
-            |_rhs| (y, vec![]),
-            |_lhs, _rhs, _op| {
-                solve_calls += 1;
-                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
-            },
-            |item| item.description,
-        );
-
-        assert!(out.is_none());
-        assert_eq!(solve_calls, 0);
     }
 
     #[test]

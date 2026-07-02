@@ -7,7 +7,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// Dispatch isolation while wiring recursive `solve_inner` / isolation
 /// entrypoints through the current runtime solve context and solver options.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_isolation_with_runtime_ctx_and_reentrant_entrypoints_and_state<
+pub(crate) fn dispatch_isolation_with_runtime_ctx_and_reentrant_entrypoints_and_state<
     T,
     FContextRef,
     FContextMut,

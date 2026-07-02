@@ -6,7 +6,7 @@ use cas_ast::ExprId;
 /// - domain environment (`base > 0`, `rhs > 0`) facts,
 /// - runtime value-domain configuration,
 /// - runtime positive prover callback returning [`crate::domain_proof::Proof`].
-pub fn classify_log_solve_with_domain_env_and_runtime_positive_prover<R, FProvePositive>(
+pub(crate) fn classify_log_solve_with_domain_env_and_runtime_positive_prover<R, FProvePositive>(
     ctx: &cas_ast::Context,
     base: ExprId,
     rhs: ExprId,
@@ -42,7 +42,7 @@ where
 }
 
 /// Map one logarithmic assumption into a runtime assumption-event sink.
-pub fn note_log_assumption_with_runtime_sink<FSink>(
+pub(crate) fn note_log_assumption_with_runtime_sink<FSink>(
     ctx: &cas_ast::Context,
     base: ExprId,
     rhs: ExprId,
@@ -55,7 +55,7 @@ pub fn note_log_assumption_with_runtime_sink<FSink>(
 }
 
 /// Map one blocked logarithmic hint into a runtime blocked-hint sink.
-pub fn note_log_blocked_hint_with_runtime_sink<FSink>(
+pub(crate) fn note_log_blocked_hint_with_runtime_sink<FSink>(
     ctx: &cas_ast::Context,
     hint: crate::solve_outcome::LogBlockedHintRecord,
     mut sink: FSink,

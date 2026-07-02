@@ -2,7 +2,7 @@ use crate::substitution::substitute_named_var;
 use cas_ast::{Context, Equation, Expr, ExprId};
 
 /// Substitute a candidate solution into both sides of an equation.
-pub fn substitute_equation_sides(
+pub(crate) fn substitute_equation_sides(
     ctx: &mut Context,
     equation: &Equation,
     var: &str,
@@ -14,7 +14,7 @@ pub fn substitute_equation_sides(
 }
 
 /// Substitute a candidate solution and return `lhs_sub - rhs_sub`.
-pub fn substitute_equation_diff(
+pub(crate) fn substitute_equation_diff(
     ctx: &mut Context,
     equation: &Equation,
     var: &str,
@@ -24,31 +24,11 @@ pub fn substitute_equation_diff(
     ctx.add(Expr::Sub(lhs_sub, rhs_sub))
 }
 
-/// Verify a candidate solution with caller-provided substitution/simplification hooks.
-pub fn verify_solution_with<FSubstitute, FSimplify, FEquivalent>(
-    equation: &Equation,
-    var: &str,
-    solution: ExprId,
-    mut substitute_sides: FSubstitute,
-    mut simplify_expr: FSimplify,
-    mut are_equivalent: FEquivalent,
-) -> bool
-where
-    FSubstitute: FnMut(&Equation, &str, ExprId) -> (ExprId, ExprId),
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FEquivalent: FnMut(ExprId, ExprId) -> bool,
-{
-    let (lhs_sub, rhs_sub) = substitute_sides(equation, var, solution);
-    let lhs_sim = simplify_expr(lhs_sub);
-    let rhs_sim = simplify_expr(rhs_sub);
-    are_equivalent(lhs_sim, rhs_sim)
-}
-
 /// Stateful variant of [`verify_solution_with`].
 ///
 /// This form lets callers pass one mutable state object across hooks
 /// without interior mutability wrappers.
-pub fn verify_solution_with_state<T, FSubstitute, FSimplify, FEquivalent>(
+pub(crate) fn verify_solution_with_state<T, FSubstitute, FSimplify, FEquivalent>(
     state: &mut T,
     equation: &Equation,
     var: &str,
@@ -123,78 +103,6 @@ mod tests {
         let (lhs_sub, rhs_sub) = substitute_equation_sides(&mut ctx, &eq, "x", one);
         assert!(matches!(ctx.get(lhs_sub), Expr::Number(_)));
         assert!(matches!(ctx.get(rhs_sub), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "y"));
-    }
-
-    #[test]
-    fn verify_solution_with_runs_substitute_simplify_and_compare() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let one = context.num(1);
-        let equation = Equation {
-            lhs: x,
-            rhs: one,
-            op: RelOp::Eq,
-        };
-        let context_cell = std::cell::RefCell::new(context);
-        let simplify_calls = std::cell::Cell::new(0usize);
-        let compare_calls = std::cell::Cell::new(0usize);
-
-        let ok = verify_solution_with(
-            &equation,
-            "x",
-            one,
-            |eq, name, solution| {
-                let mut ctx = context_cell.borrow_mut();
-                substitute_equation_sides(&mut ctx, eq, name, solution)
-            },
-            |expr| {
-                simplify_calls.set(simplify_calls.get() + 1);
-                expr
-            },
-            |_lhs, _rhs| {
-                compare_calls.set(compare_calls.get() + 1);
-                true
-            },
-        );
-        assert!(ok);
-        assert_eq!(simplify_calls.get(), 2);
-        assert_eq!(compare_calls.get(), 1);
-    }
-
-    #[test]
-    fn verify_solution_with_forwards_compare_result() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let one = context.num(1);
-        let equation = Equation {
-            lhs: x,
-            rhs: one,
-            op: RelOp::Eq,
-        };
-        let context_cell = std::cell::RefCell::new(context);
-        let simplify_calls = std::cell::Cell::new(0usize);
-        let compare_calls = std::cell::Cell::new(0usize);
-
-        let ok = verify_solution_with(
-            &equation,
-            "x",
-            one,
-            |eq, name, solution| {
-                let mut ctx = context_cell.borrow_mut();
-                substitute_equation_sides(&mut ctx, eq, name, solution)
-            },
-            |expr| {
-                simplify_calls.set(simplify_calls.get() + 1);
-                expr
-            },
-            |_lhs, _rhs| {
-                compare_calls.set(compare_calls.get() + 1);
-                false
-            },
-        );
-        assert!(!ok);
-        assert_eq!(simplify_calls.get(), 2);
-        assert_eq!(compare_calls.get(), 1);
     }
 
     #[test]

@@ -3,7 +3,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 /// Resolve a variable-eliminated residual with domain exclusions using the
 /// default solve-analysis resolver and runtime-provided rendering/step mapping.
 #[allow(clippy::too_many_arguments)]
-pub fn resolve_var_eliminated_residual_with_default_exclusion_policy_and_unified_step_mapper_with_state<
+pub(crate) fn resolve_var_eliminated_residual_with_default_exclusion_policy_and_unified_step_mapper_with_state<
     T,
     S,
     FCollectSteps,
@@ -44,7 +44,7 @@ where
 /// - symbolic-root passthrough policy, and
 /// - substitution-based verification for numeric roots.
 #[allow(clippy::too_many_arguments)]
-pub fn resolve_discrete_strategy_result_against_equation_with_default_symbolic_and_substitution_verification_with_state<
+pub(crate) fn resolve_discrete_strategy_result_against_equation_with_default_symbolic_and_substitution_verification_with_state<
     T,
     S,
     FContextRef,

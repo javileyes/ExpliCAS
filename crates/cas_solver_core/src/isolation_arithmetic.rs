@@ -39,7 +39,7 @@ use crate::solve_outcome::{
 /// Execute additive isolation `(l + r) = rhs` with an optional
 /// linear-collect fast path when both addends contain the solve variable.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_add_isolation_pipeline_with_linear_collect_fallback_with_state<
+pub(crate) fn execute_add_isolation_pipeline_with_linear_collect_fallback_with_state<
     S,
     T,
     E,
@@ -107,7 +107,7 @@ where
 /// Execute additive isolation `(l + r) = rhs` using default operand derivation
 /// and rewrite planning from `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_add_isolation_pipeline_with_default_operands_and_plan_with_state<
+pub(crate) fn execute_add_isolation_pipeline_with_default_operands_and_plan_with_state<
     S,
     T,
     E,
@@ -179,7 +179,7 @@ where
 /// Execute additive isolation `(l + r) = rhs` using default operand derivation
 /// and rewrite planning with a unified step-mapper callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_add_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state<
+pub(crate) fn execute_add_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state<
     S,
     T,
     E,
@@ -243,7 +243,7 @@ where
 /// - default factored linear-collect fallback kernel,
 /// - unified step mapping.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_add_isolation_pipeline_with_default_factored_linear_collect_and_unified_step_mapper_with_state<
+pub(crate) fn execute_add_isolation_pipeline_with_default_factored_linear_collect_and_unified_step_mapper_with_state<
     S,
     T,
     E,
@@ -323,7 +323,7 @@ where
 
 /// Execute subtractive isolation `(l - r) = rhs`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_sub_isolation_pipeline_with_state<
+pub(crate) fn execute_sub_isolation_pipeline_with_state<
     S,
     T,
     E,
@@ -368,7 +368,7 @@ where
 /// Execute subtractive isolation `(l - r) = rhs` using default route derivation
 /// and rewrite planning from `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_sub_isolation_pipeline_with_default_plan_with_state<
+pub(crate) fn execute_sub_isolation_pipeline_with_default_plan_with_state<
     S,
     T,
     E,
@@ -438,7 +438,7 @@ where
 /// Execute subtractive isolation `(l - r) = rhs` using default route derivation
 /// and rewrite planning with a unified step-mapper callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_sub_isolation_pipeline_with_default_plan_and_unified_step_mapper_with_state<
+pub(crate) fn execute_sub_isolation_pipeline_with_default_plan_and_unified_step_mapper_with_state<
     S,
     T,
     E,
@@ -496,7 +496,7 @@ where
 /// 2) linear-collect fallback for variable-containing RHS,
 /// 3) default factor-isolation rewrite path.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state<
+pub(crate) fn execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state<
     S,
     T,
     E,
@@ -599,7 +599,7 @@ where
 /// Execute multiplicative isolation `(l * r) = rhs` using default split/route
 /// planning from `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_mul_isolation_pipeline_with_default_operands_and_plan_with_state<
+pub(crate) fn execute_mul_isolation_pipeline_with_default_operands_and_plan_with_state<
     S,
     T,
     E,
@@ -705,7 +705,7 @@ where
 /// Execute multiplicative isolation `(l * r) = rhs` using default split/route
 /// planning from `solve_outcome` with a unified step-mapper callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_mul_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state<
+pub(crate) fn execute_mul_isolation_pipeline_with_default_operands_and_plan_and_unified_step_mapper_with_state<
     S,
     T,
     E,
@@ -782,7 +782,7 @@ where
 /// - default additive linear-collect fallback kernel,
 /// - unified step mapping.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_mul_isolation_pipeline_with_default_additive_linear_collect_and_unified_step_mapper_with_state<
+pub(crate) fn execute_mul_isolation_pipeline_with_default_additive_linear_collect_and_unified_step_mapper_with_state<
     S,
     T,
     E,
@@ -873,7 +873,7 @@ where
 /// 1) optional denominator-sign split for inequalities,
 /// 2) fallback term-isolation rewrite when no split applies.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_numerator_isolation_pipeline_with_state<
+pub(crate) fn execute_div_numerator_isolation_pipeline_with_state<
     S,
     TStep,
     E,
@@ -970,51 +970,10 @@ where
     )
 }
 
-/// Dispatch division-isolation route to the corresponding branch handler.
-pub fn execute_div_isolation_route_with_state<T, R, E, FNumerator, FDenominator>(
-    state: &mut T,
-    route: DivIsolationRoute,
-    on_variable_in_numerator: FNumerator,
-    on_variable_in_denominator: FDenominator,
-) -> Result<R, E>
-where
-    FNumerator: FnOnce(&mut T) -> Result<R, E>,
-    FDenominator: FnOnce(&mut T) -> Result<R, E>,
-{
-    match route {
-        DivIsolationRoute::VariableInNumerator => on_variable_in_numerator(state),
-        DivIsolationRoute::VariableInDenominator => on_variable_in_denominator(state),
-    }
-}
-
-/// Derive and dispatch division-isolation route from `(ctx, numerator, var)`.
-pub fn execute_div_isolation_route_for_var_with_state<T, R, E, FContext, FNumerator, FDenominator>(
-    state: &mut T,
-    context: FContext,
-    numerator: ExprId,
-    var: &str,
-    on_variable_in_numerator: FNumerator,
-    on_variable_in_denominator: FDenominator,
-) -> Result<R, E>
-where
-    FContext: FnMut(&mut T) -> &Context,
-    FNumerator: FnOnce(&mut T) -> Result<R, E>,
-    FDenominator: FnOnce(&mut T) -> Result<R, E>,
-{
-    let mut context = context;
-    let route = derive_div_isolation_route(context(state), numerator, var);
-    execute_div_isolation_route_with_state(
-        state,
-        route,
-        on_variable_in_numerator,
-        on_variable_in_denominator,
-    )
-}
-
 /// Execute numerator-side division isolation with default route planning from
 /// `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_numerator_isolation_pipeline_with_default_plan_with_state<
+pub(crate) fn execute_div_numerator_isolation_pipeline_with_default_plan_with_state<
     S,
     TStep,
     E,
@@ -1102,7 +1061,7 @@ where
 /// 1) optional reciprocal-solve fast path,
 /// 2) isolated-denominator sign split or denominator didactic fallback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state<
+pub(crate) fn execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state<
     S,
     TStep,
     E,
@@ -1200,7 +1159,7 @@ where
 /// Execute denominator-side division isolation with default split/didactic plan
 /// resolution from `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_denominator_isolation_pipeline_with_default_plan_with_state<
+pub(crate) fn execute_div_denominator_isolation_pipeline_with_default_plan_with_state<
     S,
     TStep,
     E,
@@ -1376,7 +1335,7 @@ fn affine_var_rational_slope(
 /// - `VariableInNumerator`  -> numerator-side pipeline
 /// - `VariableInDenominator` -> denominator-side pipeline
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_isolation_pipeline_with_default_route_and_kernels_with_state<
+pub(crate) fn execute_div_isolation_pipeline_with_default_route_and_kernels_with_state<
     S,
     TStep,
     E,
@@ -1630,7 +1589,7 @@ where
 /// Execute full division isolation pipeline with default route/numerator/
 /// denominator kernels and a unified step-mapper callback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_isolation_pipeline_with_default_route_and_kernels_and_unified_step_mapper_with_state<
+pub(crate) fn execute_div_isolation_pipeline_with_default_route_and_kernels_and_unified_step_mapper_with_state<
     S,
     TStep,
     E,
@@ -1724,7 +1683,7 @@ where
 /// - default solved-set finalizers,
 /// - unified step mapping.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_div_isolation_pipeline_with_default_reciprocal_fallback_and_unified_step_mapper_with_state<
+pub(crate) fn execute_div_isolation_pipeline_with_default_reciprocal_fallback_and_unified_step_mapper_with_state<
     S,
     TStep,
     E,
@@ -1829,7 +1788,6 @@ mod tests {
     use super::{
         execute_add_isolation_pipeline_with_linear_collect_fallback_with_state,
         execute_div_denominator_isolation_pipeline_with_reciprocal_fallback_and_state,
-        execute_div_isolation_route_for_var_with_state, execute_div_isolation_route_with_state,
         execute_div_numerator_isolation_pipeline_with_state,
         execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state,
         execute_sub_isolation_pipeline_with_state,
@@ -1854,49 +1812,6 @@ mod tests {
     struct DivHarness {
         context: cas_ast::Context,
         seen_lhs: Option<ExprId>,
-    }
-
-    #[test]
-    fn execute_div_isolation_route_with_state_dispatches_numerator_branch() {
-        let mut hit = 0usize;
-        let out = execute_div_isolation_route_with_state(
-            &mut hit,
-            crate::solve_outcome::DivIsolationRoute::VariableInNumerator,
-            |state| {
-                *state += 1;
-                Ok::<_, &'static str>("num")
-            },
-            |_state| Ok("den"),
-        )
-        .expect("numerator route should dispatch");
-
-        assert_eq!(out, "num");
-        assert_eq!(hit, 1);
-    }
-
-    #[test]
-    fn execute_div_isolation_route_for_var_with_state_derives_denominator_branch() {
-        let mut context = cas_ast::Context::new();
-        let two = context.num(2);
-        let x = context.var("x");
-        let lhs = context.add(Expr::Div(two, x));
-        let numerator = match context.get(lhs) {
-            Expr::Div(num, _den) => *num,
-            other => panic!("expected division expression, got {other:?}"),
-        };
-
-        let mut state = context;
-        let out = execute_div_isolation_route_for_var_with_state(
-            &mut state,
-            |state| state,
-            numerator,
-            "x",
-            |_state| Ok::<_, &'static str>("num"),
-            |_state| Ok("den"),
-        )
-        .expect("route should derive denominator branch");
-
-        assert_eq!(out, "den");
     }
 
     #[test]

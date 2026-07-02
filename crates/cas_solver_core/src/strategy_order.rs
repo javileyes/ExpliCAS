@@ -20,7 +20,7 @@ pub enum SolveStrategyKind {
 /// Ordering matters for correctness and loop avoidance:
 /// - `RationalExponent` must run before `Unwrap` to avoid fractional-power loops.
 /// - `CollectTerms` must run before `Isolation` to normalize linear forms first.
-pub fn default_solve_strategy_order() -> &'static [SolveStrategyKind] {
+pub(crate) fn default_solve_strategy_order() -> &'static [SolveStrategyKind] {
     &[
         SolveStrategyKind::RationalExponent,
         SolveStrategyKind::Substitution,
@@ -37,7 +37,7 @@ pub fn default_solve_strategy_order() -> &'static [SolveStrategyKind] {
 /// `Quadratic` returns analytically derived roots (with didactic substeps),
 /// so we skip substitution verification there to avoid expensive and noisy
 /// symbolic checks; all other strategies are verified.
-pub fn strategy_should_verify(kind: SolveStrategyKind) -> bool {
+pub(crate) fn strategy_should_verify(kind: SolveStrategyKind) -> bool {
     !matches!(kind, SolveStrategyKind::Quadratic)
 }
 
@@ -46,7 +46,7 @@ pub fn strategy_should_verify(kind: SolveStrategyKind) -> bool {
 /// `state` is passed to the selected handler only, which avoids creating
 /// multiple closures that capture the same mutable runtime reference.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_solve_strategy_kind_with_state<
+pub(crate) fn dispatch_solve_strategy_kind_with_state<
     S,
     R,
     FRe,

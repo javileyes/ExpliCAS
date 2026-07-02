@@ -1,7 +1,7 @@
 //! Shared rule-name heuristics for runtime step post-processing.
 
 /// Returns true when rule name corresponds to expansion.
-pub fn is_expansion_rule_name(name: &str) -> bool {
+pub(crate) fn is_expansion_rule_name(name: &str) -> bool {
     name == "Binomial Expansion" || name == "Expand"
 }
 
@@ -29,12 +29,12 @@ pub fn is_always_keep_step_rule_name(name: &str) -> bool {
 }
 
 /// Returns true when rule name corresponds to canonicalization/reordering.
-pub fn is_canonicalization_rule_name(name: &str) -> bool {
+pub(crate) fn is_canonicalization_rule_name(name: &str) -> bool {
     name.starts_with("Canonicalize") || name == "Collect" || name.starts_with("Sort")
 }
 
 /// Returns true when rule name corresponds to mostly mechanical grind.
-pub fn is_mechanical_rule_name(name: &str) -> bool {
+pub(crate) fn is_mechanical_rule_name(name: &str) -> bool {
     if matches!(
         name,
         "Distributive Property"
@@ -57,7 +57,7 @@ pub fn is_mechanical_rule_name(name: &str) -> bool {
 /// - `steps[start]` is treated as expansion origin,
 /// - within `lookahead` steps there is a factor step whose `after` equals
 ///   the origin `before`.
-pub fn find_expand_factor_cycle_index_by<T, E, FRuleName, FBefore, FAfter>(
+pub(crate) fn find_expand_factor_cycle_index_by<T, E, FRuleName, FBefore, FAfter>(
     steps: &[T],
     start: usize,
     lookahead: usize,

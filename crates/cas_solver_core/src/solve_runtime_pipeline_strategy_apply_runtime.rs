@@ -4,7 +4,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 
 /// Apply one strategy kind with shared default step/error mappers.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_with_default_mappers_and_state<
+pub(crate) fn apply_strategy_with_default_mappers_and_state<
     T,
     FCollectSteps,
     FContextRef,

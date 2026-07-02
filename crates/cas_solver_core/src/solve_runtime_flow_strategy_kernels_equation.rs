@@ -3,7 +3,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// Apply quadratic strategy using default factorized and candidate pipelines
 /// with runtime-provided callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_quadratic_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_quadratic_strategy_with_default_kernels_and_state<
     T,
     S,
     SS,
@@ -77,7 +77,7 @@ where
 /// Apply isolation strategy using default routing and runtime-provided
 /// callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_isolation_strategy_with_default_kernels_and_state<
+pub(crate) fn apply_isolation_strategy_with_default_kernels_and_state<
     T,
     S,
     E,

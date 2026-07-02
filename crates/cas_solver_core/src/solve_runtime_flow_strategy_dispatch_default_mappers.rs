@@ -7,7 +7,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// - variable-not-found mapping,
 /// - quadratic-scope side-effects.
 #[allow(clippy::too_many_arguments)]
-pub fn apply_strategy_kind_with_default_kernels_and_default_step_and_error_mappers_with_state<
+pub(crate) fn apply_strategy_kind_with_default_kernels_and_default_step_and_error_mappers_with_state<
     T,
     S,
     SS,

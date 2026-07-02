@@ -18,7 +18,7 @@ pub struct MappedLogBlockedHint<E> {
 }
 
 /// Map one logarithmic assumption target into a caller-defined event type.
-pub fn map_log_assumption_target_with<E, FMapEvent>(
+pub(crate) fn map_log_assumption_target_with<E, FMapEvent>(
     ctx: &Context,
     assumption: LogAssumption,
     base: ExprId,
@@ -32,20 +32,8 @@ where
     map_event(ctx, target)
 }
 
-/// Map one blocked log hint into a caller-defined event type.
-pub fn map_log_blocked_hint_event_with<E, FMapEvent>(
-    ctx: &Context,
-    hint: LogBlockedHintRecord,
-    mut map_event: FMapEvent,
-) -> E
-where
-    FMapEvent: FnMut(&Context, ExprId) -> E,
-{
-    map_event(ctx, hint.expr_id)
-}
-
 /// Map one blocked log hint into a caller-defined event plus transferable payload.
-pub fn map_log_blocked_hint_with<E, FMapEvent>(
+pub(crate) fn map_log_blocked_hint_with<E, FMapEvent>(
     ctx: &Context,
     hint: LogBlockedHintRecord,
     mut map_event: FMapEvent,
@@ -64,9 +52,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        map_log_assumption_target_with, map_log_blocked_hint_event_with, map_log_blocked_hint_with,
-    };
+    use super::{map_log_assumption_target_with, map_log_blocked_hint_with};
     use crate::log_domain::LogAssumption;
     use crate::solve_outcome::LogBlockedHintRecord;
 
@@ -93,21 +79,6 @@ mod tests {
 
         assert_eq!(base_target, base);
         assert_eq!(rhs_target, rhs);
-    }
-
-    #[test]
-    fn map_log_blocked_hint_event_with_uses_hint_expr() {
-        let mut ctx = cas_ast::Context::new();
-        let expr = ctx.var("x");
-        let hint = LogBlockedHintRecord {
-            assumption: LogAssumption::PositiveBase,
-            expr_id: expr,
-            rule: "rule",
-            suggestion: "suggestion",
-        };
-
-        let event = map_log_blocked_hint_event_with(&ctx, hint, |_ctx, id| id);
-        assert_eq!(event, expr);
     }
 
     #[test]

@@ -7,7 +7,7 @@ use cas_math::semantic_equality::SemanticEqualityChecker;
 /// - no caller-defined didactic step exists, and
 /// - final expression is semantically equal to original expression
 ///   under cycle-check equivalence.
-pub fn is_semantic_noop_without_didactic_steps<StepT, FIsDidacticStep>(
+pub(crate) fn is_semantic_noop_without_didactic_steps<StepT, FIsDidacticStep>(
     ctx: &Context,
     original_expr: ExprId,
     final_expr: ExprId,

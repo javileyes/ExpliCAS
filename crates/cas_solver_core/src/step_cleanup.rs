@@ -16,7 +16,7 @@ struct CleanupEnvelope<T> {
 }
 
 /// Remove consecutive steps where extracted equations are identical.
-pub fn remove_duplicate_equations_by<T, FEq>(steps: Vec<T>, mut eq_of: FEq) -> Vec<T>
+pub(crate) fn remove_duplicate_equations_by<T, FEq>(steps: Vec<T>, mut eq_of: FEq) -> Vec<T>
 where
     T: Clone,
     FEq: FnMut(&T) -> &Equation,
@@ -44,13 +44,8 @@ where
     result
 }
 
-/// Remove consecutive duplicate equations for `CleanupStep`.
-pub fn remove_duplicate_equations(steps: Vec<CleanupStep>) -> Vec<CleanupStep> {
-    remove_duplicate_equations_by(steps, |s| &s.equation_after)
-}
-
 /// Remove redundant "normalize to zero then immediately undo" step pairs.
-pub fn remove_redundant_steps_by<T, FDesc, FEq>(
+pub(crate) fn remove_redundant_steps_by<T, FDesc, FEq>(
     ctx: &Context,
     steps: Vec<T>,
     mut desc_of: FDesc,
@@ -88,16 +83,6 @@ where
     result
 }
 
-/// Remove redundant steps for `CleanupStep`.
-pub fn remove_redundant_steps(ctx: &Context, steps: Vec<CleanupStep>) -> Vec<CleanupStep> {
-    remove_redundant_steps_by(
-        ctx,
-        steps,
-        |s| s.description.as_str(),
-        |s| &s.equation_after,
-    )
-}
-
 /// End-to-end cleanup pipeline over arbitrary step payloads.
 ///
 /// This applies:
@@ -107,7 +92,7 @@ pub fn remove_redundant_steps(ctx: &Context, steps: Vec<CleanupStep>) -> Vec<Cle
 /// 4. Duplicate-equation removal
 ///
 /// The caller controls how to extract/rebuild payloads from custom step types.
-pub fn cleanup_steps_by<T, FExtract, FRebuild>(
+pub(crate) fn cleanup_steps_by<T, FExtract, FRebuild>(
     ctx: &mut Context,
     steps: Vec<T>,
     detailed: bool,
@@ -182,7 +167,7 @@ where
 ///
 /// This helper is convenient for frontends that want to enforce display-step
 /// consumption via [`crate::display_steps::DisplaySteps`].
-pub fn cleanup_into_display_steps_by<T, FExtract, FRebuild>(
+pub(crate) fn cleanup_into_display_steps_by<T, FExtract, FRebuild>(
     ctx: &mut Context,
     steps: Vec<T>,
     detailed: bool,
@@ -198,23 +183,6 @@ where
     crate::display_steps::DisplaySteps(cleanup_steps_by(
         ctx, steps, detailed, var, extract, rebuild,
     ))
-}
-
-/// End-to-end cleanup for plain `CleanupStep` payloads.
-pub fn cleanup_steps(
-    ctx: &mut Context,
-    steps: Vec<CleanupStep>,
-    detailed: bool,
-    var: &str,
-) -> Vec<CleanupStep> {
-    cleanup_steps_by(
-        ctx,
-        steps,
-        detailed,
-        var,
-        |s| s.clone(),
-        |_step, payload| payload,
-    )
 }
 
 fn is_step_normalize_to_zero<T, FEq>(ctx: &Context, step: &T, eq_of: &mut FEq) -> bool
@@ -259,7 +227,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::{Expr, RelOp};
+    use cas_ast::RelOp;
 
     fn mk_step(desc: &str, lhs: cas_ast::ExprId, rhs: cas_ast::ExprId) -> CleanupStep {
         CleanupStep {
@@ -270,43 +238,6 @@ mod tests {
                 op: RelOp::Eq,
             },
         }
-    }
-
-    #[test]
-    fn remove_duplicate_equations_drops_consecutive_duplicates() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let zero = ctx.num(0);
-        let one = ctx.num(1);
-
-        let steps = vec![
-            mk_step("a", x, zero),
-            mk_step("b", x, zero),
-            mk_step("c", x, one),
-        ];
-
-        let out = remove_duplicate_equations(steps);
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0].description, "a");
-        assert_eq!(out[1].description, "c");
-    }
-
-    #[test]
-    fn remove_redundant_steps_skips_zero_normalization_when_immediately_undone() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let zero = ctx.num(0);
-        let rhs = ctx.add(Expr::Sub(y, x));
-
-        let steps = vec![
-            mk_step("Subtract y from both sides", x, zero),
-            mk_step("Subtract -(x) from both sides", x, rhs),
-        ];
-
-        let out = remove_redundant_steps(&ctx, steps);
-        assert_eq!(out.len(), 1);
-        assert!(out[0].description.contains("Subtract -("));
     }
 
     #[test]
@@ -398,26 +329,6 @@ mod tests {
         assert_eq!(out[0].marker, 7);
         assert_eq!(out[1].marker, 9);
         assert_eq!(out[1].description, "Collect and factor x terms");
-    }
-
-    #[test]
-    fn cleanup_steps_normalizes_description() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let neg_x = ctx.add(Expr::Neg(x));
-        let zero = ctx.num(0);
-        let step = CleanupStep {
-            description: "Subtract -(x) from both sides".to_string(),
-            equation_after: Equation {
-                lhs: x,
-                rhs: ctx.add(Expr::Sub(zero, neg_x)),
-                op: RelOp::Eq,
-            },
-        };
-
-        let out = cleanup_steps(&mut ctx, vec![step], false, "x");
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].description, "Move terms to one side");
     }
 
     #[test]

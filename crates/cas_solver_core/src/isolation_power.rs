@@ -55,7 +55,7 @@ pub struct PowIsolationKernelInputs {
 /// Build power-isolation kernel config using one caller-provided include-item hook.
 ///
 /// This keeps call-sites thin by centralizing the include-item fanout.
-pub fn build_pow_isolation_kernel_config_with<FCollectItem>(
+pub(crate) fn build_pow_isolation_kernel_config_with<FCollectItem>(
     mut collect_item: FCollectItem,
     inputs: PowIsolationKernelInputs,
 ) -> PowIsolationKernelConfig
@@ -79,7 +79,7 @@ where
 
 /// Dispatch power-isolation route (`variable in base` vs `variable in exponent`)
 /// from a stateful caller.
-pub fn execute_pow_isolation_route_with_state<T, R, E, FBase, FExponent>(
+pub(crate) fn execute_pow_isolation_route_with_state<T, R, E, FBase, FExponent>(
     state: &mut T,
     route: PowIsolationRoute,
     on_variable_in_base: FBase,
@@ -99,7 +99,7 @@ where
 ///
 /// This combines `derive_pow_isolation_route` with
 /// `execute_pow_isolation_route_with_state`.
-pub fn execute_pow_isolation_route_for_var_with_state<T, R, E, FContext, FBase, FExponent>(
+pub(crate) fn execute_pow_isolation_route_for_var_with_state<T, R, E, FContext, FBase, FExponent>(
     state: &mut T,
     context: FContext,
     base: ExprId,
@@ -127,7 +127,7 @@ where
 /// - default base-isolation kernel
 /// - default exponent-isolation kernels.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_isolation_with_default_kernels_for_var_with_state<
+pub(crate) fn execute_pow_isolation_with_default_kernels_for_var_with_state<
     T,
     S,
     E,
@@ -299,7 +299,7 @@ where
 /// Execute full power isolation with one prebuilt [`PowIsolationKernelConfig`]
 /// and a unified step mapper shared by all emitted execution-item types.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_isolation_with_kernel_config_and_unified_step_mapper_for_var_with_state<
+pub(crate) fn execute_pow_isolation_with_kernel_config_and_unified_step_mapper_for_var_with_state<
     T,
     S,
     E,
@@ -417,7 +417,7 @@ where
 /// Execute base-side power isolation (`b^e = rhs`) using default core action
 /// planning (`build_pow_base_isolation_action_with`) and caller solve hooks.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_base_isolation_with_default_action_with_state<
+pub(crate) fn execute_pow_base_isolation_with_default_action_with_state<
     T,
     S,
     E,
@@ -471,7 +471,7 @@ where
 
 /// Execute base-side power isolation (`b^e = rhs`) with caller-provided stateful hooks.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_base_isolation_pipeline_with_state<
+pub(crate) fn execute_pow_base_isolation_pipeline_with_state<
     T,
     S,
     E,
@@ -516,7 +516,7 @@ where
 /// - `Ok(Some(...))` when prelude produced a final solved result.
 /// - `Ok(None)` when solver should continue with logarithmic isolation.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_shortcuts_and_guards_with_state<
+pub(crate) fn execute_pow_exponent_shortcuts_and_guards_with_state<
     T,
     S,
     E,
@@ -628,7 +628,7 @@ where
 /// Execute exponent-side prelude for power isolation (`b^e = rhs`) using
 /// default shortcut planning/equivalence/guard hooks from `solve_outcome`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state<
+pub(crate) fn execute_pow_exponent_shortcuts_and_guards_with_default_kernel_with_state<
     T,
     S,
     E,
@@ -737,7 +737,7 @@ where
 /// Execute solve-tactic normalization for exponent-side power isolation and
 /// classify logarithmic solve decision from normalized `(base, rhs)`.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_tactic_and_classify_decision_with_state<
+pub(crate) fn execute_pow_exponent_tactic_and_classify_decision_with_state<
     T,
     S,
     D,
@@ -784,7 +784,7 @@ where
 /// 1) solve-tactic normalization + log decision classification,
 /// 2) log decision resolution and fallback rewrite solve.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_tactic_then_log_pipeline_with_state<
+pub(crate) fn execute_pow_exponent_tactic_then_log_pipeline_with_state<
     T,
     S,
     E,
@@ -908,7 +908,7 @@ where
 /// Execute the exponent-side tactic+log pipeline using default kernel helpers
 /// for tactic-step construction, unsupported-plan construction, and log rewrite.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state<
+pub(crate) fn execute_pow_exponent_tactic_then_log_pipeline_with_default_kernel_with_state<
     T,
     S,
     E,
@@ -1061,7 +1061,7 @@ where
 /// 1) shortcut/guard prelude (`b^e = rhs`)
 /// 2) tactic + log isolation fallback.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_isolation_with_default_kernels_with_state<
+pub(crate) fn execute_pow_exponent_isolation_with_default_kernels_with_state<
     T,
     S,
     E,
@@ -1215,7 +1215,7 @@ where
 /// Execute exponent-side logarithmic decision resolution and, when needed,
 /// continue with logarithmic rewrite isolation.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_log_decision_then_rewrite_with_state<
+pub(crate) fn execute_pow_exponent_log_decision_then_rewrite_with_state<
     T,
     S,
     E,

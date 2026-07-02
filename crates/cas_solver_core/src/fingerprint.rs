@@ -36,7 +36,7 @@ pub fn expr_fingerprint(ctx: &Context, id: ExprId, h: &mut impl Hasher) {
 }
 
 /// Compute a fingerprint for a `(var, lhs, rhs)` equation tuple.
-pub fn equation_fingerprint(ctx: &Context, lhs: ExprId, rhs: ExprId, var: &str) -> u64 {
+pub(crate) fn equation_fingerprint(ctx: &Context, lhs: ExprId, rhs: ExprId, var: &str) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
     var.hash(&mut hasher);
     expr_fingerprint(ctx, lhs, &mut hasher);

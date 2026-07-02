@@ -147,7 +147,7 @@ impl AssumptionKey {
 }
 
 /// Stable fingerprint used to deduplicate assumption emissions across steps.
-pub fn assumption_key_dedupe_fingerprint(key: &AssumptionKey) -> u64 {
+pub(crate) fn assumption_key_dedupe_fingerprint(key: &AssumptionKey) -> u64 {
     match key {
         AssumptionKey::NonZero { expr_fingerprint } => *expr_fingerprint,
         AssumptionKey::Positive { expr_fingerprint } => expr_fingerprint.wrapping_add(1_000_000),
@@ -163,7 +163,7 @@ pub fn assumption_key_dedupe_fingerprint(key: &AssumptionKey) -> u64 {
 }
 
 /// Render the canonical textual condition for one assumption key and display expression.
-pub fn assumption_condition_text(key: &AssumptionKey, expr_display: &str) -> String {
+pub(crate) fn assumption_condition_text(key: &AssumptionKey, expr_display: &str) -> String {
     match key {
         AssumptionKey::NonZero { .. } => format!("{expr_display} ≠ 0"),
         AssumptionKey::Positive { .. } => format!("{expr_display} > 0"),
@@ -360,7 +360,7 @@ pub enum AssumptionConditionKind {
 ///
 /// Returns `None` for assumptions that are not modeled as explicit implicit
 /// conditions (e.g. branch/principal-range choices).
-pub fn assumption_condition_kind(
+pub(crate) fn assumption_condition_kind(
     event: &AssumptionEvent,
 ) -> Option<(AssumptionConditionKind, ExprId)> {
     let expr_id = event.expr_id?;
@@ -383,7 +383,7 @@ pub fn assumption_condition_kind(
 /// - `Some(false)` when a mapped condition is new.
 ///
 /// Returns `(new_kind, should_introduce_requirement)`.
-pub fn classify_assumption_kind(
+pub(crate) fn classify_assumption_kind(
     original_kind: AssumptionKind,
     condition_implied: Option<bool>,
 ) -> (AssumptionKind, bool) {
@@ -404,7 +404,7 @@ pub fn classify_assumption_kind(
 /// Returns `(new_kind, condition_to_introduce)`, where the second value is
 /// populated only when the condition is not implied and policy requires adding
 /// it to introduced-requires.
-pub fn classify_assumption_with_condition<T>(
+pub(crate) fn classify_assumption_with_condition<T>(
     event: &AssumptionEvent,
     condition: Option<T>,
     mut is_condition_implied: impl FnMut(&T) -> bool,
@@ -550,7 +550,7 @@ pub fn group_blocked_hint_conditions_by_rule(
 }
 
 /// Collect `(condition, rule)` blocked-hint items sorted and deduplicated.
-pub fn collect_blocked_hint_items(
+pub(crate) fn collect_blocked_hint_items(
     ctx: &Context,
     hints: &[crate::blocked_hint::BlockedHint],
 ) -> Vec<(String, String)> {
@@ -619,7 +619,7 @@ fn assumption_record_condition(record: &AssumptionRecord) -> String {
 /// Format assumptions as condition strings for debug explain blocks.
 ///
 /// Returned values are sorted and deduplicated for stable output.
-pub fn format_assumption_records_conditions(records: &[AssumptionRecord]) -> Vec<String> {
+pub(crate) fn format_assumption_records_conditions(records: &[AssumptionRecord]) -> Vec<String> {
     let mut items: Vec<String> = records.iter().map(assumption_record_condition).collect();
     items.sort();
     items.dedup();

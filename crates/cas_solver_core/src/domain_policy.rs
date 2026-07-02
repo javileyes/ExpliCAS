@@ -20,7 +20,7 @@ pub fn mode_allows_predicate(
 
 /// Decide policy for a full predicate.
 #[inline]
-pub fn decide_policy(
+pub(crate) fn decide_policy(
     mode: crate::domain_mode::DomainMode,
     pred: &crate::domain_facts_model::Predicate,
     strength: crate::domain_facts_model::FactStrength,
@@ -30,7 +30,7 @@ pub fn decide_policy(
 
 /// Decide policy when condition class is already known.
 #[inline]
-pub fn decide_policy_by_class(
+pub(crate) fn decide_policy_by_class(
     mode: crate::domain_mode::DomainMode,
     class: crate::solve_safety_policy::ConditionClass,
     strength: crate::domain_facts_model::FactStrength,

@@ -55,13 +55,13 @@ pub fn simplifier_context<S: RuntimeSolveAdapterState>(simplifier: &mut S) -> &c
     simplifier.runtime_context()
 }
 
-pub fn simplifier_context_mut<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_context_mut<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
 ) -> &mut cas_ast::Context {
     simplifier.runtime_context_mut()
 }
 
-pub fn simplifier_contains_var<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_contains_var<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
     var: &str,
@@ -69,61 +69,61 @@ pub fn simplifier_contains_var<S: RuntimeSolveAdapterState>(
     state_helpers::contains_var_in_context(simplifier.runtime_context(), expr, var)
 }
 
-pub fn simplifier_simplify_expr<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_simplify_expr<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> ExprId {
     simplifier.runtime_simplify_expr(expr)
 }
 
-pub fn simplifier_expand_expr<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_expand_expr<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> ExprId {
     simplifier.runtime_expand_expr(expr)
 }
 
-pub fn simplifier_expand_full_expr<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_expand_full_expr<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> ExprId {
     simplifier.runtime_expand_full_expr(expr)
 }
 
-pub fn simplifier_render_expr<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_render_expr<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> String {
     state_helpers::render_expr_in_context(simplifier.runtime_context(), expr)
 }
 
-pub fn context_render_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
+pub(crate) fn context_render_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
     state_helpers::render_expr_in_context(ctx, expr)
 }
 
-pub fn simplifier_zero_expr<S: RuntimeSolveAdapterState>(simplifier: &mut S) -> ExprId {
+pub(crate) fn simplifier_zero_expr<S: RuntimeSolveAdapterState>(simplifier: &mut S) -> ExprId {
     state_helpers::zero_expr_in_context(simplifier.runtime_context_mut())
 }
 
-pub fn simplifier_collect_steps<S: RuntimeSolveAdapterState>(simplifier: &mut S) -> bool {
+pub(crate) fn simplifier_collect_steps<S: RuntimeSolveAdapterState>(simplifier: &mut S) -> bool {
     simplifier.runtime_collect_steps()
 }
 
-pub fn simplifier_set_collect_steps<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_set_collect_steps<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     collect: bool,
 ) {
     simplifier.runtime_set_collect_steps(collect);
 }
 
-pub fn simplifier_simplify_for_solve<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_simplify_for_solve<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> ExprId {
     simplifier.runtime_simplify_for_solve(expr)
 }
 
-pub fn simplifier_simplify_with_options_expr<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_simplify_with_options_expr<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
     options: &crate::simplify_options::SimplifyOptions,
@@ -131,7 +131,7 @@ pub fn simplifier_simplify_with_options_expr<S: RuntimeSolveAdapterState>(
     simplifier.runtime_simplify_with_options_expr(expr, options.clone())
 }
 
-pub fn simplifier_are_equivalent<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_are_equivalent<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     lhs: ExprId,
     rhs: ExprId,
@@ -139,11 +139,11 @@ pub fn simplifier_are_equivalent<S: RuntimeSolveAdapterState>(
     simplifier.runtime_are_equivalent(lhs, rhs)
 }
 
-pub fn simplifier_clear_blocked_hints<S: RuntimeSolveAdapterState>(simplifier: &mut S) {
+pub(crate) fn simplifier_clear_blocked_hints<S: RuntimeSolveAdapterState>(simplifier: &mut S) {
     simplifier.runtime_clear_blocked_hints();
 }
 
-pub fn simplifier_prove_nonzero_status<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_prove_nonzero_status<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> crate::linear_solution::NonZeroStatus {
@@ -159,7 +159,7 @@ pub fn simplifier_prove_nonzero_status<S: RuntimeSolveAdapterState>(
     )
 }
 
-pub fn simplifier_cancel_additive_terms_semantic<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_cancel_additive_terms_semantic<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     lhs: ExprId,
     rhs: ExprId,
@@ -167,14 +167,14 @@ pub fn simplifier_cancel_additive_terms_semantic<S: RuntimeSolveAdapterState>(
     simplifier.runtime_cancel_additive_terms_semantic(lhs, rhs)
 }
 
-pub fn simplifier_is_known_negative<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplifier_is_known_negative<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     expr: ExprId,
 ) -> bool {
     state_helpers::is_known_negative_in_context(simplifier.runtime_context(), expr)
 }
 
-pub fn simplify_rhs_with_step_pairs<S: RuntimeSolveAdapterState>(
+pub(crate) fn simplify_rhs_with_step_pairs<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     rhs_expr: ExprId,
 ) -> (ExprId, Vec<(String, ExprId)>) {
@@ -182,7 +182,7 @@ pub fn simplify_rhs_with_step_pairs<S: RuntimeSolveAdapterState>(
     state_helpers::simplify_rhs_with_step_pairs(simplified_rhs, sim_steps)
 }
 
-pub fn sym_name_as_string<S: RuntimeSolveAdapterState>(
+pub(crate) fn sym_name_as_string<S: RuntimeSolveAdapterState>(
     simplifier: &mut S,
     fn_symbol: SymbolId,
 ) -> String {

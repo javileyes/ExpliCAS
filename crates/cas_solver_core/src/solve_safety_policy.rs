@@ -70,7 +70,7 @@ impl SimplifyPurpose {
     }
 }
 
-pub fn domain_mode_allows_unproven(mode: DomainModeKind, class: ConditionClassKind) -> bool {
+pub(crate) fn domain_mode_allows_unproven(mode: DomainModeKind, class: ConditionClassKind) -> bool {
     match mode {
         DomainModeKind::Strict => false,
         DomainModeKind::Generic => class == ConditionClassKind::Definability,

@@ -11,7 +11,7 @@ use std::collections::HashSet;
 /// - stops at first barrier,
 /// - absorbs consecutive absorbable steps,
 /// - stops at first non-absorbable/non-barrier step.
-pub fn find_absorption_indices_before_markers_with<T, FIsMarker, FIsAbsorbable, FIsBarrier>(
+pub(crate) fn find_absorption_indices_before_markers_with<T, FIsMarker, FIsAbsorbable, FIsBarrier>(
     steps: &[T],
     window: usize,
     mut is_marker: FIsMarker,
@@ -47,7 +47,7 @@ where
 }
 
 /// Apply index-based absorption to a step vector.
-pub fn absorb_indices<T>(steps: Vec<T>, indices: &[usize]) -> Vec<T> {
+pub(crate) fn absorb_indices<T>(steps: Vec<T>, indices: &[usize]) -> Vec<T> {
     let set: HashSet<usize> = indices.iter().copied().collect();
     steps
         .into_iter()

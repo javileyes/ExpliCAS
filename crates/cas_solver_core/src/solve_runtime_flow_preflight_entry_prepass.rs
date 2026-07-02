@@ -12,7 +12,7 @@ pub enum PreflightOrSolved<Ctx, S, E> {
 /// Try the default early rational-exponent prepass:
 /// - only for equality equations (`RelOp::Eq`)
 /// - if a solve result appears, guard it against domain exclusions
-pub fn try_apply_rational_exponent_prepass_with_default_eq_guard_and_exclusion_policy_with_state<
+pub(crate) fn try_apply_rational_exponent_prepass_with_default_eq_guard_and_exclusion_policy_with_state<
     SState,
     S,
     E,
@@ -45,7 +45,7 @@ where
 /// - [`PreflightOrSolved::Solved`] when the prepass solved the equation, or
 /// - [`PreflightOrSolved::Continue`] with `(domain_exclusions, solve_ctx)` for
 ///   the regular strategy pipeline.
-pub fn run_preflight_with_default_rational_exponent_prepass_with_state<
+pub(crate) fn run_preflight_with_default_rational_exponent_prepass_with_state<
     SState,
     Ctx,
     S,

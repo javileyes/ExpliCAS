@@ -8,7 +8,11 @@ use crate::log_domain::{
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Match `Pow(base, p/q)` where `base` contains `var` and `p/q` is non-integer rational.
-pub fn match_rational_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(ExprId, i64, i64)> {
+pub(crate) fn match_rational_power(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, i64, i64)> {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
         if !contains_var(ctx, *base, var) {
             return None;
@@ -55,7 +59,7 @@ pub fn match_rational_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(E
 /// Rewrite `base^(p/q) = rhs` into `base^p = rhs^q` for rational exponent elimination.
 ///
 /// Returns the transformed equation and exponent pair `(p, q)`.
-pub fn rewrite_rational_power_equation(
+pub(crate) fn rewrite_rational_power_equation(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -80,7 +84,7 @@ pub fn rewrite_rational_power_equation(
 /// Rewrite helper for the common isolated pattern used by the solver:
 /// only rewrites when the equation is an equality with the variable
 /// appearing on the left side and not on the right side.
-pub fn rewrite_isolated_rational_power_equation(
+pub(crate) fn rewrite_isolated_rational_power_equation(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -99,7 +103,7 @@ pub fn rewrite_isolated_rational_power_equation(
 /// `A^n op B  ->  A op B^(1/n)`, but only when `n` is not a positive integer.
 ///
 /// Returns the transformed equation and the original exponent expression `n`.
-pub fn rewrite_variable_base_power_equation(
+pub(crate) fn rewrite_variable_base_power_equation(
     ctx: &mut Context,
     target: ExprId,
     other: ExprId,
@@ -155,7 +159,7 @@ fn base_is_provably_fraction_below_one(ctx: &Context, base: ExprId) -> bool {
 /// `exponent * ln(base) = ln(other)`.
 ///
 /// `is_lhs` controls which side contained the original exponential target.
-pub fn build_log_linear_equation(
+pub(crate) fn build_log_linear_equation(
     ctx: &mut Context,
     base: ExprId,
     exponent: ExprId,
@@ -201,7 +205,7 @@ pub enum LogLinearUnwrapPlan<'a> {
 }
 
 /// Build log-linear unwrap equation when domain decision allows it.
-pub fn plan_log_linear_unwrap_equation<'a>(
+pub(crate) fn plan_log_linear_unwrap_equation<'a>(
     ctx: &mut Context,
     base: ExprId,
     exponent: ExprId,
@@ -235,7 +239,7 @@ pub enum PowUnwrapPlan {
 }
 
 /// Plan a power unwrap rewrite (`Pow`) using either base-isolation or log-linear route.
-pub fn plan_pow_unwrap_rewrite<F>(
+pub(crate) fn plan_pow_unwrap_rewrite<F>(
     ctx: &mut Context,
     target: ExprId,
     other: ExprId,
@@ -281,7 +285,7 @@ where
 ///
 /// When `use_abs_base` is true, the equation is built as
 /// `abs(base) = rhs^(1/exponent)` (used for even roots).
-pub fn build_root_isolation_equation(
+pub(crate) fn build_root_isolation_equation(
     ctx: &mut Context,
     base: ExprId,
     exponent: ExprId,
@@ -306,7 +310,7 @@ pub fn build_root_isolation_equation(
 
 /// Build the logarithmic isolation rewrite for `base^exponent op rhs`:
 /// `exponent op log(base, rhs)`.
-pub fn build_exponent_log_isolation_equation(
+pub(crate) fn build_exponent_log_isolation_equation(
     ctx: &mut Context,
     exponent: ExprId,
     base: ExprId,

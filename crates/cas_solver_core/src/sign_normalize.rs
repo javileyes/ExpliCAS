@@ -2,7 +2,7 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::is_zero_expr as is_zero;
 
 /// Clean up solver step descriptions for readability.
-pub fn cleanup_step_description(desc: &str) -> String {
+pub(crate) fn cleanup_step_description(desc: &str) -> String {
     if desc.starts_with("Subtract -(") || desc.starts_with("Subtract -") {
         return "Move terms to one side".to_string();
     }
@@ -13,7 +13,7 @@ pub fn cleanup_step_description(desc: &str) -> String {
 }
 
 /// Normalize signs in an expression for didactic display.
-pub fn normalize_expr_signs(ctx: &mut Context, expr: ExprId) -> ExprId {
+pub(crate) fn normalize_expr_signs(ctx: &mut Context, expr: ExprId) -> ExprId {
     normalize_signs_recursive(ctx, expr)
 }
 

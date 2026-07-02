@@ -8,7 +8,7 @@ use cas_ast::{Context, ExprId};
 ///
 /// This keeps core logic independent from concrete simplifier types while
 /// letting integration crates (`cas_engine`, `cas_solver`) provide adapters.
-pub fn ground_eval_candidate_with_runtime_simplifier_with_state<
+pub(crate) fn ground_eval_candidate_with_runtime_simplifier_with_state<
     SState,
     FBuildSimplifier,
     FSetCollectSteps,

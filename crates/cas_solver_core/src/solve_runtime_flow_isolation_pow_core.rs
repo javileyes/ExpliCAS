@@ -2,7 +2,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 
 /// Build a runtime power-isolation config by querying include-item hooks from
 /// mutable state.
-pub fn build_pow_isolation_runtime_config_with_state<
+pub(crate) fn build_pow_isolation_runtime_config_with_state<
     T,
     TTacticOptions,
     FCollectItem,
@@ -33,7 +33,7 @@ where
 /// Execute power isolation (`base^exponent = rhs`) with one runtime config
 /// and default unified-step mapping in the core kernel.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_pow_isolation_with_runtime_config_and_unified_step_mapper_for_var_with_state<
+pub(crate) fn execute_pow_isolation_with_runtime_config_and_unified_step_mapper_for_var_with_state<
     T,
     S,
     E,

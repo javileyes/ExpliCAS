@@ -7,7 +7,7 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 /// options/context into the `apply_strategy` callback and reusing the default
 /// soft-error and substitution-verification kernels.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_strategy_pipeline_with_apply_strategy_runtime_ctx_and_default_verification_with_state<
+pub(crate) fn execute_strategy_pipeline_with_apply_strategy_runtime_ctx_and_default_verification_with_state<
     SState,
     TOptions,
     TCtx,

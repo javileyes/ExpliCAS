@@ -15,7 +15,7 @@ pub fn sqrt_expr(ctx: &mut Context, radicand: ExprId) -> ExprId {
 /// Returns `(x1, x2)` where:
 /// - `x1 = (-b - sqrt(delta)) / (2a)`
 /// - `x2 = (-b + sqrt(delta)) / (2a)`
-pub fn roots_from_a_b_and_sqrt(
+pub(crate) fn roots_from_a_b_and_sqrt(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -35,7 +35,7 @@ pub fn roots_from_a_b_and_sqrt(
 }
 
 /// Build both quadratic-formula roots from `a`, `b`, and `delta`.
-pub fn roots_from_a_b_delta(
+pub(crate) fn roots_from_a_b_delta(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -48,7 +48,7 @@ pub fn roots_from_a_b_delta(
 /// Build both quadratic-formula roots from `a`, `b`, and an already
 /// simplified discriminant expression, applying square-factor extraction
 /// before root construction.
-pub fn roots_from_a_b_and_simplified_delta(
+pub(crate) fn roots_from_a_b_and_simplified_delta(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -60,7 +60,7 @@ pub fn roots_from_a_b_and_simplified_delta(
 }
 
 /// Build symbolic discriminant expression `b^2 - 4ac`.
-pub fn discriminant_expr(ctx: &mut Context, a: ExprId, b: ExprId, c: ExprId) -> ExprId {
+pub(crate) fn discriminant_expr(ctx: &mut Context, a: ExprId, b: ExprId, c: ExprId) -> ExprId {
     let two = ctx.num(2);
     let b2 = ctx.add(Expr::Pow(b, two));
     let four = ctx.num(4);
@@ -98,7 +98,7 @@ pub enum QuadraticCoefficientSolvePlan {
 ///
 /// Input coefficients are expected to be simplified `a`, `b`, `c` from
 /// `a*x^2 + b*x + c = 0`.
-pub fn build_quadratic_coefficient_solve_plan(
+pub(crate) fn build_quadratic_coefficient_solve_plan(
     ctx: &mut Context,
     op: RelOp,
     a: ExprId,
@@ -129,56 +129,18 @@ pub fn build_quadratic_coefficient_solve_plan(
     Ok(QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr })
 }
 
-/// Solve a precomputed quadratic coefficient plan and return the resulting
-/// solution set. Expansion/simplification are injected by caller.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_quadratic_coefficient_solve_plan_with<FExpand, FSimplify, FNumeric, FRoots>(
-    op: RelOp,
-    a: ExprId,
-    b: ExprId,
-    plan: QuadraticCoefficientSolvePlan,
-    mut expand_expr: FExpand,
-    mut simplify_expr: FSimplify,
-    mut solve_numeric: FNumeric,
-    mut roots_from_simplified_delta: FRoots,
-) -> SolutionSet
-where
-    FExpand: FnMut(ExprId) -> ExprId,
-    FSimplify: FnMut(ExprId) -> ExprId,
-    FNumeric: FnMut(RelOp, BigRational, (ExprId, ExprId), bool) -> SolutionSet,
-    FRoots: FnMut(ExprId, ExprId, ExprId) -> (ExprId, ExprId),
-{
-    match plan {
-        QuadraticCoefficientSolvePlan::Numeric {
-            delta,
-            roots: (sol1, sol2),
-            opens_up,
-        } => {
-            let sim_sol1 = simplify_expr(sol1);
-            let sim_sol2 = simplify_expr(sol2);
-            solve_numeric(op, delta, (sim_sol1, sim_sol2), opens_up)
-        }
-        QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } => {
-            let delta_expanded = expand_expr(delta_expr);
-            let sim_delta = simplify_expr(delta_expanded);
-
-            let (sol1_raw, sol2_raw) = roots_from_simplified_delta(a, b, sim_delta);
-            let sol1_expanded = expand_expr(sol1_raw);
-            let sim_sol1 = simplify_expr(sol1_expanded);
-            let sol2_expanded = expand_expr(sol2_raw);
-            let sim_sol2 = simplify_expr(sol2_expanded);
-
-            SolutionSet::Discrete(vec![sim_sol1, sim_sol2])
-        }
-    }
-}
-
 /// Stateful variant of [`solve_quadratic_coefficient_solve_plan_with`].
 ///
 /// This allows callers to reuse one mutable state object across expansion,
 /// simplification, numeric solving, and symbolic root construction callbacks.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_quadratic_coefficient_solve_plan_with_state<T, FExpand, FSimplify, FNumeric, FRoots>(
+pub(crate) fn solve_quadratic_coefficient_solve_plan_with_state<
+    T,
+    FExpand,
+    FSimplify,
+    FNumeric,
+    FRoots,
+>(
     state: &mut T,
     op: RelOp,
     a: ExprId,
@@ -226,7 +188,7 @@ where
 /// Expansion/simplification are still injected by caller so strategy policy
 /// remains outside solver-core.
 #[allow(clippy::too_many_arguments)]
-pub fn execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state<
+pub(crate) fn execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state<
     T,
     E,
     FContextMut,
@@ -288,59 +250,6 @@ where
             roots_from_a_b_and_simplified_delta(context_mut(state), solve_a, solve_b, sim_delta)
         },
     ))
-}
-
-/// Solve a precomputed quadratic coefficient plan using the default numeric
-/// ordering/inequality solver from `solution_set`.
-///
-/// Expansion/simplification remain injected by caller so engine-side policy
-/// (e.g. expand strategy) stays outside the core crate.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_quadratic_coefficient_solve_plan_with_default_numeric_solution<FExpand, FSimplify>(
-    ctx: &mut Context,
-    op: RelOp,
-    a: ExprId,
-    b: ExprId,
-    plan: QuadraticCoefficientSolvePlan,
-    mut expand_expr: FExpand,
-    mut simplify_expr: FSimplify,
-) -> SolutionSet
-where
-    FExpand: FnMut(ExprId) -> ExprId,
-    FSimplify: FnMut(ExprId) -> ExprId,
-{
-    match plan {
-        QuadraticCoefficientSolvePlan::Numeric {
-            delta,
-            roots: (sol1, sol2),
-            opens_up,
-        } => {
-            let sim_sol1 = simplify_expr(sol1);
-            let sim_sol2 = simplify_expr(sol2);
-            let (r1, r2) = crate::solution_set::order_pair_by_value(ctx, sim_sol1, sim_sol2);
-            crate::solution_set::quadratic_numeric_solution(ctx, op, &delta, opens_up, r1, r2)
-        }
-        QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } => {
-            let delta_expanded = expand_expr(delta_expr);
-            let sim_delta = simplify_expr(delta_expanded);
-
-            // Real domain: a provably-negative constant discriminant ⇒ no real roots (see the wrapper
-            // `execute_…_with_state` for the rationale). Keeps this public twin consistent.
-            if cas_math::const_sign::provable_const_sign(ctx, sim_delta)
-                == Some(cas_math::const_sign::ConstSign::Negative)
-            {
-                return SolutionSet::Empty;
-            }
-
-            let (sol1_raw, sol2_raw) = roots_from_a_b_and_simplified_delta(ctx, a, b, sim_delta);
-            let sol1_expanded = expand_expr(sol1_raw);
-            let sim_sol1 = simplify_expr(sol1_expanded);
-            let sol2_expanded = expand_expr(sol2_raw);
-            let sim_sol2 = simplify_expr(sol2_expanded);
-
-            SolutionSet::Discrete(vec![sim_sol1, sim_sol2])
-        }
-    }
 }
 
 #[cfg(test)]
@@ -460,54 +369,6 @@ mod tests {
     }
 
     #[test]
-    fn solve_quadratic_coefficient_solve_plan_with_numeric_returns_discrete_roots() {
-        let mut ctx = Context::new();
-        let a = ctx.num(1);
-        let b = ctx.num(-3);
-        let c = ctx.num(2);
-        let plan = build_quadratic_coefficient_solve_plan(&mut ctx, RelOp::Eq, a, b, c)
-            .expect("numeric coefficients should build numeric plan");
-
-        let solved = solve_quadratic_coefficient_solve_plan_with(
-            RelOp::Eq,
-            a,
-            b,
-            plan,
-            |id| id,
-            |id| id,
-            |_op, _delta, (r1, r2), _opens_up| SolutionSet::Discrete(vec![r1, r2]),
-            |aa, bb, delta| roots_from_a_b_and_simplified_delta(&mut ctx, aa, bb, delta),
-        );
-        assert!(matches!(solved, SolutionSet::Discrete(_)));
-    }
-
-    #[test]
-    fn solve_quadratic_coefficient_solve_plan_with_symbolic_returns_discrete_set() {
-        let mut ctx = Context::new();
-        let a = ctx.var("a");
-        let b = ctx.var("b");
-        let c = ctx.var("c");
-        let plan = build_quadratic_coefficient_solve_plan(&mut ctx, RelOp::Eq, a, b, c)
-            .expect("symbolic equality should build symbolic plan");
-
-        let solved = solve_quadratic_coefficient_solve_plan_with(
-            RelOp::Eq,
-            a,
-            b,
-            plan,
-            |id| id,
-            |id| id,
-            |_op, _delta, (r1, r2), _opens_up| SolutionSet::Discrete(vec![r1, r2]),
-            |aa, bb, delta| roots_from_a_b_and_simplified_delta(&mut ctx, aa, bb, delta),
-        );
-
-        match solved {
-            SolutionSet::Discrete(solutions) => assert_eq!(solutions.len(), 2),
-            _ => panic!("expected discrete symbolic solutions"),
-        }
-    }
-
-    #[test]
     fn solve_quadratic_coefficient_solve_plan_with_state_numeric_returns_discrete_roots() {
         let mut ctx = Context::new();
         let a = ctx.num(1);
@@ -544,53 +405,6 @@ mod tests {
         assert!(matches!(solved, SolutionSet::Discrete(_)));
         assert_eq!(state.simplify_calls, 2);
         assert_eq!(state.numeric_calls, 1);
-    }
-
-    #[test]
-    fn solve_quadratic_coefficient_solve_plan_with_default_numeric_solution_numeric_plan() {
-        let mut ctx = Context::new();
-        let a = ctx.num(1);
-        let b = ctx.num(-3);
-        let c = ctx.num(2);
-        let plan = build_quadratic_coefficient_solve_plan(&mut ctx, RelOp::Eq, a, b, c)
-            .expect("numeric coefficients should build numeric plan");
-
-        let solved = solve_quadratic_coefficient_solve_plan_with_default_numeric_solution(
-            &mut ctx,
-            RelOp::Eq,
-            a,
-            b,
-            plan,
-            |id| id,
-            |id| id,
-        );
-
-        assert!(matches!(solved, SolutionSet::Discrete(_)));
-    }
-
-    #[test]
-    fn solve_quadratic_coefficient_solve_plan_with_default_numeric_solution_symbolic_plan() {
-        let mut ctx = Context::new();
-        let a = ctx.var("a");
-        let b = ctx.var("b");
-        let c = ctx.var("c");
-        let plan = build_quadratic_coefficient_solve_plan(&mut ctx, RelOp::Eq, a, b, c)
-            .expect("symbolic equality should build symbolic plan");
-
-        let solved = solve_quadratic_coefficient_solve_plan_with_default_numeric_solution(
-            &mut ctx,
-            RelOp::Eq,
-            a,
-            b,
-            plan,
-            |id| id,
-            |id| id,
-        );
-
-        match solved {
-            SolutionSet::Discrete(solutions) => assert_eq!(solutions.len(), 2),
-            _ => panic!("expected discrete symbolic solutions"),
-        }
     }
 
     #[test]

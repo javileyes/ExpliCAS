@@ -24,7 +24,7 @@ pub fn cancel_common_additive_terms(
 /// delegates strategy details (candidate simplify, expansion, strict proof)
 /// to callbacks supplied by the caller.
 #[allow(clippy::too_many_arguments)]
-pub fn cancel_additive_terms_semantic_with_state<
+pub(crate) fn cancel_additive_terms_semantic_with_state<
     S,
     FGetContext,
     FGetContextMut,
@@ -73,7 +73,7 @@ where
 /// Applies the same 2-phase scheme across engine/solver wrappers:
 /// - candidate generation with default generic semantics,
 /// - strict proof per candidate pair via `(lt - rt) -> 0`.
-pub fn cancel_additive_terms_semantic_runtime_with_state<
+pub(crate) fn cancel_additive_terms_semantic_runtime_with_state<
     S,
     FGetContext,
     FGetContextMut,

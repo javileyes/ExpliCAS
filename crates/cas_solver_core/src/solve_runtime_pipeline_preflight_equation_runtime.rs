@@ -5,7 +5,7 @@ use cas_ast::{Equation, Expr, ExprId};
 /// Prepare equation for strategy execution using default structural
 /// recomposition (`lhs - rhs`) and residual acceptance policy.
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_equation_for_strategy_with_default_structural_recompose_and_cancel_with_state<
+pub(crate) fn prepare_equation_for_strategy_with_default_structural_recompose_and_cancel_with_state<
     SState,
     FContainsVar,
     FSimplifyForSolve,

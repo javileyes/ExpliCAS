@@ -9,7 +9,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// - which rules are always kept,
 /// - how to rebuild `Mul` nodes in the host runtime.
 #[allow(clippy::too_many_arguments)]
-pub fn filter_non_productive_steps_with_runtime_recompose_mul<
+pub(crate) fn filter_non_productive_steps_with_runtime_recompose_mul<
     T,
     FAlwaysKeep,
     FBefore,

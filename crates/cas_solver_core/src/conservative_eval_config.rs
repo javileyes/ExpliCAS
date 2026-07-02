@@ -7,7 +7,7 @@ use crate::simplify_options::{SharedSemanticConfig, SimplifyOptions};
 use crate::value_domain::ValueDomain;
 
 /// Build a default eval config for a specific domain mode.
-pub fn eval_config_for_domain(domain_mode: DomainMode) -> EvalConfig {
+pub(crate) fn eval_config_for_domain(domain_mode: DomainMode) -> EvalConfig {
     EvalConfig {
         domain_mode,
         ..Default::default()
@@ -15,7 +15,7 @@ pub fn eval_config_for_domain(domain_mode: DomainMode) -> EvalConfig {
 }
 
 /// Eval config used by conservative numeric-island folding passes.
-pub fn conservative_numeric_fold_eval_config() -> EvalConfig {
+pub(crate) fn conservative_numeric_fold_eval_config() -> EvalConfig {
     EvalConfig {
         domain_mode: DomainMode::Generic,
         value_domain: ValueDomain::RealOnly,
@@ -24,7 +24,7 @@ pub fn conservative_numeric_fold_eval_config() -> EvalConfig {
 }
 
 /// Build simplify options for a specific domain mode.
-pub fn simplify_options_for_domain(domain_mode: DomainMode) -> SimplifyOptions {
+pub(crate) fn simplify_options_for_domain(domain_mode: DomainMode) -> SimplifyOptions {
     SimplifyOptions {
         shared: SharedSemanticConfig {
             semantics: eval_config_for_domain(domain_mode),
@@ -35,7 +35,7 @@ pub fn simplify_options_for_domain(domain_mode: DomainMode) -> SimplifyOptions {
 }
 
 /// Conservative options used by bounded numeric-island folding passes.
-pub fn conservative_numeric_fold_options() -> SimplifyOptions {
+pub(crate) fn conservative_numeric_fold_options() -> SimplifyOptions {
     SimplifyOptions {
         collect_steps: false,
         expand_mode: false,

@@ -16,7 +16,7 @@ pub struct LinearSolveKernel {
 /// Derive linear solving primitives for `lhs = rhs`.
 ///
 /// Returns `None` when the equation is non-linear in `var`.
-pub fn derive_linear_solve_kernel(
+pub(crate) fn derive_linear_solve_kernel(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,

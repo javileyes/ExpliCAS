@@ -13,7 +13,7 @@ use crate::step_rules::find_expand_factor_cycle_index_by;
 /// - low-importance canonicalization coalescing on same path,
 /// - filtering of trivial numeric-power evaluations.
 #[allow(clippy::too_many_arguments)]
-pub fn optimize_steps_with_rules<
+pub(crate) fn optimize_steps_with_rules<
     StepT,
     Id,
     FRuleName,
