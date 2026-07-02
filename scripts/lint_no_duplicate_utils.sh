@@ -35,7 +35,7 @@ WARNINGS=0
 # Canonical: cas_ast/src/hold.rs
 # Allowed: files that reference cas_ast::hold
 # -----------------------------------------------------------------------------
-echo "  [1/7] Checking strip_hold..."
+echo "  [1/8] Checking strip_hold..."
 
 for file in $(grep -rl "fn strip.*hold" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null | grep -v "cas_ast/src/hold.rs" || true); do
     if ! grep -q "cas_ast::hold::" "$file"; then
@@ -49,7 +49,7 @@ done
 # Canonical: cas_engine/src/nary.rs (AddView, add_terms_no_sign, add_terms_signed)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [2/7] Checking flatten_add..."
+echo "  [2/8] Checking flatten_add..."
 
 FLATTEN_ADD_ALLOWED=(
     "nary.rs"           # Canonical: AddView
@@ -82,7 +82,7 @@ done
 # Canonical: cas_engine/src/nary.rs (MulView, mul_factors)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [3/7] Checking flatten_mul..."
+echo "  [3/8] Checking flatten_mul..."
 
 FLATTEN_MUL_ALLOWED=(
     "views.rs"          # Canonical: MulChainView
@@ -117,7 +117,7 @@ done
 # Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
 # Allowed: canonical module or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [4/7] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
+echo "  [4/8] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
 PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
@@ -165,7 +165,7 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 5: __hold in output boundaries (HARD FAIL if in production JSON)
 # -----------------------------------------------------------------------------
-echo "  [5/7] Checking __hold doesn't leak to JSON output..."
+echo "  [5/8] Checking __hold doesn't leak to JSON output..."
 
 # Check test assertions to ensure we have contract tests
 if ! grep -rq "contains.*__hold" "$ROOT_DIR/crates/cas_engine/tests" 2>/dev/null; then
@@ -177,7 +177,7 @@ fi
 # CHECK 6: Builder duplicates (HARD FAIL - migration complete)
 # Canonical: MulBuilder (right-fold), Context::build_balanced_mul (balanced)
 # -----------------------------------------------------------------------------
-echo "  [6/7] Checking builders (build_mul_from_factors)..."
+echo "  [6/8] Checking builders (build_mul_from_factors)..."
 
 BUILDER_ALLOWED=(
     "views.rs"       # MulBuilder canonical
@@ -211,7 +211,7 @@ done
 # CHECK 7: Traversal duplicates (HARD FAIL - migration complete)
 # Canonical: cas_ast::traversal::{count_all_nodes, count_nodes_matching, count_nodes_and_max_depth}
 # -----------------------------------------------------------------------------
-echo "  [7/7] Checking traversal (count_nodes*)..."
+echo "  [7/8] Checking traversal (count_nodes*)..."
 
 TRAVERSAL_ALLOWED=(
     "traversal.rs"  # Canonical module
@@ -234,6 +234,40 @@ for pattern in "fn count_nodes\>" "fn count_nodes_matching" "fn count_nodes_and_
         if [ "$is_allowed" = false ]; then
             echo -e "  ${RED}ERROR${NC}: $file defines $pattern without using canonical traversal"
             echo -e "         Fix: Use cas_ast::traversal::count_all_nodes or count_nodes_matching"
+            ((ERRORS++))
+        fi
+    done
+done
+
+# -----------------------------------------------------------------------------
+# CHECK 8: Factor-list helpers (HARD FAIL - migration complete)
+# Canonical: cas_math::fraction_factors::{merge_factor_multiset, find_factor_exp}
+# (the former `factors_to_vec` / `find_factor_exp` that the four div_* cancel
+# modules each defined privately, byte-identical — consolidated 2026-07-02).
+# -----------------------------------------------------------------------------
+echo "  [8/8] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
+
+FACTOR_ALLOWED=(
+    "fraction_factors.rs"  # Canonical module
+)
+
+for pattern in "fn factors_to_vec\>" "fn find_factor_exp\>" "fn merge_factor_multiset\>"; do
+    for file in $(grep -rln "$pattern" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null || true); do
+        basename_file=$(basename "$file")
+        is_allowed=false
+        for allowed in "${FACTOR_ALLOWED[@]}"; do
+            if [[ "$basename_file" == "$allowed" ]]; then
+                is_allowed=true
+                break
+            fi
+        done
+        # Allow files that use the canonical fraction_factors helpers (wrappers).
+        if [ "$is_allowed" = false ] && grep -qE "crate::fraction_factors::" "$file"; then
+            is_allowed=true
+        fi
+        if [ "$is_allowed" = false ]; then
+            echo -e "  ${RED}ERROR${NC}: $file defines $pattern without using canonical fraction_factors"
+            echo -e "         Fix: Use crate::fraction_factors::{merge_factor_multiset, find_factor_exp}"
             ((ERRORS++))
         fi
     done

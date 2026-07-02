@@ -4,6 +4,7 @@ use crate::build::mul2_raw;
 use crate::expr_destructure::as_div;
 use crate::fraction_factors::{
     build_mul_from_factors_int_pow as build_mul_from_factors, collect_mul_factors_int_pow,
+    find_factor_exp, merge_factor_multiset as factors_to_vec,
 };
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
@@ -173,31 +174,6 @@ fn positive_if_negative(ctx: &mut Context, term_id: ExprId) -> Option<ExprId> {
         Expr::Number(n) if n.is_negative() => Some(ctx.add(Expr::Number(-n))),
         _ => None,
     }
-}
-
-fn factors_to_vec(ctx: &Context, factors: &[(ExprId, i64)]) -> Vec<(ExprId, i64)> {
-    let mut out: Vec<(ExprId, i64)> = Vec::new();
-    for &(base, exp) in factors {
-        if matches!(ctx.get(base), Expr::Number(_)) {
-            continue;
-        }
-        if let Some((_, total_exp)) = out
-            .iter_mut()
-            .find(|(existing, _)| compare_expr(ctx, *existing, base) == Ordering::Equal)
-        {
-            *total_exp += exp;
-        } else {
-            out.push((base, exp));
-        }
-    }
-    out
-}
-
-fn find_factor_exp(ctx: &Context, factors: &[(ExprId, i64)], base: ExprId) -> Option<i64> {
-    factors
-        .iter()
-        .find(|(b, _)| compare_expr(ctx, *b, base) == Ordering::Equal)
-        .map(|(_, exp)| *exp)
 }
 
 #[cfg(test)]

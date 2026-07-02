@@ -3,7 +3,9 @@
 
 use crate::build::mul2_raw;
 use crate::expr_destructure::as_div;
-use crate::fraction_factors::collect_mul_factors_int_pow;
+use crate::fraction_factors::{
+    collect_mul_factors_int_pow, find_factor_exp, merge_factor_multiset as factors_to_vec,
+};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use std::cmp::Ordering;
@@ -143,31 +145,6 @@ fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
         }
         _ => terms.push(expr),
     }
-}
-
-fn factors_to_vec(ctx: &Context, factors: &[(ExprId, i64)]) -> Vec<(ExprId, i64)> {
-    let mut out: Vec<(ExprId, i64)> = Vec::new();
-    for &(base, exp) in factors {
-        if matches!(ctx.get(base), Expr::Number(_)) {
-            continue;
-        }
-        if let Some((_, total_exp)) = out
-            .iter_mut()
-            .find(|(existing, _)| compare_expr(ctx, *existing, base) == Ordering::Equal)
-        {
-            *total_exp += exp;
-        } else {
-            out.push((base, exp));
-        }
-    }
-    out
-}
-
-fn find_factor_exp(ctx: &Context, factors: &[(ExprId, i64)], base: ExprId) -> Option<i64> {
-    factors
-        .iter()
-        .find(|(b, _)| compare_expr(ctx, *b, base) == Ordering::Equal)
-        .map(|(_, exp)| *exp)
 }
 
 fn has_shared_factor(ctx: &Context, a: &[(ExprId, i64)], b: &[(ExprId, i64)]) -> bool {

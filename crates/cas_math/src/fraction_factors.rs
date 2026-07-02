@@ -126,6 +126,49 @@ fn integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
     }
 }
 
+/// Merge a `(base, exponent)` factor list into a MULTISET keyed by base: drop numeric
+/// factors, and sum the exponents of structurally-equal bases into one entry (first-occurrence
+/// order). Canonical home for the identical `factors_to_vec` helper the four `div_*` cancel
+/// modules used to each define privately.
+pub(crate) fn merge_factor_multiset(
+    ctx: &Context,
+    factors: &[(ExprId, i64)],
+) -> Vec<(ExprId, i64)> {
+    use cas_ast::ordering::compare_expr;
+    use std::cmp::Ordering;
+    let mut out: Vec<(ExprId, i64)> = Vec::new();
+    for &(base, exp) in factors {
+        if matches!(ctx.get(base), Expr::Number(_)) {
+            continue;
+        }
+        if let Some((_, total_exp)) = out
+            .iter_mut()
+            .find(|(existing, _)| compare_expr(ctx, *existing, base) == Ordering::Equal)
+        {
+            *total_exp += exp;
+        } else {
+            out.push((base, exp));
+        }
+    }
+    out
+}
+
+/// Exponent of `base` in a `(base, exponent)` factor list, comparing bases structurally.
+/// Canonical home for the identical `find_factor_exp` helper the four `div_*` cancel modules
+/// used to each define privately.
+pub(crate) fn find_factor_exp(
+    ctx: &Context,
+    factors: &[(ExprId, i64)],
+    base: ExprId,
+) -> Option<i64> {
+    use cas_ast::ordering::compare_expr;
+    use std::cmp::Ordering;
+    factors
+        .iter()
+        .find(|(b, _)| compare_expr(ctx, *b, base) == Ordering::Equal)
+        .map(|(_, exp)| *exp)
+}
+
 /// Build a product from factors with integer exponents.
 ///
 /// Negative exponents are ignored (the caller typically manages denominator
