@@ -45,7 +45,9 @@ fi
 
 sed -n "${START_LINE},$((END_LINE - 1))p" "$FILE" > "$TMP_FILE"
 
-if ! search_fixed "pub fn presimplify_safe_for_limit" "$TMP_FILE" >/dev/null 2>&1; then
+# Visibility-agnostic: pub fn / pub(crate) fn both satisfy the anchor (the lint
+# audits the slice's CONTENT, not the function's visibility).
+if ! search_regex '^(pub(\(crate\))? )?fn presimplify_safe_for_limit' "$TMP_FILE" >/dev/null 2>&1; then
   echo "❌ presimplify_safe_for_limit not found in isolated lint slice"
   exit 1
 fi
