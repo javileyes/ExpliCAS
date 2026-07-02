@@ -3,7 +3,7 @@ use cas_api_models::StepsDisplayMode;
 use super::labels::{steps_display_mode_label, steps_mode_label};
 
 /// Format current steps collection/display status.
-pub fn format_steps_current_message(
+pub(crate) fn format_steps_current_message(
     steps_mode: crate::StepsMode,
     display_mode: StepsDisplayMode,
 ) -> String {
@@ -18,7 +18,7 @@ pub fn format_steps_current_message(
 }
 
 /// Format feedback for collection-mode updates.
-pub fn format_steps_collection_set_message(mode: crate::StepsMode) -> &'static str {
+pub(crate) fn format_steps_collection_set_message(mode: crate::StepsMode) -> &'static str {
     match mode {
         crate::StepsMode::On => "Steps: on (full collection, normal display)",
         crate::StepsMode::Off => {
@@ -29,7 +29,7 @@ pub fn format_steps_collection_set_message(mode: crate::StepsMode) -> &'static s
 }
 
 /// Format feedback for display-mode updates.
-pub fn format_steps_display_set_message(mode: StepsDisplayMode) -> &'static str {
+pub(crate) fn format_steps_display_set_message(mode: StepsDisplayMode) -> &'static str {
     match mode {
         StepsDisplayMode::Verbose => "Steps: verbose (all rules, full detail)",
         StepsDisplayMode::Succinct => "Steps: succinct (compact 1-line per step)",
@@ -41,7 +41,7 @@ pub fn format_steps_display_set_message(mode: StepsDisplayMode) -> &'static str 
 }
 
 /// Format unknown-mode error for `steps`.
-pub fn format_steps_unknown_mode_message(mode: &str) -> String {
+pub(crate) fn format_steps_unknown_mode_message(mode: &str) -> String {
     format!(
         "Unknown steps mode: '{}'\n\
              Usage: steps [on | off | compact | verbose | succinct | normal | none]\n\

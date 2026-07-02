@@ -2,7 +2,7 @@ use crate::semantics_set_parse_apply::evaluate_semantics_set_args;
 use crate::{semantics_set_state_from_options, SemanticsSetState};
 
 /// Apply semantic state to both simplifier options and runtime eval options.
-pub fn apply_semantics_set_state_to_options(
+pub(crate) fn apply_semantics_set_state_to_options(
     next: SemanticsSetState,
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,
@@ -28,7 +28,7 @@ pub fn apply_semantics_set_state_to_options(
 }
 
 /// Parse `semantics set` args and apply the resulting state to runtime options.
-pub fn apply_semantics_set_args_to_options(
+pub(crate) fn apply_semantics_set_args_to_options(
     args: &[&str],
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,
@@ -40,7 +40,7 @@ pub fn apply_semantics_set_args_to_options(
 }
 
 /// Parse `semantics set` args, apply them, and return updated overview lines.
-pub fn evaluate_semantics_set_args_to_overview_lines(
+pub(crate) fn evaluate_semantics_set_args_to_overview_lines(
     args: &[&str],
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,

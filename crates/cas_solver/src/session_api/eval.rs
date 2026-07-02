@@ -6,7 +6,6 @@ pub use crate::command_api::eval::{
     EvalCommandRenderPlan,
 };
 pub use crate::eval_command_runtime::evaluate_eval_with_session;
-pub use crate::output_clean::clean_result_output_line;
 pub use crate::repl_eval_runtime::{
     evaluate_collect_command_render_plan_on_runtime as evaluate_collect_command_render_plan_on_repl_core,
     evaluate_eval_command_render_plan_on_runtime as evaluate_eval_command_render_plan_on_repl_core,

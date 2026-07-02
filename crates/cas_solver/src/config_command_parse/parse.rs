@@ -1,7 +1,7 @@
 use cas_api_models::ConfigCommandInput;
 
 /// Parse raw `config ...` command input.
-pub fn parse_config_command_input(line: &str) -> ConfigCommandInput {
+pub(crate) fn parse_config_command_input(line: &str) -> ConfigCommandInput {
     let parts: Vec<&str> = line.split_whitespace().collect();
     if parts.len() < 2 {
         return ConfigCommandInput::InvalidUsage;

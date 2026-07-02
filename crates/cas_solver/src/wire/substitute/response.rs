@@ -5,7 +5,7 @@ use cas_api_models::{
 
 use super::eval::eval_substitute_impl;
 
-pub fn substitute_str_to_wire_impl(
+pub(crate) fn substitute_str_to_wire_impl(
     expr_str: &str,
     target_str: &str,
     with_str: &str,

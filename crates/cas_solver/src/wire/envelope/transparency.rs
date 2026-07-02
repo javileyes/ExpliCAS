@@ -16,7 +16,7 @@ pub struct TransparencyInput<'a> {
     pub result_display: Option<&'a str>,
 }
 
-pub fn build_transparency(input: TransparencyInput<'_>) -> TransparencyDto {
+pub(crate) fn build_transparency(input: TransparencyInput<'_>) -> TransparencyDto {
     let assumptions_used = assumptions::map_assumptions_used(
         input.solver_assumptions,
         input.domain_warnings,

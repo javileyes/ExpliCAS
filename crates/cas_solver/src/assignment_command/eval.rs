@@ -7,7 +7,7 @@ use crate::{
 use cas_api_models::AssignmentCommandOutput;
 
 /// Evaluate assignment command pieces and return a typed output payload.
-pub fn evaluate_assignment_command_with<F>(
+pub(crate) fn evaluate_assignment_command_with<F>(
     name: &str,
     expr_str: &str,
     lazy: bool,
@@ -27,7 +27,7 @@ where
 }
 
 /// Evaluate `let ...` command tail and return assignment output payload.
-pub fn evaluate_let_assignment_command_with<F>(
+pub(crate) fn evaluate_let_assignment_command_with<F>(
     input: &str,
     apply_assignment: F,
 ) -> Result<AssignmentCommandOutput, String>

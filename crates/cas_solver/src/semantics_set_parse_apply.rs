@@ -2,7 +2,7 @@ use crate::semantics_set_parse_axis::set_semantic_axis;
 use crate::SemanticsSetState;
 
 /// Parse and apply arguments from `semantics set ...`.
-pub fn evaluate_semantics_set_args(
+pub(crate) fn evaluate_semantics_set_args(
     args: &[&str],
     mut state: SemanticsSetState,
 ) -> Result<SemanticsSetState, String> {

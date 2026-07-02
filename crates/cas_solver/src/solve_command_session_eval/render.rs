@@ -30,7 +30,7 @@ where
     ))
 }
 
-pub fn evaluate_solve_command_message_with_session<S>(
+pub(crate) fn evaluate_solve_command_message_with_session<S>(
     simplifier: &mut crate::Simplifier,
     session: &mut S,
     line: &str,

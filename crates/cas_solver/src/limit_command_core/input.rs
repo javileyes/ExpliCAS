@@ -2,7 +2,7 @@ use crate::limit_command_core::core::eval_limit_from_str;
 use crate::limit_command_parse::parse_limit_command_input;
 use cas_api_models::{LimitCommandApproach, LimitCommandEvalError, LimitCommandEvalOutput};
 
-pub fn evaluate_limit_command_input(
+pub(crate) fn evaluate_limit_command_input(
     input: &str,
 ) -> Result<LimitCommandEvalOutput, LimitCommandEvalError> {
     let trimmed = input.trim();

@@ -1,5 +1,5 @@
 /// Format explain-gcd output as multi-line CLI text lines.
-pub fn format_explain_gcd_eval_lines(
+pub(crate) fn format_explain_gcd_eval_lines(
     context: &cas_ast::Context,
     input: &str,
     steps: &[String],

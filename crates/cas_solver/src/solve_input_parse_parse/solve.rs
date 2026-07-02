@@ -1,5 +1,8 @@
 /// Parse optional solve invocation flags and return (check_enabled, remaining_tail).
-pub fn parse_solve_invocation_check(input: &str, default_check_enabled: bool) -> (bool, &str) {
+pub(crate) fn parse_solve_invocation_check(
+    input: &str,
+    default_check_enabled: bool,
+) -> (bool, &str) {
     let trimmed = input.trim();
     if let Some(rest) = trimmed.strip_prefix("--check") {
         (true, rest.trim_start())

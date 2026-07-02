@@ -1,7 +1,7 @@
 use cas_api_models::{ContextCommandInput, EvalContextMode};
 
 /// Parse raw `context ...` command input.
-pub fn parse_context_command_input(line: &str) -> ContextCommandInput {
+pub(crate) fn parse_context_command_input(line: &str) -> ContextCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
     match args.get(1) {
         None => ContextCommandInput::ShowCurrent,

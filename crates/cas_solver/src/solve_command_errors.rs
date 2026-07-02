@@ -1,5 +1,5 @@
 /// Format solve-prepare errors for end-user display.
-pub fn format_solve_prepare_error_message(error: &crate::SolvePrepareError) -> String {
+pub(crate) fn format_solve_prepare_error_message(error: &crate::SolvePrepareError) -> String {
     match error {
         crate::SolvePrepareError::ParseError(e) => format!("Parse error: {e}"),
         crate::SolvePrepareError::NoVariable => "Error: solve() found no variable to solve for.\n\
@@ -17,7 +17,7 @@ pub fn format_solve_prepare_error_message(error: &crate::SolvePrepareError) -> S
 }
 
 /// Format solve command evaluation errors for end-user display.
-pub fn format_solve_command_error_message(error: &crate::SolveCommandEvalError) -> String {
+pub(crate) fn format_solve_command_error_message(error: &crate::SolveCommandEvalError) -> String {
     match error {
         crate::SolveCommandEvalError::Prepare(prepare) => {
             format_solve_prepare_error_message(prepare)

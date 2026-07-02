@@ -115,7 +115,7 @@ struct DeriveEvalOutput {
 }
 
 /// Format `derive` parse/resolve errors for user-facing output.
-pub fn format_derive_eval_error_message(error: &DeriveEvalError) -> String {
+pub(crate) fn format_derive_eval_error_message(error: &DeriveEvalError) -> String {
     match error {
         DeriveEvalError::Parse(parse_error) => {
             crate::format_expr_pair_parse_error_message(parse_error, "derive")

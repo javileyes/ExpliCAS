@@ -48,6 +48,6 @@ pub(crate) fn parse_linear_system_spec(
     Ok(LinearSystemSpec { exprs, vars })
 }
 
-pub fn parse_linear_system_invocation_input(line: &str) -> String {
+pub(crate) fn parse_linear_system_invocation_input(line: &str) -> String {
     invocation::parse_linear_system_invocation_input(line)
 }

@@ -4,7 +4,7 @@ use cas_solver_core::engine_events::EngineEvent;
 
 use super::{error::FullSimplifyEvalError, FullSimplifyEvalOutput};
 
-pub fn evaluate_full_simplify_input_with_resolver<F>(
+pub(crate) fn evaluate_full_simplify_input_with_resolver<F>(
     simplifier: &mut crate::Simplifier,
     input: &str,
     collect_steps: bool,

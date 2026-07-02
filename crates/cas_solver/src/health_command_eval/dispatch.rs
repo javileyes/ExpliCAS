@@ -8,7 +8,7 @@ use super::{output, status::evaluate_health_status_lines};
 /// Evaluate full `health ...` command and return both lines and side-effect intents.
 ///
 /// The caller applies `set_enabled` and `clear_last_report` to its UI/session state.
-pub fn evaluate_health_command(
+pub(crate) fn evaluate_health_command(
     simplifier: &mut crate::Simplifier,
     line: &str,
     last_stats: Option<&crate::PipelineStats>,

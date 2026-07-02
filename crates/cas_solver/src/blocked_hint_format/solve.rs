@@ -3,7 +3,7 @@ use cas_ast::Context;
 pub use cas_solver_core::solve_assumption_types::SolveAssumptionSectionConfig;
 
 /// Render optional solve assumption/blocked sections according to CLI flags.
-pub fn format_solve_assumption_and_blocked_sections(
+pub(crate) fn format_solve_assumption_and_blocked_sections(
     ctx: &Context,
     assumption_records: &[crate::AssumptionRecord],
     blocked_hints: &[crate::BlockedHint],

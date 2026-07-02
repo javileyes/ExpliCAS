@@ -1,7 +1,7 @@
 use crate::SetCommandInput;
 
 /// Parse raw `set ...` input.
-pub fn parse_set_command_input(line: &str) -> SetCommandInput<'_> {
+pub(crate) fn parse_set_command_input(line: &str) -> SetCommandInput<'_> {
     let parts: Vec<&str> = line.split_whitespace().collect();
     if parts.len() == 1 || (parts.len() == 2 && parts[1] == "show") {
         return SetCommandInput::ShowAll;

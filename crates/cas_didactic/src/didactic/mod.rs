@@ -59,16 +59,15 @@ mod substep;
 mod sum_three_cubes;
 mod visible_rule_names;
 
-pub use cli_render::{
-    format_cli_simplification_steps, format_cli_simplification_steps_with_simplifier,
-};
+pub use cli_render::format_cli_simplification_steps_with_simplifier;
+pub(crate) use display_policy::{build_timeline_substeps_render_plan, classify_sub_steps};
 pub use display_policy::{
-    build_cli_substeps_render_plan, build_timeline_substeps_render_plan, classify_sub_steps,
     CliSubstepsRenderPlan, StepDisplayMode, SubStepClassification, TimelineSubstepsRenderPlan,
 };
 pub use enriched_step::EnrichedStep;
-pub use enrichment_pipeline::{enrich_steps, get_standalone_substeps};
-pub use latex_plain_text::latex_to_plain_text;
+pub use enrichment_pipeline::enrich_steps;
+pub(crate) use enrichment_pipeline::get_standalone_substeps;
+pub(crate) use latex_plain_text::latex_to_plain_text;
 pub(crate) use shared_numeric::{
     collect_add_terms, format_fraction, lcm_bigint, try_as_fraction, IsOne,
 };
@@ -76,7 +75,6 @@ pub(crate) use step_visibility::{
     clone_steps_matching_visibility, infer_original_expr_for_steps,
     should_absorb_preparatory_step_at, step_matches_visibility, StepVisibility,
 };
-pub use step_visibility::{is_high_or_higher_step, is_medium_or_higher_step};
 pub use substep::SubStep;
 pub(crate) use visible_rule_names::{
     rule_name_es_to_en, visible_rule_name, visible_rule_name_for_step, visible_step_description,

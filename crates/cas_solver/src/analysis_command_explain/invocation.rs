@@ -1,5 +1,5 @@
 /// Evaluate full `explain ...` invocation and return user-facing message text.
-pub fn evaluate_explain_invocation_message(
+pub(crate) fn evaluate_explain_invocation_message(
     ctx: &mut cas_ast::Context,
     line: &str,
 ) -> Result<String, String> {

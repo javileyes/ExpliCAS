@@ -8,7 +8,7 @@ use crate::{cache::SimplifyCacheKey, state_core::SessionState};
 /// Load session state, run an operation, and persist snapshot when a path is provided.
 ///
 /// Returns `(result, load_warning, save_warning)`.
-pub fn run_with_session<R, F>(
+pub(crate) fn run_with_session<R, F>(
     path: Option<&Path>,
     key: &SimplifyCacheKey,
     run: F,
@@ -30,7 +30,7 @@ where
 ///
 /// Useful for explicit read-only flows (`auto_store = false`) where the
 /// snapshot must be visible but any save path would be dead code.
-pub fn run_read_only_with_session<R, F>(
+pub(crate) fn run_read_only_with_session<R, F>(
     path: Option<&Path>,
     key: &SimplifyCacheKey,
     run: F,
@@ -44,7 +44,7 @@ where
 }
 
 /// Variant of [`run_with_session`] that builds cache key from domain flag.
-pub fn run_with_domain_session<R, F>(
+pub(crate) fn run_with_domain_session<R, F>(
     path: Option<&Path>,
     domain: &str,
     run: F,
@@ -57,7 +57,7 @@ where
 }
 
 /// Read-only variant of [`run_with_domain_session`].
-pub fn run_read_only_with_domain_session<R, F>(
+pub(crate) fn run_read_only_with_domain_session<R, F>(
     path: Option<&Path>,
     domain: &str,
     run: F,

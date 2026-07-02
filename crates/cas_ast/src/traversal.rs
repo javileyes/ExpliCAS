@@ -354,7 +354,7 @@ mod tests {
         // Cap above the size: exact count.
         assert_eq!(count_all_nodes_capped(&ctx, abc, 10), 5);
         assert_eq!(count_all_nodes_capped(&ctx, abc, 5), 5); // equal is not "exceeded"
-        // Cap below the size: stops at cap + 1.
+                                                             // Cap below the size: stops at cap + 1.
         assert_eq!(count_all_nodes_capped(&ctx, abc, 4), 5);
         assert_eq!(count_all_nodes_capped(&ctx, abc, 2), 3);
         assert_eq!(count_all_nodes_capped(&ctx, abc, 0), 1);

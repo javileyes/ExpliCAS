@@ -25,7 +25,7 @@ pub struct EvalOutputView {
 }
 
 /// Project eval output into an owned solver view for frontend/application layers.
-pub fn eval_output_view(output: &crate::EvalOutput) -> EvalOutputView {
+pub(crate) fn eval_output_view(output: &crate::EvalOutput) -> EvalOutputView {
     EvalOutputView {
         stored_id: stored_id_from_eval_output(output),
         parsed: parsed_expr_from_eval_output(output),

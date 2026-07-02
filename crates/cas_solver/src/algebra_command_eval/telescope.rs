@@ -1,7 +1,7 @@
 use crate::algebra_command_parse::{parse_telescope_invocation_input, telescope_usage_message};
 
 /// Evaluate and format `telescope` command output lines.
-pub fn evaluate_telescope_command_lines(
+pub(crate) fn evaluate_telescope_command_lines(
     ctx: &mut cas_ast::Context,
     input: &str,
 ) -> Result<Vec<String>, String> {
@@ -13,7 +13,7 @@ pub fn evaluate_telescope_command_lines(
 }
 
 /// Evaluate `telescope ...` invocation and return display lines.
-pub fn evaluate_telescope_invocation_lines(
+pub(crate) fn evaluate_telescope_invocation_lines(
     ctx: &mut cas_ast::Context,
     line: &str,
 ) -> Result<Vec<String>, String> {
@@ -24,7 +24,7 @@ pub fn evaluate_telescope_invocation_lines(
 }
 
 /// Evaluate `telescope ...` invocation and return display text.
-pub fn evaluate_telescope_invocation_message(
+pub(crate) fn evaluate_telescope_invocation_message(
     ctx: &mut cas_ast::Context,
     line: &str,
 ) -> Result<String, String> {

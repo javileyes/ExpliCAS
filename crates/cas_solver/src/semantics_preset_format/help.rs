@@ -3,7 +3,7 @@ use crate::semantics_preset_labels::{
     const_fold_mode_label, domain_mode_label, inverse_trig_policy_label, value_domain_label,
 };
 
-pub fn format_semantics_preset_help_lines(name: Option<&str>) -> Vec<String> {
+pub(crate) fn format_semantics_preset_help_lines(name: Option<&str>) -> Vec<String> {
     let mut lines = Vec::new();
     let Some(name) = name else {
         lines.push("Usage: semantics preset help <name>".to_string());

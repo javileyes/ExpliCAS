@@ -4,7 +4,7 @@ use super::sections::{
 };
 use super::verify::push_solution_verification_lines;
 
-pub fn format_solve_command_eval_lines(
+pub(crate) fn format_solve_command_eval_lines(
     simplifier: &mut crate::Simplifier,
     var: &str,
     original_equation: Option<&cas_ast::Equation>,

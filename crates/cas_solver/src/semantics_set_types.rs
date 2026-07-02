@@ -14,7 +14,7 @@ pub struct SemanticsSetState {
 }
 
 /// Build a mutable semantics-set snapshot from simplifier + eval options.
-pub fn semantics_set_state_from_options(
+pub(crate) fn semantics_set_state_from_options(
     simplify_options: &crate::SimplifyOptions,
     eval_options: &crate::EvalOptions,
 ) -> SemanticsSetState {

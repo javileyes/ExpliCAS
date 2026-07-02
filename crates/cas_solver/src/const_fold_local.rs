@@ -13,7 +13,7 @@ use cas_ast::{Context, ExprId};
 use self::folder::IterativeFolder;
 
 /// Fold constants in an expression using allowlist-only operations.
-pub fn fold_constants_local(
+pub(crate) fn fold_constants_local(
     ctx: &mut Context,
     expr: ExprId,
     cfg: &EvalConfig,

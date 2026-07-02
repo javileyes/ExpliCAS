@@ -295,48 +295,6 @@ fn is_negative_term(ctx: &Context, id: ExprId, zero: &num_rational::BigRational)
     }
 }
 
-/// Negate a term for display purposes (return the absolute value).
-///
-/// Given a negative term, returns its positive counterpart's ExprId.
-/// This is read-only (for display) - doesn't create new nodes.
-pub fn get_term_absolute_value(ctx: &Context, id: ExprId) -> Option<ExprId> {
-    match ctx.get(id) {
-        // Neg(x) -> x
-        Expr::Neg(inner) => Some(*inner),
-
-        // Number(n < 0) -> would need to create new node (not supported here)
-        Expr::Number(n) => {
-            if n < &num_rational::BigRational::from_integer(0.into()) {
-                None // Can't return absolute without creating new node
-            } else {
-                Some(id)
-            }
-        }
-
-        // Mul(Neg(x), y) -> return id of inner product without neg
-        // This case requires examining the structure
-        Expr::Mul(l, r) => {
-            if let Expr::Neg(inner) = ctx.get(*l) {
-                // -x * y -> the positive part would need reconstruction
-                // For now, we'll mark this as needing special handling
-                let _ = (inner, r);
-                None
-            } else if let Expr::Number(n) = ctx.get(*l) {
-                if n < &num_rational::BigRational::from_integer(0.into()) {
-                    // Negative coefficient - can't extract without new node
-                    None
-                } else {
-                    Some(id)
-                }
-            } else {
-                Some(id)
-            }
-        }
-
-        _ => Some(id),
-    }
-}
-
 impl MulParts {
     /// Create MulParts by collecting all multiplicative factors from an expression.
     ///

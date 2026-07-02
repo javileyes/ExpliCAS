@@ -1,5 +1,6 @@
 use super::super::super::super::*;
 use crate::runtime::to_display_steps;
+use crate::timeline::cli_output::render_timeline_command_cli_output;
 use cas_ast::Context;
 
 #[test]

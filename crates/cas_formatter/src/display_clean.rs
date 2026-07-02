@@ -249,7 +249,7 @@ fn strip_hold_wrappers_in_place(result: &mut String, hold_pattern: &str) {
 ///
 /// Converts `+ -` to `-` and `- -` to `+` only when followed by a digit or
 /// variable, NOT when followed by `(` (to preserve grouped subexpressions).
-pub fn clean_sign_patterns(s: String) -> String {
+pub(crate) fn clean_sign_patterns(s: String) -> String {
     if !may_need_sign_cleanup(&s) {
         return s;
     }

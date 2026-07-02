@@ -6,7 +6,7 @@ use super::header::push_report_header;
 
 /// Format suite results as a human-readable report.
 #[allow(dead_code)]
-pub fn format_report(results: &[HealthCaseResult]) -> String {
+pub(crate) fn format_report(results: &[HealthCaseResult]) -> String {
     let mut report = String::new();
     push_report_header(&mut report, None);
 

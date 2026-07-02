@@ -2,7 +2,7 @@ use crate::limit_command_core::core::{eval_limit_from_str, limit_str_to_wire};
 use cas_api_models::{LimitSubcommandEvalError, LimitSubcommandEvalOutput};
 use cas_math::limit_types::{Approach, PreSimplifyMode};
 
-pub fn evaluate_limit_subcommand_output(
+pub(crate) fn evaluate_limit_subcommand_output(
     expr: &str,
     var: &str,
     approach: Approach,

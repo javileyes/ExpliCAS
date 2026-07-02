@@ -1,7 +1,7 @@
 use cas_ast::Context;
 use cas_formatter::display_transforms::{DisplayTransformRegistry, ScopeTag, ScopedRenderer};
 
-pub fn format_solve_result_line(
+pub(crate) fn format_solve_result_line(
     ctx: &Context,
     result: &crate::EvalResult,
     output_scopes: &[ScopeTag],

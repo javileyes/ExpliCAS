@@ -19,7 +19,7 @@ pub use builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
 pub use domain::{
     BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,
 };
-pub use expr_path::{path_to_string, ExprPath};
+pub use expr_path::ExprPath;
 pub use expression::{Constant, Context, ContextStats, Expr, ExprId, MulCommutativity};
 // Span re-export (canonical source location)
 pub use span::Span;

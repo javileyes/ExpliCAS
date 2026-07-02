@@ -2,7 +2,7 @@ use cas_ast::{Context, Expr};
 use cas_formatter::{DisplayExpr, LaTeXExpr};
 use num_rational::BigRational;
 
-pub fn display_linear_system_solution(
+pub(crate) fn display_linear_system_solution(
     ctx: &mut Context,
     vars: &[String],
     values: &[BigRational],
@@ -22,7 +22,7 @@ pub fn display_linear_system_solution(
     format!("{{ {} }}", pairs.join(", "))
 }
 
-pub fn display_linear_system_solution_latex(
+pub(crate) fn display_linear_system_solution_latex(
     ctx: &mut Context,
     vars: &[String],
     values: &[BigRational],

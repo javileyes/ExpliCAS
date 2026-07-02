@@ -4,7 +4,7 @@ use cas_formatter::DisplayExpr;
 use super::{SubstituteOptions, SubstituteResult, SubstituteStep};
 
 /// Perform power-aware substitution with step collection.
-pub fn substitute_with_steps(
+pub(crate) fn substitute_with_steps(
     ctx: &mut Context,
     root: ExprId,
     target: ExprId,

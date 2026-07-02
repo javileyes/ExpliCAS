@@ -1,6 +1,6 @@
 use cas_solver_core::simplifier_config::SimplifierToggleConfig;
 
-pub fn format_simplifier_toggle_config(config: SimplifierToggleConfig) -> String {
+pub(crate) fn format_simplifier_toggle_config(config: SimplifierToggleConfig) -> String {
     format!(
         "Current Configuration:\n\
            distribute: {}\n\

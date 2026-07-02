@@ -1,7 +1,7 @@
 //! Shared parsing helpers used across session command handlers.
 
 /// Split string by delimiter, ignoring delimiters inside parentheses.
-pub fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
+pub(crate) fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
     let mut balance = 0;
     let mut split_idx = None;
 
@@ -20,7 +20,7 @@ pub fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> 
 }
 
 /// Parse statement input, allowing `#N` session-ref shorthand as expression.
-pub fn parse_statement_or_session_ref(
+pub(crate) fn parse_statement_or_session_ref(
     ctx: &mut cas_ast::Context,
     input: &str,
 ) -> Result<cas_parser::Statement, String> {
@@ -32,7 +32,7 @@ pub fn parse_statement_or_session_ref(
 }
 
 /// Convert parser statement into a single expression id.
-pub fn statement_to_expr_id(
+pub(crate) fn statement_to_expr_id(
     ctx: &mut cas_ast::Context,
     stmt: cas_parser::Statement,
 ) -> cas_ast::ExprId {

@@ -3,7 +3,7 @@ use crate::substitute_command_format::format_substitute_eval_lines;
 use cas_api_models::{SubstituteParseError, SubstituteRenderMode};
 
 /// Evaluate and format a `subst` command for CLI display.
-pub fn evaluate_substitute_command_lines(
+pub(crate) fn evaluate_substitute_command_lines(
     simplifier: &mut crate::Simplifier,
     input: &str,
     mode: SubstituteRenderMode,

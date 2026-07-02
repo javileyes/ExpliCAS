@@ -50,7 +50,7 @@ fn evaluate_equiv_input(
 }
 
 /// Evaluate equivalence command input and format user-facing output lines.
-pub fn evaluate_equiv_command_lines(
+pub(crate) fn evaluate_equiv_command_lines(
     simplifier: &mut crate::Simplifier,
     input: &str,
 ) -> Result<Vec<String>, crate::ParseExprPairError> {
@@ -59,7 +59,7 @@ pub fn evaluate_equiv_command_lines(
 }
 
 /// Evaluate `equiv` command input and return user-facing message text.
-pub fn evaluate_equiv_command_message(
+pub(crate) fn evaluate_equiv_command_message(
     simplifier: &mut crate::Simplifier,
     input: &str,
 ) -> Result<String, crate::ParseExprPairError> {
@@ -67,7 +67,7 @@ pub fn evaluate_equiv_command_message(
 }
 
 /// Evaluate full `equiv ...` invocation and return user-facing message text.
-pub fn evaluate_equiv_invocation_message(
+pub(crate) fn evaluate_equiv_invocation_message(
     simplifier: &mut crate::Simplifier,
     line: &str,
 ) -> Result<String, String> {

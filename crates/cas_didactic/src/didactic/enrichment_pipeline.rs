@@ -33,6 +33,6 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
 ///
 /// This is useful when fraction sums are computed during parsing/canonicalization
 /// and there are no engine steps to attach the explanation to.
-pub fn get_standalone_substeps(ctx: &Context, original_expr: ExprId) -> Vec<SubStep> {
+pub(crate) fn get_standalone_substeps(ctx: &Context, original_expr: ExprId) -> Vec<SubStep> {
     standalone::get_standalone_substeps(ctx, original_expr, standalone_fraction_sum_substeps)
 }

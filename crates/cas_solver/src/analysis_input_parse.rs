@@ -9,7 +9,7 @@ fn parse_expr_or_equation_as_expr(ctx: &mut Context, input: &str) -> Result<Expr
 }
 
 /// Parse `<expr1>, <expr2>` input into expression ids.
-pub fn parse_expr_pair(
+pub(crate) fn parse_expr_pair(
     ctx: &mut Context,
     input: &str,
 ) -> Result<(ExprId, ExprId), ParseExprPairError> {

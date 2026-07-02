@@ -11,7 +11,7 @@ fn assumption_record_summary_item(record: &AssumptionRecord) -> String {
 /// Format assumptions summary payload for REPL/UI.
 ///
 /// Returns only the right side content (without the `⚠ Assumptions:` prefix).
-pub fn format_assumption_records_summary(records: &[AssumptionRecord]) -> Option<String> {
+pub(crate) fn format_assumption_records_summary(records: &[AssumptionRecord]) -> Option<String> {
     if records.is_empty() {
         return None;
     }

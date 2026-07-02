@@ -3,7 +3,7 @@ use crate::algebra_command_parse::{
 };
 
 /// Parse and wrap `expand ...` as an explicit `expand(...)` eval input.
-pub fn evaluate_expand_wrapped_expression(line: &str) -> Result<String, String> {
+pub(crate) fn evaluate_expand_wrapped_expression(line: &str) -> Result<String, String> {
     let Some(rest) = parse_expand_invocation_input(line) else {
         return Err(expand_usage_message().to_string());
     };

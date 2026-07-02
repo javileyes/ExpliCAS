@@ -24,16 +24,11 @@ pub mod root_style;
 pub mod rule_scope;
 pub mod visualizer;
 
-pub use conditions::{
-    condition_predicate_to_display, condition_predicate_to_latex, condition_set_to_display,
-    condition_set_to_latex,
-};
+pub use conditions::{condition_set_to_display, condition_set_to_latex};
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
-pub use display_clean::{clean_display_string, clean_sign_patterns};
+pub use display_clean::clean_display_string;
 pub use display_context::{DisplayContext, DisplayHint};
-pub use display_hint_builder::{
-    build_display_context, build_display_context_with_result, DisplayStepLike,
-};
+pub use display_hint_builder::{build_display_context_with_result, DisplayStepLike};
 pub use display_transforms::{
     DisplayTransform, DisplayTransformRegistry, ScopeTag, ScopedRenderer,
 };
@@ -48,7 +43,7 @@ pub use latex_highlight::{
 pub use latex_no_roots::LatexNoRoots;
 pub use path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
-    extract_add_terms, find_path_to_expr, navigate_to_subexpr,
+    extract_add_terms, navigate_to_subexpr,
 };
 pub use periodic::{display_periodic_family, latex_periodic_family};
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};

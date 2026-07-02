@@ -3,7 +3,7 @@ use crate::SetCommandState;
 use super::labels::{display_mode_label, on_off, steps_mode_label};
 
 /// Format full `set show` help text with current values.
-pub fn format_set_help_text(state: SetCommandState) -> String {
+pub(crate) fn format_set_help_text(state: SetCommandState) -> String {
     let mut s = String::new();
     s.push_str("Pipeline settings:\n");
     s.push_str("  set transform <on|off>         Enable/disable distribution & expansion\n");

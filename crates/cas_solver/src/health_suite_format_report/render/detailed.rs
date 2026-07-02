@@ -6,7 +6,10 @@ use super::super::summary::append_summary;
 use super::header::push_report_header;
 
 /// Format report with category header.
-pub fn format_report_filtered(results: &[HealthCaseResult], category: Option<Category>) -> String {
+pub(crate) fn format_report_filtered(
+    results: &[HealthCaseResult],
+    category: Option<Category>,
+) -> String {
     let mut report = String::new();
     push_report_header(&mut report, category);
 

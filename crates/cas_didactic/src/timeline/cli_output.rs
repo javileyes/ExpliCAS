@@ -23,7 +23,7 @@ fn timeline_simplify_info_lines(use_aggressive: bool) -> Vec<String> {
 }
 
 /// Build CLI render output for a full `timeline` command eval output.
-pub fn render_timeline_command_cli_output(
+pub(crate) fn render_timeline_command_cli_output(
     context: &mut cas_ast::Context,
     out: &TimelineCommandOutput,
     verbosity: VerbosityLevel,

@@ -39,11 +39,11 @@ const SEMANTICS_PRESETS: [SemanticsPreset; 4] = [
     },
 ];
 
-pub fn semantics_presets() -> &'static [SemanticsPreset] {
+pub(crate) fn semantics_presets() -> &'static [SemanticsPreset] {
     &SEMANTICS_PRESETS
 }
 
-pub fn find_semantics_preset(name: &str) -> Option<SemanticsPreset> {
+pub(crate) fn find_semantics_preset(name: &str) -> Option<SemanticsPreset> {
     SEMANTICS_PRESETS
         .iter()
         .copied()

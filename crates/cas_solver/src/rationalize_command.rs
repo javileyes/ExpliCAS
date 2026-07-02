@@ -26,7 +26,7 @@ pub(crate) struct RationalizeCommandEvalOutput {
 }
 
 /// Evaluate `rationalize` command and return final display lines.
-pub fn evaluate_rationalize_command_lines(
+pub(crate) fn evaluate_rationalize_command_lines(
     simplifier: &mut crate::Simplifier,
     line: &str,
 ) -> Result<Vec<String>, String> {

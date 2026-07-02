@@ -1,5 +1,5 @@
 /// Parse REPL `timeline` command shape.
-pub fn parse_timeline_command_input(rest: &str) -> crate::TimelineCommandInput {
+pub(crate) fn parse_timeline_command_input(rest: &str) -> crate::TimelineCommandInput {
     if let Some(solve_rest) = rest.strip_prefix("solve ") {
         return crate::TimelineCommandInput::Solve(solve_rest.trim().to_string());
     }

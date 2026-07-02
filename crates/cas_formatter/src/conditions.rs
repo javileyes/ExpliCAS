@@ -5,7 +5,7 @@ use cas_ast::{ConditionPredicate, ConditionSet, Context};
 use crate::{DisplayExpr, LaTeXExpr};
 
 /// Render a single condition predicate as plain text.
-pub fn condition_predicate_to_display(pred: &ConditionPredicate, ctx: &Context) -> String {
+pub(crate) fn condition_predicate_to_display(pred: &ConditionPredicate, ctx: &Context) -> String {
     let expr_str = DisplayExpr {
         context: ctx,
         id: pred.expr_id(),
@@ -27,7 +27,7 @@ pub fn condition_predicate_to_display(pred: &ConditionPredicate, ctx: &Context) 
 }
 
 /// Render a single condition predicate as LaTeX.
-pub fn condition_predicate_to_latex(pred: &ConditionPredicate, ctx: &Context) -> String {
+pub(crate) fn condition_predicate_to_latex(pred: &ConditionPredicate, ctx: &Context) -> String {
     let expr_latex = LaTeXExpr {
         context: ctx,
         id: pred.expr_id(),

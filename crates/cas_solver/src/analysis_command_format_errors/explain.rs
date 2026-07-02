@@ -1,5 +1,7 @@
 /// Format explain command errors into user-facing messages.
-pub fn format_explain_command_error_message(error: &crate::ExplainCommandEvalError) -> String {
+pub(crate) fn format_explain_command_error_message(
+    error: &crate::ExplainCommandEvalError,
+) -> String {
     match error {
         crate::ExplainCommandEvalError::Parse(e) => format!("Parse error: {e}"),
         crate::ExplainCommandEvalError::ExpectedFunctionCall => {

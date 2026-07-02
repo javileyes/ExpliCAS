@@ -8,7 +8,7 @@ use crate::{
 /// Evaluate `show #id` command and return formatted lines for CLI rendering.
 ///
 /// The caller provides `inspect` to bridge stateful session lookup from outer layers.
-pub fn evaluate_show_command_lines_with<F>(
+pub(crate) fn evaluate_show_command_lines_with<F>(
     engine: &mut Engine,
     line: &str,
     inspect: F,

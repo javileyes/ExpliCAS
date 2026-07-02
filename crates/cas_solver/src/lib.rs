@@ -37,8 +37,6 @@ mod assumption_format;
 mod autoexpand_command_eval;
 mod autoexpand_command_format;
 mod autoexpand_command_parse;
-#[cfg(test)]
-mod autoexpand_command_tests;
 mod bindings_command;
 #[cfg(test)]
 mod bindings_command_runtime_tests;
@@ -51,14 +49,10 @@ pub mod command_api;
 mod config_command_apply;
 mod config_command_eval;
 mod config_command_parse;
-#[cfg(test)]
-mod config_command_tests;
 mod const_fold_local;
 mod context_command_eval;
 mod context_command_format;
 mod context_command_parse;
-#[cfg(test)]
-mod context_command_tests;
 mod derive;
 mod derive_command;
 mod display_eval_steps;
@@ -111,8 +105,6 @@ mod health_command_eval;
 mod health_command_format;
 mod health_command_messages;
 mod health_command_parse;
-#[cfg(test)]
-mod health_command_tests;
 mod health_suite_catalog;
 mod health_suite_catalog_core;
 mod health_suite_catalog_stress;
@@ -460,10 +452,8 @@ pub(crate) use crate::health_command_eval::{
 };
 #[allow(unused_imports)]
 pub(crate) use crate::health_command_format::{
-    format_health_failed_tests_warning_line, format_health_invalid_category_message,
-    format_health_missing_category_arg_message, format_health_report_lines,
-    format_health_status_running_message, format_health_usage_message, health_usage_message,
-    resolve_health_category_filter,
+    format_health_failed_tests_warning_line, format_health_report_lines,
+    format_health_status_running_message, health_usage_message, resolve_health_category_filter,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::health_command_messages::{

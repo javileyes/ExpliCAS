@@ -5,7 +5,7 @@ use self::phase::push_phase_stats;
 use self::rationalize::push_rationalize_stats;
 
 /// Format pipeline statistics for diagnostics.
-pub fn format_pipeline_stats(
+pub(crate) fn format_pipeline_stats(
     simplifier: &crate::Simplifier,
     stats: &crate::PipelineStats,
 ) -> String {

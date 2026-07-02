@@ -2,8 +2,9 @@ mod error;
 mod eval;
 
 use cas_ast::ExprId;
-pub use error::{format_full_simplify_eval_error_message, FullSimplifyEvalError};
-pub use eval::evaluate_full_simplify_input_with_resolver;
+pub(crate) use error::format_full_simplify_eval_error_message;
+pub use error::FullSimplifyEvalError;
+pub(crate) use eval::evaluate_full_simplify_input_with_resolver;
 
 #[derive(Debug, Clone)]
 pub struct FullSimplifyEvalOutput {

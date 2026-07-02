@@ -3,7 +3,7 @@ use crate::SetDisplayMode;
 
 use super::{display_mode, ReplSolveRuntimeContext};
 
-pub(super) fn evaluate_derive_command_lines_on_runtime<C: ReplSolveRuntimeContext>(
+pub fn evaluate_derive_command_lines_on_runtime<C: ReplSolveRuntimeContext>(
     context: &mut C,
     line: &str,
     display_mode: SetDisplayMode,

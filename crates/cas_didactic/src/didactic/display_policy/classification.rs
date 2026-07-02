@@ -10,7 +10,7 @@ pub struct SubStepClassification {
 }
 
 /// Classify a sub-step block by its didactic content.
-pub fn classify_sub_steps(sub_steps: &[SubStep]) -> SubStepClassification {
+pub(crate) fn classify_sub_steps(sub_steps: &[SubStep]) -> SubStepClassification {
     let descriptions: Vec<String> = sub_steps
         .iter()
         .map(|s| s.description.to_lowercase())

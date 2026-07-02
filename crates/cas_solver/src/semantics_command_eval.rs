@@ -4,7 +4,7 @@ mod view;
 use crate::{parse_semantics_command_input, SemanticsCommandInput, SemanticsCommandOutput};
 
 /// Evaluate `semantics ...` command line and apply runtime option changes.
-pub fn evaluate_semantics_command_line(
+pub(crate) fn evaluate_semantics_command_line(
     line: &str,
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,

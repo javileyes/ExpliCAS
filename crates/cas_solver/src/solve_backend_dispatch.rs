@@ -7,7 +7,7 @@ use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 use crate::solve_backend_local::LocalSolveBackend;
 
 /// Execute solve using the currently selected active backend.
-pub fn solve_with_active_backend(
+pub(crate) fn solve_with_active_backend(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,

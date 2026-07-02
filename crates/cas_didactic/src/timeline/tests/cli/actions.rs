@@ -1,4 +1,5 @@
 use super::super::super::*;
+use crate::timeline::cli_actions::timeline_cli_actions_from_render;
 
 #[test]
 fn timeline_cli_actions_from_render_html_emits_io_and_lines() {

@@ -1,4 +1,4 @@
-pub fn format_semantics_unknown_subcommand_message(subcommand: &str) -> String {
+pub(crate) fn format_semantics_unknown_subcommand_message(subcommand: &str) -> String {
     format!(
         "Unknown semantics subcommand: '{}'\n\
          Usage: semantics [set|preset|help|<axis>]\n\

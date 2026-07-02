@@ -7,6 +7,6 @@ const WEIERSTRASS_USAGE_MESSAGE: &str = "Usage: weierstrass <expression>\n\
                  Example: weierstrass sin(x) + cos(x)";
 
 /// Usage string for `weierstrass`.
-pub fn weierstrass_usage_message() -> &'static str {
+pub(crate) fn weierstrass_usage_message() -> &'static str {
     WEIERSTRASS_USAGE_MESSAGE
 }

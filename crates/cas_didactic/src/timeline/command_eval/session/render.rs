@@ -4,7 +4,7 @@ use super::super::super::TimelineCliRender;
 use super::eval::evaluate_timeline_command_output_with_session;
 use cas_solver::session_api::timeline::TimelineCommandEvalError;
 
-pub fn evaluate_timeline_command_cli_render_with_session<S>(
+pub(crate) fn evaluate_timeline_command_cli_render_with_session<S>(
     engine: &mut crate::runtime::Engine,
     session: &mut S,
     input: &str,

@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 /// Render required/assumed/blocked metadata sections for history entry display.
-pub fn format_history_eval_metadata_sections(
+pub(crate) fn format_history_eval_metadata_sections(
     ctx: &cas_ast::Context,
     required_conditions: &[crate::ImplicitCondition],
     domain_warnings: &[crate::DomainWarning],

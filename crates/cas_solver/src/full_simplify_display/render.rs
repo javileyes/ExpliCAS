@@ -5,7 +5,7 @@ mod step_loop;
 use super::FullSimplifyDisplayMode;
 
 /// Format full simplify output lines according to display mode.
-pub fn format_full_simplify_eval_lines(
+pub(crate) fn format_full_simplify_eval_lines(
     ctx: &mut cas_ast::Context,
     expr_input: &str,
     resolved_expr: cas_ast::ExprId,

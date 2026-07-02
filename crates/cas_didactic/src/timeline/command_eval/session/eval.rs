@@ -4,7 +4,7 @@ use cas_solver::session_api::timeline::{
     evaluate_timeline_command_with_session, TimelineCommandEvalError,
 };
 
-pub fn evaluate_timeline_command_output_with_session<S>(
+pub(crate) fn evaluate_timeline_command_output_with_session<S>(
     engine: &mut crate::runtime::Engine,
     session: &mut S,
     input: &str,

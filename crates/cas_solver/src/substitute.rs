@@ -11,11 +11,9 @@ mod strategy;
 pub(crate) use self::eval::evaluate_substitute_and_simplify;
 #[cfg_attr(not(test), allow(unused_imports))]
 pub(crate) use self::parse::parse_substitute_args;
-pub use self::steps::substitute_with_steps;
-pub use self::strategy::{
-    detect_substitute_strategy, substitute_auto, substitute_auto_with_strategy,
-    substitute_power_aware,
-};
+pub(crate) use self::steps::substitute_with_steps;
+pub(crate) use self::strategy::substitute_auto_with_strategy;
+pub use self::strategy::substitute_power_aware;
 pub use cas_api_models::SubstituteParseError;
 use cas_ast::ExprId;
 pub use cas_math::substitute::SubstituteOptions;

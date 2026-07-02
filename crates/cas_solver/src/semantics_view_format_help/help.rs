@@ -1,4 +1,4 @@
-pub fn semantics_help_message() -> &'static str {
+pub(crate) fn semantics_help_message() -> &'static str {
     r#"Semantics: Control evaluation semantics
 
 Usage:

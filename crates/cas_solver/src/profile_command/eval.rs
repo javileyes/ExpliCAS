@@ -2,7 +2,7 @@ use super::parse::parse_profile_command_input;
 use cas_api_models::{ProfileCommandInput, ProfileCommandResult};
 
 /// Evaluate a `profile` command into effect + message.
-pub fn evaluate_profile_command_input(line: &str) -> ProfileCommandResult {
+pub(crate) fn evaluate_profile_command_input(line: &str) -> ProfileCommandResult {
     match parse_profile_command_input(line) {
         ProfileCommandInput::ShowReport => ProfileCommandResult::ShowReport,
         ProfileCommandInput::Enable => ProfileCommandResult::SetEnabled {

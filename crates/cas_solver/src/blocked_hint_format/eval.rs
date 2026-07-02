@@ -3,7 +3,7 @@ use cas_ast::Context;
 /// Render blocked hints with eval-oriented messaging.
 ///
 /// Uses a compact single-line format when there is only one hint.
-pub fn format_eval_blocked_hints_lines(
+pub(crate) fn format_eval_blocked_hints_lines(
     ctx: &Context,
     hints: &[crate::BlockedHint],
     domain_mode: crate::DomainMode,

@@ -13,7 +13,7 @@ pub struct SemanticsViewState {
 }
 
 /// Build a semantics view snapshot from simplifier + eval options.
-pub fn semantics_view_state_from_options(
+pub(crate) fn semantics_view_state_from_options(
     simplify_options: &crate::SimplifyOptions,
     eval_options: &crate::EvalOptions,
 ) -> SemanticsViewState {

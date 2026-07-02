@@ -5,7 +5,7 @@ use crate::substitute::SubstituteSimplifyEvalOutput;
 use cas_api_models::SubstituteRenderMode;
 
 /// Format substitute command eval output into display lines.
-pub fn format_substitute_eval_lines(
+pub(crate) fn format_substitute_eval_lines(
     context: &cas_ast::Context,
     input: &str,
     output: &SubstituteSimplifyEvalOutput,

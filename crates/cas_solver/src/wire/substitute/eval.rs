@@ -10,7 +10,7 @@ fn substitute_options_for_mode(mode: &str) -> crate::substitute::SubstituteOptio
     }
 }
 
-pub fn eval_substitute_impl(
+pub(crate) fn eval_substitute_impl(
     expr_str: &str,
     target_str: &str,
     with_str: &str,

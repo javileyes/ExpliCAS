@@ -1,5 +1,5 @@
 /// Format current context status line.
-pub fn format_context_current_message(mode: crate::ContextMode) -> String {
+pub(crate) fn format_context_current_message(mode: crate::ContextMode) -> String {
     let context = match mode {
         crate::ContextMode::Auto => "auto",
         crate::ContextMode::Standard => "standard",
@@ -13,7 +13,7 @@ pub fn format_context_current_message(mode: crate::ContextMode) -> String {
 }
 
 /// Format confirmation message after setting context.
-pub fn format_context_set_message(mode: crate::ContextMode) -> String {
+pub(crate) fn format_context_set_message(mode: crate::ContextMode) -> String {
     match mode {
         crate::ContextMode::Auto => "Context: auto (infers from expression)".to_string(),
         crate::ContextMode::Standard => {
@@ -29,7 +29,7 @@ pub fn format_context_set_message(mode: crate::ContextMode) -> String {
 }
 
 /// Format unknown-context error message.
-pub fn format_context_unknown_message(mode: &str) -> String {
+pub(crate) fn format_context_unknown_message(mode: &str) -> String {
     format!(
         "Unknown context: '{}'\nUsage: context [auto | standard | solve | integrate]",
         mode

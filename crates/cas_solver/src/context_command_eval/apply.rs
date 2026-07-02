@@ -1,7 +1,7 @@
 use cas_api_models::{ContextCommandApplyOutput, ContextCommandResult, EvalContextMode};
 
 /// Apply context mode into eval options, returning whether mode changed.
-pub fn apply_context_mode_to_options(
+pub(crate) fn apply_context_mode_to_options(
     mode: EvalContextMode,
     eval_options: &mut crate::EvalOptions,
 ) -> bool {
@@ -14,7 +14,7 @@ pub fn apply_context_mode_to_options(
 }
 
 /// Evaluate and apply a `context` command directly to runtime options.
-pub fn evaluate_and_apply_context_command(
+pub(crate) fn evaluate_and_apply_context_command(
     line: &str,
     eval_options: &mut crate::EvalOptions,
 ) -> ContextCommandApplyOutput {

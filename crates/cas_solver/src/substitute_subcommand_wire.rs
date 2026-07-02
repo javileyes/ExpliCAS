@@ -8,7 +8,7 @@ pub(crate) fn substitute_command_mode_str(mode: SubstituteCommandMode) -> &'stat
 }
 
 /// Evaluate substitute subcommand in wire mode.
-pub fn evaluate_substitute_subcommand_wire(
+pub(crate) fn evaluate_substitute_subcommand_wire(
     expr: &str,
     target: &str,
     replacement: &str,

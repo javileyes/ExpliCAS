@@ -3,7 +3,7 @@ use crate::{
     SetCommandState,
 };
 
-pub use crate::set_command_parse::parse_set_command_input;
+pub(crate) use crate::set_command_parse::parse_set_command_input;
 
 /// Evaluate a `set ...` command into a read/update decision.
 pub fn evaluate_set_command_input(line: &str, state: SetCommandState) -> SetCommandResult {

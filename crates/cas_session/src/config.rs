@@ -5,7 +5,7 @@ mod defaults;
 mod io;
 mod runtime;
 
-pub use convert::{
+pub(crate) use convert::{
     apply_solver_toggle_to_cas_config, solver_rule_config_from_cas_config,
     solver_toggle_config_from_cas_config, sync_simplifier_with_cas_config,
 };

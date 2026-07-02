@@ -1,5 +1,5 @@
 /// Format equivalence check result as display lines.
-pub fn format_equivalence_result_lines(result: &crate::EquivalenceResult) -> Vec<String> {
+pub(crate) fn format_equivalence_result_lines(result: &crate::EquivalenceResult) -> Vec<String> {
     match result {
         crate::EquivalenceResult::True => vec!["True".to_string()],
         crate::EquivalenceResult::ConditionalTrue { requires } => {
@@ -27,7 +27,7 @@ pub(crate) fn format_equiv_command_output_lines(
 }
 
 /// Format parse errors for commands that expect `<expr1>, <expr2>` input.
-pub fn format_expr_pair_parse_error_message(
+pub(crate) fn format_expr_pair_parse_error_message(
     error: &crate::ParseExprPairError,
     command: &str,
 ) -> String {

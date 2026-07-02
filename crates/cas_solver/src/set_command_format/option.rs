@@ -3,7 +3,7 @@ use crate::SetCommandState;
 use super::labels::{display_mode_label, on_off, steps_mode_label};
 
 /// Format a single `set <option>` value.
-pub fn format_set_option_value(option: &str, state: SetCommandState) -> String {
+pub(crate) fn format_set_option_value(option: &str, state: SetCommandState) -> String {
     match option {
         "transform" => format!("transform: {}", on_off(state.transform)),
         "rationalize" => format!("rationalize: {:?}", state.rationalize),

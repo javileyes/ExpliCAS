@@ -1,5 +1,5 @@
 mod help;
 mod unknown;
 
-pub use help::semantics_help_message;
-pub use unknown::format_semantics_unknown_subcommand_message;
+pub(crate) use help::semantics_help_message;
+pub(crate) use unknown::format_semantics_unknown_subcommand_message;

@@ -4,7 +4,7 @@ use cas_api_models::{EnvelopeEvalOptions, ExprDto, OutputEnvelope};
 use super::common::{build_request_info, display_expr};
 use super::transparency::{build_transparency, TransparencyInput};
 
-pub fn build_success_envelope(
+pub(crate) fn build_success_envelope(
     expr: &str,
     opts: &EnvelopeEvalOptions,
     ctx: &cas_ast::Context,

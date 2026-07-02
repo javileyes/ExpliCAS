@@ -1,5 +1,5 @@
 /// Format unary command output (`det`, `trace`, etc.) with optional steps.
-pub fn format_unary_function_eval_lines(
+pub(crate) fn format_unary_function_eval_lines(
     context: &cas_ast::Context,
     input: &str,
     result_expr: cas_ast::ExprId,

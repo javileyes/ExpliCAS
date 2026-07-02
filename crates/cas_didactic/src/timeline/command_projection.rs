@@ -2,7 +2,7 @@ use super::{TimelineCommandOutput, TimelineSimplifyCommandOutput, TimelineSolveC
 use cas_solver::session_api::timeline::TimelineCommandEvalOutput;
 
 /// Convert solver timeline evaluation output into didactic render payload.
-pub fn timeline_command_output_from_solver(
+pub(crate) fn timeline_command_output_from_solver(
     output: TimelineCommandEvalOutput,
 ) -> TimelineCommandOutput {
     match output {

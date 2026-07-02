@@ -1,6 +1,6 @@
 use crate::semantics_preset_catalog::semantics_presets;
 
-pub fn format_semantics_preset_list_lines() -> Vec<String> {
+pub(crate) fn format_semantics_preset_list_lines() -> Vec<String> {
     let mut lines = Vec::new();
     lines.push("Available presets:".to_string());
     for preset in semantics_presets() {

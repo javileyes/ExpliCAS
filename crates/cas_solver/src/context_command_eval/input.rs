@@ -5,7 +5,7 @@ use crate::context_command_parse::parse_context_command_input;
 use cas_api_models::{ContextCommandInput, ContextCommandResult, EvalContextMode};
 
 /// Evaluate a `context` command into mode changes + message.
-pub fn evaluate_context_command_input(
+pub(crate) fn evaluate_context_command_input(
     line: &str,
     current_mode: crate::ContextMode,
 ) -> ContextCommandResult {

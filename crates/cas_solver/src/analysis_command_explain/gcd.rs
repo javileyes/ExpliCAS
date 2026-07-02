@@ -3,7 +3,7 @@ use cas_ast::Context;
 use crate::ExplainCommandEvalError;
 
 /// Evaluate explain command input and format user-facing output lines.
-pub fn evaluate_explain_command_lines(
+pub(crate) fn evaluate_explain_command_lines(
     ctx: &mut Context,
     input: &str,
 ) -> Result<Vec<String>, ExplainCommandEvalError> {

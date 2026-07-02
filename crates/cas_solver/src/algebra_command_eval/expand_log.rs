@@ -1,7 +1,7 @@
 use crate::algebra_command_parse::{expand_log_usage_message, parse_expand_log_invocation_input};
 
 /// Evaluate and format `expand_log` command output lines.
-pub fn evaluate_expand_log_command_lines(
+pub(crate) fn evaluate_expand_log_command_lines(
     ctx: &mut cas_ast::Context,
     input: &str,
 ) -> Result<Vec<String>, String> {
@@ -27,7 +27,7 @@ pub fn evaluate_expand_log_command_lines(
 }
 
 /// Evaluate `expand_log ...` invocation and return display lines.
-pub fn evaluate_expand_log_invocation_lines(
+pub(crate) fn evaluate_expand_log_invocation_lines(
     ctx: &mut cas_ast::Context,
     line: &str,
 ) -> Result<Vec<String>, String> {
@@ -38,7 +38,7 @@ pub fn evaluate_expand_log_invocation_lines(
 }
 
 /// Evaluate `expand_log ...` invocation and return cleaned display text.
-pub fn evaluate_expand_log_invocation_message(
+pub(crate) fn evaluate_expand_log_invocation_message(
     ctx: &mut cas_ast::Context,
     line: &str,
 ) -> Result<String, String> {

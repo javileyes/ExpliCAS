@@ -1,7 +1,7 @@
 use super::{eval::evaluate_weierstrass_command_lines, usage::weierstrass_usage_message};
 
 /// Parse `weierstrass ...` invocation and return expression tail.
-pub fn parse_weierstrass_invocation_input(line: &str) -> Option<String> {
+pub(crate) fn parse_weierstrass_invocation_input(line: &str) -> Option<String> {
     let rest = line.strip_prefix("weierstrass").unwrap_or(line).trim();
     if rest.is_empty() {
         None
@@ -11,7 +11,7 @@ pub fn parse_weierstrass_invocation_input(line: &str) -> Option<String> {
 }
 
 /// Evaluate and format `weierstrass ...` invocation.
-pub fn evaluate_weierstrass_invocation_lines(
+pub(crate) fn evaluate_weierstrass_invocation_lines(
     simplifier: &mut crate::Simplifier,
     line: &str,
 ) -> Result<Vec<String>, String> {
@@ -22,7 +22,7 @@ pub fn evaluate_weierstrass_invocation_lines(
 }
 
 /// Evaluate and format `weierstrass ...` invocation as message text.
-pub fn evaluate_weierstrass_invocation_message(
+pub(crate) fn evaluate_weierstrass_invocation_message(
     simplifier: &mut crate::Simplifier,
     line: &str,
 ) -> Result<String, String> {

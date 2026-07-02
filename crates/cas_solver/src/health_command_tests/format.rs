@@ -1,26 +1,11 @@
 use super::{
-    format_health_failed_tests_warning_line, format_health_missing_category_arg_message,
-    format_health_report_lines, format_health_status_running_message, format_health_usage_message,
-    health_usage_message, resolve_health_category_filter, HealthStatusInput,
+    format_health_failed_tests_warning_line, format_health_report_lines, format_health_status_running_message, health_usage_message, resolve_health_category_filter, HealthStatusInput,
 };
-
-#[test]
-fn format_health_usage_message_mentions_status() {
-    let text = format_health_usage_message("a,b,c");
-    assert!(text.contains("health status"));
-    assert!(text.contains("Categories: a,b,c"));
-}
 
 #[test]
 fn health_usage_message_includes_categories() {
     let text = health_usage_message();
     assert!(text.contains("Categories:"));
-}
-
-#[test]
-fn format_health_missing_category_arg_message_mentions_argument() {
-    let text = format_health_missing_category_arg_message("a,b,c");
-    assert!(text.contains("--category requires an argument"));
 }
 
 #[test]

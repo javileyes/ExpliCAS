@@ -11,7 +11,7 @@ fn visualize_output_hint_lines(file_name: &str) -> Vec<String> {
 }
 
 /// Evaluate visualize command input and return DOT graph source.
-pub fn evaluate_visualize_command_dot(
+pub(crate) fn evaluate_visualize_command_dot(
     ctx: &mut Context,
     input: &str,
 ) -> Result<String, VisualizeEvalError> {
@@ -22,7 +22,7 @@ pub fn evaluate_visualize_command_dot(
 }
 
 /// Evaluate visualize command input and return output payload.
-pub fn evaluate_visualize_command_output(
+pub(crate) fn evaluate_visualize_command_output(
     ctx: &mut Context,
     input: &str,
 ) -> Result<VisualizeCommandOutput, VisualizeEvalError> {
@@ -36,7 +36,7 @@ pub fn evaluate_visualize_command_output(
 }
 
 /// Evaluate full `visualize ...` invocation and return output payload.
-pub fn evaluate_visualize_invocation_output(
+pub(crate) fn evaluate_visualize_invocation_output(
     ctx: &mut Context,
     line: &str,
 ) -> Result<VisualizeCommandOutput, String> {

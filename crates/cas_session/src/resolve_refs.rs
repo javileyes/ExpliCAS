@@ -23,7 +23,7 @@ pub fn resolve_session_refs(
 }
 
 /// Resolve session refs and apply environment substitution.
-pub fn resolve_session_refs_with_env(
+pub(crate) fn resolve_session_refs_with_env(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
     store: &SessionStore,
@@ -31,26 +31,6 @@ pub fn resolve_session_refs_with_env(
 ) -> Result<cas_ast::ExprId, ResolveError> {
     let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
     cas_session_core::resolve::resolve_all_with_lookup_and_env(ctx, expr, &mut lookup, env)
-}
-
-/// Resolve session refs and accumulate inherited diagnostics.
-pub fn resolve_session_refs_with_diagnostics(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-    store: &SessionStore,
-) -> Result<(cas_ast::ExprId, Diagnostics), ResolveError> {
-    let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
-    cas_session_core::resolve::resolve_session_refs_with_lookup_accumulator(
-        ctx,
-        expr,
-        &mut lookup,
-        Diagnostics::new(),
-        |inherited, id| {
-            if let Some(entry) = store.get(id) {
-                inherited.inherit_requires_from(&entry.diagnostics);
-            }
-        },
-    )
 }
 
 /// Resolve session refs with mode selection and cache checking.
@@ -74,29 +54,8 @@ pub fn resolve_session_refs_with_mode(
     })
 }
 
-/// Resolve session refs with mode selection and apply environment substitution.
-pub fn resolve_session_refs_with_mode_and_env(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-    store: &SessionStore,
-    mode: RefMode,
-    cache_key: &SimplifyCacheKey,
-    env: &Environment,
-) -> Result<ResolvedExpr<RequiredItem>, ResolveError> {
-    with_mode_resolution_plumbing(store, |mut lookup, mut same, mut mark| {
-        cas_session_core::resolve::resolve_all_with_mode_lookup_and_env(
-            ctx,
-            expr,
-            mode_resolve_config(mode, cache_key, env),
-            &mut lookup,
-            &mut same,
-            &mut mark,
-        )
-    })
-}
-
 /// Resolve session refs with mode + env and return inherited diagnostics + cache hits.
-pub fn resolve_session_refs_with_mode_and_diagnostics(
+pub(crate) fn resolve_session_refs_with_mode_and_diagnostics(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
     store: &SessionStore,

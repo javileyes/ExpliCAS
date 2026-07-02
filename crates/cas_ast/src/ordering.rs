@@ -121,7 +121,7 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
     Ordering::Equal
 }
 
-pub fn get_rank(expr: &Expr) -> u8 {
+pub(crate) fn get_rank(expr: &Expr) -> u8 {
     use Expr::*;
     match expr {
         Number(_) => 0,

@@ -41,7 +41,7 @@ fn parse_component(
     })
 }
 
-pub fn parse_substitute_input(
+pub(crate) fn parse_substitute_input(
     expr_str: &str,
     target_str: &str,
     with_str: &str,

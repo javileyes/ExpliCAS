@@ -2,7 +2,7 @@
 
 mod build;
 
-pub use build::build_prepared_eval_request_for_input;
+pub(crate) use build::build_prepared_eval_request_for_input;
 
 #[derive(Debug, Clone)]
 pub enum EvalNonSolveAction {

@@ -40,7 +40,7 @@ fn solve_step_verbosity_from_display_mode(mode: SolveDisplayMode) -> SolveStepVe
     }
 }
 
-pub fn solve_render_config_from_eval_options(
+pub(crate) fn solve_render_config_from_eval_options(
     options: &crate::EvalOptions,
     display_mode: SolveDisplayMode,
     debug_mode: bool,

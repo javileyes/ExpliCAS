@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::command_api::substitute::{
-        evaluate_substitute_subcommand, parse_substitute_wire_text_lines, SubstituteCommandMode,
-        SubstituteSubcommandOutput,
+        evaluate_substitute_subcommand, SubstituteCommandMode, SubstituteSubcommandOutput,
     };
 
     #[test]
@@ -44,12 +43,5 @@ mod tests {
             }
             _ => panic!("expected text output"),
         }
-    }
-
-    #[test]
-    fn parse_substitute_wire_text_lines_maps_error_message() {
-        let payload = r#"{"ok":false,"error":{"message":"Parse error in target: bad token"}}"#;
-        let err = parse_substitute_wire_text_lines(payload, false).expect_err("should fail");
-        assert_eq!(err, "Parse error in target: bad token");
     }
 }

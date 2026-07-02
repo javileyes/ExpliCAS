@@ -15,7 +15,7 @@ pub use crate::assignment_format::{
     format_assignment_error_message, format_assignment_success_message,
     format_let_assignment_parse_error_message,
 };
-pub use crate::assignment_parse::{let_assignment_usage_message, parse_let_assignment_input};
+pub use crate::assignment_parse::parse_let_assignment_input;
 pub use crate::assignment_parse_types::{LetAssignmentParseError, ParsedLetAssignment};
 pub use crate::bindings_command::{binding_overview_entries, clear_bindings_command};
 pub use crate::bindings_format::{

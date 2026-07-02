@@ -1,10 +1,10 @@
 /// Extract expression tail from a `simplify` command line.
-pub fn extract_simplify_command_tail(line: &str) -> &str {
+pub(crate) fn extract_simplify_command_tail(line: &str) -> &str {
     line.strip_prefix("simplify").unwrap_or(line).trim()
 }
 
 /// Evaluate a full `simplify ...` invocation and return final display lines.
-pub fn evaluate_full_simplify_command_lines_with_resolver<F>(
+pub(crate) fn evaluate_full_simplify_command_lines_with_resolver<F>(
     simplifier: &mut crate::Simplifier,
     line: &str,
     display_mode: crate::FullSimplifyDisplayMode,

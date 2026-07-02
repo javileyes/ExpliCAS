@@ -1,5 +1,5 @@
 mod anchor;
 mod line;
 
-pub use anchor::requires_result_expr_anchor;
-pub use line::format_solve_result_line;
+pub(crate) use anchor::requires_result_expr_anchor;
+pub(crate) use line::format_solve_result_line;

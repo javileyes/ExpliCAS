@@ -3,7 +3,7 @@ mod sqrt;
 mod text;
 
 /// Convert LaTeX-like notation into plain-text form for CLI display.
-pub fn latex_to_plain_text(s: &str) -> String {
+pub(crate) fn latex_to_plain_text(s: &str) -> String {
     let mut result = strip_color_wrappers(s);
 
     result = text::strip_text_wrappers(result);

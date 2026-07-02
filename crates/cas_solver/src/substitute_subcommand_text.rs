@@ -1,4 +1,4 @@
-pub fn parse_substitute_wire_text_lines(
+pub(crate) fn parse_substitute_wire_text_lines(
     payload: &str,
     steps_enabled: bool,
 ) -> Result<Vec<String>, String> {

@@ -6,7 +6,7 @@ use cas_api_models::{parse_eval_limit_command_error, parse_eval_special_command}
 use super::PreparedEvalRequest;
 
 /// Build a typed eval request as a solver-owned action enum.
-pub fn build_prepared_eval_request_for_input(
+pub(crate) fn build_prepared_eval_request_for_input(
     raw_input: &str,
     ctx: &mut cas_ast::Context,
     auto_store: bool,

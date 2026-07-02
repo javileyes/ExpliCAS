@@ -25,52 +25,5 @@ pub mod child {
     pub const INNER: u8 = 0;
 }
 
-/// Convert a path to a human-readable string (for debugging)
-pub fn path_to_string(path: &ExprPath) -> String {
-    if path.is_empty() {
-        return "root".to_string();
-    }
-    path.iter()
-        .map(|&i| i.to_string())
-        .collect::<Vec<_>>()
-        .join(".")
-}
-
-/// Check if `prefix` is a prefix of `path` (or equal)
-pub fn is_prefix_of(prefix: &ExprPath, path: &ExprPath) -> bool {
-    if prefix.len() > path.len() {
-        return false;
-    }
-    prefix.iter().zip(path.iter()).all(|(a, b)| a == b)
-}
-
-/// Check if two paths are exactly equal
-pub fn paths_equal(a: &ExprPath, b: &ExprPath) -> bool {
-    a == b
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_path_to_string() {
-        let empty: ExprPath = vec![];
-        assert_eq!(path_to_string(&empty), "root");
-
-        let path: ExprPath = vec![0, 1, 2];
-        assert_eq!(path_to_string(&path), "0.1.2");
-    }
-
-    #[test]
-    fn test_is_prefix() {
-        let path: ExprPath = vec![0, 1, 2];
-        let prefix: ExprPath = vec![0, 1];
-        let not_prefix: ExprPath = vec![0, 2];
-
-        assert!(is_prefix_of(&prefix, &path));
-        assert!(is_prefix_of(&path, &path)); // Equal is prefix
-        assert!(!is_prefix_of(&not_prefix, &path));
-        assert!(!is_prefix_of(&path, &prefix)); // Longer can't be prefix
-    }
-}
+mod tests {}

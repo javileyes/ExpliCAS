@@ -6,4 +6,4 @@ mod evaluate;
 pub use self::apply::*;
 pub use self::config_sync::*;
 pub use self::context::*;
-pub use self::evaluate::*;
+pub(crate) use self::evaluate::*;

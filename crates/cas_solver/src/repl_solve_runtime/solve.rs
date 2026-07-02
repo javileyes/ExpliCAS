@@ -2,7 +2,7 @@ use crate::{EvalSession, SetDisplayMode};
 
 use super::{display_mode, ReplSolveRuntimeContext};
 
-pub(super) fn evaluate_solve_command_message_on_runtime<C: ReplSolveRuntimeContext>(
+pub fn evaluate_solve_command_message_on_runtime<C: ReplSolveRuntimeContext>(
     context: &mut C,
     line: &str,
     display_mode: SetDisplayMode,

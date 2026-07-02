@@ -1,4 +1,4 @@
-use super::super::super::*;
+use crate::timeline::command_eval::extract_timeline_invocation_input;
 
 #[test]
 fn extract_timeline_invocation_input_strips_prefix() {

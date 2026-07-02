@@ -9,7 +9,7 @@ use super::state::{
     apply_semantics_preset_state_to_options, semantics_preset_state_from_options, state_from_preset,
 };
 
-pub fn apply_semantics_preset_by_name(
+pub(crate) fn apply_semantics_preset_by_name(
     name: &str,
 ) -> Result<SemanticsPresetApplication, SemanticsPresetApplyError> {
     let Some(preset) = find_semantics_preset(name) else {
@@ -24,7 +24,7 @@ pub fn apply_semantics_preset_by_name(
 }
 
 /// Resolve and apply a semantics preset by name to runtime options.
-pub fn apply_semantics_preset_by_name_to_options(
+pub(crate) fn apply_semantics_preset_by_name_to_options(
     name: &str,
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,
@@ -35,7 +35,7 @@ pub fn apply_semantics_preset_by_name_to_options(
 }
 
 /// Evaluate `semantics preset ...` args, mutating options on successful apply.
-pub fn evaluate_semantics_preset_args_to_options(
+pub(crate) fn evaluate_semantics_preset_args_to_options(
     args: &[&str],
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,

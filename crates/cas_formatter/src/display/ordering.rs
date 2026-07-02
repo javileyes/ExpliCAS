@@ -91,7 +91,7 @@ fn ln_power_display_degree(ctx: &Context, id: ExprId) -> Option<i32> {
 /// Primary otherwise: positive terms before negative, preserving established
 /// affine orientation such as `1 - x`.
 /// Tertiary: degree and compare_expr tie-breaking.
-pub fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::cmp::Ordering {
+pub(crate) fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::cmp::Ordering {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
 

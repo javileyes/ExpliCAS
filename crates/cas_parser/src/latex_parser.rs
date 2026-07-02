@@ -134,7 +134,7 @@ fn token(input: &str) -> IResult<&str, Token> {
 }
 
 /// Tokenize entire LaTeX string
-pub fn tokenize(input: &str) -> Result<Vec<Token>, String> {
+pub(crate) fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
     let mut remaining = input;
 

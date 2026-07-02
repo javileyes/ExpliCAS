@@ -4,7 +4,7 @@ mod substeps;
 use cas_ast::Context;
 use cas_formatter::display_transforms::{DisplayTransformRegistry, ScopeTag, ScopedRenderer};
 
-pub fn format_solve_steps_lines(
+pub(crate) fn format_solve_steps_lines(
     ctx: &Context,
     solve_steps: &[crate::SolveStep],
     output_scopes: &[ScopeTag],

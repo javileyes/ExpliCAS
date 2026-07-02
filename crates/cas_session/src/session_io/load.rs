@@ -9,7 +9,7 @@ use crate::{cache::SimplifyCacheKey, state_core::SessionState};
 ///
 /// Returns `(engine, state, warning_message)` where `warning_message` is present when
 /// a snapshot existed but could not be reused.
-pub fn load_or_new_session(
+pub(crate) fn load_or_new_session(
     path: Option<&Path>,
     key: &SimplifyCacheKey,
 ) -> (Engine, SessionState, Option<String>) {

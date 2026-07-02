@@ -9,7 +9,10 @@ use cas_solver_core::simplifier_config::SimplifierToggleConfig;
 ///
 /// This keeps parsing, validation, and user-facing messaging in one place,
 /// leaving callers to apply only infrastructure effects (save/restore/sync).
-pub fn evaluate_config_command(line: &str, toggles: SimplifierToggleConfig) -> ConfigCommandResult {
+pub(crate) fn evaluate_config_command(
+    line: &str,
+    toggles: SimplifierToggleConfig,
+) -> ConfigCommandResult {
     match parse_config_command_input(line) {
         ConfigCommandInput::List => ConfigCommandResult::ShowList {
             message: format_simplifier_toggle_config(toggles),

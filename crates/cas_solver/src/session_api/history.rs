@@ -8,7 +8,6 @@ pub use crate::history_format::{
     format_delete_history_error_message, format_delete_history_result_message,
     format_history_overview_lines, history_empty_message,
 };
-pub use crate::history_metadata_format::format_history_eval_metadata_sections;
 pub use crate::history_models::{
     DeleteHistoryError, DeleteHistoryResult, HistoryEntryDetails, HistoryEntryInspection,
     HistoryExprInspection, HistoryOverviewEntry, HistoryOverviewKind,

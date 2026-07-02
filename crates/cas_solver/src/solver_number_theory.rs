@@ -16,7 +16,7 @@ pub struct GcdResult {
 }
 
 /// Educational wrapper around pure GCD computation.
-pub fn explain_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> GcdResult {
+pub(crate) fn explain_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> GcdResult {
     let mut steps = Vec::new();
 
     if let (Some(val_a), Some(val_b)) = (

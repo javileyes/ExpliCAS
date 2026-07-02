@@ -26,7 +26,7 @@ pub trait DisplayStepLike {
 /// This scans the original expression for sqrt() functions and also looks at
 /// steps for "Canonicalize Roots" patterns. Zero cost if not called.
 #[allow(dead_code)] // Convenience API used by module tests; `_with_result` variant is the hot path
-pub fn build_display_context(
+pub(crate) fn build_display_context(
     ctx: &Context,
     original_expr: cas_ast::ExprId,
     steps: &[impl DisplayStepLike],

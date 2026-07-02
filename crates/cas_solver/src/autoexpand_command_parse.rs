@@ -1,7 +1,7 @@
 use cas_api_models::{AutoexpandCommandInput, EvalExpandPolicy};
 
 /// Parse raw `autoexpand ...` command input.
-pub fn parse_autoexpand_command_input(line: &str) -> AutoexpandCommandInput {
+pub(crate) fn parse_autoexpand_command_input(line: &str) -> AutoexpandCommandInput {
     let args: Vec<&str> = line.split_whitespace().collect();
     match args.get(1) {
         None => AutoexpandCommandInput::ShowCurrent,

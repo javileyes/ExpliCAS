@@ -5,7 +5,7 @@ use crate::ExplainCommandEvalError;
 use super::gcd::evaluate_explain_command_lines;
 
 /// Evaluate `explain` command input and return cleaned message text.
-pub fn evaluate_explain_command_message(
+pub(crate) fn evaluate_explain_command_message(
     ctx: &mut Context,
     input: &str,
 ) -> Result<String, ExplainCommandEvalError> {

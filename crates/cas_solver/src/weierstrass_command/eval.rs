@@ -29,7 +29,7 @@ fn format_weierstrass_eval_lines(
 }
 
 /// Evaluate and format `weierstrass` command output lines.
-pub fn evaluate_weierstrass_command_lines(
+pub(crate) fn evaluate_weierstrass_command_lines(
     simplifier: &mut crate::Simplifier,
     input: &str,
 ) -> Result<Vec<String>, String> {

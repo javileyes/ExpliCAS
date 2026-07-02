@@ -1,5 +1,6 @@
 use super::super::shared_numeric::gcd_bigint;
 use super::super::*;
+use crate::didactic::display_policy::build_cli_substeps_render_plan;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 

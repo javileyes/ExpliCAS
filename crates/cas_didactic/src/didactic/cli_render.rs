@@ -12,7 +12,7 @@ use cas_ast::{Context, ExprId};
 ///
 /// This keeps didactic rendering rules outside frontends so clients can remain
 /// thin and only handle I/O.
-pub fn format_cli_simplification_steps(
+pub(crate) fn format_cli_simplification_steps(
     ctx: &mut Context,
     expr: ExprId,
     steps: &[Step],

@@ -15,7 +15,7 @@ use cas_parser::ParseError;
 /// ```
 ///
 /// If span is out of bounds, it is clamped to input bounds.
-pub fn render_error_with_caret(input: &str, span: Span, message: &str) -> String {
+pub(crate) fn render_error_with_caret(input: &str, span: Span, message: &str) -> String {
     let start = span.start.min(input.len());
     let end = span.end.min(input.len()).max(start);
 
@@ -36,7 +36,7 @@ pub fn render_error_with_caret(input: &str, span: Span, message: &str) -> String
 }
 
 /// Render a ParseError, using caret if span is available.
-pub fn render_parse_error(input: &str, error: &ParseError) -> String {
+pub(crate) fn render_parse_error(input: &str, error: &ParseError) -> String {
     if let Some(span) = error.span() {
         render_error_with_caret(input, span, error.message())
     } else {

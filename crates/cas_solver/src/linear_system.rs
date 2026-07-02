@@ -62,7 +62,7 @@ pub(crate) fn with_equation_index(error: LinearSystemError, index: usize) -> Lin
 }
 
 /// Solve 2x2 linear system from normalized equations `lhs - rhs = 0`.
-pub fn solve_2x2_linear_system(
+pub(crate) fn solve_2x2_linear_system(
     ctx: &Context,
     expr1: ExprId,
     expr2: ExprId,
@@ -77,7 +77,7 @@ pub fn solve_2x2_linear_system(
 }
 
 /// Solve 3x3 linear system from normalized equations `lhs - rhs = 0`.
-pub fn solve_3x3_linear_system(
+pub(crate) fn solve_3x3_linear_system(
     ctx: &Context,
     expr1: ExprId,
     expr2: ExprId,
@@ -96,7 +96,7 @@ pub fn solve_3x3_linear_system(
 }
 
 /// Solve n×n linear system from normalized equations `lhs - rhs = 0`.
-pub fn solve_nxn_linear_system(
+pub(crate) fn solve_nxn_linear_system(
     ctx: &Context,
     exprs: &[ExprId],
     vars: &[&str],

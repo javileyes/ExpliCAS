@@ -1,7 +1,7 @@
 use cas_api_models::{AutoexpandBudgetView, EvalExpandPolicy};
 
 /// Format status output for `autoexpand`.
-pub fn format_autoexpand_current_message(
+pub(crate) fn format_autoexpand_current_message(
     policy: EvalExpandPolicy,
     budget: AutoexpandBudgetView,
 ) -> String {
@@ -22,7 +22,7 @@ pub fn format_autoexpand_current_message(
 }
 
 /// Format feedback after applying an auto-expand policy.
-pub fn format_autoexpand_set_message(
+pub(crate) fn format_autoexpand_set_message(
     policy: EvalExpandPolicy,
     budget: AutoexpandBudgetView,
 ) -> String {
@@ -40,7 +40,7 @@ pub fn format_autoexpand_set_message(
 }
 
 /// Format unknown-mode error for `autoexpand`.
-pub fn format_autoexpand_unknown_mode_message(mode: &str) -> String {
+pub(crate) fn format_autoexpand_unknown_mode_message(mode: &str) -> String {
     format!(
         "Unknown autoexpand mode: '{}'\n\
              Usage: autoexpand [on | off]\n\

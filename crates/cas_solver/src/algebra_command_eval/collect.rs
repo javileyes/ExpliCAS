@@ -3,7 +3,7 @@ use crate::algebra_command_parse::{
 };
 
 /// Parse and wrap `collect ...` as an explicit `collect(expr, var)` eval input.
-pub fn evaluate_collect_wrapped_expression(line: &str) -> Result<String, String> {
+pub(crate) fn evaluate_collect_wrapped_expression(line: &str) -> Result<String, String> {
     let Some((expr, var)) = parse_collect_invocation_input(line) else {
         return Err(collect_usage_message().to_string());
     };

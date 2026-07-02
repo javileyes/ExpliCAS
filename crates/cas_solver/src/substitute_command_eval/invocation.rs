@@ -5,7 +5,7 @@ use crate::substitute_command_format::{
 use cas_api_models::SubstituteParseError;
 
 /// Evaluate full `subst ...` invocation line and return cleaned display lines.
-pub fn evaluate_substitute_invocation_lines(
+pub(crate) fn evaluate_substitute_invocation_lines(
     simplifier: &mut crate::Simplifier,
     line: &str,
     display_mode: crate::SetDisplayMode,
@@ -18,7 +18,7 @@ pub fn evaluate_substitute_invocation_lines(
 }
 
 /// Evaluate full `subst ...` invocation line and return cleaned message text.
-pub fn evaluate_substitute_invocation_message(
+pub(crate) fn evaluate_substitute_invocation_message(
     simplifier: &mut crate::Simplifier,
     line: &str,
     display_mode: crate::SetDisplayMode,
@@ -27,7 +27,7 @@ pub fn evaluate_substitute_invocation_message(
 }
 
 /// Evaluate full `subst ...` invocation and return user-facing text message.
-pub fn evaluate_substitute_invocation_user_message(
+pub(crate) fn evaluate_substitute_invocation_user_message(
     simplifier: &mut crate::Simplifier,
     line: &str,
     display_mode: crate::SetDisplayMode,

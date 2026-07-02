@@ -2,7 +2,7 @@
 ///
 /// This keeps prompt derivation frontend-agnostic while preserving
 /// the existing CLI-visible prompt contract.
-pub fn build_prompt_from_eval_options(options: &crate::EvalOptions) -> String {
+pub(crate) fn build_prompt_from_eval_options(options: &crate::EvalOptions) -> String {
     let mut indicators = Vec::new();
 
     match options.steps_mode {

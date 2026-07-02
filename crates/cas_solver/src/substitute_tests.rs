@@ -1,29 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::substitute::{
-        detect_substitute_strategy, evaluate_substitute_and_simplify, parse_substitute_args,
-        substitute_auto_with_strategy, SubstituteOptions, SubstituteParseError, SubstituteStrategy,
+        evaluate_substitute_and_simplify, parse_substitute_args, substitute_auto_with_strategy,
+        SubstituteOptions, SubstituteParseError, SubstituteStrategy,
     };
-
-    #[test]
-    fn detect_substitute_strategy_variable_target() {
-        let mut ctx = cas_ast::Context::new();
-        let target = cas_parser::parse("x", &mut ctx).expect("target parse");
-        assert_eq!(
-            detect_substitute_strategy(&ctx, target),
-            SubstituteStrategy::Variable
-        );
-    }
-
-    #[test]
-    fn detect_substitute_strategy_expression_target() {
-        let mut ctx = cas_ast::Context::new();
-        let target = cas_parser::parse("x^2", &mut ctx).expect("target parse");
-        assert_eq!(
-            detect_substitute_strategy(&ctx, target),
-            SubstituteStrategy::PowerAware
-        );
-    }
 
     #[test]
     fn substitute_auto_with_strategy_uses_variable_path() {

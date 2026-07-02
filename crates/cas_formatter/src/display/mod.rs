@@ -27,7 +27,8 @@ mod styled;
 // Re-export public items from submodules
 pub use expr::{DisplayExpr, RawDisplayExpr};
 pub use hints::DisplayExprWithHints;
-pub use ordering::{cmp_term_for_display, DisplayFactor, FractionDisplayView, OrderingMode};
+pub(crate) use ordering::cmp_term_for_display;
+pub use ordering::{DisplayFactor, FractionDisplayView, OrderingMode};
 pub use styled::DisplayExprStyled;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,12 +53,12 @@ pub fn disable_pretty_output() {
 }
 
 /// Check if pretty output is enabled
-pub fn is_pretty_output() -> bool {
+pub(crate) fn is_pretty_output() -> bool {
     PRETTY_OUTPUT.load(Ordering::SeqCst)
 }
 
 /// Get the multiplication symbol based on pretty mode
-pub fn mul_symbol() -> &'static str {
+pub(crate) fn mul_symbol() -> &'static str {
     if PRETTY_OUTPUT.load(Ordering::SeqCst) {
         "·"
     } else {
@@ -88,7 +89,7 @@ fn digit_to_superscript(d: u32) -> char {
 
 /// Convert an integer to a Unicode superscript string
 /// Examples: 2 → "²", 12 → "¹²", 100 → "¹⁰⁰"
-pub fn number_to_superscript(n: u64) -> String {
+pub(crate) fn number_to_superscript(n: u64) -> String {
     if n == 0 {
         return "⁰".to_string();
     }
@@ -112,7 +113,7 @@ pub fn number_to_superscript(n: u64) -> String {
 /// Get the root prefix for a given index
 /// Pretty mode: 2 → "√", 3 → "∛", 4 → "∜", 5 → "⁵√"
 /// ASCII mode: 2 → "sqrt", 3 → "cbrt", n → "root(,n)"
-pub fn unicode_root_prefix(index: u64) -> String {
+pub(crate) fn unicode_root_prefix(index: u64) -> String {
     if !is_pretty_output() {
         // ASCII mode - will be handled by the caller using sqrt() format
         return match index {

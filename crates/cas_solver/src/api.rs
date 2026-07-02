@@ -57,5 +57,6 @@ pub use crate::solver_entrypoints_proof_verify::{
 
 /// Number-theory helpers exposed by the solver facade.
 pub mod number_theory {
-    pub use crate::solver_number_theory::{compute_gcd, explain_gcd, GcdResult};
+    pub(crate) use crate::solver_number_theory::explain_gcd;
+    pub use crate::solver_number_theory::{compute_gcd, GcdResult};
 }

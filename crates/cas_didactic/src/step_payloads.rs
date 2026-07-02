@@ -22,21 +22,6 @@ fn localize_step_payloads(mut wires: Vec<StepWire>, language: Language) -> Vec<S
     wires
 }
 
-/// Like [`collect_step_payloads`], localized into `language` (default `Es` reproduces the Spanish output).
-pub fn collect_step_payloads_localized(
-    steps: &[Step],
-    ctx: &Context,
-    steps_mode: &str,
-    language: Language,
-) -> Vec<StepWire> {
-    // Substep titles are rendered in `language` during the build (keyed sub-steps); the visible rule
-    // name is post-translated here (it is built in Spanish).
-    localize_step_payloads(
-        collect_step_payloads_inner(steps, ctx, steps_mode, language),
-        language,
-    )
-}
-
 /// Like [`collect_step_payloads_with_events`], localized into `language`.
 pub fn collect_step_payloads_with_events_localized(
     steps: &[Step],

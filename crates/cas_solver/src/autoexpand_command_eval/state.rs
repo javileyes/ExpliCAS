@@ -1,7 +1,7 @@
 use cas_api_models::AutoexpandBudgetView;
 
 /// Build an autoexpand budget view from eval options.
-pub fn autoexpand_budget_view_from_options(
+pub(crate) fn autoexpand_budget_view_from_options(
     eval_options: &crate::EvalOptions,
 ) -> AutoexpandBudgetView {
     let budget = &eval_options.shared.expand_budget;

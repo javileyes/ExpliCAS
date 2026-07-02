@@ -1,4 +1,4 @@
-pub fn resolve_solve_var(
+pub(crate) fn resolve_solve_var(
     ctx: &mut cas_ast::Context,
     parsed_expr: cas_ast::ExprId,
     explicit_var: Option<String>,
@@ -17,7 +17,7 @@ pub fn resolve_solve_var(
 }
 
 /// Parse solve input into expression + optional original equation + resolved variable.
-pub fn prepare_solve_expr_and_var(
+pub(crate) fn prepare_solve_expr_and_var(
     ctx: &mut cas_ast::Context,
     input: &str,
     explicit_var: Option<String>,

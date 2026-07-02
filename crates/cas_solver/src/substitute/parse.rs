@@ -26,7 +26,7 @@ fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
 
 /// Parse REPL-like substitute arguments (`expr, target, replacement`) into ids.
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn parse_substitute_args(
+pub(crate) fn parse_substitute_args(
     ctx: &mut Context,
     input: &str,
 ) -> Result<(ExprId, ExprId, ExprId), SubstituteParseError> {

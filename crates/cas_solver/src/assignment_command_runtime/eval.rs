@@ -4,7 +4,7 @@ use crate::{
     Simplifier,
 };
 
-pub(super) fn evaluate_assignment_command_with_context<C: AssignmentApplyContext>(
+pub fn evaluate_assignment_command_with_context<C: AssignmentApplyContext>(
     context: &mut C,
     simplifier: &mut Simplifier,
     name: &str,
@@ -16,7 +16,7 @@ pub(super) fn evaluate_assignment_command_with_context<C: AssignmentApplyContext
     })
 }
 
-pub(super) fn evaluate_let_assignment_command_with_context<C: AssignmentApplyContext>(
+pub fn evaluate_let_assignment_command_with_context<C: AssignmentApplyContext>(
     context: &mut C,
     simplifier: &mut Simplifier,
     input: &str,

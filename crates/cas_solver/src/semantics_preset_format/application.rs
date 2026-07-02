@@ -4,7 +4,7 @@ use crate::semantics_preset_labels::{
 };
 use crate::{SemanticsPresetApplication, SemanticsPresetState};
 
-pub fn format_semantics_preset_application_lines(
+pub(crate) fn format_semantics_preset_application_lines(
     current: SemanticsPresetState,
     application: &SemanticsPresetApplication,
 ) -> Vec<String> {

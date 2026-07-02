@@ -51,7 +51,7 @@ pub fn is_internal_hold_name(name: &str) -> bool {
 /// Returns true for explicit `hold(...)` calls that user wrote.
 /// These should remain visible in display output.
 #[inline]
-pub fn is_user_hold_name(name: &str) -> bool {
+pub(crate) fn is_user_hold_name(name: &str) -> bool {
     name == "hold"
 }
 

@@ -151,7 +151,7 @@ fn positive_hint_is_proven_impossible(ctx: &Context, hint: &crate::BlockedHint) 
 ///
 /// When the resolved result is `Undefined`, drops `defined` hints because
 /// they are often cycle-artifacts and not actionable.
-pub fn filter_blocked_hints_for_eval(
+pub(crate) fn filter_blocked_hints_for_eval(
     ctx: &Context,
     resolved: ExprId,
     required_conditions: &[crate::ImplicitCondition],

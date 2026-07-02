@@ -44,7 +44,7 @@ fn parse_limit_approach(raw: &str) -> Result<Approach, String> {
     ))
 }
 
-pub fn parse_limit_command_input(rest: &str) -> Result<LimitCommandInput<'_>, String> {
+pub(crate) fn parse_limit_command_input(rest: &str) -> Result<LimitCommandInput<'_>, String> {
     let parts = split_by_comma_ignoring_parens(rest);
     let expr = parts.first().copied().unwrap_or("").trim();
     let var = parts.get(1).copied().unwrap_or("x").trim();

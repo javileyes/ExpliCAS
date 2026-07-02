@@ -3,4 +3,4 @@ mod render;
 mod sections;
 mod verify;
 
-pub use render::format_solve_command_eval_lines;
+pub(crate) use render::format_solve_command_eval_lines;

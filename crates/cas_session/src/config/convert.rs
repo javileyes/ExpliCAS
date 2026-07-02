@@ -2,7 +2,7 @@ use super::CasConfig;
 use cas_solver::session_api::simplifier::{SimplifierRuleConfig, SimplifierToggleConfig};
 
 /// Convert persisted CLI config into simplifier build-time rule config.
-pub fn solver_rule_config_from_cas_config(config: &CasConfig) -> SimplifierRuleConfig {
+pub(crate) fn solver_rule_config_from_cas_config(config: &CasConfig) -> SimplifierRuleConfig {
     SimplifierRuleConfig {
         distribute: config.distribute,
         expand_binomials: config.expand_binomials,
@@ -18,7 +18,7 @@ pub fn solver_rule_config_from_cas_config(config: &CasConfig) -> SimplifierRuleC
 }
 
 /// Convert persisted CLI config into runtime simplifier toggles.
-pub fn solver_toggle_config_from_cas_config(config: &CasConfig) -> SimplifierToggleConfig {
+pub(crate) fn solver_toggle_config_from_cas_config(config: &CasConfig) -> SimplifierToggleConfig {
     SimplifierToggleConfig {
         distribute: config.distribute,
         expand_binomials: config.expand_binomials,
@@ -35,7 +35,10 @@ pub fn solver_toggle_config_from_cas_config(config: &CasConfig) -> SimplifierTog
 }
 
 /// Apply runtime simplifier toggles back into persisted CLI config.
-pub fn apply_solver_toggle_to_cas_config(config: &mut CasConfig, toggles: SimplifierToggleConfig) {
+pub(crate) fn apply_solver_toggle_to_cas_config(
+    config: &mut CasConfig,
+    toggles: SimplifierToggleConfig,
+) {
     config.distribute = toggles.distribute;
     config.expand_binomials = toggles.expand_binomials;
     config.distribute_constants = toggles.distribute_constants;
@@ -50,7 +53,7 @@ pub fn apply_solver_toggle_to_cas_config(config: &mut CasConfig, toggles: Simpli
 }
 
 /// Sync an existing simplifier with toggle values from `CasConfig`.
-pub fn sync_simplifier_with_cas_config(
+pub(crate) fn sync_simplifier_with_cas_config(
     simplifier: &mut cas_engine::Simplifier,
     config: &CasConfig,
 ) {

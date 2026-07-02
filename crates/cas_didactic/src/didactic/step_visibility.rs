@@ -49,10 +49,10 @@ pub(crate) fn should_show_simplify_step(step: &Step, mode: StepDisplayMode) -> b
     simplify::should_show_simplify_step(step, mode, step_matches_visibility)
 }
 
-pub fn is_medium_or_higher_step(step: &Step) -> bool {
+pub(crate) fn is_medium_or_higher_step(step: &Step) -> bool {
     importance::is_medium_or_higher_step(step)
 }
 
-pub fn is_high_or_higher_step(step: &Step) -> bool {
+pub(crate) fn is_high_or_higher_step(step: &Step) -> bool {
     importance::is_high_or_higher_step(step)
 }

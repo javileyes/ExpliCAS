@@ -1,7 +1,7 @@
 //! Shared output post-processing helpers for REPL-like frontends.
 
 /// Normalize the last `Result: ...` line by cleaning display artifacts.
-pub fn clean_result_output_line(lines: &mut [String]) {
+pub(crate) fn clean_result_output_line(lines: &mut [String]) {
     let Some(last) = lines.last_mut() else {
         return;
     };

@@ -6,7 +6,7 @@ use crate::snapshot::SnapshotError;
 use crate::{cache::SimplifyCacheKey, state_core::SessionState};
 
 /// Save session snapshot to disk.
-pub fn save_session(
+pub(crate) fn save_session(
     engine: &Engine,
     state: &mut SessionState,
     path: &Path,

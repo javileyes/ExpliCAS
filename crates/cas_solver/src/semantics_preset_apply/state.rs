@@ -1,7 +1,7 @@
 use crate::{SemanticsPreset, SemanticsPresetState};
 
 /// Build a preset-state snapshot from simplifier + eval options.
-pub fn semantics_preset_state_from_options(
+pub(crate) fn semantics_preset_state_from_options(
     simplify_options: &crate::SimplifyOptions,
     eval_options: &crate::EvalOptions,
 ) -> SemanticsPresetState {
@@ -15,7 +15,7 @@ pub fn semantics_preset_state_from_options(
 }
 
 /// Apply preset state to both simplifier options and runtime eval options.
-pub fn apply_semantics_preset_state_to_options(
+pub(crate) fn apply_semantics_preset_state_to_options(
     next: SemanticsPresetState,
     simplify_options: &mut crate::SimplifyOptions,
     eval_options: &mut crate::EvalOptions,

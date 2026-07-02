@@ -3,7 +3,7 @@ mod run;
 
 use cas_solver_core::health_runtime::HealthStatusInput;
 
-pub fn evaluate_health_status_lines(
+pub(crate) fn evaluate_health_status_lines(
     simplifier: &mut crate::Simplifier,
     status: &HealthStatusInput,
 ) -> Result<Vec<String>, String> {
