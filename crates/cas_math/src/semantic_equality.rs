@@ -241,6 +241,17 @@ impl<'a> SemanticEqualityChecker<'a> {
     }
 
     fn div_add_common_factor_rewrite_matches(&self, source: ExprId, target: ExprId) -> bool {
+        // Read-only shape gate BEFORE cloning the whole Context arena: the rewrite only
+        // fires on a `Div` whose numerator is an `Add`/`Sub`, and that precondition needs
+        // only `&self.context`. Cloning the arena first (it scales with the session) on
+        // every Div-vs-non-Div comparison in this O(n²)-multiset matcher was pure waste on
+        // the mismatch path (P3 of the saneamiento audit).
+        let Some((num, _den)) = crate::expr_destructure::as_div(self.context, source) else {
+            return false;
+        };
+        if !matches!(self.context.get(num), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            return false;
+        }
         let mut scratch = self.context.clone();
         let Some(rewrite) =
             crate::div_add_common_factor_from_den_support::try_rewrite_div_add_common_factor_from_den_expr(

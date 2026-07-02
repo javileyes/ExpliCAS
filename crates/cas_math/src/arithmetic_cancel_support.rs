@@ -1767,10 +1767,15 @@ pub fn try_rewrite_sub_self_zero_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ArithmeticCancelRewrite> {
+    // Shape check FIRST (rejects non-Sub nodes cheaply); only then the full-subtree
+    // non-finite walk, which is the soundness guard that keeps `inf - inf` from
+    // cancelling to 0. This is a global rule that runs on every node, so on the
+    // common non-matching node we now skip the walk entirely (P2 of the saneamiento
+    // audit). Behavior-identical: the walk still gates every actual `a - a` match.
+    let inner = match_sub_self_semantic_expr(ctx, expr)?;
     if expr_carries_nonfinite_or_undefined(ctx, expr) {
         return None;
     }
-    let inner = match_sub_self_semantic_expr(ctx, expr)?;
     Some(ArithmeticCancelRewrite {
         rewritten: ctx.num(0),
         inner,
@@ -1782,10 +1787,11 @@ pub fn try_rewrite_add_inverse_zero_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ArithmeticCancelRewrite> {
+    // Shape check first, then the non-finite soundness walk only on a match (P2).
+    let inner = match_add_inverse_expr(ctx, expr)?;
     if expr_carries_nonfinite_or_undefined(ctx, expr) {
         return None;
     }
-    let inner = match_add_inverse_expr(ctx, expr)?;
     Some(ArithmeticCancelRewrite {
         rewritten: ctx.num(0),
         inner,
