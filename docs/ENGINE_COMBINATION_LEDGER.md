@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 486 (newest first)
+Active entries: 487 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
+- 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18207,3 +18208,17 @@ Active entries: 486 (newest first)
   - Cuando el simplificador aplica una reescritura que CAMBIA EL DOMINIO (racionalizar por el conjugado añade un punto 0/0 que la expresión original no tenía), TODO el análisis posterior hereda el dominio falso — y el bug se multiplica por forma (agujero en estrictas, singleton en no-estrictas vía el split `≥ → > ∪ =`, raíz espuria en la ecuación). El fix correcto es interceptar en CRUDO la meta-forma completa (op estricto, no estricto Y ecuación), no solo el caso reportado — el barrido adversarial destapó las 2 formas hermanas que el audit no listó.
   - Un helper de detección compartido (`affine_coefficients`) que depende de que `simplify` pliegue una combinación constante es frágil: el simplificador puede dejar `√2+√2−√2−√2` sin colectar. Decidir la nulidad con el oráculo exacto (`provable_sign_vs_zero`), no con `as_rational_const` sobre el output del simplificador.
   - PRÓXIMO PELDAÑO: RHS≠0 (`1/(x+√2) > 1` → "No solution" WRONG pre-existente; necesita `c/g − k` sobre el crudo) y la ecuación `1/(x+√2)=1` (residual malformado). Y el gap del simplificador (no colecta `√2+√2−√2−√2`) puede estar relacionado con el RED didáctico heredado ('Agrupar términos semejantes').
+
+## 2026-07-02 - SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
+
+- area: `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_below_one` ampliado a `const_value_bounds`)
+- status: `retained` (commit pendiente-de-hash). Wrong-answer pre-existente (verificado por stash-probe el 2026-07-02, sesión anterior) → resuelto. Verificado adversarialmente (192 formas `base^x {op} c` con bases (0,1) e >1, racionales e irracionales, vs verdad numérica: 0 wrong, inclusividad de frontera incluida).
+- capture:
+  - investment_class: soundness. Continuación del chokepoint const-sign: el gate de flip del builder `log(base,·)` solo conocía racionales exactos.
+  - cell: `sin(1)^x > 2` → `(−∞, log(sin(1),2))` (era `(log(sin(1),2), ∞)` INVERTIDO), `cos(1)^x ≥ 3` → `(−∞, log(cos(1),3)]`, `sin(1)^x ≤ 1/2` → `[log(sin(1),1/2), ∞)`. Controles: `pi^x > 5` (base>1, sin flip), ecuación `sin(1)^x = 2` (nunca flip), base SIMBÓLICA `a^x > 2` (sin flip sin prueba), ruta ln (`(√2/2)^x`, ya correcta por el fix del downstream-flip) INTACTOS.
+  - causa raíz: `build_exponent_log_isolation_equation` ES el sitio semántico del flip (su output `x op' log(base,c)` no pasa por ninguna división posterior — sin riesgo de doble flip, a diferencia del pre-flip retirado de `build_log_linear_equation`), pero su gate `base_is_provably_fraction_below_one` era `as_rational_const`-only — la meta-forma recurrente del audit ("el guard decide el caso racional y pierde al hermano irracional").
+  - fix: fallback a `cas_math::const_sign::const_value_bounds` — `lo > 0 && hi < 1` prueba `base ∈ (0,1)` exacto para `sin(1)`, `√2/2`, `e^(−1)`, `ln(2)`; indecidible/simbólico ⇒ sin flip (default sound).
+  - validación: workspace failed:0 (+ test unitario del builder con sin(1)/√2/2/π/simbólico + test de contrato CLI); clippy limpio; huella GUARD/PRESS FIEL 0 deltas. Adversarial: 192 formas → 0 wrong.
+- retained learning:
+  - Los DOS builders de isolación exponencial tienen políticas de flip OPUESTAS y correctas: `build_log_linear_equation` NUNCA pre-voltea (la división downstream posee la decisión, con el oráculo), `build_exponent_log_isolation_equation` SIEMPRE decide él (no hay downstream). Al ampliar la decidibilidad del oráculo hay que clasificar cada sitio de flip por QUIÉN posee la decisión — el mismo upgrade que arregla uno (añadir flip) rompería el otro (doble flip).
+  - PRÓXIMO PELDAÑO: `sin(1)^x > −1` → error "Cannot take real logarithm" en vez de "All real numbers" (RHS ≤ 0 provable con base > 0 provable ⇒ AllReals/Empty directo, sin log); y el condicional `if sin(1) > 0` es podable ahora que el signo es provable (mismo tema que el ciclo 4 planificado de condicionales vacuos).

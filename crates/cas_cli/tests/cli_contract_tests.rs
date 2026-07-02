@@ -880,6 +880,42 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
 }
 
 #[test]
+fn test_eval_irrational_fractional_base_exponential_inequality_flips() {
+    // `base^x {op} c` where the CONSTANT base is provably in (0, 1) but IRRATIONAL
+    // (`sin(1)`, `cos(1)`): the `log(base, ·)` isolation must flip the direction
+    // (decreasing exponential), decided by the exact value-bounds oracle. It used to
+    // flip only for exact rationals, returning the reversed ray. Bases > 1 and the
+    // equation form stay unflipped.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(sin(1)^x > 2, x)"),
+        "(-infinity, log(sin(1), 2)) if sin(1) > 0"
+    );
+    assert_eq!(
+        r("solve(cos(1)^x >= 3, x)"),
+        "(-infinity, log(cos(1), 3)] if cos(1) > 0"
+    );
+    assert_eq!(
+        r("solve(sin(1)^x < 2, x)"),
+        "(log(sin(1), 2), infinity) if sin(1) > 0"
+    );
+    // Controls: base > 1 keeps direction; equations never flip; symbolic base untouched.
+    assert_eq!(r("solve(pi^x > 5, x)"), "(ln(5) / ln(pi), infinity)");
+    assert_eq!(
+        r("solve(sin(1)^x = 2, x)"),
+        "{ log(sin(1), 2) } if sin(1) > 0"
+    );
+    assert_eq!(r("solve(a^x > 2, x)"), "(log(a, 2), infinity) if a > 0");
+}
+
+#[test]
 fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
     // `c/(a·x + b) {op} 0` with a NON-RATIONAL constant intercept `b`: the simplifier
     // rationalizes the denominator through its conjugate (`1/(x+√2) → (√2−x)/(2−x²)`),

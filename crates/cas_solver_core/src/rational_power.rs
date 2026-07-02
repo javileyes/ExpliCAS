@@ -135,13 +135,20 @@ pub fn rewrite_variable_base_power_equation(
     Some((equation, exponent))
 }
 
-/// True iff `base` folds EXACTLY (no f64) to a rational `b` with `0 < b < 1`, i.e. `ln(base) < 0`,
-/// so an inequality isolated through `log(base, ·)` / division by `ln(base)` must flip direction.
+/// True iff `base` is PROVABLY a constant in `(0, 1)`, i.e. `ln(base) < 0`, so an inequality
+/// isolated through `log(base, ·)` must flip direction. Exact only (no f64): a rational folds
+/// directly; a constant irrational base (`sin(1)`, `√2/2`, `e^(-1)`) is decided by the exact
+/// value-bounds oracle. Undecidable/symbolic bases return `false` (no flip without proof —
+/// `sin(1)^x > 2` used to return the reversed ray because this only knew rationals).
 fn base_is_provably_fraction_below_one(ctx: &Context, base: ExprId) -> bool {
-    use num_traits::{One, Zero};
-    cas_math::numeric_eval::as_rational_const(ctx, base).is_some_and(|b| {
-        b > num_rational::BigRational::zero() && b < num_rational::BigRational::one()
-    })
+    use num_traits::{One, Signed, Zero};
+    if let Some(b) = cas_math::numeric_eval::as_rational_const(ctx, base) {
+        return b > num_rational::BigRational::zero() && b < num_rational::BigRational::one();
+    }
+    matches!(
+        cas_math::const_sign::const_value_bounds(ctx, base),
+        Some((lo, hi)) if lo.is_positive() && hi < num_rational::BigRational::one()
+    )
 }
 
 /// Build the log-linear rewrite of `base^exponent = other`:
@@ -654,6 +661,33 @@ mod tests {
         assert!(
             matches!(ctx.get(eq.rhs), Expr::Function(_, args) if args.len() == 2 && args[0] == b && args[1] == r)
         );
+    }
+
+    #[test]
+    fn exponent_log_isolation_flips_for_provably_fractional_base() {
+        // The `log(base, ·)` isolation IS the semantic flip site (no downstream
+        // division): a PROVABLY `0 < base < 1` constant flips the relation —
+        // rational (1/2) via the fold, irrational (sin(1), √2/2) via the exact
+        // value-bounds oracle. Symbolic and >1 bases pass through unflipped.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let parse = |ctx: &mut Context, src: &str| cas_parser::parse(src, ctx).expect("parse");
+        let sin1 = parse(&mut ctx, "sin(1)");
+        let eq = build_exponent_log_isolation_equation(&mut ctx, x, sin1, two, RelOp::Gt);
+        assert_eq!(eq.op, RelOp::Lt, "sin(1)^x > 2 must flip (sin(1) ∈ (0,1))");
+        let half_sqrt2 = parse(&mut ctx, "sqrt(2)/2");
+        let eq2 = build_exponent_log_isolation_equation(&mut ctx, x, half_sqrt2, two, RelOp::Leq);
+        assert_eq!(eq2.op, RelOp::Geq, "(√2/2)^x ≤ 2 must flip");
+        let pi = parse(&mut ctx, "pi");
+        let eq3 = build_exponent_log_isolation_equation(&mut ctx, x, pi, two, RelOp::Gt);
+        assert_eq!(eq3.op, RelOp::Gt, "pi > 1 keeps the direction");
+        let sym = ctx.var("a");
+        let eq4 = build_exponent_log_isolation_equation(&mut ctx, x, sym, two, RelOp::Gt);
+        assert_eq!(eq4.op, RelOp::Gt, "symbolic base: no flip without proof");
+        // Equality never flips.
+        let eq5 = build_exponent_log_isolation_equation(&mut ctx, x, sin1, two, RelOp::Eq);
+        assert_eq!(eq5.op, RelOp::Eq);
     }
 
     #[test]

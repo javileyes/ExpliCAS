@@ -280,3 +280,7 @@ layer closes a large fraction") was CONFIRMED — two sign-layer upgrades (`prov
   boundary singleton), `−2/3/(2x+√2) = 0 → {2^(−1/2)}` (wrong root). Adversarial: 480 forms, 0 wrong.
   REMAINING sibling (pre-existing): nonzero threshold `1/(x+√2) > 1 → No solution` (needs a raw
   `c/g − k` reduction) and the malformed residual for `1/(x+√2) = 1`.
+- **`sin(1)^x > 2` unflipped ray** — FIXED (same day): `base_is_provably_fraction_below_one` (the
+  `log(base,·)` isolation's flip gate) now decides constant irrational bases via `const_value_bounds`
+  (lo > 0, hi < 1). 192-form adversarial sweep, 0 wrong. Residual: `sin(1)^x > −1` errors instead of
+  returning All reals (needs a provably-nonpositive-RHS shortcut before the log).
