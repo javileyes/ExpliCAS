@@ -91,6 +91,7 @@ pub mod rational_roots;
 pub mod rationalize_policy;
 pub mod reciprocal;
 pub mod repl_runtime;
+pub mod rule_names;
 pub mod session_runtime;
 pub mod shared_context;
 pub mod shared_sink;

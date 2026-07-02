@@ -6,6 +6,7 @@
 use super::*;
 use cas_math::limit_types::FiniteLimitSide;
 use cas_math::polynomial::Polynomial;
+use cas_solver_core::rule_names::RULE_CONSERVAR_LIMITE_RESIDUAL;
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 
@@ -537,7 +538,7 @@ impl Engine {
                 if !matches!(options.steps_mode, crate::options::StepsMode::Off) {
                     let (rule_name, description) = if result.warning.is_some() {
                         (
-                            "Conservar límite residual",
+                            RULE_CONSERVAR_LIMITE_RESIDUAL,
                             "Conservar el límite sin resolver porque la política segura no lo decide",
                         )
                     } else {

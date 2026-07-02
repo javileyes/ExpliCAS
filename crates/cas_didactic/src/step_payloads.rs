@@ -7,6 +7,7 @@ use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;
 use cas_solver_core::eval_option_axes::Language;
+use cas_solver_core::rule_names::RULE_CONSERVAR_INTEGRAL_RESIDUAL;
 
 /// Localize already-built step payloads into `language`. The step-by-step is built in Spanish (the
 /// source language); for `En` the visible `rule` name is translated through the Spanish->English
@@ -215,7 +216,7 @@ fn remove_redundant_pre_integral_residual_cleanup_noise(
     payloads: &mut Vec<StepWire>,
     current: &mut StepWire,
 ) {
-    if current.rule != "Conservar integral residual" {
+    if current.rule != RULE_CONSERVAR_INTEGRAL_RESIDUAL {
         return;
     }
 

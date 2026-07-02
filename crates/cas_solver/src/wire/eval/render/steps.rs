@@ -1,6 +1,10 @@
 use crate::DisplayEvalSteps;
 use cas_api_models::EngineWireStep;
 use cas_ast::hold::strip_all_holds;
+use cas_solver_core::rule_names::{
+    RULE_CONSERVAR_DERIVADA_RESIDUAL, RULE_CONSERVAR_INTEGRAL_RESIDUAL,
+    RULE_CONSERVAR_LIMITE_RESIDUAL,
+};
 
 pub(super) fn build_engine_wire_steps(
     ctx: &mut cas_ast::Context,
@@ -20,7 +24,9 @@ pub(super) fn build_engine_wire_steps(
 fn build_engine_wire_step(ctx: &mut cas_ast::Context, step: &crate::Step) -> EngineWireStep {
     let normalize_expr = !matches!(
         step.rule_name.as_str(),
-        "Conservar derivada residual" | "Conservar integral residual" | "Conservar límite residual"
+        RULE_CONSERVAR_DERIVADA_RESIDUAL
+            | RULE_CONSERVAR_INTEGRAL_RESIDUAL
+            | RULE_CONSERVAR_LIMITE_RESIDUAL
     );
     EngineWireStep {
         phase: "Simplify".into(),

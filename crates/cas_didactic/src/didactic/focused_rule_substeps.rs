@@ -23,6 +23,9 @@ use cas_solver_core::domain_condition::ImplicitCondition;
 use cas_solver_core::quadratic_coeffs::{
     extract_quadratic_coefficients, extract_simplified_nonzero_quadratic_coefficients_with_state,
 };
+use cas_solver_core::rule_names::{
+    RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_CONSERVAR_INTEGRAL_RESIDUAL, RULE_EVALUATE_NUMERIC_POWER,
+};
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
@@ -264,7 +267,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Binomial Expansion" | "Auto Expand Power Sum" => {
             generate_binomial_expansion_substeps(ctx, step)
         }
-        "Cancel Exact Additive Pairs" => generate_exact_additive_pair_cancel_substeps(ctx, step),
+        RULE_CANCEL_EXACT_ADDITIVE_PAIRS => generate_exact_additive_pair_cancel_substeps(ctx, step),
         "expand_log" => generate_expand_log_substeps(ctx, step),
         "Simplify" | "Canonicalize" => generate_simplify_substeps(ctx, step),
         "Evaluate Logarithms" => generate_evaluate_logarithms_substeps(ctx, step),
@@ -379,7 +382,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Identity Property of Multiplication" => {
             generate_identity_multiplication_substeps(ctx, step)
         }
-        "Evaluate Numeric Power" => generate_evaluate_numeric_power_substeps(ctx, step),
+        RULE_EVALUATE_NUMERIC_POWER => generate_evaluate_numeric_power_substeps(ctx, step),
         "Pre-order Sum/Difference of Cubes" => generate_sum_difference_cubes_substeps(ctx, step),
         "Pre-order Sum/Difference of Cubes Cancel" => {
             generate_sum_difference_cubes_cancel_substeps(ctx, step)
@@ -21106,8 +21109,8 @@ fn latex_expr(ctx: &Context, expr: ExprId) -> String {
 }
 
 fn generate_integral_residual_policy_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    if step.rule_name != "Conservar integral residual"
-        && step.description != "Conservar integral residual"
+    if step.rule_name != RULE_CONSERVAR_INTEGRAL_RESIDUAL
+        && step.description != RULE_CONSERVAR_INTEGRAL_RESIDUAL
     {
         return Vec::new();
     }

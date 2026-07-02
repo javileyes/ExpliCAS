@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::pull_constant_from_fraction_support::PullConstantFromFractionKind;
+use cas_solver_core::rule_names::RULE_EXPAND_TO_CANCEL_FRACTION;
 
 fn format_pull_constant_from_fraction_desc(kind: PullConstantFromFractionKind) -> &'static str {
     match kind {
@@ -210,7 +211,7 @@ define_rule!(
 // =============================================================================
 define_rule!(
     DivExpandToCancelRule,
-    "Expand to Cancel Fraction",
+    RULE_EXPAND_TO_CANCEL_FRACTION,
     |ctx, expr| {
         fn format_div_expand_cancel_desc(
             kind: cas_math::div_expand_cancel_support::DivExpandToCancelKind,

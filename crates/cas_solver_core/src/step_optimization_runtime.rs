@@ -1,5 +1,6 @@
 //! Runtime step optimization pipeline shared across integration crates.
 
+use crate::rule_names::{RULE_EVALUATE_NUMERIC_POWER, RULE_SUM_EXPONENTS};
 use crate::soundness_label::SoundnessLabel;
 use crate::step_absorption::{absorb_indices, find_absorption_indices_before_markers_with};
 use crate::step_model::{Step, StepMeta};
@@ -34,7 +35,7 @@ pub fn optimize_steps_semantic(
     // didactically important steps to preserve.
     let is_semantic_noop =
         is_semantic_noop_without_didactic_steps(ctx, original_expr, final_expr, &steps, |step| {
-            step.rule_name == "Sum Exponents" || step.rule_name == "Evaluate Numeric Power"
+            step.rule_name == RULE_SUM_EXPONENTS || step.rule_name == RULE_EVALUATE_NUMERIC_POWER
         });
     if is_semantic_noop {
         return StepOptimizationResult::NoSimplificationNeeded;
@@ -62,7 +63,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
         |step| step.importance >= ImportanceLevel::Medium,
         |a, b| a.path() == b.path(),
         |step| {
-            step.rule_name == "Evaluate Numeric Power"
+            step.rule_name == RULE_EVALUATE_NUMERIC_POWER
                 && step.description.contains("1^")
                 && step.description.contains("-> 1")
         },

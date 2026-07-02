@@ -12,6 +12,7 @@ use super::super::sum_three_cubes::generate_sum_three_cubes_substeps;
 use super::super::SubStep;
 use crate::runtime::Step;
 use cas_ast::Context;
+use cas_solver_core::rule_names::RULE_CONSERVAR_LIMITE_RESIDUAL;
 
 pub(super) fn extend_step_specific_substeps(
     ctx: &Context,
@@ -56,7 +57,7 @@ pub(super) fn extend_step_specific_substeps(
 
     // A finite-point limit the safe policy keeps unresolved: narrate the honest
     // investigation method (one-sided limits), never a non-existence claim.
-    if step.rule_name == "Conservar límite residual" {
+    if step.rule_name == RULE_CONSERVAR_LIMITE_RESIDUAL {
         sub_steps.extend(generate_limit_residual_substeps(ctx, step));
     }
 

@@ -1,3 +1,6 @@
+use cas_solver_core::rule_names::{
+    RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_EVALUATE_NUMERIC_POWER, RULE_EXPAND_LOG_ABS_MUL_DIV,
+};
 use std::borrow::Cow;
 
 pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
@@ -23,7 +26,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         }
         "Distributive Property" => "Expandir la expresión",
         "expand_log" => "Expandir logaritmos",
-        "Expand Log Abs Mul/Div" => "Expandir logaritmos",
+        RULE_EXPAND_LOG_ABS_MUL_DIV => "Expandir logaritmos",
         "Factor Perfect Square in Logarithm" => "Sacar un exponente fuera del logaritmo",
         "Log Contraction" => "Contraer logaritmos",
         "Change of Base" => "Aplicar cambio de base",
@@ -138,7 +141,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Identity Property of Multiplication" => "Quitar el factor 1",
         "Negative Base Power" => "Simplificar potencia con base negativa",
         "Canonicalize Even Power Base" => "Invertir una resta dentro de una potencia par",
-        "Evaluate Numeric Power" => "Calcular potencia numérica",
+        RULE_EVALUATE_NUMERIC_POWER => "Calcular potencia numérica",
         "Evaluate Logarithms" => "Calcular el logaritmo",
         "Cancel Reciprocal Exponents" => "Deshacer raíz y potencia",
         "Square of Square Root" => "Deshacer raíz y potencia",
@@ -171,7 +174,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Combine Same Denominator Fractions" => "Sumar fracciones con mismo denominador",
         "Combine Same Denominator Sub" => "Restar fracciones con mismo denominador",
         "Cancel Equal Fractions Difference" => "Cancelar fracciones iguales",
-        "Cancel Exact Additive Pairs" => "Cancelar términos opuestos",
+        RULE_CANCEL_EXACT_ADDITIVE_PAIRS => "Cancelar términos opuestos",
         "Common Denominator" => "Llevar a denominador común",
         "Add Fractions" => "Sumar fracciones",
         "Subtract Fractions" => "Restar fracciones",
@@ -289,7 +292,7 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         "Angle Consistency (Half-Angle)" if description == "Half-Angle Expansion" => {
             Cow::Borrowed("Expandir identidad de ángulo doble")
         }
-        "Expand Log Abs Mul/Div"
+        RULE_EXPAND_LOG_ABS_MUL_DIV
             if description == "Log expansion followed by exact cancellation" =>
         {
             Cow::Borrowed("Expandir logaritmos y cancelar términos iguales")

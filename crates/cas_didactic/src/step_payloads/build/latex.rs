@@ -3,6 +3,10 @@ mod rule;
 use crate::runtime::Step;
 use cas_ast::Context;
 use cas_formatter::LaTeXExpr;
+use cas_solver_core::rule_names::{
+    RULE_CONSERVAR_DERIVADA_RESIDUAL, RULE_CONSERVAR_INTEGRAL_RESIDUAL,
+    RULE_CONSERVAR_LIMITE_RESIDUAL,
+};
 
 pub(super) struct RenderedStepWireLatex {
     pub(super) before_latex: String,
@@ -16,7 +20,9 @@ pub(super) fn render_step_wire_latex(context: &Context, step: &Step) -> Rendered
         "Product-to-Sum Identity" | "Hyperbolic Product-to-Sum Identity"
     ) || matches!(
         step.rule_name.as_str(),
-        "Conservar derivada residual" | "Conservar integral residual" | "Conservar límite residual"
+        RULE_CONSERVAR_DERIVADA_RESIDUAL
+            | RULE_CONSERVAR_INTEGRAL_RESIDUAL
+            | RULE_CONSERVAR_LIMITE_RESIDUAL
     ) {
         let before_expr = step.global_before.unwrap_or(step.before);
         let after_expr = step.global_after.unwrap_or(step.after);

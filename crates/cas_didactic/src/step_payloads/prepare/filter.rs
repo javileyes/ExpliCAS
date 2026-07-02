@@ -1,5 +1,9 @@
 use crate::runtime::Step;
 use cas_ast::ExprId;
+use cas_solver_core::rule_names::{
+    RULE_CONSERVAR_DERIVADA_RESIDUAL, RULE_CONSERVAR_INTEGRAL_RESIDUAL,
+    RULE_CONSERVAR_LIMITE_RESIDUAL,
+};
 
 pub(super) fn filter_step_payloads(
     steps: &[Step],
@@ -23,7 +27,9 @@ pub(super) fn filter_step_payloads(
 fn is_terminal_calculus_residual_step(step: &Step) -> bool {
     matches!(
         step.rule_name.as_str(),
-        "Conservar derivada residual" | "Conservar integral residual" | "Conservar límite residual"
+        RULE_CONSERVAR_DERIVADA_RESIDUAL
+            | RULE_CONSERVAR_INTEGRAL_RESIDUAL
+            | RULE_CONSERVAR_LIMITE_RESIDUAL
     )
 }
 

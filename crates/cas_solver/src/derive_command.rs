@@ -28,6 +28,7 @@ use crate::derive::{
     DeriveHyperbolicRewriteKind, DeriveLogChangeOfBaseRewriteKind, DeriveStrategy,
     DeriveTargetForm, ExpandRewriteKind, RationalizeRewriteKind,
 };
+use cas_solver_core::rule_names::RULE_CANCEL_EXACT_ADDITIVE_PAIRS;
 
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
@@ -7447,7 +7448,7 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
         "Binomial Expansion" | "Small Multinomial Expansion" => Some("Expandir binomio"),
         "Cancel Sum/Difference of Cubes Fraction" => Some("Factorizar cubos y cancelar"),
         "Canonicalize Even Power Base" => Some("Invertir una resta dentro de una potencia par"),
-        "Cancel Exact Additive Pairs" => Some("Cancelar términos opuestos"),
+        RULE_CANCEL_EXACT_ADDITIVE_PAIRS => Some("Cancelar términos opuestos"),
         "Cancel Reciprocal Exponents" | "Square of Square Root" => Some("Deshacer raíz y potencia"),
         "Change of Base" => Some("Aplicar cambio de base"),
         "Add Fractions" => Some("Sumar fracciones en un solo denominador"),

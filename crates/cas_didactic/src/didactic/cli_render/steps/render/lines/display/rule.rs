@@ -1,5 +1,6 @@
 use crate::runtime::Step;
 use cas_ast::{Context, ExprId};
+use cas_solver_core::rule_names::{RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_EVALUATE_NUMERIC_POWER};
 
 fn strip_redundant_outer_parens(input: &str) -> &str {
     let mut current = input.trim();
@@ -123,7 +124,7 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
             | "Add Fractions"
             | "Subtract Fractions"
             | "Simplify Complex Fraction"
-            | "Cancel Exact Additive Pairs"
+            | RULE_CANCEL_EXACT_ADDITIVE_PAIRS
             | "Pre-order Common Factor Cancel"
             | "Pre-order Difference of Squares Cancel"
             | "Subtraction Self-Cancel"
@@ -139,7 +140,7 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
             | "Sqrt Perfect Square"
             | "Simplify Square Root"
             | "Simplify perfect square root"
-            | "Evaluate Numeric Power"
+            | RULE_EVALUATE_NUMERIC_POWER
             | "Cancel Reciprocal Exponents"
             | "Canonicalize Nested Power"
             | "Pre-order Sum/Difference of Cubes Cancel"

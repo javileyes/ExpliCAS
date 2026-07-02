@@ -1,5 +1,8 @@
 //! Generic eval-step cleanup pipeline shared across crates.
 
+use crate::rule_names::{
+    RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_CONSERVAR_INTEGRAL_RESIDUAL, RULE_EVALUATE_NUMERIC_POWER,
+};
 use cas_ast::{hold::unwrap_internal_hold, BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_predicates::{is_one_expr, is_zero_expr};
 use num_rational::BigRational;
@@ -138,11 +141,11 @@ fn is_post_calculus_presentation_noise_step(step: &crate::step_model::Step) -> b
     matches!(
         step.rule_name.as_str(),
         "Cancel Common Factors"
-            | "Cancel Exact Additive Pairs"
+            | RULE_CANCEL_EXACT_ADDITIVE_PAIRS
             | "Combine Constants"
             | "Combine Like Terms"
             | "Distributive Property"
-            | "Evaluate Numeric Power"
+            | RULE_EVALUATE_NUMERIC_POWER
             | "Evaluate Logarithms"
             | "Expand"
             | "Extract Common Multiplicative Factor"
@@ -225,7 +228,7 @@ fn redundant_pre_residual_cleanup_after_integrate(
 
     steps
         .get(next_index)
-        .is_some_and(|step| step.rule_name.as_str() == "Conservar integral residual")
+        .is_some_and(|step| step.rule_name.as_str() == RULE_CONSERVAR_INTEGRAL_RESIDUAL)
         && has_prior_integral_residual_prep_anchor(steps, index)
 }
 
@@ -236,7 +239,7 @@ fn has_prior_integral_residual_prep_anchor(
     steps[..before_index]
         .iter()
         .rev()
-        .take_while(|step| step.rule_name.as_str() != "Conservar integral residual")
+        .take_while(|step| step.rule_name.as_str() != RULE_CONSERVAR_INTEGRAL_RESIDUAL)
         .any(is_integral_residual_prep_anchor_step)
 }
 

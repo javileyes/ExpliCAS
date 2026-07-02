@@ -4,6 +4,7 @@ use crate::rule::Rewrite;
 use cas_ast::Context;
 use cas_ast::Expr;
 use cas_ast::ExprId;
+use cas_solver_core::rule_names::RULE_EVALUATE_NUMERIC_POWER;
 
 fn format_power_eval_static_desc(
     kind: cas_math::power_eval_support::PowerEvalStaticRewriteKind,
@@ -533,7 +534,7 @@ define_rule!(
 
 define_rule!(
     EvaluatePowerRule,
-    "Evaluate Numeric Power",
+    RULE_EVALUATE_NUMERIC_POWER,
     Some(crate::target_kind::TargetKindSet::POW),
     PhaseMask::CORE | PhaseMask::POST,
     importance: crate::step::ImportanceLevel::Low,

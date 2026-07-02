@@ -35,7 +35,7 @@ WARNINGS=0
 # Canonical: cas_ast/src/hold.rs
 # Allowed: files that reference cas_ast::hold
 # -----------------------------------------------------------------------------
-echo "  [1/10] Checking strip_hold..."
+echo "  [1/11] Checking strip_hold..."
 
 for file in $(grep -rl "fn strip.*hold" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null | grep -v "cas_ast/src/hold.rs" || true); do
     if ! grep -q "cas_ast::hold::" "$file"; then
@@ -49,7 +49,7 @@ done
 # Canonical: cas_engine/src/nary.rs (AddView, add_terms_no_sign, add_terms_signed)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [2/10] Checking flatten_add..."
+echo "  [2/11] Checking flatten_add..."
 
 FLATTEN_ADD_ALLOWED=(
     "nary.rs"           # Canonical: AddView
@@ -82,7 +82,7 @@ done
 # Canonical: cas_engine/src/nary.rs (MulView, mul_factors)
 # Allowed: canonical modules or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [3/10] Checking flatten_mul..."
+echo "  [3/11] Checking flatten_mul..."
 
 FLATTEN_MUL_ALLOWED=(
     "views.rs"          # Canonical: MulChainView
@@ -117,7 +117,7 @@ done
 # Matches EXACT function names only (not is_one_term, is_negative_factor, etc.)
 # Allowed: canonical module or files that wrap canonical functions
 # -----------------------------------------------------------------------------
-echo "  [4/10] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
+echo "  [4/11] Checking predicates (is_zero, is_one, is_negative, get_integer)..."
 
 PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
@@ -165,7 +165,7 @@ done
 # -----------------------------------------------------------------------------
 # CHECK 5: __hold in output boundaries (HARD FAIL if in production JSON)
 # -----------------------------------------------------------------------------
-echo "  [5/10] Checking __hold doesn't leak to JSON output..."
+echo "  [5/11] Checking __hold doesn't leak to JSON output..."
 
 # Check test assertions to ensure we have contract tests
 if ! grep -rq "contains.*__hold" "$ROOT_DIR/crates/cas_engine/tests" 2>/dev/null; then
@@ -177,7 +177,7 @@ fi
 # CHECK 6: Builder duplicates (HARD FAIL - migration complete)
 # Canonical: MulBuilder (right-fold), Context::build_balanced_mul (balanced)
 # -----------------------------------------------------------------------------
-echo "  [6/10] Checking builders (build_mul_from_factors)..."
+echo "  [6/11] Checking builders (build_mul_from_factors)..."
 
 BUILDER_ALLOWED=(
     "views.rs"       # MulBuilder canonical
@@ -211,7 +211,7 @@ done
 # CHECK 7: Traversal duplicates (HARD FAIL - migration complete)
 # Canonical: cas_ast::traversal::{count_all_nodes, count_nodes_matching, count_nodes_and_max_depth}
 # -----------------------------------------------------------------------------
-echo "  [7/10] Checking traversal (count_nodes*)..."
+echo "  [7/11] Checking traversal (count_nodes*)..."
 
 TRAVERSAL_ALLOWED=(
     "traversal.rs"  # Canonical module
@@ -245,7 +245,7 @@ done
 # (the former `factors_to_vec` / `find_factor_exp` that the four div_* cancel
 # modules each defined privately, byte-identical — consolidated 2026-07-02).
 # -----------------------------------------------------------------------------
-echo "  [8/10] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
+echo "  [8/11] Checking factor-list helpers (factors_to_vec/find_factor_exp)..."
 
 FACTOR_ALLOWED=(
     "fraction_factors.rs"  # Canonical module
@@ -280,7 +280,7 @@ done
 # byte-identically as sign_of_linear_surd (cas_solver_core::solution_set) and
 # linear_surd_sign (cas_solver::solve_backend_local) — consolidated 2026-07-02.
 # -----------------------------------------------------------------------------
-echo "  [9/10] Checking surd/nth-root exact comparators (root_forms canonical)..."
+echo "  [9/11] Checking surd/nth-root exact comparators (root_forms canonical)..."
 
 SURD_SIGN_ALLOWED=(
     "root_forms.rs"  # Canonical module
@@ -325,7 +325,7 @@ done
 #     (a drifted copy dropped rule/assumption-shaped warnings) — consolidated
 #     2026-07-02. The old drifted name extract_warnings must not reappear.
 # -----------------------------------------------------------------------------
-echo "  [10/10] Checking Python smoke-harness helpers (single canonical home)..."
+echo "  [10/11] Checking Python smoke-harness helpers (single canonical home)..."
 
 # pattern|canonical-basename ("" => no re-definition allowed anywhere)
 for spec in \
@@ -345,6 +345,46 @@ for spec in \
         else
             echo -e "         Fix: use extract_warning_messages from engine_command_matrix_observability.py"
         fi
+        ((ERRORS++))
+    done
+done
+
+# -----------------------------------------------------------------------------
+# CHECK 11: Cross-crate rule-name vocabulary (HARD FAIL - migration complete)
+# Canonical: cas_solver_core::rule_names (pub const RULE_*). The step-preserve /
+# classify / label rule names flow producer->matcher across cas_engine,
+# cas_solver_core, cas_didactic and cas_solver; hardcoding the literal in
+# production risked a silent RED on rename. Consolidated 2026-07-02.
+# Bare literals are allowed only in: rule_names.rs (the definitions), test files,
+# and files carrying a #[cfg(test)] module (unit-test wire anchors).
+# -----------------------------------------------------------------------------
+echo "  [11/11] Checking cross-crate rule-name vocabulary (rule_names canonical)..."
+
+RULE_NAME_LITERALS=(
+    "Sum Exponents"
+    "Evaluate Numeric Power"
+    "Expand to Cancel Fraction"
+    "Expand Log Abs Mul/Div"
+    "Cancel Exact Additive Pairs"
+    "Abs Under Positivity"
+    "Abs Under Non-Negativity"
+    "Conservar derivada residual"
+    "Conservar integral residual"
+    "Conservar límite residual"
+)
+for literal in "${RULE_NAME_LITERALS[@]}"; do
+    for file in $(grep -rlF "\"$literal\"" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null || true); do
+        basename_file=$(basename "$file")
+        # canonical definitions
+        [[ "$basename_file" == "rule_names.rs" ]] && continue
+        # test files (integration tests / inline test modules named tests.rs)
+        case "$file" in
+            */tests/*|*/test_*|*/tests.rs) continue ;;
+        esac
+        # a file with a #[cfg(test)] module keeps its literal as a unit-test anchor
+        grep -q "#\[cfg(test)\]" "$file" && continue
+        echo -e "  ${RED}ERROR${NC}: $file hardcodes rule name \"$literal\""
+        echo -e "         Fix: use cas_solver_core::rule_names::RULE_* instead"
         ((ERRORS++))
     done
 done

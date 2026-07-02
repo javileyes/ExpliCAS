@@ -2,6 +2,9 @@
 
 use super::*;
 use cas_ast::{BuiltinFn, Expr};
+use cas_solver_core::rule_names::{
+    RULE_CONSERVAR_DERIVADA_RESIDUAL, RULE_CONSERVAR_INTEGRAL_RESIDUAL,
+};
 use num_traits::{One, ToPrimitive, Zero};
 
 fn expr_contains_any_builtin_local(
@@ -2623,13 +2626,13 @@ fn direct_calculus_residual_step_local(
     {
         (
             call.target,
-            "Conservar derivada residual",
+            RULE_CONSERVAR_DERIVADA_RESIDUAL,
             "Conservar la derivada sin resolver porque no hay una regla segura para esta familia",
         )
     } else if let Some(call) = try_extract_integrate_call_lenient_local(ctx, source) {
         (
             call.target,
-            "Conservar integral residual",
+            RULE_CONSERVAR_INTEGRAL_RESIDUAL,
             "Conservar la integral sin resolver porque no hay una regla segura y verificable para esta familia",
         )
     } else {
@@ -2814,7 +2817,7 @@ fn presimplified_calculus_residual_step_local(
         }
         (
             residual_call.target,
-            "Conservar derivada residual",
+            RULE_CONSERVAR_DERIVADA_RESIDUAL,
             "Conservar la derivada sin resolver tras simplificar el argumento porque no hay una regla segura para esta familia",
         )
     } else if let (Some(source_call), Some(residual_call)) = (
@@ -2826,7 +2829,7 @@ fn presimplified_calculus_residual_step_local(
         }
         (
             residual_call.target,
-            "Conservar integral residual",
+            RULE_CONSERVAR_INTEGRAL_RESIDUAL,
             "Conservar la integral sin resolver tras simplificar el integrando porque no hay una regla segura y verificable para esta familia",
         )
     } else {
@@ -2854,7 +2857,7 @@ fn terminal_integrate_residual_step_local(
     let residual_call = try_extract_integrate_call_lenient_local(ctx, residual)?;
     let mut step = crate::Step::new(
         "Conservar la integral sin resolver tras simplificar el integrando porque no hay una regla segura y verificable para esta familia",
-        "Conservar integral residual",
+        RULE_CONSERVAR_INTEGRAL_RESIDUAL,
         residual_call.target,
         residual,
         Vec::new(),
@@ -2870,7 +2873,7 @@ fn calculus_residual_step_has_visible_payload_local(
 ) -> bool {
     if !matches!(
         step.rule_name.as_str(),
-        "Conservar derivada residual" | "Conservar integral residual"
+        RULE_CONSERVAR_DERIVADA_RESIDUAL | RULE_CONSERVAR_INTEGRAL_RESIDUAL
     ) {
         return false;
     }
@@ -2903,7 +2906,7 @@ fn attach_integrate_residual_required_conditions_local(
     if let Some(step) = steps
         .iter_mut()
         .rev()
-        .find(|step| step.rule_name == "Conservar integral residual")
+        .find(|step| step.rule_name == RULE_CONSERVAR_INTEGRAL_RESIDUAL)
     {
         if step.required_conditions().is_empty() {
             step.meta_mut().required_conditions = required_conditions.to_vec();

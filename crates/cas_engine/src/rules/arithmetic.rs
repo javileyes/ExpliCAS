@@ -73,6 +73,9 @@ use cas_math::trig_sum_product_support::{
     TrigProductToSumRewriteKind, TrigSumToProductContractionRewriteKind,
 };
 use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
+use cas_solver_core::rule_names::{
+    RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_EXPAND_LOG_ABS_MUL_DIV, RULE_SUM_EXPONENTS,
+};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -12125,7 +12128,7 @@ fn try_build_exact_opposite_pair_zero_rewrite(
 
     Some(Rewrite::with_local(
         ctx.num(0),
-        "Cancel Exact Additive Pairs",
+        RULE_CANCEL_EXACT_ADDITIVE_PAIRS,
         expr,
         ctx.num(0),
     ))
@@ -14247,7 +14250,7 @@ define_rule!(
 
 define_rule!(
     CancelExactAdditivePairsRule,
-    "Cancel Exact Additive Pairs",
+    RULE_CANCEL_EXACT_ADDITIVE_PAIRS,
     Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     priority: 511,
@@ -14965,7 +14968,7 @@ define_rule!(
 
 define_rule!(
     ExpandLogAbsMulDivToEnableCancellationRule,
-    "Expand Log Abs Mul/Div",
+    RULE_EXPAND_LOG_ABS_MUL_DIV,
     Some(crate::target_kind::TargetKindSet::ADD_SUB),
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     priority: 510,
@@ -39114,7 +39117,7 @@ mod tests {
 // This makes the fraction sum visible as a step in the timeline.
 define_rule!(
     SimplifyNumericExponentsRule,
-    "Sum Exponents",
+    RULE_SUM_EXPONENTS,
     |ctx, expr| {
         let rewrite = try_rewrite_simplify_numeric_exponents_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.description))

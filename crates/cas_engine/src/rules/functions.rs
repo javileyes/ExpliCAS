@@ -20,6 +20,7 @@ use cas_math::abs_support::{
 use cas_math::difference_of_cubes_support::try_rewrite_cbrt_perfect_cube_expr;
 use cas_math::expr_nary::{AddView, Sign};
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
+use cas_solver_core::rule_names::{RULE_ABS_UNDER_NON_NEGATIVITY, RULE_ABS_UNDER_POSITIVITY};
 
 fn format_abs_domain_rewrite_desc(kind: AbsDomainRewriteKind) -> &'static str {
     match kind {
@@ -250,7 +251,7 @@ pub struct AbsPositiveSimplifyRule;
 
 impl crate::rule::Rule for AbsPositiveSimplifyRule {
     fn name(&self) -> &str {
-        "Abs Under Positivity"
+        RULE_ABS_UNDER_POSITIVITY
     }
 
     fn apply(
@@ -370,7 +371,7 @@ pub struct AbsNonNegativeSimplifyRule;
 
 impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
     fn name(&self) -> &str {
-        "Abs Under Non-Negativity"
+        RULE_ABS_UNDER_NON_NEGATIVITY
     }
 
     fn apply(

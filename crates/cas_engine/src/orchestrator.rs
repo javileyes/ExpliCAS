@@ -78,6 +78,7 @@ use cas_math::trig_value_detection_support::detect_special_angle;
 use cas_math::trig_values::lookup_trig_value;
 use cas_math::trig_weierstrass_support::try_rewrite_weierstrass_contraction_div_expr;
 use cas_solver_core::rationalize_policy::AutoRationalizeLevel;
+use cas_solver_core::rule_names::{RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_EXPAND_LOG_ABS_MUL_DIV};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
@@ -13328,7 +13329,7 @@ fn try_standard_sub_self_cancel_shortcut(
             if collect_steps {
                 let mut first_step = Step::with_snapshots(
                     &rewrite.description,
-                    "Expand Log Abs Mul/Div",
+                    RULE_EXPAND_LOG_ABS_MUL_DIV,
                     expr,
                     rewrite.new_expr,
                     smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
@@ -13358,7 +13359,7 @@ fn try_standard_sub_self_cancel_shortcut(
             if collect_steps {
                 let mut first_step = Step::with_snapshots(
                     &rewrite.description,
-                    "Expand Log Abs Mul/Div",
+                    RULE_EXPAND_LOG_ABS_MUL_DIV,
                     expr,
                     rewrite.new_expr,
                     smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
@@ -22579,7 +22580,7 @@ fn try_standard_exact_additive_pair_chain_shortcut(
         ctx,
         expr,
         rewrite,
-        "Cancel Exact Additive Pairs",
+        RULE_CANCEL_EXACT_ADDITIVE_PAIRS,
         collect_steps,
     ))
 }

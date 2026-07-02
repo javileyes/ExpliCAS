@@ -7,16 +7,25 @@ pub fn is_expansion_rule_name(name: &str) -> bool {
 
 /// Returns true when a step rule should always be kept for didactic reasons.
 pub fn is_always_keep_step_rule_name(name: &str) -> bool {
-    name == "Sum Exponents"
-        || name == "Evaluate Numeric Power"
-        || name == "Expand to Cancel Fraction"
-        || name == "Expand Log Abs Mul/Div"
-        || name == "Cancel Exact Additive Pairs"
-        || name == "Abs Under Positivity"
-        || name == "Abs Under Non-Negativity"
-        || name == "Conservar derivada residual"
-        || name == "Conservar integral residual"
-        || name == "Conservar límite residual"
+    use crate::rule_names::{
+        RULE_ABS_UNDER_NON_NEGATIVITY, RULE_ABS_UNDER_POSITIVITY, RULE_CANCEL_EXACT_ADDITIVE_PAIRS,
+        RULE_CONSERVAR_DERIVADA_RESIDUAL, RULE_CONSERVAR_INTEGRAL_RESIDUAL,
+        RULE_CONSERVAR_LIMITE_RESIDUAL, RULE_EVALUATE_NUMERIC_POWER, RULE_EXPAND_LOG_ABS_MUL_DIV,
+        RULE_EXPAND_TO_CANCEL_FRACTION, RULE_SUM_EXPONENTS,
+    };
+    matches!(
+        name,
+        RULE_SUM_EXPONENTS
+            | RULE_EVALUATE_NUMERIC_POWER
+            | RULE_EXPAND_TO_CANCEL_FRACTION
+            | RULE_EXPAND_LOG_ABS_MUL_DIV
+            | RULE_CANCEL_EXACT_ADDITIVE_PAIRS
+            | RULE_ABS_UNDER_POSITIVITY
+            | RULE_ABS_UNDER_NON_NEGATIVITY
+            | RULE_CONSERVAR_DERIVADA_RESIDUAL
+            | RULE_CONSERVAR_INTEGRAL_RESIDUAL
+            | RULE_CONSERVAR_LIMITE_RESIDUAL
+    )
 }
 
 /// Returns true when rule name corresponds to canonicalization/reordering.

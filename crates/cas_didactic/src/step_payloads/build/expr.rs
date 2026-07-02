@@ -1,5 +1,9 @@
 use crate::runtime::Step;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
+use cas_solver_core::rule_names::{
+    RULE_CANCEL_EXACT_ADDITIVE_PAIRS, RULE_CONSERVAR_DERIVADA_RESIDUAL,
+    RULE_CONSERVAR_INTEGRAL_RESIDUAL, RULE_CONSERVAR_LIMITE_RESIDUAL,
+};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
@@ -75,7 +79,9 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
 fn residual_limit_step_prefers_direct_display(step: &Step) -> bool {
     matches!(
         step.rule_name.as_str(),
-        "Conservar derivada residual" | "Conservar integral residual" | "Conservar límite residual"
+        RULE_CONSERVAR_DERIVADA_RESIDUAL
+            | RULE_CONSERVAR_INTEGRAL_RESIDUAL
+            | RULE_CONSERVAR_LIMITE_RESIDUAL
     )
 }
 
@@ -105,7 +111,7 @@ pub(super) fn cleanup_step_prefers_compact_nested_reciprocal_display(
 ) -> bool {
     matches!(
         step.rule_name.as_str(),
-        "Cancel Exact Additive Pairs"
+        RULE_CANCEL_EXACT_ADDITIVE_PAIRS
             | "Cancel Reciprocal Exponents"
             | "Cancel opposite terms"
             | "Root Power Cancel"
