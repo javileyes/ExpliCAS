@@ -19,7 +19,7 @@ pub struct DefiniteIntegralCall {
 
 /// integrate(f, x, a, b): the definite-integral call shape (mirror of the
 /// finite-aggregate sum/product extractor).
-pub fn try_extract_definite_integrate_call(
+pub(crate) fn try_extract_definite_integrate_call(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<DefiniteIntegralCall> {
@@ -41,7 +41,7 @@ pub fn try_extract_definite_integrate_call(
     })
 }
 
-pub fn try_extract_integrate_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall> {
+pub(crate) fn try_extract_integrate_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -72,7 +72,7 @@ pub fn try_extract_integrate_call(ctx: &Context, expr: ExprId) -> Option<NamedVa
 }
 
 /// Parse `diff(target, var)` with explicit variable.
-pub fn try_extract_diff_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall> {
+pub(crate) fn try_extract_diff_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -103,7 +103,7 @@ pub fn try_extract_diff_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall
 /// Returns `None` when the call is not a 3+-arg `diff`, when a count is not a
 /// positive integer literal, or when an integer would lead the variable list (a
 /// count needs a variable to repeat). The malformed call is then left untouched.
-pub fn try_desugar_higher_order_diff(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_desugar_higher_order_diff(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -145,7 +145,7 @@ pub fn try_desugar_higher_order_diff(ctx: &mut Context, expr: ExprId) -> Option<
 }
 
 /// Render `integrate(target, var)` description using a caller-provided expression renderer.
-pub fn render_integrate_desc_with<F>(call: &NamedVarCall, mut render_expr: F) -> String
+pub(crate) fn render_integrate_desc_with<F>(call: &NamedVarCall, mut render_expr: F) -> String
 where
     F: FnMut(ExprId) -> String,
 {
@@ -153,7 +153,7 @@ where
 }
 
 /// Render `diff(target, var)` description using a caller-provided expression renderer.
-pub fn render_diff_desc_with<F>(call: &NamedVarCall, mut render_expr: F) -> String
+pub(crate) fn render_diff_desc_with<F>(call: &NamedVarCall, mut render_expr: F) -> String
 where
     F: FnMut(ExprId) -> String,
 {

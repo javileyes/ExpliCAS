@@ -23,7 +23,7 @@ thread_local! {
 
 /// Set whether step descriptions should be computed.
 /// Called by the engine before simplification passes.
-pub fn set_steps_enabled(enabled: bool) {
+pub(crate) fn set_steps_enabled(enabled: bool) {
     STEPS_ENABLED.with(|s| s.set(enabled));
 }
 
@@ -38,13 +38,13 @@ pub fn steps_enabled() -> bool {
 /// This stays enabled when either step collection is on or an engine event
 /// listener is attached, so rules can keep emitting chained intermediate
 /// expressions without paying that cost in the plain `steps off` hot path.
-pub fn set_trace_payloads_enabled(enabled: bool) {
+pub(crate) fn set_trace_payloads_enabled(enabled: bool) {
     TRACE_PAYLOADS_ENABLED.with(|s| s.set(enabled));
 }
 
 /// Check if detailed trace payloads are enabled.
 #[inline]
-pub fn trace_payloads_enabled() -> bool {
+pub(crate) fn trace_payloads_enabled() -> bool {
     TRACE_PAYLOADS_ENABLED.with(|s| s.get())
 }
 

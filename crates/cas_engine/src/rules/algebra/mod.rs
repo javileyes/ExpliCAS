@@ -105,7 +105,7 @@ fn exact_common_mul_factor(
 /// cancellation pipeline on the common REPL hotspot where the shared factor is
 /// already explicit.
 #[allow(clippy::too_many_arguments)]
-pub fn try_exact_common_factor_mul_fraction_preorder(
+pub(crate) fn try_exact_common_factor_mul_fraction_preorder(
     ctx: &mut cas_ast::Context,
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
@@ -327,7 +327,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 ///
 /// Returns Some(result) if the pattern matches, None otherwise.
 #[allow(clippy::too_many_arguments)]
-pub fn try_difference_of_squares_preorder(
+pub(crate) fn try_difference_of_squares_preorder(
     ctx: &mut cas_ast::Context,
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
@@ -443,7 +443,7 @@ pub fn try_difference_of_squares_preorder(
 /// Called before child recursion to preserve the numerator structure and skip
 /// the later didactic fraction pipeline in the plain hot path.
 #[allow(clippy::too_many_arguments)]
-pub fn try_perfect_square_minus_preorder(
+pub(crate) fn try_perfect_square_minus_preorder(
     ctx: &mut cas_ast::Context,
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
@@ -575,7 +575,7 @@ pub fn try_sum_diff_of_cubes_preorder(
 /// This is intentionally restricted to the plain hidden path (`steps off`,
 /// no listener) from the transformer, so it can return the fully normalized
 /// scalar result directly and skip the recursive traversal of both children.
-pub fn try_structural_scalar_multiple_preorder(
+pub(crate) fn try_structural_scalar_multiple_preorder(
     ctx: &mut cas_ast::Context,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,
@@ -624,7 +624,7 @@ fn collapse_numeric_fraction_result(
 /// `collect_steps` is enabled by synthesizing the same two-step
 /// `Simplify Nested Fraction` sequence the rule would otherwise emit.
 #[allow(clippy::too_many_arguments)]
-pub fn try_exact_scalar_multiple_fraction_preorder(
+pub(crate) fn try_exact_scalar_multiple_fraction_preorder(
     ctx: &mut cas_ast::Context,
     expr_id: cas_ast::ExprId,
     num: cas_ast::ExprId,
@@ -747,7 +747,7 @@ pub fn try_exact_scalar_multiple_fraction_preorder(
 ///
 /// This intentionally avoids algebraic equivalence checks and only handles the
 /// raw input shape, which keeps the guard cheap enough for the hidden hot path.
-pub fn try_exact_sum_diff_of_cubes_preorder(
+pub(crate) fn try_exact_sum_diff_of_cubes_preorder(
     ctx: &mut cas_ast::Context,
     num: cas_ast::ExprId,
     den: cas_ast::ExprId,

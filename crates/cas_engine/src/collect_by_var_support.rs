@@ -21,7 +21,7 @@ impl CollectByVarRewrite {
 }
 
 /// Try rewriting a `collect(target, var)` call into grouped polynomial form.
-pub fn try_rewrite_collect_by_var_expr(
+pub(crate) fn try_rewrite_collect_by_var_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<CollectByVarRewrite> {

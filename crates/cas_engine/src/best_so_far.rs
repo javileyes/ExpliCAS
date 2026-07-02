@@ -75,7 +75,7 @@ impl PartialOrd for Score {
 }
 
 /// Compute the score for an expression.
-pub fn score_expr(ctx: &Context, expr: ExprId) -> Score {
+pub(crate) fn score_expr(ctx: &Context, expr: ExprId) -> Score {
     Score {
         sqrt_in_den: count_sqrt_in_den(ctx, expr),
         nested_div: count_nested_div(ctx, expr),

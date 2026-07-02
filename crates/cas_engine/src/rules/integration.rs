@@ -88,7 +88,7 @@ impl Rule for CosProductTelescopingRule {
 }
 
 /// Register integration preparation rules.
-pub fn register_integration_prep(simplifier: &mut Simplifier) {
+pub(crate) fn register_integration_prep(simplifier: &mut Simplifier) {
     simplifier.add_rule(Box::new(ProductToSumRule));
     simplifier.add_rule(Box::new(CosProductTelescopingRule));
 }

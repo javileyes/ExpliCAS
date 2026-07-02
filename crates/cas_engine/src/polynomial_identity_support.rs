@@ -67,14 +67,14 @@ impl Default for PolynomialIdentityPolicy {
 /// Try to prove that `expr` is identically zero as a polynomial expression.
 ///
 /// Returns proof metadata for didactic rendering when successful.
-pub fn try_prove_polynomial_identity_zero_expr(
+pub(crate) fn try_prove_polynomial_identity_zero_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<PolynomialIdentityZeroPlan> {
     try_prove_polynomial_identity_zero_with_policy(ctx, expr, &PolynomialIdentityPolicy::default())
 }
 
-pub fn try_prove_polynomial_identity_zero_with_policy(
+pub(crate) fn try_prove_polynomial_identity_zero_with_policy(
     ctx: &mut Context,
     expr: ExprId,
     policy: &PolynomialIdentityPolicy,

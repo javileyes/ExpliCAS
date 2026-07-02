@@ -26,7 +26,7 @@ pub struct PolyResultWithLimitCall {
 }
 
 /// Parse `poly_stats(poly_result(id))`.
-pub fn try_parse_poly_stats_call(ctx: &Context, expr: ExprId) -> Option<PolyStatsCall> {
+pub(crate) fn try_parse_poly_stats_call(ctx: &Context, expr: ExprId) -> Option<PolyStatsCall> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -39,7 +39,7 @@ pub fn try_parse_poly_stats_call(ctx: &Context, expr: ExprId) -> Option<PolyStat
 }
 
 /// Parse `poly_to_expr(poly_result(id))` or `poly_to_expr(poly_result(id), max_terms)`.
-pub fn try_parse_poly_to_expr_call(
+pub(crate) fn try_parse_poly_to_expr_call(
     ctx: &Context,
     expr: ExprId,
     default_max_terms: usize,
@@ -48,7 +48,7 @@ pub fn try_parse_poly_to_expr_call(
 }
 
 /// Parse `poly_print(poly_result(id))` or `poly_print(poly_result(id), max_terms)`.
-pub fn try_parse_poly_print_call(
+pub(crate) fn try_parse_poly_print_call(
     ctx: &Context,
     expr: ExprId,
     default_max_terms: usize,
@@ -57,7 +57,7 @@ pub fn try_parse_poly_print_call(
 }
 
 /// Parse `poly_latex(poly_result(id))` or `poly_latex(poly_result(id), max_terms)`.
-pub fn try_parse_poly_latex_call(
+pub(crate) fn try_parse_poly_latex_call(
     ctx: &Context,
     expr: ExprId,
     default_max_terms: usize,
@@ -66,7 +66,7 @@ pub fn try_parse_poly_latex_call(
 }
 
 /// Build `poly_info(id, terms, vars, modp)` expression.
-pub fn build_poly_info_expr(
+pub(crate) fn build_poly_info_expr(
     ctx: &mut Context,
     poly_id: PolyResultId,
     n_terms: usize,
@@ -80,7 +80,7 @@ pub fn build_poly_info_expr(
 }
 
 /// Human-readable materialization capability note.
-pub fn format_materialization_note(
+pub(crate) fn format_materialization_note(
     poly_id: PolyResultId,
     n_terms: usize,
     materialize_limit: usize,
@@ -95,7 +95,7 @@ pub fn format_materialization_note(
 /// Rewrite helper for `poly_stats(poly_result(id)) -> poly_info(...)`.
 ///
 /// Returns rewritten expression and human-readable description.
-pub fn rewrite_poly_stats_call_with_materialize_limit(
+pub(crate) fn rewrite_poly_stats_call_with_materialize_limit(
     ctx: &mut Context,
     expr: ExprId,
     materialize_limit: usize,
@@ -118,7 +118,7 @@ pub fn rewrite_poly_stats_call_with_materialize_limit(
 ///
 /// If stored polynomial exceeds `max_terms`, returns an inline error symbol
 /// expression to preserve previous user-facing behavior.
-pub fn rewrite_poly_to_expr_call_with_default_limit(
+pub(crate) fn rewrite_poly_to_expr_call_with_default_limit(
     ctx: &mut Context,
     expr: ExprId,
     default_max_terms: usize,
@@ -145,7 +145,7 @@ pub fn rewrite_poly_to_expr_call_with_default_limit(
 /// Rewrite helper for `poly_print(poly_result(id), max_terms?)`.
 ///
 /// Returns rewritten expression and human-readable description.
-pub fn rewrite_poly_print_call_with_default_limit(
+pub(crate) fn rewrite_poly_print_call_with_default_limit(
     ctx: &mut Context,
     expr: ExprId,
     default_max_terms: usize,
@@ -168,7 +168,7 @@ pub fn rewrite_poly_print_call_with_default_limit(
 /// Rewrite helper for `poly_latex(poly_result(id), max_terms?)`.
 ///
 /// Returns rewritten expression and human-readable description.
-pub fn rewrite_poly_latex_call_with_default_limit(
+pub(crate) fn rewrite_poly_latex_call_with_default_limit(
     ctx: &mut Context,
     expr: ExprId,
     default_max_terms: usize,

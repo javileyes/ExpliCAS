@@ -90,7 +90,7 @@ fn try_extract_cube_factor_base(ctx: &mut Context, expr: ExprId) -> Option<ExprI
 }
 
 /// Detect `(a^2 + 2ab + b^2)/(a+b)^2` and plan denominator expansion.
-pub fn try_plan_expand_binomial_square_in_den_for_cancel(
+pub(crate) fn try_plan_expand_binomial_square_in_den_for_cancel(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
@@ -129,7 +129,7 @@ pub fn try_plan_expand_binomial_square_in_den_for_cancel(
 }
 
 /// Detect `(a^2 - b^2)/(a+b)` or `(a^2 - b^2)/(a-b)` and plan factored cancellation.
-pub fn try_plan_difference_of_squares_in_num(
+pub(crate) fn try_plan_difference_of_squares_in_num(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
@@ -221,7 +221,7 @@ pub fn try_plan_difference_of_squares_in_num(
 }
 
 /// Detect `(a^2 - 2ab + b^2)/(a-b)` and plan rewrite to `(a-b)^2/(a-b)`.
-pub fn try_plan_perfect_square_minus_in_num(
+pub(crate) fn try_plan_perfect_square_minus_in_num(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
@@ -274,7 +274,7 @@ pub fn try_plan_perfect_square_minus_in_num(
 }
 
 /// Detect `(a^3 - b^3)/(a-b)` or `(a^3 + b^3)/(a+b)` and plan didactic factorization.
-pub fn try_plan_sum_diff_of_cubes_in_num(
+pub(crate) fn try_plan_sum_diff_of_cubes_in_num(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
@@ -382,7 +382,7 @@ pub fn try_plan_sum_diff_of_cubes_in_num(
 }
 
 /// Detect `P^m / P^n` (or implicit exponent 1) and plan `P^(m-n)` for `m>n`.
-pub fn try_plan_power_quotient_preserve_form(
+pub(crate) fn try_plan_power_quotient_preserve_form(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
@@ -440,7 +440,7 @@ pub fn try_plan_power_quotient_preserve_form(
 /// 3) perfect-square-minus recognition
 /// 4) sum/difference of cubes
 /// 5) power quotient preservation
-pub fn try_plan_fraction_didactic_cancel(
+pub(crate) fn try_plan_fraction_didactic_cancel(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,

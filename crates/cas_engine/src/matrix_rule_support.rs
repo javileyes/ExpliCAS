@@ -146,7 +146,7 @@ pub struct MatrixFunctionRewrite {
 }
 
 /// Human-readable description for matrix function rewrites.
-pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
+pub(crate) fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
     match eval {
         MatrixFunctionEval::Determinant { shape, .. } => {
             format!("det({}×{} matrix)", shape.rows, shape.cols)
@@ -200,7 +200,10 @@ pub fn format_matrix_function_desc(eval: &MatrixFunctionEval) -> String {
     }
 }
 
-pub fn try_eval_matrix_add_expr(ctx: &mut Context, expr: ExprId) -> Option<MatrixBinaryEval> {
+pub(crate) fn try_eval_matrix_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<MatrixBinaryEval> {
     let Expr::Add(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -217,7 +220,10 @@ pub fn try_eval_matrix_add_expr(ctx: &mut Context, expr: ExprId) -> Option<Matri
     })
 }
 
-pub fn try_eval_matrix_sub_expr(ctx: &mut Context, expr: ExprId) -> Option<MatrixBinaryEval> {
+pub(crate) fn try_eval_matrix_sub_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<MatrixBinaryEval> {
     let Expr::Sub(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -234,7 +240,10 @@ pub fn try_eval_matrix_sub_expr(ctx: &mut Context, expr: ExprId) -> Option<Matri
     })
 }
 
-pub fn try_eval_matrix_mul_expr(ctx: &mut Context, expr: ExprId) -> Option<MatrixBinaryEval> {
+pub(crate) fn try_eval_matrix_mul_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<MatrixBinaryEval> {
     let Expr::Mul(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -266,7 +275,10 @@ fn is_concrete_scalar(ctx: &Context, expr: ExprId) -> bool {
 /// matrix with mismatched inner dimensions, and a NON-square matrix raised to an integer `≥ 2`
 /// (including the `M·M → M^2` form the engine manufactures). Returns `None` for well-formed
 /// matrix ops (handled by the evaluation rules) and for non-matrix expressions.
-pub fn try_matrix_shape_mismatch_undefined(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_matrix_shape_mismatch_undefined(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     match ctx.get(expr).clone() {
         Expr::Add(left, right) | Expr::Sub(left, right) => {
             match (Matrix::from_expr(ctx, left), Matrix::from_expr(ctx, right)) {
@@ -318,7 +330,7 @@ pub fn try_matrix_shape_mismatch_undefined(ctx: &mut Context, expr: ExprId) -> O
 /// Whether `expr` evaluates to a MATRIX — a literal, a matrix-returning function call
 /// (`inverse`/`transpose`/`adjugate`), or a structural combination of such. Used to keep
 /// scalar-matrix multiplication from broadcasting a matrix-valued operand as if it were a scalar.
-pub fn is_matrix_valued(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_matrix_valued(ctx: &Context, expr: ExprId) -> bool {
     if Matrix::from_expr(ctx, expr).is_some() {
         return true;
     }
@@ -402,7 +414,10 @@ fn try_matrix_power_expr(ctx: &mut Context, m: &Matrix, n: i64) -> Option<ExprId
     Some(result.to_expr(ctx))
 }
 
-pub fn try_rewrite_matrix_reciprocal_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_matrix_reciprocal_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     match ctx.get(expr).clone() {
         Expr::Pow(base, exp) => {
             let matrix = Matrix::from_expr(ctx, base)?;
@@ -431,7 +446,7 @@ pub fn try_rewrite_matrix_reciprocal_expr(ctx: &mut Context, expr: ExprId) -> Op
     }
 }
 
-pub fn try_eval_scalar_matrix_mul_expr(
+pub(crate) fn try_eval_scalar_matrix_mul_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ScalarMatrixEval> {
@@ -492,7 +507,7 @@ pub fn try_eval_scalar_matrix_mul_expr(
 /// factor of degree ≥ 3 (needing Cardano/Galois machinery) declines the WHOLE
 /// computation to an honest residual rather than reporting a partial spectrum.
 /// Symbolic matrices decline (the characteristic polynomial is not numeric).
-pub fn try_matrix_eigenvalues(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
+pub(crate) fn try_matrix_eigenvalues(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
     use cas_solver_core::quadratic_formula::sqrt_expr;
     use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
     use num_rational::BigRational;
@@ -626,7 +641,7 @@ fn rational_null_space(
 /// (honest residual) when any entry is non-numeric, or any eigenvalue is
 /// irrational/complex — a surd eigenvalue would need a surd-coefficient RREF,
 /// out of this exact-rational scope.
-pub fn try_matrix_eigenvectors(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
+pub(crate) fn try_matrix_eigenvectors(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
     use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
     use num_rational::BigRational;
 
@@ -710,7 +725,7 @@ pub fn try_matrix_eigenvectors(ctx: &mut Context, matrix: &Matrix) -> Option<Exp
 /// rational RREF, returned as a matrix whose ROWS are the basis vectors. A trivial
 /// kernel (full column rank) is represented by the single zero vector. Declines
 /// (honest residual) on any symbolic entry.
-pub fn try_matrix_nullspace(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
+pub(crate) fn try_matrix_nullspace(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId> {
     use cas_solver_core::rational_roots::rational_to_expr;
     use num_rational::BigRational;
 
@@ -755,7 +770,11 @@ pub fn try_matrix_nullspace(ctx: &mut Context, matrix: &Matrix) -> Option<ExprId
 /// whose rows are the 0th…(n−1)th derivatives of the functions. `[sin(x), cos(x)]
 /// → −1`. Reuses symbolic differentiation and the (symbolic) determinant; a
 /// function that cannot be differentiated declines to a residual.
-pub fn try_wronskian_expr(ctx: &mut Context, list_expr: ExprId, var: &str) -> Option<ExprId> {
+pub(crate) fn try_wronskian_expr(
+    ctx: &mut Context,
+    list_expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
     use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
 
     let functions = Matrix::from_expr(ctx, list_expr)?;
@@ -785,7 +804,7 @@ pub fn try_wronskian_expr(ctx: &mut Context, list_expr: ExprId, var: &str) -> Op
 /// Binary (2-argument) matrix/vector operations: `dot`, `cross`, `linsolve`.
 /// Returns the result expression plus a description, or `None` to leave the call
 /// as an honest residual (mismatched shapes, a singular/inconsistent system, etc.).
-pub fn try_rewrite_matrix_binary_function_expr(
+pub(crate) fn try_rewrite_matrix_binary_function_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<MatrixFunctionRewrite> {
@@ -960,7 +979,7 @@ fn matrix_linsolve(ctx: &mut Context, a: &Matrix, b: &Matrix) -> Option<ExprId> 
     }))
 }
 
-pub fn try_eval_matrix_function_expr(
+pub(crate) fn try_eval_matrix_function_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<MatrixFunctionEval> {
@@ -1028,7 +1047,7 @@ pub fn try_eval_matrix_function_expr(
 }
 
 /// Evaluate matrix function calls and materialize a direct rewrite payload.
-pub fn try_rewrite_matrix_function_rule_expr(
+pub(crate) fn try_rewrite_matrix_function_rule_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<MatrixFunctionRewrite> {
@@ -1134,7 +1153,10 @@ pub fn try_rewrite_matrix_function_rule_expr(
 
 /// Rewrite helper for transpose-of-product identity:
 /// `transpose(matmul(A, B)) -> matmul(transpose(B), transpose(A))`.
-pub fn try_rewrite_transpose_product_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_transpose_product_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -1162,7 +1184,7 @@ pub fn try_rewrite_transpose_product_expr(ctx: &mut Context, expr: ExprId) -> Op
 }
 
 /// Rewrite helper for transpose-of-product identity with canonical description.
-pub fn try_rewrite_transpose_product_identity_expr(
+pub(crate) fn try_rewrite_transpose_product_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<MatrixFunctionRewrite> {

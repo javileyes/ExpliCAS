@@ -27,7 +27,7 @@ pub struct CollectLikeTermsRewrite {
 /// - collection is blocked by semantics policy,
 /// - result is structurally equivalent to input,
 /// - no actual cancellation/combination happened (trivial normalization only).
-pub fn try_plan_collect_rule_expr(
+pub(crate) fn try_plan_collect_rule_expr(
     ctx: &mut Context,
     expr: ExprId,
     mode: CollectSemanticsMode,
@@ -56,7 +56,10 @@ pub fn try_plan_collect_rule_expr(
 /// Generic rewrite planner for collect-like-terms on Add/Sub expressions.
 ///
 /// Returns a rewritten expression only when the result is structurally different.
-pub fn try_rewrite_collect_like_terms_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_rewrite_collect_like_terms_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Add(_, _) | Expr::Sub(_, _) => {}
         _ => return None,
@@ -75,7 +78,7 @@ pub fn try_rewrite_collect_like_terms_expr(ctx: &mut Context, expr: ExprId) -> O
 }
 
 /// Generic rewrite planner for collect-like-terms with canonical description.
-pub fn try_rewrite_collect_like_terms_identity_expr(
+pub(crate) fn try_rewrite_collect_like_terms_identity_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<CollectLikeTermsRewrite> {

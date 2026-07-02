@@ -29,7 +29,7 @@ use cas_math::infinity_support::{
 /// - `∞ + (-∞) → Undefined` (indeterminate)
 ///
 /// Only applies when ALL non-infinity terms are finite literals (conservative).
-pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_add_infinity_absorption_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
@@ -40,7 +40,7 @@ pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrit
 /// `finite / (-∞) → 0`
 ///
 /// Only applies when numerator is a finite literal.
-pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_div_by_infinity_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
@@ -49,7 +49,7 @@ pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 ///
 /// `0 · ∞ → Undefined`
 /// `∞ · 0 → Undefined`
-pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_mul_zero_infinity_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
@@ -60,7 +60,7 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// - `3 * infinity → infinity`
 /// - `(-2) * infinity → -infinity`
 /// - `x * infinity → no simplification` (conservative)
-pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_mul_finite_infinity_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
@@ -71,7 +71,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// - `infinity / 2 → infinity`
 /// - `infinity / (-3) → -infinity`
 /// - `-infinity / 2 → -infinity`
-pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_inf_div_finite_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
@@ -79,7 +79,7 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// Rule: Infinity divided by infinity is indeterminate.
 ///
 /// `∞ / ∞ → Undefined` (including finite-scaled forms `(2·∞)/(5·∞)`, `(-∞)/∞`).
-pub fn inf_div_inf(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn inf_div_inf(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let plan = try_rewrite_inf_div_inf_expr(ctx, expr)?;
     Some(Rewrite::new(plan.rewritten).desc(plan.description))
 }
@@ -107,7 +107,7 @@ fn contains_undefined(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Rule: Any addition containing `undefined` is `undefined`.
-pub fn add_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn add_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Add(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -118,7 +118,7 @@ pub fn add_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 }
 
 /// Rule: Any subtraction containing `undefined` is `undefined`.
-pub fn sub_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn sub_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Sub(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -129,7 +129,7 @@ pub fn sub_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 }
 
 /// Rule: Any product containing `undefined` is `undefined`.
-pub fn mul_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn mul_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Mul(_, _) = ctx.get(expr) else {
         return None;
     };
@@ -140,7 +140,7 @@ pub fn mul_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 }
 
 /// Rule: Negating `undefined` keeps it `undefined`.
-pub fn neg_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn neg_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Neg(inner) = ctx.get(expr) else {
         return None;
     };
@@ -162,7 +162,7 @@ pub fn div_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 }
 
 /// Rule: Any power containing `undefined` is `undefined`.
-pub fn pow_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn pow_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Pow(base, exp) = ctx.get(expr) else {
         return None;
     };
@@ -173,7 +173,7 @@ pub fn pow_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 }
 
 /// Rule: Any function call containing `undefined` is `undefined`.
-pub fn function_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+pub(crate) fn function_undefined(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
     let Expr::Function(_, args) = ctx.get(expr) else {
         return None;
     };

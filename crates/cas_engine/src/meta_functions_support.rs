@@ -13,7 +13,7 @@ pub struct MetaFunctionRewrite {
 /// - `simplify(expr)` -> `expr`
 /// - `factor(expr)` -> factored `expr` (or unchanged if irreducible)
 /// - `expand(expr)` -> expanded `expr`
-pub fn try_rewrite_meta_function_expr(
+pub(crate) fn try_rewrite_meta_function_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<MetaFunctionRewrite> {

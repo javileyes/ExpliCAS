@@ -174,7 +174,7 @@ pub fn orchestrator_shortcut_profiling_enabled() -> bool {
     *CAS_PROFILE_ORCHESTRATOR_SHORTCUTS_ENABLED
 }
 
-pub fn should_profile_orchestrator_shortcut(name: &str) -> bool {
+pub(crate) fn should_profile_orchestrator_shortcut(name: &str) -> bool {
     if !orchestrator_shortcut_profiling_enabled() {
         return false;
     }
@@ -184,7 +184,11 @@ pub fn should_profile_orchestrator_shortcut(name: &str) -> bool {
     }
 }
 
-pub fn record_orchestrator_shortcut_attempt(name: &'static str, matched: bool, elapsed: Duration) {
+pub(crate) fn record_orchestrator_shortcut_attempt(
+    name: &'static str,
+    matched: bool,
+    elapsed: Duration,
+) {
     if !should_profile_orchestrator_shortcut(name) {
         return;
     }
@@ -199,7 +203,7 @@ pub fn clear_orchestrator_shortcut_profile() {
     });
 }
 
-pub fn record_orchestrator_shortcut_sample(name: &'static str, sample: String) {
+pub(crate) fn record_orchestrator_shortcut_sample(name: &'static str, sample: String) {
     if !should_profile_orchestrator_shortcut(name) {
         return;
     }
@@ -208,7 +212,7 @@ pub fn record_orchestrator_shortcut_sample(name: &'static str, sample: String) {
     });
 }
 
-pub fn record_orchestrator_shortcut_outcome_sample(
+pub(crate) fn record_orchestrator_shortcut_outcome_sample(
     name: &'static str,
     matched: bool,
     sample: String,
@@ -231,7 +235,7 @@ pub fn orchestrator_shortcut_profile_report() -> String {
     ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| profiler.borrow().report())
 }
 
-pub fn render_expr_shape_for_orchestrator_profile(ctx: &Context, expr: ExprId) -> String {
+pub(crate) fn render_expr_shape_for_orchestrator_profile(ctx: &Context, expr: ExprId) -> String {
     match ctx.get(expr) {
         Expr::Number(value) => {
             if value.is_zero() {

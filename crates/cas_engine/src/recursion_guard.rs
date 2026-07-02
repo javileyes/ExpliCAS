@@ -36,7 +36,7 @@ thread_local! {
 /// would require threading errors through the entire call stack.
 #[inline]
 #[allow(clippy::panic)] // Intentional: stack overflow protection
-pub fn with_depth_guard<F, R>(label: &'static str, limit: usize, f: F) -> R
+pub(crate) fn with_depth_guard<F, R>(label: &'static str, limit: usize, f: F) -> R
 where
     F: FnOnce() -> R,
 {
@@ -77,18 +77,18 @@ where
 }
 
 /// Reset all depth counters. Call at test start.
-pub fn reset_all_guards() {
+pub(crate) fn reset_all_guards() {
     DEPTHS.with(|d| d.borrow_mut().clear());
     MAX_DEPTHS.with(|d| d.borrow_mut().clear());
 }
 
 /// Get the maximum depth seen for a function.
-pub fn get_max_depth(label: &'static str) -> usize {
+pub(crate) fn get_max_depth(label: &'static str) -> usize {
     MAX_DEPTHS.with(|max_depths| *max_depths.borrow().get(label).unwrap_or(&0))
 }
 
 /// Get all maximum depths (for diagnostics).
-pub fn get_all_max_depths() -> Vec<(&'static str, usize)> {
+pub(crate) fn get_all_max_depths() -> Vec<(&'static str, usize)> {
     MAX_DEPTHS.with(|max_depths| max_depths.borrow().iter().map(|(&k, &v)| (k, v)).collect())
 }
 
@@ -99,7 +99,7 @@ pub fn get_all_max_depths() -> Vec<(&'static str, usize)> {
 /// ```ignore
 /// let result = with_stack(16 * 1024 * 1024, || engine.simplify(expr));
 /// ```
-pub fn with_stack<R: Send + 'static>(
+pub(crate) fn with_stack<R: Send + 'static>(
     stack_size: usize,
     f: impl FnOnce() -> R + Send + 'static,
 ) -> R {

@@ -14,7 +14,7 @@ pub struct CollectDidacticFocus {
 /// Build didactic focus expressions from cancellation/combination groups.
 ///
 /// Shows all affected groups together so UI can highlight the full local change.
-pub fn select_collect_didactic_focus(
+pub(crate) fn select_collect_didactic_focus(
     ctx: &mut Context,
     cancelled: &[CancelledGroup],
     combined: &[CombinedGroup],
