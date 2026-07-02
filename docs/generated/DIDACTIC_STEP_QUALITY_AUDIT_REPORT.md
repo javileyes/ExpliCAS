@@ -12,7 +12,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 2 | none |
 | `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 2 | none |
 | `combine_like_terms_basic` | `combine` | 2 | 1 | none |
-| `log_product_cancellation` | `logs` | 1 | 0 | none |
+| `log_product_cancellation` | `logs` | 1 | 0 | no wire substeps emitted; single step with no didactic substeps |
 | `same_denominator_fraction_focus` | `fractions` | 2 | 1 | none |
 | `cancel_factors_fraction` | `cancellation` | 1 | 0 | none |
 | `difference_of_squares_quotient` | `quotient` | 2 | 2 | none |
@@ -215,12 +215,6 @@ Steps:
 
 1. `Agrupar términos semejantes`
    - before: `2 · x + 3 · x`
-   - after: `2 · x + 3 · x`
-   - before_latex: `{\color{red}{2\cdot x}} + 3\cdot x`
-   - after_latex: `2\cdot x + 3\cdot x`
-   - substeps: none
-2. `Agrupar términos semejantes`
-   - before: `2 · x + 3 · x`
    - after: `5 · x`
    - before_latex: `{\color{red}{2\cdot x + 3\cdot x}}`
    - after_latex: `{\color{green}{5\cdot x}}`
@@ -236,7 +230,7 @@ Steps:
 - Final result: `0`
 - Step count: `1`
 - Wire substep count: `0`
-- Flags: none
+- Flags: no wire substeps emitted; single step with no didactic substeps
 
 ### CLI Step By Step
 
@@ -250,7 +244,7 @@ Steps:
 
 ### Wire / Web Steps
 
-1. `Collapse Exact Zero Additive Subexpression`
+1. `Cancelar la subexpresión idénticamente nula`
    - before: `ln(x^3) + ln(y^2) - ln(x^3 · y^2)`
    - after: `0`
    - before_latex: `{\color{red}{\ln({x}^{3}) + \ln({y}^{2}) - \ln({x}^{3}\cdot {y}^{2})}}`

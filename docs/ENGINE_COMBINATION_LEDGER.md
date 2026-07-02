@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 489 (newest first)
+Active entries: 490 (newest first)
 
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`compare_values` — rama de sepa... | SOUNDNESS (P0-F-ineq `|ln(x)| < 2`): el álgebra de intervalos no ordenaba endpoints transcendentales
 - 2026-07-02 | `retained` | `crates/cas_math/src/prove_sign.rs` (fallback `provable_const_sign` en los pr... | SOUNDNESS+PRESENTACIÓN (condicionales vacuos): `prove_sign`/`prove_nonzero` deciden constantes transcendentales
+- 2026-07-02 | `retained` | `scripts/engine_integrate_command_matrix_smoke.py` (5 fixtures), `scripts/eng... | HONESTIDAD DE HARNESS (RED didáctico heredado): re-contratar 6 fixtures al contrato didáctico vigente + refresh de baselines
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_pol... | CAPACIDAD (paralelo a Familia 2): inecuación polinómica en `x^(1/q)` (`x − 3√x + 2 < 0`) declinaba a residual
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_sum_relation`... | SOUNDNESS (sibling de Familia 3/D): SUMA de formas de signo `Σ cᵢ·sign(gᵢ) {op} k` da "No solution"
 - 2026-07-01 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_trig... | CAPACIDAD (paralelo a poly-in-log): ecuación cuadrática en trig `2·sin(x)²−3·sin(x)+1=0` deja residual y `Periodic∪Periodic` PIERDE familias
@@ -18254,3 +18255,17 @@ Active entries: 489 (newest first)
   - "NO CONSTRUIR el condicional" > "podarlo después": el punto de mayor apalancamiento no era el builder de Cases ni el render, sino los PROBADORES que alimentan el `NonZeroStatus` — una vez el status es decidible, todos los constructores de condicionales del solver mejoran gratis (lineal, log-unwrap, exponencial). El plan original del ciclo ("podar en el builder") habría sido un parche por caso.
   - Un kernel de no-nulidad que solo prueba POSITIVIDAD tiene el sesgo del hermano negado (mismo meta-bug del audit): `nonzero ⟸ positivo ∨ negativo ∨ (bounds separados de 0)`. Al añadir decisión por bounds, el caso Zero exacto también cae (Disproven), completando el ternario.
   - PRÓXIMO PELDAÑO: `a·x=1` simbólico devuelve `{1/a}` SIN el condicional `a≠0` (pre-existente, política deliberada del solver aparentemente); si algún día se quiere el condicional simbólico explícito, es un contrato aparte. El render `log(b,c)` → `ln(c)/ln(b)` en los casos podados viene de la ruta ln (valor idéntico).
+
+## 2026-07-02 - HONESTIDAD DE HARNESS (RED didáctico heredado): re-contratar 6 fixtures al contrato didáctico vigente + refresh de baselines
+
+- area: `scripts/engine_integrate_command_matrix_smoke.py` (5 fixtures), `scripts/engine_diff_command_matrix_smoke.py` (1 fixture), `docs/generated/engine_improvement_scorecard*.json/md` (baselines re-commiteados)
+- status: `retained` (commit pendiente-de-hash). Cierra el RED heredado de 6 casos step_trace_mismatch (verificado heredado en f77800b17 por stash-probe en 2 sesiones) y devuelve los baselines commiteados a FIELES (adiós al stash-regenerate por ciclo).
+- capture:
+  - investment_class: honestidad del harness (los fixtures fijaban un contrato didáctico obsoleto).
+  - observed (diagnóstico por fixture, con la traza REAL del CLI): (a) 4× "Agrupar términos semejantes" — el paso se poda POR DISEÑO desde los ciclos didácticos (contrato retenido en semantics_cli_contract_tests: "no-op steps (before == after) are pruned"; el fold `x²+0 → x²` es no-op en RENDER porque el display ya normaliza `+0`); (b) "Canonicalize Reciprocal Sqrt"/"Reescribir la raíz como potencia fraccionaria" — la regla se RE-TITULÓ "Reescribir el inverso de una raíz" (localización es/en) y la integral residual ahora SÍ narra 2 pasos (el steps_count=0 de la memoria quedó obsoleto: la sesión didáctica lo restauró); (c) diff "Extract Common Multiplicative Factor" → re-titulado "Sacar factor común".
+  - decision: actualizar las EXPECTATIVAS (no re-emitir pasos): el contrato vigente (podar no-ops, títulos localizados) fue retenido deliberadamente con sus propios tests verdes; las fixtures del smoke eran el contrato viejo. Con las matrices verdes, REGENERAR Y COMMITEAR los scorecards guard+pressure: huella delta = exactamente las 2 lanes fail→pass (intencionado); `simplify_didactic_audit` queda `warn` HONESTO (1/14 casos thin, returncode 0 — señal de calidad, no rojo).
+  - validación: integrate matrix 313/313 pass, diff matrix 85/85 pass, `python3 -m unittest scripts.test_engine_integrate_command_matrix_smoke` OK, `make engine-fast` exit 0 COMPLETO por primera vez en la sesión; clippy limpio; rust intacto desde el verde 12508/0 del ciclo 4.
+- retained learning:
+  - Un RED heredado de step-trace tiene DOS causas típicas tras una campaña didáctica: pasos PODADOS por diseño (el fixture viejo pide ruido que ya no se narra) y reglas RE-TITULADAS por localización (el fixture greppea el título viejo). Diagnóstico en 1 comando por fixture: correr el input real con `--steps on --format json` y comparar títulos — NUNCA re-emitir el paso sin antes mirar la traza real (habría revertido una mejora didáctica retenida).
+  - Cuando el baseline commiteado lleva ≥2 sesiones stale, el coste del stash-regenerate por ciclo supera al ciclo de re-contrato: cerrar el RED + re-commitear baselines devuelve el guardrail a barato para todos los ciclos siguientes.
+  - PRÓXIMO PELDAÑO: el warn de `simplify_didactic_audit` (1 caso single_step_no_substeps) es el residual didáctico legítimo a pulir; y la memoria de sesión (inherited-red) debe actualizarse a CERRADO.

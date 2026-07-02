@@ -2324,7 +2324,6 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_required_display=("sin(x^2) ≠ 0",),
         expected_required_display=("sin(x^2) ≠ 0", "cos(x^2) ≠ 0"),
         expected_step_substrings=(
-            "Agrupar términos semejantes",
             "Expandir tangente como seno entre coseno",
             "Simplificar fracción anidada",
             "Sacar constante de una fracción",
@@ -2345,7 +2344,6 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_required_display=("cos(x^2) ≠ 0",),
         expected_required_display=("cos(x^2) ≠ 0",),
         expected_step_substrings=(
-            "Agrupar términos semejantes",
             "Expandir secante como recíproco de coseno",
             "Simplificar fracción anidada",
             "Usar la regla de cos(u) -> sin(u)",
@@ -2455,7 +2453,6 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_required_display=("sinh(x^2) ≠ 0",),
         expected_required_display=("sinh(x^2) ≠ 0",),
         expected_step_substrings=(
-            "Agrupar términos semejantes",
             "Sacar constante de una fracción",
             "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
             "Identificar u y du",
@@ -3121,8 +3118,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_result="integrate(sin(x^2) + (1 - x^2)^(-1/2), x)",
         expected_required_display=("-1 < x < 1",),
         expected_step_substrings=(
-            "Reescribir la raíz como potencia fraccionaria",
-            "Canonicalize Reciprocal Sqrt",
+            "Reescribir el inverso de una raíz",
             "Conservar integral residual",
         ),
         family="inverse_sqrt_additive_residual_domain",
@@ -5384,7 +5380,6 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_required_display=("sinh(sqrt(x)) ≠ 0", "x > 0"),
         expected_required_display=("sinh(sqrt(x)) ≠ 0", "x > 0"),
         expected_step_substrings=(
-            "Agrupar términos semejantes",
             "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
             "Identificar u y du",
             "u =",

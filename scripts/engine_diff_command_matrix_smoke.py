@@ -99,7 +99,7 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
             "Usar regla del producto",
             "Derivar el primer factor",
             "Derivar el segundo factor",
-            "Extract Common Multiplicative Factor",
+            "Sacar factor común",
             "Sumar fracciones",
         ),
         family="product_log_root",
