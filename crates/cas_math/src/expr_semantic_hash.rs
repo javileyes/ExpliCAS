@@ -23,11 +23,15 @@ pub fn semantic_hash(ctx: &Context, expr: ExprId) -> u64 {
         match ctx.get(expr) {
             Expr::Number(n) => {
                 0u8.hash(hasher);
-                n.to_string().hash(hasher);
+                // Hash the reduced numerator/denominator directly instead of allocating a
+                // decimal String per Number node (`BigRational` is kept canonical, so equal
+                // rationals still hash equal). P11 of the saneamiento audit.
+                n.hash(hasher);
             }
             Expr::Constant(c) => {
                 1u8.hash(hasher);
-                format!("{c:?}").hash(hasher);
+                // `Constant` derives `Hash` — no `format!("{c:?}")` allocation needed.
+                c.hash(hasher);
             }
             Expr::Variable(v) => {
                 2u8.hash(hasher);
