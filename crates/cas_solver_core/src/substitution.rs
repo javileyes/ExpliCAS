@@ -374,7 +374,25 @@ where
                 BoundKind::Decline
             }
         } else {
-            BoundKind::Decline
+            // SYMBOLIC bound (scout backlog #5): the quadratic-in-base^x
+            // reduction produces SURD endpoints like `(1+√5)/2` that
+            // `get_number` cannot read, so `e^(2x) − e^x − 1 < 0` declined
+            // even though the back-solve `base^x = (1+√5)/2 → ln(φ)` works.
+            // Classify the sign EXACTLY (linear-surd oracle, then the
+            // const-value-bounds oracle — never f64); undecidable declines.
+            let by_surd = cas_math::root_forms::provable_sign_vs_zero(ctx, bound);
+            let sign = by_surd.or_else(|| {
+                cas_math::const_sign::provable_const_sign(ctx, bound).map(|s| match s {
+                    cas_math::const_sign::ConstSign::Negative => std::cmp::Ordering::Less,
+                    cas_math::const_sign::ConstSign::Zero => std::cmp::Ordering::Equal,
+                    cas_math::const_sign::ConstSign::Positive => std::cmp::Ordering::Greater,
+                })
+            });
+            match sign {
+                Some(std::cmp::Ordering::Greater) => BoundKind::FinitePositive,
+                Some(std::cmp::Ordering::Equal) if is_lower => BoundKind::NegInfinity,
+                _ => BoundKind::Decline,
+            }
         }
     };
 

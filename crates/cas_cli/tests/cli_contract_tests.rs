@@ -4463,12 +4463,12 @@ fn test_eval_exponential_polynomial_inequality_back_substitution() {
     // u must be > 0: a root <= 0 is clamped away. u in (-2, 1) ⟺ (0, 1) ⟺ x < 0; u in (-2, -1) ⟺ empty.
     assert_eq!(r("e^(2*x)+e^x-2<0"), "(-infinity, 0)");
     assert_eq!(r("e^(2*x)+3*e^x+2<0"), "No solution");
-    // SOUNDNESS: an IRRATIONAL root (e^x = (1±√5)/2) cannot be back-substituted with the exact
-    // rational helpers (the negative root's sign / ln are not rational), so the mapping declines to
-    // the HONEST residual (the boundary equation) instead of leaking the raw u-interval as a wrong
-    // x-set. Found by adversarial verification of the rational-root fix.
-    assert_eq!(r("e^(2*x)-e^x-1<0"), "solve(e^(2·x) - e^x - 1 < 0, x)");
-    assert_eq!(r("e^(2*x)-e^x-1>0"), "solve(e^(2·x) - e^x - 1 > 0, x)");
+    // U3: the IRRATIONAL roots (e^x = (1±√5)/2) now back-substitute exactly —
+    // the surd sign oracles classify the endpoints ((1−√5)/2 clamps away as
+    // provably negative; (1+√5)/2 = φ maps through the boundary equation to
+    // ln(φ)). Previously an honest decline.
+    assert_eq!(r("e^(2*x)-e^x-1<0"), "(-infinity, ln(phi))");
+    assert_eq!(r("e^(2*x)-e^x-1>0"), "(ln(phi), infinity)");
     // A FRACTIONAL base (0 < a < 1) likewise declines to the residual (decreasing inverse + ln-ratio
     // bounds the downstream interval comparison cannot order) rather than leak the u-interval.
     assert_eq!(
