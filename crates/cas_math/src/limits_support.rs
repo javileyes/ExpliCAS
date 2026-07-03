@@ -10112,6 +10112,145 @@ fn finite_residual_has_empty_punctured_inverse_trig_domain(
         .unwrap_or(false)
 }
 
+/// Classification of a computed one-sided limit for the bilateral combiner.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LateralLimitClass {
+    PosInfinity,
+    NegInfinity,
+    /// A finite expression (no ∞/undefined/limit-residual inside).
+    Finite(ExprId),
+}
+
+/// Classify a one-sided limit RESULT expression; `None` for anything the
+/// combiner must not reason about (residual `limit(...)` calls, `undefined`,
+/// `i`, or expressions still containing ∞ in a compound position).
+fn classify_lateral_limit_result(ctx: &Context, expr: ExprId) -> Option<LateralLimitClass> {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Infinity) => return Some(LateralLimitClass::PosInfinity),
+        Expr::Constant(Constant::Undefined) | Expr::Constant(Constant::I) => return None,
+        Expr::Neg(inner) => {
+            if matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)) {
+                return Some(LateralLimitClass::NegInfinity);
+            }
+        }
+        _ => {}
+    }
+    // Finite iff nothing exotic survives inside (a residual limit call, an
+    // embedded infinity/undefined) — a plain finite value/constant tree.
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Constant(Constant::Infinity | Constant::Undefined | Constant::I) => {
+                return None;
+            }
+            Expr::Function(fn_id, args) => {
+                if ctx.sym_name(*fn_id) == "limit" {
+                    return None;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { .. } | Expr::SessionRef(_) => return None,
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => {}
+        }
+    }
+    Some(LateralLimitClass::Finite(expr))
+}
+
+/// Try to settle a BILATERAL finite-point limit from its two one-sided
+/// limits. Returns `Some` only when both laterals compute to classifiable
+/// results:
+/// - both `+∞` / both `−∞` → the signed divergence;
+/// - both finite and STRUCTURALLY equal (or equal exact rationals) → that
+///   value (belt-and-braces: the direct rules usually catch these);
+/// - both finite exact rationals that DIFFER, or any ±∞ mismatch → the
+///   bilateral limit does not exist → `undefined`, with both laterals quoted
+///   in the warning (the educational payload);
+/// - anything else (symbolic finite pair not provably equal, a lateral that
+///   is residual/undefined) → `None`: keep the honest bilateral residual —
+///   never fabricate a DNE from an unproven inequality.
+fn try_bilateral_limit_from_lateral_agreement(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<LimitEvalOutcome> {
+    let left = try_limit_rules_at_finite_one_sided(ctx, expr, var, point, FiniteLimitSide::Left)?;
+    let right = try_limit_rules_at_finite_one_sided(ctx, expr, var, point, FiniteLimitSide::Right)?;
+    let left_class = classify_lateral_limit_result(ctx, left)?;
+    let right_class = classify_lateral_limit_result(ctx, right)?;
+
+    use LateralLimitClass::{Finite, NegInfinity, PosInfinity};
+    let describe = |ctx: &Context, class: LateralLimitClass| -> String {
+        match class {
+            PosInfinity => "+∞".to_string(),
+            NegInfinity => "−∞".to_string(),
+            Finite(e) => match crate::numeric_eval::as_rational_const(ctx, e) {
+                Some(q) => q.to_string(),
+                None => "a finite value".to_string(),
+            },
+        }
+    };
+    let dne = |ctx: &mut Context,
+               lc: LateralLimitClass,
+               rc: LateralLimitClass|
+     -> LimitEvalOutcome {
+        let l = describe(ctx, lc);
+        let r = describe(ctx, rc);
+        LimitEvalOutcome {
+            expr: ctx.add(Expr::Constant(Constant::Undefined)),
+            warning: Some(format!(
+                "the bilateral limit does not exist: the one-sided limits disagree (left: {l}, right: {r})"
+            )),
+        }
+    };
+    match (left_class, right_class) {
+        (PosInfinity, PosInfinity) => Some(LimitEvalOutcome {
+            expr: ctx.add(Expr::Constant(Constant::Infinity)),
+            warning: None,
+        }),
+        (NegInfinity, NegInfinity) => {
+            let inf = ctx.add(Expr::Constant(Constant::Infinity));
+            Some(LimitEvalOutcome {
+                expr: ctx.add(Expr::Neg(inf)),
+                warning: None,
+            })
+        }
+        (PosInfinity, NegInfinity)
+        | (NegInfinity, PosInfinity)
+        | (PosInfinity | NegInfinity, Finite(_))
+        | (Finite(_), PosInfinity | NegInfinity) => Some(dne(ctx, left_class, right_class)),
+        (Finite(l), Finite(r)) => {
+            if cas_ast::ordering::compare_expr(ctx, l, r) == std::cmp::Ordering::Equal {
+                return Some(LimitEvalOutcome {
+                    expr: l,
+                    warning: None,
+                });
+            }
+            let lv = crate::numeric_eval::as_rational_const(ctx, l);
+            let rv = crate::numeric_eval::as_rational_const(ctx, r);
+            match (lv, rv) {
+                (Some(a), Some(b)) if a == b => Some(LimitEvalOutcome {
+                    expr: l,
+                    warning: None,
+                }),
+                // Exact rationals that differ: a PROVEN disagreement.
+                (Some(_), Some(_)) => Some(dne(ctx, left_class, right_class)),
+                // Symbolic finite pair not provably equal: stay residual.
+                _ => None,
+            }
+        }
+    }
+}
+
 fn finite_residual_warning(ctx: &Context, expr: ExprId, var: ExprId, point: ExprId) -> String {
     if finite_residual_has_empty_punctured_sqrt_domain(ctx, expr, var, point)
         || finite_residual_has_empty_punctured_acosh_domain(ctx, expr, var, point)
@@ -10147,6 +10286,20 @@ pub fn eval_limit_at_infinity(
                 expr: result_expr,
                 warning: None,
             };
+        }
+        // Bilateral combiner (frontier-audit limits gap): when the direct
+        // bilateral rules decline but BOTH one-sided limits compute, combine
+        // them — agreeing ±∞ is the signed divergence (`1/x³` at 0⁺/0⁻ was
+        // residual while `1/x²` worked), disagreeing laterals mean the
+        // bilateral limit DOES NOT EXIST (`1/x`, `|x|/x` at 0 → undefined
+        // with the laterals quoted in the warning). Conservative by
+        // construction: any lateral that is residual/undefined/unclassifiable
+        // (domain boundaries like `√x`/`ln x` at 0, oscillation `sin(1/x)`)
+        // keeps the honest bilateral residual below.
+        if let Some(outcome) =
+            try_bilateral_limit_from_lateral_agreement(ctx, simplified_expr, var, point)
+        {
+            return outcome;
         }
     }
     if let Approach::FiniteOneSided(point, side) = approach {

@@ -716,29 +716,31 @@ fn test_eval_finite_rational_polynomial_limit_handles_removable_holes_json() {
     assert_eq!(wire["warnings"], json!([]));
     assert_eq!(wire["required_display"], json!(["x ≠ 1"]));
 
+    // Odd-order pole: the laterals diverge with opposite signs — the
+    // bilateral combiner answers DNE instead of the old residual.
     let (success, stdout) = run_eval("limit((x-1)/(x-1)^2, x, 1)", "json");
     assert!(
         success,
-        "Command should keep finite rational-polynomial poles residual"
+        "Command should settle finite rational-polynomial odd poles as DNE"
     );
     let wire: Value = serde_json::from_str(&stdout).expect("eval json");
     assert_eq!(wire["ok"], true);
     assert!(
         wire["result"]
             .as_str()
-            .is_some_and(|result| result.contains("limit(")),
-        "Finite rational pole should remain residual, got: {wire:?}"
+            .is_some_and(|result| result == "undefined"),
+        "Finite odd-order rational pole should be DNE, got: {wire:?}"
     );
     assert!(
         wire["warnings"].as_array().is_some_and(|warnings| {
             warnings.iter().any(|warning| {
                 warning["rule"] == "Limit Evaluation"
-                    && warning["assumption"].as_str().is_some_and(|message| {
-                        message.contains("Finite point limits are not supported safely yet")
-                    })
+                    && warning["assumption"]
+                        .as_str()
+                        .is_some_and(|message| message.contains("does not exist"))
             })
         }),
-        "Singular rational finite limit should remain residual with warning, got: {wire:?}"
+        "DNE pole should quote the disagreeing laterals, got: {wire:?}"
     );
 }
 
@@ -1336,18 +1338,44 @@ fn test_eval_finite_domain_checked_trig_limits_json() {
     }
 }
 
+/// Cycle contract: a bilateral limit whose one-sided limits DISAGREE now
+/// answers `undefined` with the laterals quoted (the bilateral combiner),
+/// instead of the historical conservative residual.
+fn assert_bilateral_dne(input: &str) {
+    let (success, stdout) = run_eval(input, "json");
+    assert!(success, "Command should succeed for {input}");
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true, "input: {input}");
+    assert_eq!(wire["result"], "undefined", "input: {input}");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"]
+                        .as_str()
+                        .is_some_and(|message| message.contains("does not exist"))
+            })
+        }),
+        "DNE should quote the disagreeing laterals for {input}, got: {wire:?}"
+    );
+}
+
 #[test]
 fn test_eval_finite_domain_checked_trig_limits_reject_unsafe_cases_json() {
+    // Bilateral-combiner upgrade: the POLE-straddling cases now settle as
+    // DNE (`undefined`, laterals ±∞ quoted); only the genuinely
+    // unsupported points stay residual.
     for input in [
-        "limit(tan(x), x, 1)",
         "limit(tan(x + pi/2), x, 0)",
-        "limit(sec(x), x, 1)",
         "limit(sec(x + pi/2), x, 0)",
         "limit(csc(x), x, 0)",
         "limit(csc(x + pi), x, 0)",
         "limit(cot(x), x, 0)",
         "limit(cot(x + pi), x, 0)",
     ] {
+        assert_bilateral_dne(input);
+    }
+    for input in ["limit(tan(x), x, 1)", "limit(sec(x), x, 1)"] {
         let (success, stdout) = run_eval(input, "json");
         assert!(
             success,
@@ -1377,7 +1405,13 @@ fn test_eval_finite_domain_checked_trig_limits_reject_unsafe_cases_json() {
 
 #[test]
 fn test_eval_finite_discontinuous_elementary_limits_stay_residual_json() {
-    for input in ["limit(sign(x), x, 0)", "limit(sin(sign(x)), x, 0)"] {
+    // sign(x) is the canonical finite-jump DNE (laterals −1/+1). The
+    // composed sin(sign(x)) stays residual: its laterals are the SYMBOLIC
+    // pair sin(−1)/sin(1), which the combiner refuses to call unequal
+    // without an exact proof (conservative by design).
+    assert_bilateral_dne("limit(sign(x), x, 0)");
+    {
+        let input = "limit(sin(sign(x)), x, 0)";
         let (success, stdout) = run_eval(input, "json");
         assert!(
             success,
@@ -1490,7 +1524,19 @@ fn test_eval_finite_unary_inverse_and_abs_limits_fold_locally_json() {
 
 #[test]
 fn test_eval_finite_unary_inverse_limits_keep_unsafe_boundaries_residual_json() {
-    for input in ["limit(exp(ln(abs(x))), x, 0)", "limit(exp(ln(x)), x, 0)"] {
+    // exp(ln(|x|)) = |x| on the punctured neighbourhood: both laterals are
+    // 0, so the combiner settles it exactly.
+    {
+        let (success, stdout) = run_eval("limit(exp(ln(abs(x))), x, 0)", "json");
+        assert!(success);
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true);
+        assert_eq!(wire["result"], "0");
+    }
+    // The one-sided-domain twin (ln(x) only exists on the right) stays the
+    // honest residual: the combiner requires BOTH laterals.
+    {
+        let input = "limit(exp(ln(x)), x, 0)";
         let (success, stdout) = run_eval(input, "json");
         assert!(
             success,
@@ -1520,11 +1566,24 @@ fn test_eval_finite_unary_inverse_limits_keep_unsafe_boundaries_residual_json() 
 
 #[test]
 fn test_eval_finite_positive_domain_unary_composition_rejects_nonpositive_sublimits_json() {
-    for input in [
-        "limit(sqrt(abs(x)), x, 0)",
-        "limit(ln(sin(x)), x, 0)",
-        "limit(log10(abs(x)), x, 0)",
-    ] {
+    // |x| approaches 0⁺ from BOTH sides, so the lateral path settles these
+    // compositions exactly (sqrt → 0, log10 → −∞ agreeing laterals).
+    {
+        let (success, stdout) = run_eval("limit(sqrt(abs(x)), x, 0)", "json");
+        assert!(success);
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["result"], "0");
+    }
+    {
+        let (success, stdout) = run_eval("limit(log10(abs(x)), x, 0)", "json");
+        assert!(success);
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["result"], "-infinity");
+    }
+    // sin(x) is NEGATIVE on the left of 0: the left lateral of ln(sin(x))
+    // has no real domain, so it stays the honest residual.
+    {
+        let input = "limit(ln(sin(x)), x, 0)";
         let (success, stdout) = run_eval(input, "json");
         assert!(
             success,
@@ -1603,8 +1662,14 @@ fn test_eval_finite_binary_log_composition_limits_json() {
 
 #[test]
 fn test_eval_finite_binary_log_composition_rejects_unsafe_cases_json() {
+    // log2(|x|) → −∞ from both sides (bilateral-combiner upgrade).
+    {
+        let (success, stdout) = run_eval("limit(log(2, abs(x)), x, 0)", "json");
+        assert!(success);
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["result"], "-infinity");
+    }
     for input in [
-        "limit(log(2, abs(x)), x, 0)",
         "limit(log(x^2 - 3, x^2 + 1), x, -2)",
         "limit(log(x^2 - 4, x^2 + 1), x, -2)",
     ] {

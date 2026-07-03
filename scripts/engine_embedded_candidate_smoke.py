@@ -21,6 +21,15 @@ import tempfile
 import time
 from dataclasses import dataclass
 from typing import Literal
+
+# The sibling smoke modules live next to this file; when loaded via
+# spec_from_file_location (the unittest wrappers) the scripts directory is
+# NOT on sys.path, so resolve it explicitly before the local import — same
+# pattern as engine_integrate_command_matrix_smoke.py.
+_SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
 from engine_smoke_common import terminate_process_group
 
 

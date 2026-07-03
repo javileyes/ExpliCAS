@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 494 (newest first)
+Active entries: 495 (newest first)
 
+- 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18334,3 +18335,18 @@ Active entries: 494 (newest first)
   - Cuando el candidato planificado se evapora al sondear (la frontera se movió por fixes colaterales de la misma sesión), el mejor sustituto suele ser INSTITUCIONALIZAR la técnica que acaba de pagar: un detector one-off que cazó un P0 vale más como contrato permanente que el siguiente parche puntual.
   - Un fuzz con SEMILLA FIJA convierte una técnica exploratoria en un guardrail determinista: mismo conjunto siempre ⇒ sin flakiness; el presupuesto de hangs separa el bug conocido (no-terminación honesta) del contrato duro (equivalencia).
   - PRÓXIMO PELDAÑO: promover a lane del scorecard (con contadores en la huella) cuando el hang de C5 esté cerrado; ampliar la grammar (exp/ln/radicales) — la trig racional fue la familia de P0-G, otras familias merecen su semilla propia. El único residual del candidato original: `a^x > −1` con base SIMBÓLICA (necesita el condicional `if a > 0`, camino distinto).
+
+## 2026-07-04 - CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
+
+- area: `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_agreement` + `classify_lateral_limit_result`, enganchado en `eval_limit_at_infinity` tras las reglas bilaterales directas)
+- status: `retained`. Cierra el residual del gatekeeper educativo G2 anotado por el scout 2026-07-03 ("los laterales YA calculan; falta el combinador bilateral → DNE/±∞"): `limit(1/x, x, 0)`, `limit(|x|/x, x, 0)`, polos impares y saltos finitos devolvían el residual conservador aunque ambos laterales computaban.
+- capture:
+  - investment_class: capability+educativo (Fase 1, límites — la mitad educativa pesa lo mismo que la universal).
+  - cell: `limit(1/x,x,0)` → `undefined` con warning "the bilateral limit does not exist: the one-sided limits disagree (left: −∞, right: +∞)" (el payload educativo); `limit(sign(x),x,0)` → undefined (laterales −1/+1 citados); `limit(-1/x^2,x,0)` → `-infinity` (laterales CONCORDANTES — capacidad nueva); `limit(e^(1/x),x,0)` → undefined (0 vs +∞); `csc/cot/tan(x+π/2)/sec(x+π/2)` en sus polos → undefined; `limit(exp(ln(|x|)),x,0)` → 0, `sqrt(|x|)` → 0, `log2(|x|)` → −∞ (composiciones que el guard bilateral "unsafe" rechazaba y el camino lateral prueba por lado).
+  - guards conservadores POR CONSTRUCCIÓN: fronteras de dominio unilaterales (`sqrt(x)`, `ln(x)`, `exp(ln(x))` en 0) siguen residual (exige AMBOS laterales); oscilación (`sin(1/x)`) sigue residual (ningún lateral computa); par finito SIMBÓLICO no probadamente distinto (`sin(sign(x))`: sin(−1) vs sin(1)) sigue residual — nunca fabricar un DNE de una desigualdad no probada (comparación por racional exacto o igualdad estructural, jamás f64).
+  - recontratos de intención: 6 tests de `limit_contract_tests.rs` que fijaban los declines conservadores ("stay residual", "rejects unsafe") pasan a fijar el upgrade verificado a mano; 6 filas de la matriz de límites (209 casos) migran residual→undefined con contadores actualizados (22 residual / 9 undefined). Colateral: fix de import heredado en `engine_embedded_candidate_smoke.py` (sys.path faltante desde la consolidación 37ec450e2 — `make engine-scorecard` estaba roto en el paso harness y nadie lo corría entero).
+  - validación: workspace 12170 failed:0; clippy --all-targets limpio; make engine-fast + engine-scorecard + engine-scorecard-pressure verdes; huella GUARD/PRESS 0-delta tras la actualización intencionada de la lane de límites.
+- retained learning:
+  - El patrón "computa ambos laterales y combina con clasificación EXACTA" convierte una familia entera de declines conservadores en respuestas correctas sin tocar ninguna regla direccional: el valor estaba ya calculado, faltaba el árbitro. La clasificación del resultado lateral (±∞ / finito / inclasificable) debe RECHAZAR cualquier cosa con ∞/undefined/limit() EMBEBIDO — un finito compuesto con un residual dentro no es un lateral computado.
+  - Un DNE es una AFIRMACIÓN (no un decline): exige que el desacuerdo esté PROBADO (racionales exactos distintos o clases ±∞ distintas). El par simbólico sin(−1)≠sin(1) es verdad pero no probado por los oráculos actuales → residual honesto; anotado como peldaño (oráculo de desigualdad simbólica o evaluación por intervalos).
+  - PRÓXIMO PELDAÑO: exponer la sintaxis one-sided en el CLI (`limit(expr, x, 0, '+')` hoy es parse error — los laterales existen internamente); narración didáctica del DNE (los steps hoy solo muestran "undefined"); `sin(1/x)` merece el diagnóstico de oscilación del audit (item F).
