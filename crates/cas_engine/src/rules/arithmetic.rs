@@ -6087,7 +6087,14 @@ fn classify_solve_prep_build_route(
 
 fn expr_contains_variable_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
     let mut stack = vec![root];
+    // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
+    // an unmemoized walk revisits shared subtrees exponentially; the
+    // visited set keeps the same answer at DAG-sized cost.
+    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
     while let Some(expr) = stack.pop() {
+        if !seen.insert(expr) {
+            continue;
+        }
         match ctx.get(expr) {
             Expr::Pow(base, exp)
                 if extract_i64_integer(ctx, *exp) == Some(2)
@@ -6115,7 +6122,14 @@ fn expr_contains_variable_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) 
 
 fn expr_contains_shifted_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
     let mut stack = vec![root];
+    // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
+    // an unmemoized walk revisits shared subtrees exponentially; the
+    // visited set keeps the same answer at DAG-sized cost.
+    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
     while let Some(expr) = stack.pop() {
+        if !seen.insert(expr) {
+            continue;
+        }
         match ctx.get(expr) {
             Expr::Pow(base, exp)
                 if extract_i64_integer(ctx, *exp) == Some(2)
@@ -6144,7 +6158,14 @@ fn expr_contains_shifted_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) -
 fn collect_squared_variable_names(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> Vec<String> {
     let mut names = std::collections::BTreeSet::new();
     let mut stack = vec![root];
+    // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
+    // an unmemoized walk revisits shared subtrees exponentially; the
+    // visited set keeps the same answer at DAG-sized cost.
+    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
     while let Some(expr) = stack.pop() {
+        if !seen.insert(expr) {
+            continue;
+        }
         match ctx.get(expr) {
             Expr::Pow(base, exp) if extract_i64_integer(ctx, *exp) == Some(2) => {
                 if let Expr::Variable(sym_id) = ctx.get(*base) {
@@ -6208,7 +6229,14 @@ fn collect_shifted_square_primary_variable_names(
 ) -> Vec<String> {
     let mut names = std::collections::BTreeSet::new();
     let mut stack = vec![root];
+    // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
+    // an unmemoized walk revisits shared subtrees exponentially; the
+    // visited set keeps the same answer at DAG-sized cost.
+    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
     while let Some(expr) = stack.pop() {
+        if !seen.insert(expr) {
+            continue;
+        }
         match ctx.get(expr) {
             Expr::Pow(base, exp)
                 if extract_i64_integer(ctx, *exp) == Some(2)

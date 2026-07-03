@@ -220,26 +220,30 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     // collision/disk-fill hazard on every depth overflow from
                     // ordinary input. The tracing warning below carries the
                     // same information; subscribers decide where it goes.
-                    let display = cas_formatter::DisplayExpr {
-                        context: self.context,
-                        id: self.root_expr,
-                    };
-                    let expr_str = display.to_string();
-
+                    //
                     // Emit warning via tracing. WARN once per PROCESS — the
                     // per-transformer flag alone let a single eval of e.g.
                     // `(x+tan(x))^3` spam ~130KB of identical warnings across
                     // its many transformer instances (scout cycle-3 #12);
-                    // subsequent overflows log at debug level.
+                    // subsequent overflows log at debug level. The expression
+                    // is passed as a lazy Display field, NOT pre-rendered: on
+                    // recurrence-shaped DAGs (tan(10·arcsin(t))) the root
+                    // prints exponentially large, and every transformer
+                    // instance reaching this guard used to pay that format
+                    // even when the event was suppressed.
                     static DEPTH_OVERFLOW_WARNED_ONCE: std::sync::atomic::AtomicBool =
                         std::sync::atomic::AtomicBool::new(false);
+                    let root_display = cas_formatter::DisplayExpr {
+                        context: self.context,
+                        id: self.root_expr,
+                    };
                     if !DEPTH_OVERFLOW_WARNED_ONCE.swap(true, std::sync::atomic::Ordering::Relaxed)
                     {
                         tracing::warn!(
                             target: "simplify",
                             depth = self.current_depth,
                             phase = ?self.current_phase,
-                            expr = %expr_str,
+                            expr = %root_display,
                             "depth_overflow - returning expression unsimplified (further occurrences logged at debug)"
                         );
                     } else {
@@ -247,7 +251,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             target: "simplify",
                             depth = self.current_depth,
                             phase = ?self.current_phase,
-                            expr = %expr_str,
+                            expr = %root_display,
                             "depth_overflow - returning expression unsimplified"
                         );
                     }

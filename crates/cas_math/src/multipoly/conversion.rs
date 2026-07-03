@@ -30,8 +30,15 @@ pub fn multipoly_from_expr(
     let vars_set = collect_poly_vars(ctx, expr);
     let vars: Vec<String> = vars_set.into_iter().collect();
 
-    // Convert
-    from_expr_recursive(ctx, expr, &vars, budget)
+    // Convert. The memo makes the walk DAG-aware: recurrence-shaped inputs
+    // (tan(10·arcsin(t))) share subtrees so heavily that the naive tree walk
+    // re-converts them exponentially often. Keyed by ExprId alone because
+    // `vars` and `budget` are fixed within one top-level conversion, and the
+    // Context is append-only (a node's value never changes), so hits return
+    // the identical Result — errors included.
+    let mut memo: std::collections::HashMap<ExprId, Result<MultiPoly, PolyError>> =
+        std::collections::HashMap::new();
+    from_expr_recursive(ctx, expr, &vars, budget, &mut memo)
 }
 
 fn from_expr_recursive(
@@ -39,6 +46,22 @@ fn from_expr_recursive(
     expr: ExprId,
     vars: &[String],
     budget: &PolyBudget,
+    memo: &mut std::collections::HashMap<ExprId, Result<MultiPoly, PolyError>>,
+) -> Result<MultiPoly, PolyError> {
+    if let Some(cached) = memo.get(&expr) {
+        return cached.clone();
+    }
+    let result = from_expr_recursive_uncached(ctx, expr, vars, budget, memo);
+    memo.insert(expr, result.clone());
+    result
+}
+
+fn from_expr_recursive_uncached(
+    ctx: &Context,
+    expr: ExprId,
+    vars: &[String],
+    budget: &PolyBudget,
+    memo: &mut std::collections::HashMap<ExprId, Result<MultiPoly, PolyError>>,
 ) -> Result<MultiPoly, PolyError> {
     match ctx.get(expr) {
         Expr::Number(n) => Ok(MultiPoly {
@@ -65,35 +88,35 @@ fn from_expr_recursive(
         }
 
         Expr::Neg(a) => {
-            let p = from_expr_recursive(ctx, *a, vars, budget)?;
+            let p = from_expr_recursive(ctx, *a, vars, budget, memo)?;
             Ok(p.neg())
         }
 
         Expr::Add(a, b) => {
-            let pa = from_expr_recursive(ctx, *a, vars, budget)?;
-            let pb = from_expr_recursive(ctx, *b, vars, budget)?;
+            let pa = from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let pb = from_expr_recursive(ctx, *b, vars, budget, memo)?;
             let result = pa.add(&pb)?;
             check_budget(&result, budget)?;
             Ok(result)
         }
 
         Expr::Sub(a, b) => {
-            let pa = from_expr_recursive(ctx, *a, vars, budget)?;
-            let pb = from_expr_recursive(ctx, *b, vars, budget)?;
+            let pa = from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let pb = from_expr_recursive(ctx, *b, vars, budget, memo)?;
             let result = pa.sub(&pb)?;
             check_budget(&result, budget)?;
             Ok(result)
         }
 
         Expr::Mul(a, b) => {
-            let pa = from_expr_recursive(ctx, *a, vars, budget)?;
-            let pb = from_expr_recursive(ctx, *b, vars, budget)?;
+            let pa = from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let pb = from_expr_recursive(ctx, *b, vars, budget, memo)?;
             pa.mul(&pb, budget)
         }
 
         Expr::Div(a, b) => {
-            let pa = from_expr_recursive(ctx, *a, vars, budget)?;
-            let pb = from_expr_recursive(ctx, *b, vars, budget)?;
+            let pa = from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let pb = from_expr_recursive(ctx, *b, vars, budget, memo)?;
             // Only allow division by constants
             if let Some(c) = pb.constant_value() {
                 if c.is_zero() {
@@ -120,7 +143,7 @@ fn from_expr_recursive(
                         return Err(PolyError::BudgetExceeded);
                     }
 
-                    let pb = from_expr_recursive(ctx, *base, vars, budget)?;
+                    let pb = from_expr_recursive(ctx, *base, vars, budget, memo)?;
                     return pow_poly(&pb, e, budget);
                 }
             }
