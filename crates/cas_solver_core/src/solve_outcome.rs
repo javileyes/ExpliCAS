@@ -5075,6 +5075,7 @@ pub fn residual_solution_set(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
+    op: RelOp,
     var: &str,
 ) -> SolutionSet {
     // No-progress isolation: the variable survives on BOTH sides. This happens when the solver
@@ -5093,9 +5094,9 @@ pub fn residual_solution_set(
             Err(_) => cas_math::expand_ops::expand(ctx, diff),
         };
         let zero = ctx.num(0);
-        return SolutionSet::Residual(residual_expression(ctx, normalized, zero, var));
+        return SolutionSet::Residual(residual_expression(ctx, normalized, zero, op, var));
     }
-    SolutionSet::Residual(residual_expression(ctx, lhs, rhs, var))
+    SolutionSet::Residual(residual_expression(ctx, lhs, rhs, op, var))
 }
 
 /// Build residual expression `solve(__eq__(lhs, rhs), var)`.
@@ -5103,9 +5104,10 @@ pub(crate) fn residual_expression(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
+    op: RelOp,
     var: &str,
 ) -> ExprId {
-    mk_residual_solve(ctx, lhs, rhs, var)
+    mk_residual_solve(ctx, lhs, rhs, op, var)
 }
 
 /// Resolve terminal log-solve actions into concrete solution sets.
@@ -5134,7 +5136,7 @@ pub(crate) fn resolve_log_terminal_outcome(
             };
             Some(TerminalSolveOutcome {
                 message,
-                solutions: residual_solution_set(ctx, lhs, rhs, var),
+                solutions: residual_solution_set(ctx, lhs, rhs, RelOp::Eq, var),
             })
         }
         LogTerminalAction::Continue => None,
@@ -5320,7 +5322,7 @@ pub(crate) fn resolve_log_unsupported_outcome<'a>(
         LogUnsupportedRoute::ResidualBudgetExhausted { message } => {
             Some(LogUnsupportedOutcome::ResidualBudgetExhausted {
                 message,
-                solutions: residual_solution_set(ctx, lhs, rhs, var),
+                solutions: residual_solution_set(ctx, lhs, rhs, RelOp::Eq, var),
             })
         }
         LogUnsupportedRoute::Guarded {
@@ -5330,7 +5332,7 @@ pub(crate) fn resolve_log_unsupported_outcome<'a>(
             message,
             missing_conditions,
             guard: assumptions_to_condition_set(missing_conditions, base, rhs_expr),
-            residual: residual_expression(ctx, lhs, rhs, var),
+            residual: residual_expression(ctx, lhs, rhs, RelOp::Eq, var),
         }),
     }
 }
@@ -6729,7 +6731,9 @@ mod tests {
         let mut ctx = Context::new();
         let lhs = parse("x", &mut ctx).expect("parse lhs");
         let rhs = parse("-x^3 - 1", &mut ctx).expect("parse rhs");
-        let SolutionSet::Residual(expr) = residual_solution_set(&mut ctx, lhs, rhs, "x") else {
+        let SolutionSet::Residual(expr) =
+            residual_solution_set(&mut ctx, lhs, rhs, cas_ast::RelOp::Eq, "x")
+        else {
             panic!("expected residual");
         };
         // expr = solve(Eq(inner_lhs, inner_rhs), var); dig out the inner equation.
@@ -6756,7 +6760,9 @@ mod tests {
         let mut ctx2 = Context::new();
         let v = parse("x", &mut ctx2).expect("x");
         let five = parse("5", &mut ctx2).expect("5");
-        let SolutionSet::Residual(e2) = residual_solution_set(&mut ctx2, v, five, "x") else {
+        let SolutionSet::Residual(e2) =
+            residual_solution_set(&mut ctx2, v, five, cas_ast::RelOp::Eq, "x")
+        else {
             panic!("expected residual");
         };
         let cas_ast::Expr::Function(_, a2) = ctx2.get(e2).clone() else {
@@ -9264,7 +9270,7 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
-        let out = residual_solution_set(&mut ctx, x, y, "x");
+        let out = residual_solution_set(&mut ctx, x, y, cas_ast::RelOp::Eq, "x");
         assert!(matches!(out, SolutionSet::Residual(_)));
     }
 
@@ -9273,7 +9279,7 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
-        let expr = residual_expression(&mut ctx, x, y, "x");
+        let expr = residual_expression(&mut ctx, x, y, cas_ast::RelOp::Eq, "x");
         assert!(matches!(ctx.get(expr), Expr::Function(_, _)));
     }
 

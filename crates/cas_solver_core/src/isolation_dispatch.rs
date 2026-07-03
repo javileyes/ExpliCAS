@@ -215,7 +215,13 @@ where
         try_linear_collect,
         try_linear_collect_v2,
         |state, solve_lhs, solve_rhs, solve_var| {
-            residual_solution_set(context_for_residual(state), solve_lhs, solve_rhs, solve_var)
+            residual_solution_set(
+                context_for_residual(state),
+                solve_lhs,
+                solve_rhs,
+                cas_ast::RelOp::Eq,
+                solve_var,
+            )
         },
     )
 }

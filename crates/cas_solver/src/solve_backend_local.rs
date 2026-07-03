@@ -3017,6 +3017,7 @@ fn try_decline_variable_base_log_inequality(
         &mut simplifier.context,
         eq.lhs,
         eq.rhs,
+        eq.op.clone(),
         var,
     ))
 }
@@ -3074,6 +3075,7 @@ fn try_decline_periodic_trig_inequality(
         &mut simplifier.context,
         eq.lhs,
         eq.rhs,
+        eq.op.clone(),
         var,
     ))
 }
@@ -3118,6 +3120,7 @@ fn try_solve_boundary_trig_inequality(
                 &mut simplifier.context,
                 eq.lhs,
                 eq.rhs,
+                eq.op.clone(),
                 var,
             ))
         }
@@ -3433,6 +3436,7 @@ fn try_decline_unsound_power_monomial_inequality(
         &mut simplifier.context,
         eq.lhs,
         eq.rhs,
+        eq.op.clone(),
         var,
     ))
 }
@@ -4542,6 +4546,7 @@ fn try_solve_ln_square_inequality(
                         &mut simplifier.context,
                         eq.lhs,
                         eq.rhs,
+                        eq.op.clone(),
                         var,
                     )
                 }),
@@ -4560,6 +4565,7 @@ fn try_solve_ln_square_inequality(
                         &mut simplifier.context,
                         eq.lhs,
                         eq.rhs,
+                        eq.op.clone(),
                         var,
                     ),
                 }
@@ -4599,6 +4605,7 @@ fn try_solve_ln_square_inequality(
             &mut simplifier.context,
             eq.lhs,
             eq.rhs,
+            eq.op.clone(),
             var,
         )
     };
@@ -4974,6 +4981,162 @@ fn solve_trig_equals_plus_minus(
             Some(SolutionSet::Periodic { bases, period })
         }
         _ => union_periodic_families_over_common_period(simplifier, families),
+    }
+}
+
+/// `A·sin/cos(g(x)) ⋚ c` where `|c/A| ≥ 1`: the bounded range of sin/cos
+/// settles the relation exactly — attained boundaries reduce to the periodic
+/// EQUATION (owned by `try_solve_periodic_trig_equation`, multiple-angle
+/// capable), unattainable ones to ∅/ℝ. `|c/A| < 1` returns None (honest
+/// decline: the answer is a periodic union of intervals the SolutionSet
+/// cannot yet represent).
+fn try_solve_trig_weak_boundary_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    // Same shape-preservation gate as the periodic handler, plus the
+    // angle-sum expansion (`sin(x+π/3) → sin·cos + cos·sin`) which would
+    // destroy the shifted-argument match before the range check runs.
+    let mut added: Vec<&'static str> = Vec::new();
+    for rule in MULTIPLE_ANGLE_EXPANSION_RULES
+        .iter()
+        .copied()
+        .chain(std::iter::once("Angle Sum/Diff Identity"))
+    {
+        if !simplifier.is_rule_disabled(rule) {
+            simplifier.disable_rule(rule);
+            added.push(rule);
+        }
+    }
+    let out = try_solve_trig_weak_boundary_inequality_ungated(eq, var, simplifier);
+    for rule in added {
+        simplifier.enable_rule(rule);
+    }
+    out
+}
+
+fn try_solve_trig_weak_boundary_inequality_ungated(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+
+    // Match `A·sin/cos(g)` on one side, a rational constant on the other.
+    let bounded_trig = |ctx: &Context, e: ExprId| -> Option<(BigRational, BuiltinFn, ExprId)> {
+        let (coeff, core) = peel_rational_coefficient(ctx, e);
+        if num_traits::Zero::is_zero(&coeff) {
+            return None;
+        }
+        if let Expr::Function(fn_id, args) = ctx.get(core) {
+            if args.len() == 1 && contains_var(ctx, args[0], var) {
+                if let Some(f) = ctx.builtin_of(*fn_id) {
+                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                        return Some((coeff, f, args[0]));
+                    }
+                }
+            }
+        }
+        None
+    };
+    let (a_coeff, trig_fn, arg, c_expr, op) =
+        if let Some((a, f, g)) = bounded_trig(&simplifier.context, lhs) {
+            if contains_var(&simplifier.context, rhs, var) {
+                return None;
+            }
+            (a, f, g, rhs, eq.op.clone())
+        } else if let Some((a, f, g)) = bounded_trig(&simplifier.context, rhs) {
+            if contains_var(&simplifier.context, lhs, var) {
+                return None;
+            }
+            (a, f, g, lhs, flip_inequality(eq.op.clone()))
+        } else {
+            return None;
+        };
+    let c_val = cas_math::numeric_eval::as_rational_const(&simplifier.context, c_expr)?;
+
+    // Normalize to `trig(g) ⋚' r` (dividing by A flips the operator when A < 0).
+    let r = c_val / &a_coeff;
+    let op = if a_coeff.is_negative() {
+        flip_inequality(op)
+    } else {
+        op
+    };
+    let one = BigRational::one();
+    if r.clone().abs() < one {
+        return None; // interior threshold: needs periodic interval unions — decline
+    }
+
+    // Boundary/exterior: settled by sin/cos ∈ [−1, 1].
+    let boundary_equation = |simplifier: &mut Simplifier, value: i32| -> Option<SolutionSet> {
+        let val = simplifier.context.num(value.into());
+        let trig_call = simplifier.context.call_builtin(trig_fn, vec![arg]);
+        let reduced = Equation {
+            lhs: trig_call,
+            rhs: val,
+            op: RelOp::Eq,
+        };
+        // Full pipeline (not just the periodic handler): a SYMBOLIC shift
+        // (`sin(x+π/3) = 1`) is owned by the shifted-argument handler. The
+        // reduced relation is an EQUATION, so this cannot re-enter the
+        // weak-boundary handler.
+        let (set, _) = crate::solver_entrypoints_solve::solve(&reduced, var, simplifier).ok()?;
+        // An unresolved residual would echo a mutated equation as the answer
+        // to the ORIGINAL inequality — decline instead (honest residual keeps
+        // the true operator).
+        if matches!(set, SolutionSet::Residual(_)) {
+            return None;
+        }
+        Some(set)
+    };
+    match op {
+        RelOp::Geq => {
+            if r == one {
+                boundary_equation(simplifier, 1) // t ≥ 1 ⇔ t = 1
+            } else if r > one {
+                Some(SolutionSet::Empty)
+            } else {
+                Some(SolutionSet::AllReals) // r ≤ −1: always true
+            }
+        }
+        RelOp::Gt => {
+            if r >= one {
+                Some(SolutionSet::Empty) // t > 1 (or more) is unattainable
+            } else if r < -&one {
+                Some(SolutionSet::AllReals)
+            } else {
+                None // r = −1: complement of a periodic family — not representable
+            }
+        }
+        RelOp::Leq => {
+            if r == -&one {
+                boundary_equation(simplifier, -1) // t ≤ −1 ⇔ t = −1
+            } else if r < -&one {
+                Some(SolutionSet::Empty)
+            } else {
+                Some(SolutionSet::AllReals) // r ≥ 1: always true
+            }
+        }
+        RelOp::Lt => {
+            if r <= -&one {
+                Some(SolutionSet::Empty)
+            } else if r > one {
+                Some(SolutionSet::AllReals)
+            } else {
+                None // r = 1: complement — decline
+            }
+        }
+        _ => None,
     }
 }
 
@@ -6290,6 +6453,15 @@ fn solve_local_core_inner(
     // Bare trig equation `sin/cos/tan(x)=c` -> the full periodic family (before the unary-inverse
     // path, which would return only the principal root).
     if let Some(set) = try_solve_periodic_trig_equation(eq, var, simplifier) {
+        return Ok((set, Vec::new()));
+    }
+    // WEAK-BOUNDARY trig inequality `A·sin/cos(g) ⋚ c` with |c/A| ≥ 1: the range
+    // [−1, 1] settles it without interval machinery — `2·sin(x) ≥ 2 ⇔ sin(x) = 1`
+    // (full periodic family via the equation handler), `sin(3x) > 1 → ∅`,
+    // `cos(2x) ≥ −2 → ℝ`. |c/A| < 1 declines honestly (needs the periodic
+    // interval-union representation). Scout cycle-3 backlog #3: the bare form
+    // worked; the coefficient/argument wrappers fell to the mutated-echo residual.
+    if let Some(set) = try_solve_trig_weak_boundary_inequality(eq, var, simplifier) {
         return Ok((set, Vec::new()));
     }
     if equation_is_nonzero_const_over_polynomial(simplifier, eq)

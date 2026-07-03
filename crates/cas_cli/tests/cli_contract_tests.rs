@@ -2705,7 +2705,7 @@ fn test_eval_periodic_trig_inequality_declines() {
         let (ok, result) = run(input);
         assert!(ok, "{input} should be ok=true residual, got {result:?}");
         assert!(
-            result.contains("Solve"),
+            result.contains("solve("),
             "{input} should be a residual, got {result:?}"
         );
     }
@@ -3356,11 +3356,8 @@ fn test_eval_boundary_trig_inequality_is_periodic_point_set_or_residual() {
     assert_eq!(r("solve(cos(x) >= 1, x)"), "{ k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x) <= -1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
     // Complement side -> honest residual (no more wrong ray).
-    assert_eq!(r("solve(cos(x) < 1, x)"), "Solve: solve(cos(x) = 1, x) = 0");
-    assert_eq!(
-        r("solve(sin(x) > -1, x)"),
-        "Solve: solve(sin(x) = -1, x) = 0"
-    );
+    assert_eq!(r("solve(cos(x) < 1, x)"), "solve(cos(x) < 1, x)");
+    assert_eq!(r("solve(sin(x) > -1, x)"), "solve(sin(x) > -1, x)");
     // Range-guard combinations stay exact R / empty.
     assert_eq!(r("solve(sin(x) <= 1, x)"), "All real numbers");
     assert_eq!(r("solve(sin(x) > 1, x)"), "No solution");
@@ -3893,18 +3890,9 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
         "(-infinity, -(2^(5/2))) U (2^(5/2), infinity)"
     );
     // Negative non-integer exponents / reciprocal fractional powers (were complement / pole) — declined.
-    assert_eq!(
-        r("solve(1/x^(1/3) > 2, x)"),
-        "Solve: solve(1 / x^(1 / 3) = 2, x) = 0"
-    );
-    assert_eq!(
-        r("solve(1/x^(1/2) > 2, x)"),
-        "Solve: solve(1 / x^(1 / 2) = 2, x) = 0"
-    );
-    assert_eq!(
-        r("solve(x^(-1/3) > 2, x)"),
-        "Solve: solve(x^(-1 / 3) = 2, x) = 0"
-    );
+    assert_eq!(r("solve(1/x^(1/3) > 2, x)"), "solve(1 / x^(1 / 3) > 2, x)");
+    assert_eq!(r("solve(1/x^(1/2) > 2, x)"), "solve(1 / x^(1 / 2) > 2, x)");
+    assert_eq!(r("solve(x^(-1/3) > 2, x)"), "solve(x^(-1 / 3) > 2, x)");
     // KEEP: strictly-monotonic powers (e > 0, odd numerator) stay solved EXACTLY.
     assert_eq!(r("solve(x^(1/3) > 2, x)"), "(8, infinity)");
     assert_eq!(r("solve(x^(1/2) < 2, x)"), "[0, 4)");
@@ -3946,13 +3934,10 @@ fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
     );
     assert_eq!(r("solve(5 - x^(2/3) > 1, x)"), "(-8, 8)");
     // sqrt FUNCTION reciprocal (negative exponent, pole at the affine root) — declined.
-    assert_eq!(
-        r("solve(1/sqrt(x) > 2, x)"),
-        "Solve: solve(1 / sqrt(x) = 2, x) = 0"
-    );
+    assert_eq!(r("solve(1/sqrt(x) > 2, x)"), "solve(1 / sqrt(x) > 2, x)");
     assert_eq!(
         r("solve(1/sqrt(x-1) > 2, x)"),
-        "Solve: solve(1 / sqrt(x - 1) = 2, x) = 0"
+        "solve(1 / sqrt(x - 1) > 2, x)"
     );
     // KEEP: a shifted/scaled STRICTLY-MONOTONIC power (e > 0, odd numerator) stays solved exactly.
     assert_eq!(r("solve((x-1)^(1/3) > 2, x)"), "(9, infinity)");
@@ -4013,7 +3998,7 @@ fn test_eval_uncombined_like_power_terms_valley_inequality() {
     // A DIFFERENT base (`(x-1)^(2/3)`) is not an `x`-power polynomial, so it stays residual.
     assert_eq!(
         r("solve(x^(2/3) + (x-1)^(2/3) > 8, x)"),
-        "Solve: solve(x - (8 - (x - 1)^(2/3))^(1 / 2/3) = 0, x) = 0"
+        "solve(x - (8 - (x - 1)^(2/3))^(1 / 2/3) = 0, x)"
     );
     // Exact cancellation is empty; the odd-power and integer-power forms stay correct.
     assert_eq!(r("solve(x^(2/3) - x^(2/3) > 0, x)"), "No solution");
@@ -4218,7 +4203,7 @@ fn test_eval_variable_base_log_inequality_declines() {
             "{input} should be ok=true (honest residual), got {result:?}"
         );
         assert!(
-            result.contains("Solve") && !result.contains("undefined"),
+            result.contains("solve(") && !result.contains("undefined"),
             "{input} should be a clean residual, got {result:?}"
         );
     }
@@ -4253,7 +4238,7 @@ fn test_eval_trig_inequality_out_of_range() {
     // Controls: an in-range threshold is now the honest periodic residual (owned by the periodic
     // decline of commit 145ec7a09 — the old `(1/6·pi, infinity)` ray was unsound: sin(x)>1/2 is
     // false at x=pi, which lies in that ray). Equations are unchanged.
-    assert_eq!(r("sin(x)>1/2"), "Solve: solve(sin(x) = 1 / 2, x) = 0");
+    assert_eq!(r("sin(x)>1/2"), "solve(sin(x) > 1 / 2, x)");
     assert_eq!(r("cos(x)=2"), "No solution");
     assert_eq!(
         r("sin(x)=1/3"),
@@ -4472,19 +4457,13 @@ fn test_eval_exponential_polynomial_inequality_back_substitution() {
     // rational helpers (the negative root's sign / ln are not rational), so the mapping declines to
     // the HONEST residual (the boundary equation) instead of leaking the raw u-interval as a wrong
     // x-set. Found by adversarial verification of the rational-root fix.
-    assert_eq!(
-        r("e^(2*x)-e^x-1<0"),
-        "Solve: solve(e^(2·x) - e^x - 1 = 0, x) = 0"
-    );
-    assert_eq!(
-        r("e^(2*x)-e^x-1>0"),
-        "Solve: solve(e^(2·x) - e^x - 1 = 0, x) = 0"
-    );
+    assert_eq!(r("e^(2*x)-e^x-1<0"), "solve(e^(2·x) - e^x - 1 < 0, x)");
+    assert_eq!(r("e^(2*x)-e^x-1>0"), "solve(e^(2·x) - e^x - 1 > 0, x)");
     // A FRACTIONAL base (0 < a < 1) likewise declines to the residual (decreasing inverse + ln-ratio
     // bounds the downstream interval comparison cannot order) rather than leak the u-interval.
     assert_eq!(
         r("(1/2)^(2*x)-3*(1/2)^x+2<0"),
-        "Solve: solve((1/2)^(2·x) + 2 - 3·(1/2)^x = 0, x) = 0"
+        "solve((1/2)^(2·x) + 2 - 3·(1/2)^x < 0, x)"
     );
     // Controls: the equation path still back-substitutes; e^(2x) = -5 has no real solution.
     assert_eq!(r("e^(2*x)-3*e^x+2=0"), "{ ln(2), 0 }");
@@ -5065,7 +5044,7 @@ fn test_eval_reducible_quartic_factor_roots() {
     assert_eq!(r("solve(x^4+x^3-x-1=0, x)"), "{ -1, 1 }"); // (x²-1)(x²+x+1)
     assert_eq!(r("solve(x^4-3*x^2-4=0, x)"), "{ -2, 2 }"); // (x²-4)(x²+1)
                                                            // An IRREDUCIBLE quartic correctly declines (Ferrari deferred) — stays an honest residual.
-    assert!(r("solve(x^4-x-1=0, x)").contains("Solve"));
+    assert!(r("solve(x^4-x-1=0, x)").contains("solve("));
     // The reducible-quartic INEQUALITY now works through the sign-analysis chain.
     assert_eq!(r("x^4-3*x^2-4>0"), "(-infinity, -2) U (2, infinity)");
     // Controls: biquadratics and lower-degree solves are unchanged.
@@ -5181,8 +5160,8 @@ fn test_eval_biquadratic_surd_roots() {
     assert_eq!(r("x^4+3*x^2+2=0"), "No solution");
     // Rational-root biquadratics and general (non-biquadratic) quartics are unchanged.
     assert_eq!(r("x^4-5*x^2+4=0"), "{ -2, -1, 1, 2 }");
-    assert!(r("x^4-x-1=0").contains("Solve")); // general quartic stays a residual (Ferrari deferred)
-                                               // The biquadratic INEQUALITY is now operator-sensitive (biquad solver → Discrete → sign analysis).
+    assert!(r("x^4-x-1=0").contains("solve(")); // general quartic stays a residual (Ferrari deferred)
+                                                // The biquadratic INEQUALITY is now operator-sensitive (biquad solver → Discrete → sign analysis).
     let gt = r("x^4-8*x^2+15>0");
     let lt = r("x^4-8*x^2+15<0");
     assert_ne!(gt, lt, "operator must matter");

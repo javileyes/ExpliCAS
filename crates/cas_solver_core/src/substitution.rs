@@ -426,6 +426,7 @@ fn map_exponential_inequality_solution_to_x<T, E, S, FContextMut, FSolve>(
     target_var: &str,
     residual_lhs: ExprId,
     residual_rhs: ExprId,
+    residual_op: cas_ast::RelOp,
     u_solution: SolutionSet,
     solve_equation: &mut FSolve,
 ) -> Result<SolutionSet, E>
@@ -438,6 +439,7 @@ where
             context_mut(state),
             residual_lhs,
             residual_rhs,
+            residual_op.clone(),
             target_var,
         ));
     }
@@ -468,6 +470,7 @@ where
                 context_mut(state),
                 residual_lhs,
                 residual_rhs,
+                residual_op.clone(),
                 target_var,
             ))
         }
@@ -493,6 +496,7 @@ where
                     context_mut(state),
                     residual_lhs,
                     residual_rhs,
+                    residual_op.clone(),
                     target_var,
                 ))
             }
@@ -512,6 +516,7 @@ where
                     context_mut(state),
                     residual_lhs,
                     residual_rhs,
+                    residual_op.clone(),
                     target_var,
                 ))
             }
@@ -583,6 +588,7 @@ where
     // to the honest residual `solve(lhs = rhs, var)` rather than leak the u-set.
     let residual_lhs = equation_before.lhs;
     let residual_rhs = equation_before.rhs;
+    let residual_op = equation_before.op.clone();
     let intro_execution =
         build_exponential_substitution_execution_with(equation_before, rewrite_plan, |id| {
             render_expr(state, id)
@@ -629,6 +635,7 @@ where
             target_var,
             residual_lhs,
             residual_rhs,
+            residual_op,
             solution_set,
             &mut solve_equation,
         )?,

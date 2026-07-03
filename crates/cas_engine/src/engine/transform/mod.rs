@@ -226,14 +226,31 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     };
                     let expr_str = display.to_string();
 
-                    // Emit warning via tracing
-                    tracing::warn!(
-                        target: "simplify",
-                        depth = self.current_depth,
-                        phase = ?self.current_phase,
-                        expr = %expr_str,
-                        "depth_overflow - returning expression unsimplified"
-                    );
+                    // Emit warning via tracing. WARN once per PROCESS — the
+                    // per-transformer flag alone let a single eval of e.g.
+                    // `(x+tan(x))^3` spam ~130KB of identical warnings across
+                    // its many transformer instances (scout cycle-3 #12);
+                    // subsequent overflows log at debug level.
+                    static DEPTH_OVERFLOW_WARNED_ONCE: std::sync::atomic::AtomicBool =
+                        std::sync::atomic::AtomicBool::new(false);
+                    if !DEPTH_OVERFLOW_WARNED_ONCE.swap(true, std::sync::atomic::Ordering::Relaxed)
+                    {
+                        tracing::warn!(
+                            target: "simplify",
+                            depth = self.current_depth,
+                            phase = ?self.current_phase,
+                            expr = %expr_str,
+                            "depth_overflow - returning expression unsimplified (further occurrences logged at debug)"
+                        );
+                    } else {
+                        tracing::debug!(
+                            target: "simplify",
+                            depth = self.current_depth,
+                            phase = ?self.current_phase,
+                            expr = %expr_str,
+                            "depth_overflow - returning expression unsimplified"
+                        );
+                    }
                 }
             }
 

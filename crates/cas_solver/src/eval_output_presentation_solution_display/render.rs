@@ -44,7 +44,18 @@ pub(crate) fn format_output_solution_set(ctx: &Context, solution_set: &SolutionS
                     id: *expr
                 }
             );
-            format!("Solve: {expr_str} = 0")
+            // Scout cycle-3 honesty contract: a residual that is itself a
+            // `solve(...)` call is self-describing — it already carries the
+            // full relation (operator included), matching the
+            // `integrate(...)` residual convention. The old "Solve: … = 0"
+            // wrapper both duplicated the framing and appended a dangling
+            // "= 0" that misdescribed inequalities.
+            if matches!(ctx.get(*expr), cas_ast::Expr::Function(name, _) if ctx.sym_name(*name) == "solve")
+            {
+                expr_str
+            } else {
+                format!("Solve: {expr_str} = 0")
+            }
         }
         SolutionSet::Periodic { bases, period } => {
             cas_formatter::display_periodic_family(ctx, bases, *period)

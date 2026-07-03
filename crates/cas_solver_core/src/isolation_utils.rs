@@ -2,12 +2,27 @@ use crate::solution_set::{intersect_solution_sets, union_solution_sets};
 use cas_ast::{Context, Expr, ExprId, RelOp, SolutionSet};
 use std::cmp::Ordering;
 
-/// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
-/// Used when solver can't justify a step but wants graceful degradation.
-pub(crate) fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
-    let eq_expr = cas_ast::eq::wrap_eq(ctx, lhs, rhs);
+/// Create a residual solve expression: solve(lhs ⟨op⟩ rhs, var).
+/// Used when the solver can't justify a step but wants graceful degradation.
+/// The ORIGINAL relational operator is preserved (scout cycle-3 honesty
+/// contract: `solve(sin(x) > 1/2)` must not echo back as `sin(x) = 1/2`);
+/// equations keep the canonical `__eq__` wrapper, inequalities lower to the
+/// symbolic-comparison builtins (`Less`, `GreaterEqual`, …) the formatter
+/// renders as `a < b`.
+pub(crate) fn mk_residual_solve(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> ExprId {
+    let rel_expr = if matches!(op, RelOp::Eq) {
+        cas_ast::eq::wrap_eq(ctx, lhs, rhs)
+    } else {
+        ctx.call(op.builtin_name(), vec![lhs, rhs])
+    };
     let var_expr = ctx.var(var);
-    ctx.call("solve", vec![eq_expr, var_expr])
+    ctx.call("solve", vec![rel_expr, var_expr])
 }
 
 /// Check whether an expression contains a specific named variable.
