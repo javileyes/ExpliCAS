@@ -73,9 +73,13 @@ fn zero_threshold_reduces_to_the_sign_of_the_trig() {
 }
 
 #[test]
-fn cot_shape_and_affine_argument() {
-    // 1/tan(x) > 1 ⟺ 0 < tan(x) < 1 (the cot refold matches too).
-    assert_eq!(solve("1/tan(x)>1"), "{ (k·pi, 1/4·pi + k·pi) : k ∈ ℤ }");
+fn cot_shape_declines_and_affine_argument_solves() {
+    // `1/tan(x)` refolds to cot(x), which is DEFINED at tan's poles
+    // (cot(π/2) = 0) — the naive 1/tan reduction silently loses those points
+    // from any set that should contain cot = 0 (final-audit finding), so cot
+    // shapes DECLINE honestly until they get their own window table.
+    assert_eq!(solve("1/tan(x)>1"), "solve(1 / tan(x) > 1, x)");
+    assert_eq!(solve("cos(x)/sin(x)<=1"), "solve(cos(x) / sin(x) <= 1, x)");
     // Affine argument halves the period through the sub-solves.
     assert_eq!(
         solve("1/sin(2*x)>2"),
@@ -90,6 +94,18 @@ fn negative_coefficient_flips_before_the_case_split() {
         solve("-1/sin(x)>2"),
         "{ (-1/6·pi + k·2·pi, k·2·pi), (pi + k·2·pi, 7/6·pi + k·2·pi) : k ∈ ℤ }"
     );
+}
+
+#[test]
+fn irrational_argument_coefficients_decline_instead_of_asserting_singletons() {
+    // Final-audit finding: the equation path drops periodicity for
+    // irrational argument coefficients (solve(sin(pi*x)=1) -> { 1/2 },
+    // losing { 1/2 + 2k }); the boundary reduction must NOT inherit that as
+    // the complete answer to the inequality — a finite Discrete set from a
+    // trig boundary equation is always incomplete, so these decline.
+    assert_eq!(solve("sin(pi*x)>=1"), "solve(sin(pi·x) >= 1, x)");
+    assert_eq!(solve("cos(pi*x)<=-1"), "solve(cos(pi·x) <= -1, x)");
+    assert_eq!(solve("cos(2*pi*x)>=1"), "solve(cos(2·pi·x) >= 1, x)");
 }
 
 #[test]

@@ -5171,8 +5171,14 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
         let (set, _) = crate::solver_entrypoints_solve::solve(&reduced, var, simplifier).ok()?;
         // An unresolved residual would echo a mutated equation as the answer
         // to the ORIGINAL inequality — decline instead (honest residual keeps
-        // the true operator).
-        if matches!(set, SolutionSet::Residual(_)) {
+        // the true operator). A FINITE Discrete set is declined too: a trig
+        // boundary equation over an argument containing the variable always
+        // has an infinite (periodic) solution family when it has any, so a
+        // finite set means the equation path dropped periodicity (the
+        // irrational-coefficient family: sin(π·x) = 1 → { 1/2 } loses
+        // { 1/2 + 2k } — final-audit finding) and must not be asserted as
+        // the complete answer to the inequality.
+        if matches!(set, SolutionSet::Residual(_) | SolutionSet::Discrete(_)) {
             return None;
         }
         Some(set)
@@ -5437,10 +5443,14 @@ fn try_solve_reciprocal_trig_inequality(
         if let Expr::Function(fn_id, args) = ctx_.get(core) {
             if args.len() == 1 && contains_var(ctx_, args[0], var) {
                 if let Some(f) = ctx_.builtin_of(*fn_id) {
+                    // NOT Cot: `cot(g)` is DEFINED at tan's poles
+                    // (cot(π/2) = 0), so the `1/tan` reduction silently
+                    // loses exactly those points from any set that should
+                    // contain cot = 0 (final-audit finding: cot(x) >= 0 came
+                    // back open at π/2+kπ). cot needs its own window table.
                     let base = match f {
                         BuiltinFn::Csc => Some(BuiltinFn::Sin),
                         BuiltinFn::Sec => Some(BuiltinFn::Cos),
-                        BuiltinFn::Cot => Some(BuiltinFn::Tan),
                         _ => None,
                     };
                     if let Some(bf) = base {
