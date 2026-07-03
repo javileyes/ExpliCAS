@@ -37,25 +37,38 @@ fn solve(input: &str) -> String {
 
 #[test]
 fn residual_preserves_strict_greater() {
-    // P2 recontract: sin/cos interior thresholds now SOLVE (PeriodicIntervalUnion);
-    // tan still declines until its P3 sibling handler and carries the pin.
-    assert_eq!(solve("solve(tan(x)>1/2, x)"), "solve(tan(x) > 1 / 2, x)");
+    // P3 recontract: sin/cos/tan interior thresholds all SOLVE now
+    // (PeriodicIntervalUnion); the operator-preservation pin migrates to a
+    // STABLE decliner (non-affine trig argument).
+    assert_eq!(
+        solve("solve(sin(x^2)>1/2, x)"),
+        "solve(sin(x^2) > 1 / 2, x)"
+    );
 }
 
 #[test]
 fn residual_preserves_strict_less() {
-    assert_eq!(solve("solve(tan(x)<1/2, x)"), "solve(tan(x) < 1 / 2, x)");
+    assert_eq!(
+        solve("solve(sin(x^2)<1/2, x)"),
+        "solve(sin(x^2) < 1 / 2, x)"
+    );
 }
 
 #[test]
 fn residual_preserves_nonstrict_operators() {
-    assert_eq!(solve("solve(tan(x)>=1/2, x)"), "solve(tan(x) >= 1 / 2, x)");
-    assert_eq!(solve("solve(tan(x)<=2, x)"), "solve(tan(x) <= 2, x)");
+    assert_eq!(
+        solve("solve(sin(x^2)>=1/2, x)"),
+        "solve(sin(x^2) >= 1 / 2, x)"
+    );
+    assert_eq!(
+        solve("solve(1/sqrt(x)<=2, x)"),
+        "solve(1 / sqrt(x) <= 2, x)"
+    );
 }
 
 #[test]
 fn residual_latex_is_self_describing_without_dangling_zero() {
-    let wire = eval_wire("solve(tan(x)>1/2, x)");
+    let wire = eval_wire("solve(sin(x^2)>1/2, x)");
     let latex = wire["result_latex"].as_str().unwrap_or("");
     assert!(
         latex.contains(">") && !latex.contains("= 0") && !latex.contains("Solve:"),
@@ -139,5 +152,9 @@ fn interior_thresholds_now_solve_or_decline_honestly() {
         solve("solve(cos(2*x)>0, x)"),
         "{ (-1/4·pi + k·pi, 1/4·pi + k·pi) : k ∈ ℤ }"
     );
-    assert_eq!(solve("solve(tan(x)>=1, x)"), "solve(tan(x) >= 1, x)");
+    // P3: tan solves too (asymptote end always open).
+    assert_eq!(
+        solve("solve(tan(x)>=1, x)"),
+        "{ [1/4·pi + k·pi, 1/2·pi + k·pi) : k ∈ ℤ }"
+    );
 }

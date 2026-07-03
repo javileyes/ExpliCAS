@@ -2702,7 +2702,7 @@ fn test_eval_periodic_trig_inequality_declines() {
             "sin(x)>1/2",
             "{ (1/6·pi + k·2·pi, 5/6·pi + k·2·pi) : k ∈ ℤ }",
         ),
-        ("tan(x)>1", "solve(tan(x) > 1, x)"),
+        ("tan(x)>1", "{ (1/4·pi + k·pi, 1/2·pi + k·pi) : k ∈ ℤ }"),
         ("sin(2*x)>0", "{ (k·pi, 1/2·pi + k·pi) : k ∈ ℤ }"),
         (
             "cos(x)>=1/2",
@@ -3360,8 +3360,14 @@ fn test_eval_boundary_trig_inequality_is_periodic_point_set_or_residual() {
     assert_eq!(r("solve(cos(x) >= 1, x)"), "{ k·2·pi : k ∈ ℤ }");
     assert_eq!(r("solve(cos(x) <= -1, x)"), "{ pi + k·2·pi : k ∈ ℤ }");
     // Complement side -> honest residual (no more wrong ray).
-    assert_eq!(r("solve(cos(x) < 1, x)"), "solve(cos(x) < 1, x)");
-    assert_eq!(r("solve(sin(x) > -1, x)"), "solve(sin(x) > -1, x)");
+    assert_eq!(
+        r("solve(cos(x) < 1, x)"),
+        "{ (k·2·pi, 2·pi + k·2·pi) : k ∈ ℤ }"
+    );
+    assert_eq!(
+        r("solve(sin(x) > -1, x)"),
+        "{ (-1/2·pi + k·2·pi, 3/2·pi + k·2·pi) : k ∈ ℤ }"
+    );
     // Range-guard combinations stay exact R / empty.
     assert_eq!(r("solve(sin(x) <= 1, x)"), "All real numbers");
     assert_eq!(r("solve(sin(x) > 1, x)"), "No solution");

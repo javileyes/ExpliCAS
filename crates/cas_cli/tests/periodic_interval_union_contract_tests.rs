@@ -148,8 +148,11 @@ fn reversed_orientation_produces_the_same_window() {
 fn out_of_scope_shapes_still_decline_or_solve_exactly() {
     // Non-affine argument: the window table must NOT fire.
     assert_eq!(solve("sin(x^2)>1/2"), "solve(sin(x^2) > 1 / 2, x)");
-    // tan is a P3 sibling (unbounded range — no |r| ladder applies).
-    assert_eq!(solve("tan(x)>1"), "solve(tan(x) > 1, x)");
+    // tan solves via its P3 sibling branch (asymptote end always open).
+    assert_eq!(
+        solve("tan(x)>1"),
+        "{ (1/4·pi + k·pi, 1/2·pi + k·pi) : k ∈ ℤ }"
+    );
     // Boundary and equation paths are untouched.
     assert_eq!(solve("sin(x)>=1"), "{ 1/2·pi + k·2·pi : k ∈ ℤ }");
     assert_eq!(

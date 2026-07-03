@@ -5058,7 +5058,7 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
         if let Expr::Function(fn_id, args) = ctx.get(core) {
             if args.len() == 1 && contains_var(ctx, args[0], var) {
                 if let Some(f) = ctx.builtin_of(*fn_id) {
-                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
                         return Some((coeff, f, args[0]));
                     }
                 }
@@ -5070,48 +5070,52 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
     // `A·trig(g) + d ⋚ c` matches as the core `A·trig(g)` with the constant
     // `d` moved to the other side (`r = (c − d)/A`). Without this the shape
     // `3·cos(x) + 1 ≥ 4` never reached this handler at all (design §5.2).
-    let peel_additive = |ctx: &Context, e: ExprId| -> Option<(BigRational, ExprId)> {
-        let view = cas_math::expr_nary::AddView::from_expr(ctx, e);
-        if view.terms.len() < 2 {
-            return Some((BigRational::from_integer(0.into()), e));
-        }
-        let mut d = BigRational::from_integer(0.into());
-        let mut core: Option<(ExprId, cas_math::expr_nary::Sign)> = None;
-        for (term, sign) in view.terms.iter() {
-            if let Some(n) = cas_math::numeric_eval::as_rational_const(ctx, *term) {
-                match sign {
-                    cas_math::expr_nary::Sign::Pos => d += n,
-                    cas_math::expr_nary::Sign::Neg => d -= n,
-                }
-            } else if core.is_none() {
-                core = Some((*term, *sign));
-            } else {
-                return None; // more than one non-constant term
+    let peel_additive =
+        |ctx: &Context, e: ExprId| -> Option<(BigRational, ExprId, cas_math::expr_nary::Sign)> {
+            let view = cas_math::expr_nary::AddView::from_expr(ctx, e);
+            if view.terms.len() < 2 {
+                return Some((
+                    BigRational::from_integer(0.into()),
+                    e,
+                    cas_math::expr_nary::Sign::Pos,
+                ));
             }
-        }
-        let (core_expr, core_sign) = core?;
-        // A Neg-signed core would need an interned Neg wrapper to fold the
-        // sign into the coefficient, and this closure has no &mut Context —
-        // reject conservatively (the simplifier usually normalizes
-        // `d − A·trig` into `−A·trig + d` with the sign inside the
-        // coefficient before we get here).
-        match core_sign {
-            cas_math::expr_nary::Sign::Pos => Some((d, core_expr)),
-            cas_math::expr_nary::Sign::Neg => None,
-        }
-    };
+            let mut d = BigRational::from_integer(0.into());
+            let mut core: Option<(ExprId, cas_math::expr_nary::Sign)> = None;
+            for (term, sign) in view.terms.iter() {
+                if let Some(n) = cas_math::numeric_eval::as_rational_const(ctx, *term) {
+                    match sign {
+                        cas_math::expr_nary::Sign::Pos => d += n,
+                        cas_math::expr_nary::Sign::Neg => d -= n,
+                    }
+                } else if core.is_none() {
+                    core = Some((*term, *sign));
+                } else {
+                    return None; // more than one non-constant term
+                }
+            }
+            let (core_expr, core_sign) = core?;
+            Some((d, core_expr, core_sign))
+        };
     let match_side = |ctx: &Context,
                       e: ExprId|
      -> Option<(BigRational, cas_ast::BuiltinFn, ExprId, BigRational)> {
-        // Try the bare shape first, then the additive-peeled core.
+        // Try the bare shape first, then the additive-peeled core. A
+        // Neg-signed core folds its sign into the coefficient (no interning
+        // needed): `1 − 2·cos(x)` peels to d=1, core=2·cos(x), sign=Neg ⇒
+        // A = −2.
         if let Some((a, f, g)) = bounded_trig(ctx, e) {
             return Some((a, f, g, BigRational::from_integer(0.into())));
         }
-        let (d, core) = peel_additive(ctx, e)?;
+        let (d, core, core_sign) = peel_additive(ctx, e)?;
         if num_traits::Zero::is_zero(&d) {
             return None; // nothing peeled — bare match already failed
         }
         let (a, f, g) = bounded_trig(ctx, core)?;
+        let a = match core_sign {
+            cas_math::expr_nary::Sign::Pos => a,
+            cas_math::expr_nary::Sign::Neg => -a,
+        };
         Some((a, f, g, d))
     };
     let (a_coeff, trig_fn, arg, c_expr, d_shift, op) =
@@ -5137,6 +5141,13 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
     } else {
         op
     };
+    // tan branches BEFORE the |r| ladder (design §5, panel-mandated): its
+    // range is ℝ, so no threshold is exterior or weak — the window table
+    // applies to EVERY rational r (`tan(x) ≥ 2` must never hit the
+    // `r > 1 → Empty` arm below, which encodes sin/cos range semantics).
+    if matches!(trig_fn, BuiltinFn::Tan) {
+        return try_emit_trig_interior_interval_union(simplifier, trig_fn, arg, &r, &op, var);
+    }
     let one = BigRational::one();
     if r.clone().abs() < one {
         // Interior threshold |r| < 1: the exact answer is a periodic union
@@ -5182,7 +5193,10 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
             } else if r < -&one {
                 Some(SolutionSet::AllReals)
             } else {
-                None // r = −1: complement of a periodic family — not representable
+                // r = −1: the complement ℝ ∖ {touch points} — the table with
+                // r = −1 yields exactly the punctured line (len == period,
+                // both ends open): sin u > −1 → (−π/2, 3π/2).
+                try_emit_trig_interior_interval_union(simplifier, trig_fn, arg, &r, &op, var)
             }
         }
         RelOp::Leq => {
@@ -5200,7 +5214,9 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
             } else if r > one {
                 Some(SolutionSet::AllReals)
             } else {
-                None // r = 1: complement — decline
+                // r = 1: complement — punctured line via the table
+                // (sin u < 1 → (π/2, 5π/2); cos u < 1 → (0, 2π)).
+                try_emit_trig_interior_interval_union(simplifier, trig_fn, arg, &r, &op, var)
             }
         }
         _ => None,
@@ -5234,7 +5250,8 @@ fn try_emit_trig_interior_interval_union(
     let inv_name = match trig_fn {
         BuiltinFn::Sin => "arcsin",
         BuiltinFn::Cos => "arccos",
-        _ => return None, // tan is a P3 sibling handler (unbounded range)
+        BuiltinFn::Tan => "arctan",
+        _ => return None,
     };
     let inv_call = simplifier.context.call(inv_name, vec![r_expr]);
     let inv = simplifier.simplify(inv_call).0;
@@ -5259,35 +5276,52 @@ fn try_emit_trig_interior_interval_union(
         simplifier.simplify(e).0
     };
 
-    // Analytic u-window (design §5 table). Closedness: strict ops open both
-    // ends; non-strict close both (sin/cos windows never touch an asymptote).
+    // Analytic u-window (design §5 table). Closedness is PER ENDPOINT:
+    // strict ops open both ends; non-strict close both for sin/cos (their
+    // windows never touch an asymptote) but tan's asymptote end stays Open
+    // ALWAYS (`tan u ≥ r` → [arctan r, π/2)).
     let closed = matches!(op, RelOp::Geq | RelOp::Leq);
     let bt = if closed {
         BoundType::Closed
     } else {
         BoundType::Open
     };
-    let (u_lo, u_hi) = match (trig_fn, op) {
+    let (u_lo, u_lo_type, u_hi, u_hi_type) = match (trig_fn, op) {
         // sin u > r on (arcsin r, π − arcsin r)
         (BuiltinFn::Sin, RelOp::Gt | RelOp::Geq) => {
             let hi = simp_sub(simplifier, pi, inv);
-            (inv, hi)
+            (inv, bt.clone(), hi, bt)
         }
         // sin u < r on (π − arcsin r, 2π + arcsin r)
         (BuiltinFn::Sin, RelOp::Lt | RelOp::Leq) => {
             let lo = simp_sub(simplifier, pi, inv);
             let hi = simp_add(simplifier, two_pi, inv);
-            (lo, hi)
+            (lo, bt.clone(), hi, bt)
         }
         // cos u > r on (−arccos r, arccos r)
         (BuiltinFn::Cos, RelOp::Gt | RelOp::Geq) => {
             let lo = simp_neg(simplifier, inv);
-            (lo, inv)
+            (lo, bt.clone(), inv, bt)
         }
         // cos u < r on (arccos r, 2π − arccos r)
         (BuiltinFn::Cos, RelOp::Lt | RelOp::Leq) => {
             let hi = simp_sub(simplifier, two_pi, inv);
-            (inv, hi)
+            (inv, bt.clone(), hi, bt)
+        }
+        // tan u > r on (arctan r, π/2) — the asymptote end is Open ALWAYS.
+        (BuiltinFn::Tan, RelOp::Gt | RelOp::Geq) => {
+            let two_e = simplifier.context.num(2);
+            let half_pi_raw = simplifier.context.add(Expr::Div(pi, two_e));
+            let half_pi = simplifier.simplify(half_pi_raw).0;
+            (inv, bt, half_pi, BoundType::Open)
+        }
+        // tan u < r on (−π/2, arctan r)
+        (BuiltinFn::Tan, RelOp::Lt | RelOp::Leq) => {
+            let two_e = simplifier.context.num(2);
+            let half_pi_raw = simplifier.context.add(Expr::Div(pi, two_e));
+            let half_pi = simplifier.simplify(half_pi_raw).0;
+            let neg_half = simp_neg(simplifier, half_pi);
+            (neg_half, BoundType::Open, inv, bt)
         }
         _ => return None,
     };
@@ -5304,21 +5338,27 @@ fn try_emit_trig_interior_interval_union(
     };
     let x_lo_raw = map_endpoint(simplifier, u_lo);
     let x_hi_raw = map_endpoint(simplifier, u_hi);
-    let (x_lo, x_hi) = if num_traits::Signed::is_negative(&a) {
-        (x_hi_raw, x_lo_raw)
+    let (x_lo, x_lo_type, x_hi, x_hi_type) = if num_traits::Signed::is_negative(&a) {
+        // Endpoints swap as (value, BoundType) PAIRS under a decreasing map.
+        (x_hi_raw, u_hi_type, x_lo_raw, u_lo_type)
     } else {
-        (x_lo_raw, x_hi_raw)
+        (x_lo_raw, u_lo_type, x_hi_raw, u_hi_type)
     };
     let abs_a = num_traits::Signed::abs(&a);
     let abs_a_expr = rational_to_expr(&mut simplifier.context, &abs_a);
-    let period_raw = simplifier.context.add(Expr::Div(two_pi, abs_a_expr));
+    let period_u = if matches!(trig_fn, BuiltinFn::Tan) {
+        pi
+    } else {
+        two_pi
+    };
+    let period_raw = simplifier.context.add(Expr::Div(period_u, abs_a_expr));
     let period = simplifier.simplify(period_raw).0;
 
     let window = Interval {
         min: x_lo,
-        min_type: bt.clone(),
+        min_type: x_lo_type,
         max: x_hi,
-        max_type: bt,
+        max_type: x_hi_type,
     };
 
     // Numeric emission airbag (design §5, panel-amended semantics): sample
@@ -5388,6 +5428,7 @@ fn interior_window_samples_consistent(
         match trig_fn {
             cas_ast::BuiltinFn::Sin => u.sin(),
             cas_ast::BuiltinFn::Cos => u.cos(),
+            cas_ast::BuiltinFn::Tan => u.tan(),
             _ => f64::NAN,
         }
     };
@@ -5417,9 +5458,19 @@ fn interior_window_samples_consistent(
             return false; // inside sample refutes the window
         }
     }
-    for outside in [lo - width * 0.125, hi + width * 0.125] {
-        if satisfies(outside) == Some(true) {
-            return false; // outside sample lands in the claimed complement
+    // Punctured-line windows (len == period, |r| = 1) have a measure-zero
+    // complement: any "outside" sample wraps into the set one period over
+    // and would falsely refute. Skip the outside probes for them.
+    let period_u = if matches!(trig_fn, cas_ast::BuiltinFn::Tan) {
+        std::f64::consts::PI
+    } else {
+        2.0 * std::f64::consts::PI
+    };
+    if (width - period_u).abs() > 1e-9 {
+        for outside in [lo - width * 0.125, hi + width * 0.125] {
+            if satisfies(outside) == Some(true) {
+                return false; // outside sample lands in the claimed complement
+            }
         }
     }
     true

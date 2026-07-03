@@ -43,7 +43,10 @@ fn reversed_interior_thresholds_solve_or_decline_instead_of_wrong_rays() {
         solve("1/2<sin(x)"),
         "{ (1/6·pi + k·2·pi, 5/6·pi + k·2·pi) : k ∈ ℤ }"
     );
-    assert_eq!(solve("2<tan(x)"), "solve(tan(x) > 2, x)");
+    assert_eq!(
+        solve("2<tan(x)"),
+        "{ (arctan(2) + k·pi, 1/2·pi + k·pi) : k ∈ ℤ }"
+    );
     assert_eq!(
         solve("1/3<cos(x)"),
         "{ (-arccos(1/3) + k·2·pi, arccos(1/3) + k·2·pi) : k ∈ ℤ }"
@@ -51,10 +54,17 @@ fn reversed_interior_thresholds_solve_or_decline_instead_of_wrong_rays() {
 }
 
 #[test]
-fn reversed_boundary_complement_declines_instead_of_wrong_ray() {
+fn reversed_boundary_complement_solves_instead_of_wrong_ray() {
     // `1 > sin(x)` fell through the LHS-only boundary handler to `(−∞, π/2)`.
-    assert_eq!(solve("1>sin(x)"), "solve(sin(x) < 1, x)");
-    assert_eq!(solve("-1<sin(x)"), "solve(sin(x) > -1, x)");
+    // Since P3 the complement is the exact punctured line.
+    assert_eq!(
+        solve("1>sin(x)"),
+        "{ (1/2·pi + k·2·pi, 5/2·pi + k·2·pi) : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve("-1<sin(x)"),
+        "{ (-1/2·pi + k·2·pi, 3/2·pi + k·2·pi) : k ∈ ℤ }"
+    );
 }
 
 #[test]
@@ -63,6 +73,7 @@ fn orientation_pairs_agree_on_interior_declines() {
     assert_pair("1/2>=cos(2*x)", "cos(2*x)<=1/2");
     assert_pair("3<tan(x)", "tan(x)>3");
     assert_pair("0<sin(2*x)", "sin(2*x)>0");
+    assert_pair("sin(x^2)>1/2", "1/2<sin(x^2)");
 }
 
 #[test]
