@@ -3449,7 +3449,11 @@ fn try_solve_two_different_base_exponential_equation(
     var: &str,
 ) -> Option<SolutionSet> {
     use num_traits::Signed;
-    if eq.op != cas_ast::RelOp::Eq {
+    let is_inequality = matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    );
+    if eq.op != cas_ast::RelOp::Eq && !is_inequality {
         return None;
     }
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
@@ -3462,6 +3466,30 @@ fn try_solve_two_different_base_exponential_equation(
     let (n, b) = terms[1].clone();
     if m == n || num_traits::Zero::is_zero(&a) || num_traits::Zero::is_zero(&b) {
         return None;
+    }
+    if is_inequality {
+        // Scout family B: `A·M^x + B·N^x ⋚ 0` used to fall through to the
+        // boundary-equation path, which asserted the ROOT as the solution set
+        // (`2^x > 3^x → {0}`, where `>` is false). Divide by `N^x > 0` — the
+        // operator is preserved — and hand the single-atom relation
+        // `A·(M/N)^x + B ⋚ 0` to the single-exponential path, which handles
+        // every base (including 0 < M/N < 1 flips) and threshold correctly.
+        let t = m / &n;
+        let t_expr = simplifier.context.add(Expr::Number(t));
+        let x_expr = simplifier.context.var(var);
+        let atom = simplifier.context.add(Expr::Pow(t_expr, x_expr));
+        let a_expr = simplifier.context.add(Expr::Number(a));
+        let b_expr = simplifier.context.add(Expr::Number(b));
+        let scaled = simplifier.context.add(Expr::Mul(a_expr, atom));
+        let lhs = simplifier.context.add(Expr::Add(scaled, b_expr));
+        let zero = simplifier.context.num(0);
+        let reduced = Equation {
+            lhs,
+            rhs: zero,
+            op: eq.op.clone(),
+        };
+        let (set, _) = crate::solver_entrypoints_solve::solve(&reduced, var, simplifier).ok()?;
+        return Some(set);
     }
     // `(M/N)^x = −B/A`; the LHS is strictly positive, so a non-positive ratio has no real solution.
     let ratio = -b / &a;
@@ -4150,6 +4178,143 @@ fn solve_concrete_side(
 /// and the `c <= 0` degenerate cases resolve by sign (`|g| >= 0` always). Declines
 /// (-> the existing abs/isolation paths) for a sum of abs, a non-constant RHS, a
 /// symbolic `c`, or a `g` whose polynomial-inequality solve is not concrete.
+/// `A/|g(x)| ⋚ c` (A a nonzero rational constant, c constant): rewrite to the
+/// exact twin `|A/g| ⋚ c` (A > 0; the A < 0 case negates and flips), which the
+/// abs-threshold handler solves with correct pole puncturing — `1/|x| > 2` →
+/// `(−1/2, 0) ∪ (0, 1/2)`, `1/|x| > 0` → `ℝ \ {0}`.
+fn try_solve_reciprocal_abs_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Signed;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // Match `A / abs(g)` on one side (after simplify), constant on the other.
+    let recip_abs = |ctx_: &Context, e: ExprId| -> Option<(num_rational::BigRational, ExprId)> {
+        let (coeff, core) = peel_rational_coefficient(ctx_, e);
+        if num_traits::Zero::is_zero(&coeff) {
+            return None;
+        }
+        // `coeff · abs(g)^(−1)` (the canonical reciprocal shape) …
+        if let Expr::Pow(base, exp) = ctx_.get(core) {
+            let (base, exp) = (*base, *exp);
+            let minus_one = num_rational::BigRational::from_integer((-1).into());
+            if cas_math::numeric_eval::as_rational_const(ctx_, exp) == Some(minus_one) {
+                if let Some(g) = match_abs_argument(ctx_, base) {
+                    return Some((coeff, g));
+                }
+            }
+        }
+        // … or a literal `A / abs(g)` division.
+        if let Expr::Div(num, den) = ctx_.get(core) {
+            let (num, den) = (*num, *den);
+            let a = cas_math::numeric_eval::as_rational_const(ctx_, num)?;
+            if let Some(g) = match_abs_argument(ctx_, den) {
+                return Some((coeff * a, g));
+            }
+        }
+        None
+    };
+
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+    let (a_coeff, g, c_expr, op) = if let Some((a, g)) = recip_abs(&simplifier.context, lhs) {
+        if contains_var(&simplifier.context, rhs, var) {
+            return None;
+        }
+        (a, g, rhs, eq.op.clone())
+    } else if let Some((a, g)) = recip_abs(&simplifier.context, rhs) {
+        if contains_var(&simplifier.context, lhs, var) {
+            return None;
+        }
+        (a, g, lhs, flip_inequality(eq.op.clone()))
+    } else {
+        return None;
+    };
+    if !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+
+    // A < 0: A/|g| = −(|A|/|g|); negate both sides (flips the operator).
+    let (abs_a, op, c_expr) = if a_coeff.is_negative() {
+        let neg_c = simplifier.context.add(Expr::Neg(c_expr));
+        let (neg_c, _) = simplifier.simplify(neg_c);
+        (-a_coeff, flip_inequality(op), neg_c)
+    } else {
+        (a_coeff, op, c_expr)
+    };
+
+    let a_expr = simplifier.context.add(Expr::Number(abs_a));
+    let inner = simplifier.context.add(Expr::Div(a_expr, g));
+
+    // c ≤ 0: the sign settles it (|A/g| > 0 wherever defined). Delegate to the
+    // abs-threshold sign shortcut, which handles these without touching the
+    // inner rational (verified: `1/|x| > 0` → ℝ∖{0}, `1/|x| > −1` → ℝ∖{0}).
+    let c_val = cas_math::numeric_eval::as_rational_const(&simplifier.context, c_expr)?;
+    if !c_val.is_positive() {
+        let abs_call = simplifier.context.call("abs", vec![inner]);
+        let reduced = Equation {
+            lhs: abs_call,
+            rhs: c_expr,
+            op,
+        };
+        return try_solve_abs_threshold_inequality(&reduced, var, simplifier, opts, ctx);
+    }
+
+    // c > 0: solve the two rational relations on h = A/g DIRECTLY — the
+    // const-over-g path punctures poles correctly (`2/x > 4` → (0, 1/2)).
+    // (Routing through the abs-threshold instead re-normalizes `|A/g|` back to
+    // `A/|g|` and falls into the pole-less path this handler exists to fix.)
+    let neg_c = simplifier.context.add(Expr::Neg(c_expr));
+    let (neg_c, _) = simplifier.simplify(neg_c);
+    let mut solve_rel = |lhs: ExprId, rhs: ExprId, op: RelOp| -> Option<SolutionSet> {
+        let rel = Equation { lhs, rhs, op };
+        crate::solver_entrypoints_solve::solve(&rel, var, simplifier)
+            .ok()
+            .map(|(set, _)| set)
+    };
+    match op {
+        RelOp::Gt | RelOp::Geq => {
+            // |h| ⋛ c ⇔ h ⋛ c ∪ h ⋚ −c
+            let (lo, hi) = if matches!(op, RelOp::Gt) {
+                (RelOp::Lt, RelOp::Gt)
+            } else {
+                (RelOp::Leq, RelOp::Geq)
+            };
+            let upper = solve_rel(inner, c_expr, hi)?;
+            let lower = solve_rel(inner, neg_c, lo)?;
+            Some(cas_solver_core::solution_set::union_solution_sets(
+                &simplifier.context,
+                upper,
+                lower,
+            ))
+        }
+        RelOp::Lt | RelOp::Leq => {
+            // |h| ⋚ c ⇔ h ⋚ c ∩ h ⋛ −c
+            let (lo, hi) = if matches!(op, RelOp::Lt) {
+                (RelOp::Gt, RelOp::Lt)
+            } else {
+                (RelOp::Geq, RelOp::Leq)
+            };
+            let upper = solve_rel(inner, c_expr, hi)?;
+            let lower = solve_rel(inner, neg_c, lo)?;
+            Some(cas_solver_core::solution_set::intersect_solution_sets(
+                &simplifier.context,
+                upper,
+                lower,
+            ))
+        }
+        _ => None,
+    }
+}
+
 fn try_solve_abs_threshold_inequality(
     eq: &Equation,
     var: &str,
@@ -6161,6 +6326,14 @@ fn solve_local_core_inner(
     // A SUM of ≥2 sign forms `Σ cᵢ·sign(gᵢ) {op} k` (`(x+1)/|x+1| + (x-1)/|x-1| > 0`) is a step function;
     // partition ℝ at the `gᵢ = 0` poles and test each region. The single-sign handler below keeps the
     // `n = 1` case (this requires ≥ 2 sign terms).
+    // Scout family C: `A/|g| ⋚ c` — the generic inversion lost the `g = 0`
+    // pole (`1/|x| > 2 → (−1/2, 1/2)` including 0) and the c = 0 branch emitted
+    // degenerate `(−∞,−∞)` endpoints. `A/|g| = |A/g|` exactly (for A > 0), and
+    // the abs-threshold path over a RATIONAL inner argument already punctures
+    // poles correctly — rewrite into that twin shape and recurse.
+    if let Some(set) = try_solve_reciprocal_abs_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
+    }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }

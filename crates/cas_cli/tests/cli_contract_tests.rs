@@ -2653,18 +2653,20 @@ fn test_eval_reciprocal_positive_function_inequality_flips() {
             .unwrap_or_default();
         (wire["result"].as_str().unwrap_or("").to_string(), conds)
     };
-    // 1/abs(x) > 2 ⟺ abs(x) < 1/2 ⟺ (-1/2, 1/2) minus the pole x=0.
+    // 1/abs(x) > 2 ⟺ 0 < abs(x) < 1/2 — the SET itself now punctures the pole
+    // (scout family C: "(-1/2, 1/2)" asserted x=0 in the set and relied on the
+    // reader combining it with the side condition).
     assert_eq!(
         run("solve(1/abs(x)>2, x)"),
-        ("(-1/2, 1/2)".into(), vec!["x ≠ 0".into()])
+        ("(-1/2, 0) U (0, 1/2)".into(), vec!["x ≠ 0".into()])
     );
     assert_eq!(
         run("solve(2/abs(x)>1, x)"),
-        ("(-2, 2)".into(), vec!["x ≠ 0".into()])
+        ("(-2, 0) U (0, 2)".into(), vec!["x ≠ 0".into()])
     );
     assert_eq!(
         run("solve(1/abs(x-1)>2, x)"),
-        ("(1/2, 3/2)".into(), vec!["x ≠ 1".into()])
+        ("(1/2, 1) U (1, 3/2)".into(), vec!["x ≠ 1".into()])
     );
     // The `<` direction is unchanged (it was already the larger side): abs(x) > 1/2.
     assert_eq!(
