@@ -4661,6 +4661,61 @@ fn try_solve_ln_square_inequality(
 /// Extract the AFFINE argument `a·x + b` (positive rational slope `a`, rational offset `b`) of a trig
 /// call, so `sin(x − 1)`, `cos(2x + 1)` etc. are recognised — not only the pure `a·x` form. Returns
 /// `(a, b)` with `a > 0`. Declines a non-affine argument (`x²`, `√x`) or a non-rational offset.
+/// Affine argument `a·x + b` where the slope `a` is a VAR-FREE expression
+/// with PROVABLY POSITIVE sign (π, 2π, √2, e, q·π …) and `b` is var-free —
+/// the symbolic generalization of [`positive_affine_arg_of_var`] for the
+/// final-audit family `sin(π·x) = 1` (the rational-only gate declined and
+/// the principal-root isolation asserted `{ 1/2 }` as the complete answer).
+/// Returns `(a_expr, b_expr)` simplified. Exactness: affinity is decided by
+/// a vanishing second difference (exact rational or the linear-surd zero
+/// oracle), positivity by `provable_const_sign` — no f64 anywhere.
+fn symbolic_positive_affine_arg_of_var(
+    simplifier: &mut Simplifier,
+    arg: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    let xvar = simplifier.context.var(var);
+    let sample = |simplifier: &mut Simplifier, k: i64| -> ExprId {
+        let kn = simplifier.context.num(k);
+        let s = substitute_expr_by_id(&mut simplifier.context, arg, xvar, kn);
+        simplifier.simplify(s).0
+    };
+    let g0 = sample(simplifier, 0);
+    if contains_var(&simplifier.context, g0, var) {
+        return None;
+    }
+    let g1 = sample(simplifier, 1);
+    let g2 = sample(simplifier, 2);
+    let a_raw = simplifier.context.add(Expr::Sub(g1, g0));
+    let (a_expr, _) = simplifier.simplify(a_raw);
+    if contains_var(&simplifier.context, a_expr, var) {
+        return None;
+    }
+    // Second difference must vanish EXACTLY (affine): rational fold or the
+    // linear-surd sign oracle; undecidable ⇒ decline (sound).
+    let two_g1 = simplifier.context.add(Expr::Add(g1, g1));
+    let g2_plus_g0 = simplifier.context.add(Expr::Add(g2, g0));
+    let second = simplifier.context.add(Expr::Sub(g2_plus_g0, two_g1));
+    let (second, _) = simplifier.simplify(second);
+    let second_is_zero = match as_rational_const(&simplifier.context, second) {
+        Some(r) => num_traits::Zero::is_zero(&r),
+        None => {
+            cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, second)
+                == Some(std::cmp::Ordering::Equal)
+        }
+    };
+    if !second_is_zero {
+        return None;
+    }
+    // Positive-slope convention, proven exactly (π-lattice, surds, e-powers).
+    match cas_math::const_sign::provable_const_sign(&simplifier.context, a_expr) {
+        Some(cas_math::const_sign::ConstSign::Positive) => Some((a_expr, g0)),
+        _ => None,
+    }
+}
+
 fn positive_affine_arg_of_var(
     ctx: &Context,
     arg: ExprId,
@@ -6078,27 +6133,47 @@ fn try_solve_periodic_trig_equation_ungated(
         }
     }
 
-    // `trig(a·x + b)` with a positive rational slope `a` and rational offset `b` -> `(func, a, b)`.
-    let detect = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, BigRational, BigRational)> {
-        if let Expr::Function(fn_id, args) = ctx.get(e) {
-            if args.len() == 1 {
-                if let Some(f) = ctx.builtin_of(*fn_id) {
-                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
-                        let (a, b) = positive_affine_arg_of_var(ctx, args[0], var)?;
-                        return Some((f, a, b));
+    // `trig(a·x + b)`: a positive RATIONAL slope keeps the historical exact
+    // path; a var-free SYMBOLIC slope with provably positive sign (π·x,
+    // √2·x, e·x — the final-audit periodicity-drop family) generalizes it.
+    // Both return the slope/offset as EXPRESSION nodes: the map-back below
+    // divides bases and period symbolically either way (2π/π → 2).
+    let detect = |simplifier: &mut Simplifier, e: ExprId| -> Option<(BuiltinFn, ExprId, ExprId)> {
+        let (fn_builtin, arg) = {
+            let ctx = &simplifier.context;
+            if let Expr::Function(fn_id, args) = ctx.get(e) {
+                if args.len() == 1 {
+                    if let Some(f) = ctx.builtin_of(*fn_id) {
+                        if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                            (f, args[0])
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
                     }
+                } else {
+                    return None;
                 }
+            } else {
+                return None;
             }
+        };
+        if let Some((a, b)) = positive_affine_arg_of_var(&simplifier.context, arg, var) {
+            let a_expr = simplifier.context.add(Expr::Number(a));
+            let b_expr = simplifier.context.add(Expr::Number(b));
+            return Some((fn_builtin, a_expr, b_expr));
         }
-        None
+        let (a_expr, b_expr) = symbolic_positive_affine_arg_of_var(simplifier, arg, var)?;
+        Some((fn_builtin, a_expr, b_expr))
     };
     // `trig(a·x + b) = c` or `c = trig(a·x + b)`, with `c` constant.
-    let (func, coeff, offset, c) = if let Some((f, a, b)) = detect(&simplifier.context, lhs) {
+    let (func, a_expr, b_expr, c) = if let Some((f, a, b)) = detect(simplifier, lhs) {
         if contains_var(&simplifier.context, rhs, var) {
             return None;
         }
         (f, a, b, rhs)
-    } else if let Some((f, a, b)) = detect(&simplifier.context, rhs) {
+    } else if let Some((f, a, b)) = detect(simplifier, rhs) {
         if contains_var(&simplifier.context, lhs, var) {
             return None;
         }
@@ -6158,20 +6233,28 @@ fn try_solve_periodic_trig_equation_ungated(
     };
 
     // `u = a·x + b` ⇒ `x = (u − b)/a`: shift every base by `−b` then divide it and the period by `a`
-    // (a > 1 SHRINKS the period: `cos(2x)=1 → {kπ}`). For `a = 1, b = 0` this folds back to the bare
-    // family; `b ≠ 0` handles the affine argument `sin(x − 1) = 0 → {1 + kπ}`.
-    let a_expr = simplifier.context.add(Expr::Number(coeff));
-    let b_expr = simplifier.context.add(Expr::Number(offset));
+    // (a > 1 SHRINKS the period: `cos(2x)=1 → {kπ}`; a = π gives a RATIONAL
+    // x-period: `sin(πx)=1 → {1/2 + 2k}`, period 2π/π = 2).
+    // Fold to a canonical rational Number when the division collapses (a
+    // symbolic slope π/2 leaves `2 / 1/2` unfolded otherwise).
+    let fold_rational = |simplifier: &mut Simplifier, e: ExprId| -> ExprId {
+        match cas_math::numeric_eval::as_rational_const(&simplifier.context, e) {
+            Some(q) => simplifier.context.add(Expr::Number(q)),
+            None => e,
+        }
+    };
     let bases: Vec<ExprId> = bases_u
         .into_iter()
         .map(|u| {
             let shifted = simplifier.context.add(Expr::Sub(u, b_expr));
             let d = simplifier.context.add(Expr::Div(shifted, a_expr));
-            simplifier.simplify(d).0
+            let d = simplifier.simplify(d).0;
+            fold_rational(simplifier, d)
         })
         .collect();
     let period_div = simplifier.context.add(Expr::Div(period_u, a_expr));
     let (period, _) = simplifier.simplify(period_div);
+    let period = fold_rational(simplifier, period);
     Some(SolutionSet::Periodic { bases, period })
 }
 

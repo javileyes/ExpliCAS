@@ -97,15 +97,14 @@ fn negative_coefficient_flips_before_the_case_split() {
 }
 
 #[test]
-fn irrational_argument_coefficients_decline_instead_of_asserting_singletons() {
-    // Final-audit finding: the equation path drops periodicity for
-    // irrational argument coefficients (solve(sin(pi*x)=1) -> { 1/2 },
-    // losing { 1/2 + 2k }); the boundary reduction must NOT inherit that as
-    // the complete answer to the inequality — a finite Discrete set from a
-    // trig boundary equation is always incomplete, so these decline.
-    assert_eq!(solve("sin(pi*x)>=1"), "solve(sin(pi·x) >= 1, x)");
-    assert_eq!(solve("cos(pi*x)<=-1"), "solve(cos(pi·x) <= -1, x)");
-    assert_eq!(solve("cos(2*pi*x)>=1"), "solve(cos(2·pi·x) >= 1, x)");
+fn irrational_argument_coefficients_solve_with_full_periodicity() {
+    // Final-audit finding, then U1: the equation path used to drop
+    // periodicity for irrational argument coefficients (sin(pi*x)=1 ->
+    // { 1/2 }); the hotfix declined the inequality inheritance, and cycle
+    // U1 now solves the family outright with rational x-periods.
+    assert_eq!(solve("sin(pi*x)>=1"), "{ 1/2 + k·2 : k ∈ ℤ }");
+    assert_eq!(solve("cos(pi*x)<=-1"), "{ 1 + k·2 : k ∈ ℤ }");
+    assert_eq!(solve("cos(2*pi*x)>=1"), "{ k·1 : k ∈ ℤ }");
 }
 
 #[test]
