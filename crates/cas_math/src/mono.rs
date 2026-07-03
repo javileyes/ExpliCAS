@@ -71,18 +71,6 @@ impl Mono {
         }
         Mono(m)
     }
-
-    /// Substitute variable i with 0 (remove it from monomial, keep for x_i^0 = 1)
-    /// Returns None if x_i has non-zero exponent (would need coefficient adjustment)
-    /// Returns Some(new_mono) if x_i^0 (no change needed except marker)
-    #[inline]
-    pub fn eval_var_zero(&self, i: usize) -> Option<Self> {
-        if self.0[i] > 0 {
-            None // Evaluating x_i^k at 0 gives 0 if k > 0
-        } else {
-            Some(*self)
-        }
-    }
 }
 
 #[cfg(test)]

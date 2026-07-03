@@ -244,17 +244,6 @@ impl Rewrite {
             .local(before_local, after_local)
     }
 
-    /// Create a rewrite with polynomial proof data (for PolyZero airbag)
-    /// Used by PolynomialIdentityZeroRule to attach normalization info for didactic display
-    #[must_use]
-    pub fn with_poly_proof(
-        new_expr: ExprId,
-        description: impl Into<Cow<'static, str>>,
-        poly_proof: cas_math::multipoly_display::PolynomialProofData,
-    ) -> Self {
-        Self::new(new_expr).desc(description).poly_proof(poly_proof)
-    }
-
     // =========================================================================
     // Fluent Setters (Builder Pattern)
     // =========================================================================

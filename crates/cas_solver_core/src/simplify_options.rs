@@ -107,13 +107,6 @@ impl SimplifyOptions {
         }
     }
 
-    /// Options for `simplify --no-rationalize`.
-    pub fn no_rationalize() -> Self {
-        let mut opt = Self::default();
-        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
-        opt
-    }
-
     /// Options for solver pre-pass: only `SolveSafety::Always` rules.
     pub fn for_solve_prepass() -> Self {
         Self {

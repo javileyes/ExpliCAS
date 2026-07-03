@@ -48,11 +48,6 @@ where
     pub fn has_nonzero(&self, expr: ExprId) -> bool {
         self.required.contains_nonzero(expr)
     }
-
-    /// Convert required conditions to a condition set for guard composition.
-    pub fn required_as_condition_set(&self) -> ConditionSet {
-        self.required.to_condition_set()
-    }
 }
 
 #[cfg(test)]

@@ -76,14 +76,6 @@ impl AlgorithmicIntegrationBackendBudget {
             max_verification_checks: 1,
         }
     }
-
-    pub fn allows_method_probe(self) -> bool {
-        self.max_method_probes > 0
-    }
-
-    pub fn allows_verification_check(self) -> bool {
-        self.max_verification_checks > 0
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

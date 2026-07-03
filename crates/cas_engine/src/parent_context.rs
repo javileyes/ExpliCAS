@@ -104,11 +104,6 @@ impl ParentContext {
         }
     }
 
-    /// Create context with pattern marks
-    pub fn with_marks(pattern_marks: crate::pattern_marks::PatternMarks) -> Self {
-        Self::with_marks_rc(Rc::new(pattern_marks))
-    }
-
     /// Create context with shared pattern marks.
     pub fn with_marks_rc(pattern_marks: Rc<crate::pattern_marks::PatternMarks>) -> Self {
         Self {
@@ -132,14 +127,6 @@ impl ParentContext {
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
             heuristic_poly: crate::options::HeuristicPoly::On,
         }
-    }
-
-    /// Create context with expand_mode enabled
-    pub fn with_expand_mode(
-        pattern_marks: crate::pattern_marks::PatternMarks,
-        expand_mode: bool,
-    ) -> Self {
-        Self::with_expand_mode_rc(Rc::new(pattern_marks), expand_mode)
     }
 
     /// Create context with shared pattern marks and expand_mode enabled.
@@ -323,13 +310,6 @@ impl ParentContext {
         self
     }
 
-    /// Set auto-expand with budget
-    pub fn with_auto_expand(mut self, budget: crate::phase::ExpandBudget) -> Self {
-        self.auto_expand = true;
-        self.auto_expand_budget = Some(budget);
-        self
-    }
-
     /// Set auto-expand flag only (for propagation)
     pub fn with_auto_expand_flag(
         mut self,
@@ -459,12 +439,6 @@ impl ParentContext {
     /// sin(13x + 3x) -> sin(13x)cos(3x) + cos(13x)sin(3x) -> ... exponential growth.
     pub fn is_trig_large_coeff_protected(&self) -> bool {
         self.trig_large_coeff_protected
-    }
-
-    /// Set trig_large_coeff_protected flag when recursing into sin/cos/tan(n*x).
-    pub fn with_trig_large_coeff_protection(mut self, protected: bool) -> Self {
-        self.trig_large_coeff_protected = protected;
-        self
     }
 
     /// Extend context with a new parent, checking if it's a Div node or trig with large coeff.

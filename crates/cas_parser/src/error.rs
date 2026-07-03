@@ -72,15 +72,7 @@ impl ParseError {
 }
 
 // Legacy conversion from old variant names (for migration)
-impl ParseError {
-    /// Convert from legacy NomError format.
-    pub fn from_nom_error(msg: String) -> Self {
-        ParseError::Syntax {
-            message: msg,
-            span: None,
-        }
-    }
-}
+impl ParseError {}
 
 #[cfg(test)]
 mod tests {

@@ -39,12 +39,6 @@ impl ExprId {
         self.0 >> Self::TAG_SHIFT
     }
 
-    #[inline]
-    pub fn is_atom(self) -> bool {
-        let t = self.tag();
-        t == Self::TAG_NUMBER || t == Self::TAG_ATOM
-    }
-
     /// Create an ExprId from a raw u32 value (for testing purposes)
     #[inline]
     pub fn from_raw(val: u32) -> Self {
@@ -898,20 +892,6 @@ impl Context {
             });
         }
         Ok(self.add(Expr::Matrix { rows, cols, data }))
-    }
-
-    /// Get element at (row, col) from a matrix (0-indexed)
-    /// Returns None if id is not a matrix or indices are out of bounds
-    pub fn matrix_element(&self, id: ExprId, row: usize, col: usize) -> Option<ExprId> {
-        if let Expr::Matrix { rows, cols, data } = self.get(id) {
-            if row < *rows && col < *cols {
-                Some(data[row * cols + col])
-            } else {
-                None
-            }
-        } else {
-            None
-        }
     }
 
     // ... other helpers would need &mut self ...

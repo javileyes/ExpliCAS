@@ -57,12 +57,6 @@ impl SubstituteOptions {
             collect_steps: false,
         }
     }
-
-    /// Enable step collection.
-    pub fn with_steps(mut self) -> Self {
-        self.collect_steps = true;
-        self
-    }
 }
 
 /// A single substitution step for traceability.

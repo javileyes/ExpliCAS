@@ -141,20 +141,6 @@ impl MultiPoly {
         }
     }
 
-    /// Create monomial x_i (single variable with exp 1)
-    pub fn from_var(vars: Vec<String>, var: &str) -> Result<Self, PolyError> {
-        let idx = vars
-            .iter()
-            .position(|v| v == var)
-            .ok_or(PolyError::VarMismatch)?;
-        let mut mono = vec![0; vars.len()];
-        mono[idx] = 1;
-        Ok(Self {
-            vars,
-            terms: vec![(BigRational::one(), mono)],
-        })
-    }
-
     /// Check if zero
     pub fn is_zero(&self) -> bool {
         self.terms.is_empty()

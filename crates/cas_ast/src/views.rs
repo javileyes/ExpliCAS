@@ -360,28 +360,6 @@ impl MulParts {
             den,
         }
     }
-
-    /// Check if this represents a non-trivial fraction (has denominator factors)
-    pub fn has_denominator(&self) -> bool {
-        self.factors.iter().any(|f| f.exp < 0)
-    }
-
-    /// Create MulParts only if expression is purely commutative (no matrices).
-    ///
-    /// Returns `None` if any factor is a Matrix, since matrix multiplication
-    /// is not commutative and compress/reorder operations would be incorrect.
-    pub fn from_commutative(ctx: &Context, id: ExprId) -> Option<Self> {
-        let parts = Self::from(ctx, id);
-
-        // Check if any factor base is a Matrix
-        for f in &parts.factors {
-            if matches!(ctx.get(f.base), Expr::Matrix { .. }) {
-                return None;
-            }
-        }
-
-        Some(parts)
-    }
 }
 
 // ============================================================================
@@ -422,26 +400,6 @@ impl MulChainView {
             _ => {
                 out.push(id);
             }
-        }
-    }
-
-    /// Check if any factor is a matrix.
-    pub fn contains_matrix(&self, ctx: &Context) -> bool {
-        self.factors
-            .iter()
-            .any(|&f| matches!(ctx.get(f), Expr::Matrix { .. }))
-    }
-
-    /// Rebuild as right-associative Mul chain using add_raw.
-    pub fn build_raw(self, ctx: &mut Context) -> ExprId {
-        if let Some((&last, rest)) = self.factors.split_last() {
-            let mut acc = last;
-            for &f in rest.iter().rev() {
-                acc = ctx.add_raw(Expr::Mul(f, acc));
-            }
-            acc
-        } else {
-            ctx.num(1)
         }
     }
 }

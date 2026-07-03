@@ -96,10 +96,6 @@ pub enum RationalizeOutcome {
 }
 
 impl RationalizeOutcome {
-    pub fn is_applied(&self) -> bool {
-        matches!(self, RationalizeOutcome::Applied)
-    }
-
     pub fn reason(&self) -> Option<RationalizeReason> {
         match self {
             RationalizeOutcome::Applied => None,

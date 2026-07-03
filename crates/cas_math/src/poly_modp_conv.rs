@@ -137,19 +137,6 @@ impl VarTable {
         Some((unified, remap_a, remap_b))
     }
 
-    /// Check if this VarTable has the same variables as another (same set, any order)
-    pub fn same_variables(&self, other: &VarTable) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        for name in &self.names {
-            if !other.map.contains_key(name) {
-                return false;
-            }
-        }
-        true
-    }
-
     /// Check if this VarTable has the same variables in the same order
     pub fn same_order(&self, other: &VarTable) -> bool {
         self.names == other.names

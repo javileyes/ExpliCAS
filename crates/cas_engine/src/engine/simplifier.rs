@@ -374,10 +374,6 @@ impl Simplifier {
         self.debug_mode = true;
     }
 
-    pub fn disable_debug(&mut self) {
-        self.debug_mode = false;
-    }
-
     pub fn debug(&self, msg: &str) {
         // Use tracing for structured logging.
         // We still check debug_mode to allow per-instance toggling if needed,
@@ -513,24 +509,6 @@ impl Simplifier {
                 .unwrap_or(self.global_rules.len());
             self.global_rules.insert(pos, rule_rc);
         }
-    }
-
-    pub fn get_all_rule_names(&self) -> Vec<String> {
-        let mut names = HashSet::new();
-
-        for rule in self.active_global_rules() {
-            names.insert(rule.name().to_string());
-        }
-
-        for rules in self.active_rules().values() {
-            for rule in rules {
-                names.insert(rule.name().to_string());
-            }
-        }
-
-        let mut sorted_names: Vec<String> = names.into_iter().collect();
-        sorted_names.sort();
-        sorted_names
     }
 
     /// Panics if there are duplicate rule names (debug builds only).

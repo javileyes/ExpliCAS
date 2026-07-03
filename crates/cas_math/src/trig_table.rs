@@ -90,14 +90,6 @@ impl AngleSpec {
         lhs.cmp(&rhs)
     }
 
-    /// Check if this angle is in range [0, π/2]
-    pub fn is_first_quadrant(&self) -> bool {
-        // 0 <= num/den <= 1/2 (in units of π)
-        let zero = Self::ZERO;
-        let pi_2 = Self::PI_2;
-        self.cmp_value(&zero) != Ordering::Less && self.cmp_value(&pi_2) != Ordering::Greater
-    }
-
     /// Convert to ExprId representing (num/den)*π
     pub fn to_expr(self, ctx: &mut Context) -> ExprId {
         let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));

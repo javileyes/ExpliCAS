@@ -6,7 +6,7 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::collections::BTreeMap;
 
-use super::{Monomial, MultiPoly, PolyBudget, PolyError, PolyOperation, PolyPassStats, Term};
+use super::{Monomial, MultiPoly, PolyBudget, PolyError, Term};
 
 // =============================================================================
 // Arithmetic
@@ -192,28 +192,6 @@ impl MultiPoly {
             vars: self.vars.clone(),
             terms,
         })
-    }
-
-    /// Multiply two polynomials with budget tracking, returning PassStats.
-    ///
-    /// This is the instrumented version of `mul_fast` for unified budget charging.
-    pub fn mul_with_stats(
-        &self,
-        other: &Self,
-        budget: &PolyBudget,
-    ) -> Result<(Self, PolyPassStats), PolyError> {
-        let result = self.mul_fast(other, budget)?;
-
-        let stats = PolyPassStats {
-            op: PolyOperation::PolyOps,
-            rewrite_count: 0,
-            nodes_delta: 0, // Poly ops don't create AST nodes
-            terms_materialized: result.num_terms() as u64,
-            poly_ops: 1, // Count this as one poly operation
-            stop_reason: None,
-        };
-
-        Ok((result, stats))
     }
 }
 
@@ -420,25 +398,5 @@ impl MultiPoly {
         }
 
         Some(Self::from_map(self.vars.clone(), quotient))
-    }
-
-    /// Exact division with budget tracking, returning PassStats.
-    ///
-    /// This is the instrumented version of `div_exact` for unified budget charging.
-    pub fn div_exact_with_stats(&self, divisor: &Self) -> (Option<Self>, PolyPassStats) {
-        let result = self.div_exact(divisor);
-
-        let terms = result.as_ref().map_or(0, |q| q.num_terms() as u64);
-
-        let stats = PolyPassStats {
-            op: PolyOperation::PolyOps,
-            rewrite_count: 0,
-            nodes_delta: 0,
-            terms_materialized: terms,
-            poly_ops: 1,
-            stop_reason: None,
-        };
-
-        (result, stats)
     }
 }

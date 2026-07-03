@@ -63,17 +63,6 @@ impl RequiredItem {
             self.origins.push(origin);
         }
     }
-
-    /// Display condition plus origin metadata.
-    pub fn display_with_origin(&self, ctx: &Context) -> String {
-        let cond_str = self.cond.display(ctx);
-        if self.origins.len() == 1 {
-            format!("{} (from: {})", cond_str, self.origins[0].description())
-        } else {
-            let origins_str: Vec<_> = self.origins.iter().map(|o| o.description()).collect();
-            format!("{} (from: {})", cond_str, origins_str.join(", "))
-        }
-    }
 }
 
 /// Unified diagnostics payload.

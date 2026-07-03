@@ -4,10 +4,6 @@ use cas_solver_core::session_runtime::{AssignmentApplyContext, BindingsContext};
 use crate::state_core::SessionState;
 
 impl SessionState {
-    pub fn get_binding(&self, name: &str) -> Option<ExprId> {
-        self.env.get(name)
-    }
-
     pub fn set_binding<S: Into<String>>(&mut self, name: S, expr: ExprId) {
         let name = name.into();
         if self.env.get(&name) != Some(expr) {
