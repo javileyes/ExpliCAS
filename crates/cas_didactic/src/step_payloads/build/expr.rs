@@ -34,16 +34,16 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
             snapshots.global_before_expr,
         ) {
             render_human_expr_with_reciprocal_sqrt_display_cleanup(
-                &temp_ctx,
+                &mut temp_ctx,
                 snapshots.global_before_expr,
             )
         } else if compact_before {
             render_human_expr_with_symbolic_diff_display_cleanup(
-                &temp_ctx,
+                &mut temp_ctx,
                 snapshots.global_before_expr,
             )
         } else {
-            render_human_expr(&temp_ctx, snapshots.global_before_expr)
+            render_human_expr_scratch(&mut temp_ctx, snapshots.global_before_expr)
         },
         after: if residual_limit_step_prefers_direct_display(step) {
             render_human_expr_without_display_normalization(
@@ -60,7 +60,7 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
             snapshots.global_after_expr,
         ) {
             render_human_expr_with_symbolic_diff_display_cleanup(
-                &temp_ctx,
+                &mut temp_ctx,
                 snapshots.global_after_expr,
             )
         } else if repeated_by_parts_step_prefers_direct_after_display(context, step) {
@@ -71,7 +71,7 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
         } else if polynomial_exp_by_parts_step_prefers_latex_after_display(context, step) {
             render_polynomial_exp_by_parts_after(context, step.after_local().unwrap_or(step.after))
         } else {
-            render_human_expr(&temp_ctx, snapshots.global_after_expr)
+            render_human_expr_scratch(&mut temp_ctx, snapshots.global_after_expr)
         },
     }
 }
@@ -180,10 +180,17 @@ fn polynomial_exp_by_parts_step_prefers_latex_after_display(
 
 pub(crate) fn render_human_expr(context: &Context, expr: ExprId) -> String {
     let mut temp_ctx = context.clone();
-    let normalized =
-        cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut temp_ctx, expr);
+    render_human_expr_scratch(&mut temp_ctx, expr)
+}
+
+/// P17: clone-free renderer over a caller-owned scratch `Context`.
+/// The display normalization only APPENDS interned nodes, so reusing one
+/// scratch arena across several renders of a step is semantics-identical to
+/// cloning per render (and skips the per-string arena clone).
+fn render_human_expr_scratch(scratch: &mut Context, expr: ExprId) -> String {
+    let normalized = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(scratch, expr);
     let latex = cas_formatter::LaTeXExpr {
-        context: &temp_ctx,
+        context: scratch,
         id: normalized,
     }
     .to_latex();
@@ -192,7 +199,7 @@ pub(crate) fn render_human_expr(context: &Context, expr: ExprId) -> String {
         cas_formatter::clean_display_string(&format!(
             "{}",
             cas_formatter::DisplayExpr {
-                context: &temp_ctx,
+                context: scratch,
                 id: normalized
             }
         ))
@@ -201,19 +208,20 @@ pub(crate) fn render_human_expr(context: &Context, expr: ExprId) -> String {
     }
 }
 
-fn render_human_expr_with_symbolic_diff_display_cleanup(context: &Context, expr: ExprId) -> String {
-    let mut temp_ctx = context.clone();
-    let collapsed = cleanup_symbolic_diff_after_for_display(&mut temp_ctx, expr);
-    render_human_expr(&temp_ctx, collapsed)
+fn render_human_expr_with_symbolic_diff_display_cleanup(
+    scratch: &mut Context,
+    expr: ExprId,
+) -> String {
+    let collapsed = cleanup_symbolic_diff_after_for_display(scratch, expr);
+    render_human_expr_scratch(scratch, collapsed)
 }
 
 fn render_human_expr_with_reciprocal_sqrt_display_cleanup(
-    context: &Context,
+    scratch: &mut Context,
     expr: ExprId,
 ) -> String {
-    let mut temp_ctx = context.clone();
-    let collapsed = collapse_negative_half_powers_for_display(&mut temp_ctx, expr);
-    render_human_expr(&temp_ctx, collapsed)
+    let collapsed = collapse_negative_half_powers_for_display(scratch, expr);
+    render_human_expr_scratch(scratch, collapsed)
 }
 
 pub(super) fn cleanup_symbolic_diff_after_for_display(
