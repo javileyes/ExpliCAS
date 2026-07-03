@@ -3900,8 +3900,8 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
         "(-infinity, -(2^(5/2))) U (2^(5/2), infinity)"
     );
     // Negative non-integer exponents / reciprocal fractional powers (were complement / pole) — declined.
-    assert_eq!(r("solve(1/x^(1/3) > 2, x)"), "solve(1 / x^(1 / 3) > 2, x)");
-    assert_eq!(r("solve(1/x^(1/2) > 2, x)"), "solve(1 / x^(1 / 2) > 2, x)");
+    assert_eq!(r("solve(1/x^(1/3) > 2, x)"), "(0, 1/8)");
+    assert_eq!(r("solve(1/x^(1/2) > 2, x)"), "(0, 1/4)");
     assert_eq!(r("solve(x^(-1/3) > 2, x)"), "solve(x^(-1 / 3) > 2, x)");
     // KEEP: strictly-monotonic powers (e > 0, odd numerator) stay solved EXACTLY.
     assert_eq!(r("solve(x^(1/3) > 2, x)"), "(8, infinity)");
@@ -3919,7 +3919,7 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
 fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
     // An even-numerator VALLEY through its WRAPPERS — a shifted/scaled affine base `(x-1)^(2/3)`, an
     // additive constant `x^(2/3) + 1` — is now SOLVED exactly by the `|a·x+b| {op} k^(q/p)` reduction.
-    // The `sqrt` FUNCTION reciprocal `1/sqrt(x)` (a negative exponent with a pole) is still declined.
+    // The `sqrt` FUNCTION reciprocal `1/sqrt(x)` is SOLVED since U2 (w-space).
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -3943,12 +3943,9 @@ fn test_eval_wrapped_non_monotonic_power_inequality_declines_to_residual() {
         "(-infinity, -8) U (8, infinity)"
     );
     assert_eq!(r("solve(5 - x^(2/3) > 1, x)"), "(-8, 8)");
-    // sqrt FUNCTION reciprocal (negative exponent, pole at the affine root) — declined.
-    assert_eq!(r("solve(1/sqrt(x) > 2, x)"), "solve(1 / sqrt(x) > 2, x)");
-    assert_eq!(
-        r("solve(1/sqrt(x-1) > 2, x)"),
-        "solve(1 / sqrt(x - 1) > 2, x)"
-    );
+    // sqrt FUNCTION reciprocal — SOLVED since U2 via the w-space substitution.
+    assert_eq!(r("solve(1/sqrt(x) > 2, x)"), "(0, 1/4)");
+    assert_eq!(r("solve(1/sqrt(x-1) > 2, x)"), "(1, 5/4)");
     // KEEP: a shifted/scaled STRICTLY-MONOTONIC power (e > 0, odd numerator) stays solved exactly.
     assert_eq!(r("solve((x-1)^(1/3) > 2, x)"), "(9, infinity)");
     assert_eq!(r("solve(sqrt(x-1) > 2, x)"), "(5, infinity)");

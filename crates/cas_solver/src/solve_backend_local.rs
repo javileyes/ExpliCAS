@@ -6884,6 +6884,156 @@ fn try_solve_const_over_surd_affine_inequality(
     map_set_through_inverse_affine(simplifier, u_set, &a, b)
 }
 
+/// U2 (scout backlog #4): `c / (a·x+b)^(1/q) ⋚ k` — the reciprocal of a
+/// ROOT of a rational-affine argument (`1/sqrt(x) > 2`, `1/sqrt(x-1) > 2`,
+/// `1/x^(1/3) > 2`). Solved by the two-stage monotone substitution
+/// `w = (a·x+b)^(1/q)`: the w-space relation `c/w ⋚ k` has RATIONAL
+/// breakpoints (pole 0, boundary c/k) and an existing exact owner; the
+/// w-set then maps through the INCREASING power `u = w^q` (clamped to
+/// `w > 0` first for even q — the root's domain), and finally through the
+/// inverse affine to x. Declines (`None`) on anything outside the shape.
+fn try_solve_const_over_root_affine_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{One, Zero};
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let k = as_rational_const(&simplifier.context, eq.rhs)?;
+    // Peel negations into the numerator's sign; expect `Div(const, root)`.
+    let mut neg = false;
+    let mut node = eq.lhs;
+    while let Expr::Neg(inner) = simplifier.context.get(node) {
+        node = *inner;
+        neg = !neg;
+    }
+    let (num, den) = match simplifier.context.get(node) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    if contains_var(&simplifier.context, num, var) {
+        return None;
+    }
+    let mut c = as_rational_const(&simplifier.context, num)?;
+    if c.is_zero() {
+        return None;
+    }
+    if neg {
+        c = -c;
+    }
+    // The denominator must be a UNIT root of the affine argument: sqrt(g) or
+    // g^(1/q) with an integer q ≥ 2.
+    let (g, q): (ExprId, i64) = match simplifier.context.get(den).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let name = simplifier.context.sym_name(fn_id).to_string();
+            if name == "sqrt" {
+                (args[0], 2)
+            } else {
+                return None;
+            }
+        }
+        Expr::Pow(base, exp) => {
+            let e = as_rational_const(&simplifier.context, exp)?;
+            if !e.numer().is_one() {
+                return None; // p ≠ 1: valleys/general powers keep their owners
+            }
+            let q = i64::try_from(e.denom()).ok()?;
+            if q < 2 {
+                return None;
+            }
+            (base, q)
+        }
+        _ => return None,
+    };
+    if !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+    let (a, b) = affine_coefficients(simplifier, g, var)?;
+
+    // Stage 1 — w-space: solve `c/w ⋚ k` exactly (rational breakpoints).
+    let w_name = format!("__{var}_w");
+    let w_lhs = {
+        let w_var = simplifier.context.var(&w_name);
+        let c_expr = simplifier.context.add(Expr::Number(c));
+        simplifier.context.add(Expr::Div(c_expr, w_var))
+    };
+    let k_expr = simplifier.context.add(Expr::Number(k));
+    let w_set = solve_relation_set(simplifier, &w_name, w_lhs, k_expr, eq.op.clone())?;
+
+    // Even q: the root ranges over (0, ∞) as a denominator (g > 0, w > 0) —
+    // clamp the w-set before the power map. Odd q: w ranges over ℝ ∖ {0},
+    // already excluded by the w-space pole.
+    let w_set = if q % 2 == 0 {
+        let zero = simplifier.context.num(0);
+        let inf = cas_solver_core::solution_set::pos_inf(&mut simplifier.context);
+        let positive = SolutionSet::Continuous(cas_ast::Interval {
+            min: zero,
+            min_type: cas_ast::BoundType::Open,
+            max: inf,
+            max_type: cas_ast::BoundType::Open,
+        });
+        cas_solver_core::solution_set::intersect_solution_sets(&simplifier.context, w_set, positive)
+    } else {
+        w_set
+    };
+
+    // Stage 2 — the increasing power map `u = w^q` (monotone on the clamped
+    // domain), endpoint by endpoint; ±∞ passes through (q odd keeps −∞).
+    let u_set = map_set_through_increasing_power(simplifier, w_set, q)?;
+
+    // Stage 3 — inverse affine back to x.
+    map_set_through_inverse_affine(simplifier, u_set, &a, b)
+}
+
+/// Map a solution set through the INCREASING power `u = w^q` (valid only
+/// when the set lies in a region where the power is monotone increasing —
+/// the caller clamps even q to `w > 0`). Bound types are preserved.
+fn map_set_through_increasing_power(
+    simplifier: &mut Simplifier,
+    set: SolutionSet,
+    q: i64,
+) -> Option<SolutionSet> {
+    let map_bound = |simplifier: &mut Simplifier, e: ExprId| -> ExprId {
+        let ctx = &simplifier.context;
+        if cas_solver_core::solution_set::is_infinity(ctx, e)
+            || cas_solver_core::solution_set::is_neg_infinity(ctx, e)
+        {
+            return e; // (±∞)^q keeps its sign (even q never sees −∞ post-clamp)
+        }
+        let q_expr = simplifier.context.num(q);
+        let p = simplifier.context.add(Expr::Pow(e, q_expr));
+        simplifier.simplify(p).0
+    };
+    let map_interval = |simplifier: &mut Simplifier, iv: cas_ast::Interval| -> cas_ast::Interval {
+        cas_ast::Interval {
+            min: map_bound(simplifier, iv.min),
+            min_type: iv.min_type.clone(),
+            max: map_bound(simplifier, iv.max),
+            max_type: iv.max_type.clone(),
+        }
+    };
+    Some(match set {
+        SolutionSet::Empty => SolutionSet::Empty,
+        SolutionSet::Continuous(iv) => SolutionSet::Continuous(map_interval(simplifier, iv)),
+        SolutionSet::Union(ivs) => SolutionSet::Union(
+            ivs.into_iter()
+                .map(|iv| map_interval(simplifier, iv))
+                .collect(),
+        ),
+        SolutionSet::Discrete(pts) => {
+            SolutionSet::Discrete(pts.into_iter().map(|p| map_bound(simplifier, p)).collect())
+        }
+        // AllReals cannot arise from `c/w ⋚ k` (the pole is always excluded);
+        // anything else is out of contract.
+        _ => return None,
+    })
+}
+
 /// Rewrite solver-opaque function ALIASES to their canonical invertible forms, recursively:
 /// `log2(u) → log(2, u)`, `log10(u) → log(10, u)`, `cbrt(u) → u^(1/3)`. These evaluate,
 /// differentiate and integrate fine, but the isolation dispatch has no inverse for them and
@@ -7095,6 +7245,11 @@ fn solve_local_core_inner(
     // `c/(x+√2) {op} 0` on the RAW tree, before the simplifier rationalizes the surd
     // denominator through its conjugate and fabricates a spurious removable pole.
     if let Some(set) = try_solve_const_over_surd_affine_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `c/(a·x+b)^(1/q) {op} k` on the RAW tree (scout #4): before the
+    // simplifier rewrites `1/x^(1/3)` into the valley form `x^(2/3)/x`.
+    if let Some(set) = try_solve_const_over_root_affine_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Absolute-value relations (`|x| + |x-1| < 5`, `|x| > x+1`, etc.) are

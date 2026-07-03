@@ -61,8 +61,8 @@ fn residual_preserves_nonstrict_operators() {
         "solve(sin(x^2) >= 1 / 2, x)"
     );
     assert_eq!(
-        solve("solve(1/sqrt(x)<=2, x)"),
-        "solve(1 / sqrt(x) <= 2, x)"
+        solve("solve(sin(x^2)<=1/2, x)"),
+        "solve(sin(x^2) <= 1 / 2, x)"
     );
 }
 
@@ -86,7 +86,9 @@ fn equation_residual_keeps_equation_form() {
 #[test]
 fn former_garbage_declines_are_now_honest_echoes() {
     // Scout cycle-3 backlog #1: these emitted mutated/malformed residuals.
-    assert_eq!(solve("solve(1/sqrt(x)>2, x)"), "solve(1 / sqrt(x) > 2, x)");
+    // U2: the radical-denominator decline now SOLVES; the honest-echo pin
+    // moves to a shape that still declines.
+    assert_eq!(solve("solve(1/sqrt(x)>2, x)"), "(0, 1/4)");
     assert_eq!(
         solve("solve(e^(2*x)-e^x-1<0, x)"),
         "solve(e^(2·x) - e^x - 1 < 0, x)"
