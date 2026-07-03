@@ -223,6 +223,65 @@ fn is_residual_limit(ctx: &Context, e: ExprId) -> bool {
 }
 
 #[test]
+fn infinity_minus_infinity_combines_over_common_denominator() {
+    // ∞ − ∞ at a finite point: the operand-wise split cannot subtract two
+    // divergences, but combining `lhs − rhs` into one fraction lets the
+    // engine's removable-hole / Taylor rules finish the job. The fix reaches
+    // the combine fallback even when an operand has NO rule-level limit
+    // (1/sin(x) at 0 is bilaterally undefined).
+    let mut ctx = Context::new();
+    for (src, expected) in [
+        ("1/sin(x) - 1/x", 0i64),
+        ("1/tan(x) - 1/x", 0),
+        ("csc(x) - cot(x)", 0),
+    ] {
+        let r = bilateral(&mut ctx, src, "0");
+        match ctx.get(r.expr) {
+            Expr::Number(n) => assert!(
+                *n == num_rational::BigRational::from_integer(expected.into()),
+                "{src} at 0 should be {expected}, got {n}"
+            ),
+            other => panic!("{src} at 0 should resolve to {expected}, got {other:?}"),
+        }
+    }
+    // A non-zero finite value through the same path: 1/(x-1) - 2/(x²-1) = 1/(x+1) -> 1/2.
+    let half = bilateral(&mut ctx, "1/(x-1) - 2/(x^2-1)", "1");
+    let one_half = num_rational::BigRational::new(1.into(), 2.into());
+    assert!(
+        matches!(ctx.get(half.expr), Expr::Number(n) if *n == one_half),
+        "1/(x-1) - 2/(x^2-1) at 1 should be 1/2, got {:?}",
+        ctx.get(half.expr)
+    );
+}
+
+#[test]
+fn infinity_minus_infinity_stays_sound_on_degenerate_and_divergent_forms() {
+    let mut ctx = Context::new();
+    // f - f with f -> ∞ is 0 (exact cancellation), not indeterminate garbage.
+    let zero = bilateral(&mut ctx, "1/x^2 - 1/x^2", "0");
+    assert!(matches!(ctx.get(zero.expr), Expr::Number(n) if n.is_zero()));
+    // exp(x) - x diverges at +∞ — must not be mis-combined into a finite value.
+    let x = parse_expr(&mut ctx, "x");
+    let inf_call = {
+        let expr = parse_expr(&mut ctx, "exp(x) - x");
+        let mut budget = Budget::new();
+        limit(
+            &mut ctx,
+            expr,
+            x,
+            Approach::PosInfinity,
+            &LimitOptions::default(),
+            &mut budget,
+        )
+        .expect("limit")
+    };
+    assert!(matches!(
+        ctx.get(inf_call.expr),
+        Expr::Constant(Constant::Infinity)
+    ));
+}
+
+#[test]
 fn bilateral_dne_when_laterals_diverge_with_opposite_signs() {
     let mut ctx = Context::new();
     let r = bilateral(&mut ctx, "1/x", "0");

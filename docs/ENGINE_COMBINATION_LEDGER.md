@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 498 (newest first)
+Active entries: 499 (newest first)
 
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
 - 2026-07-04 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_even_power_or_abs_... | CAPACIDAD+SOUNDNESS (wrapper par/abs de PIU): `sin(x)²⋚c`, `|sin(x)|⋚c` resuelven
+- 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (brazo `Expr::Sub` de `try_limit_rule... | CAPACIDAD (∞−∞ en punto finito vía Add→N/D): `1/sin(x)−1/x → 0`
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18399,3 +18400,18 @@ Active entries: 498 (newest first)
   - Reducir `|f|⋚r`/`f²⋚c` a un sign-case sobre `f` + combinación de conjuntos es el MISMO esqueleto que los recíprocos (P3b): `combine_piu_sets` ya componía ∩/∪ de PIUs. La reducción a-canónico paga otra vez: no un handler nuevo por caso, sino el reparto al productor del átomo (`trig(g)⋚c`) + el combinador.
   - Un barrido que ramifica sobre `c` DEBE incluir `c=0` (lección repetida): el bug `sin²>0`→ℝ solo aparece en t=0 y habría pasado un barrido con c∈{1/4,1/2}. Y "verifica el verificador" no aplica aquí — el barrido numérico multi-k SÍ cazó el conjunto correcto.
   - Limitación (peldaño): el productor PIU exige umbral RACIONAL, así que `f²⋚c` con c no-cuadrado-perfecto (`sin²<1/3`) declina — el arreglo real es soporte de umbral surd en el productor (P4, brazo arcsin en const_value_bounds). El resultado 2-ventanas/2π es correcto pero no de período mínimo (π) — detección de período mínimo es cosmético, follow-up.
+
+## 2026-07-04 - CAPACIDAD (∞−∞ en punto finito vía Add→N/D): `1/sin(x)−1/x → 0`
+
+- area: `crates/cas_math/src/limits_support.rs` (brazo `Expr::Sub` de `try_limit_rules_at_finite` — el fallback de combinación se alcanza aunque un operando no tenga límite a nivel de regla)
+- status: `retained`. Cierra la tercera y última sub-fix de límites del scout ("∞−∞ vía Add→N/D"); las otras dos fueron los ciclos 1 (combinador bilateral) y 2 (mirror sqrt@−∞).
+- capture:
+  - investment_class: capability (Fase 1, límites — under-answer→resuelto).
+  - cell: `limit(1/sin(x)−1/x, x, 0)` → `0`; `1/tan(x)−1/x` → `0`; `csc(x)−cot(x)` → `0`; `1/(x-1)−2/(x²-1)` → `1/2` (= 1/(x+1)); `1/sin²x−1/x²` → `1/3` (ya iba). Controles: `1/x−1/x` → 0 (cancelación exacta), `exp(x)−x` → ∞ (divergente, no mal-combinado), `1/x²−1/x²` → 0, `1/x` → undefined (DNE del ciclo 1). El polo impar `1/(x-1)−1/(x²-1)` (= x/((x-1)(x+1)) → ±∞) sigue residual honesto.
+  - causa raíz: la maquinaria `combine_difference_over_common_denominator` YA existía y la forma combinada YA se evalúa (`(x−sin x)/(x sin x) → 0` vía L'Hôpital/Taylor), pero el brazo Sub hacía `try_limit_rules_at_finite(lhs)?` — el `?` abortaba en None ANTES del fallback cuando un operando (p.ej. `1/sin(x)`) es DNE bilateral a nivel de regla, así que la combinación nunca se intentaba.
+  - fix: reestructurar para calcular los límites operando-a-operando SIN `?` (dentro de un `if let (Some, Some)`), de modo que un None en cualquier lado NO aborte; el fallback de combinación `lhs−rhs → N/D` se alcanza siempre y reintenta el límite de la fracción única (que es un `Div`, sin bucle).
+  - validación: workspace 12181 failed:0; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta. Verificación NUMÉRICA (evaluación cerca del punto): 5 formas → 0 discrepancias; 2 tests unitarios (finitos + degenerados/divergentes).
+- retained learning:
+  - Un `?` en un brazo de dispatch que tiene un FALLBACK más abajo es una trampa de "bail temprano": cuando la maquinaria de recuperación ya existe (aquí la combinación N/D), el bug suele ser que el camino feliz aborta antes de llegar a ella. Patrón de fix: calcular el camino feliz con `if let (Some, Some)` en vez de `?`, dejando fluir al fallback. La combinación misma NO era el trabajo — el trabajo era ALCANZARLA.
+  - Sondear la forma combinada MANUALMENTE (`limit((x−sin x)/(x sin x), 0)` → 0) antes de implementar confirmó que el downstream ya resuelve — el fix era de plomería (alcanzar el combinador), no de capacidad nueva. Ahorra construir maquinaria que ya está.
+  - PRÓXIMO PELDAÑO: el brazo `Add` merece el mismo fallback (con un combinador de SUMA); el polo impar `1/(x-1)−1/(x²-1)` podría dar `undefined` (DNE) en vez de residual si la forma combinada `x/((x-1)(x+1))` detectara el polo bilateral. Y las filas de la matriz de límites para ∞−∞ (contadores en cascada, mini-ciclo de harness aparte — los unit tests dan la cobertura).

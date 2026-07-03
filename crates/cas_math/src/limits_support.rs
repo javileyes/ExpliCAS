@@ -4009,15 +4009,24 @@ fn try_limit_rules_at_finite(
             Some(finite_add_result(ctx, lhs_limit, rhs_limit))
         }
         Expr::Sub(lhs, rhs) => {
-            let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
-            let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            if let Some(result) = finite_sub_result(ctx, lhs_limit, rhs_limit) {
-                return Some(result);
+            // Fast path: operand-wise limits when BOTH converge (or are
+            // determinate infinities). Computed without `?` so a None on
+            // either side does NOT bail before the combine fallback below.
+            if let (Some(lhs_limit), Some(rhs_limit)) = (
+                try_limit_rules_at_finite(ctx, lhs, var, point),
+                try_limit_rules_at_finite(ctx, rhs, var, point),
+            ) {
+                if let Some(result) = finite_sub_result(ctx, lhs_limit, rhs_limit) {
+                    return Some(result);
+                }
             }
-            // finite_sub_result declined the indeterminate same-sign ∞ - ∞: combine `lhs - rhs`
-            // over a common denominator and retry the limit of the single fraction. The engine
-            // evaluates `(x² - sin²x)/(x²·sin²x) -> 1/3`, recovering the value the operand-wise
-            // split could not. The combined form is a `Div` (not a `Sub`), so this does not loop.
+            // Fallback: combine `lhs - rhs` over a common denominator and
+            // retry the limit of the single fraction. Reached both when the
+            // operands are the indeterminate same-sign ∞ - ∞ (`1/sin²x -
+            // 1/x² -> 1/3`) AND when an operand has no rule-level limit at
+            // all — `1/sin(x)` at 0 is bilaterally undefined so the operand
+            // split yields None, yet `(x - sin x)/(x sin x) -> 0`. The
+            // combined form is a `Div` (not a `Sub`), so this does not loop.
             let combined = combine_difference_over_common_denominator(ctx, lhs, rhs)?;
             try_limit_rules_at_finite(ctx, combined, var, point)
         }
