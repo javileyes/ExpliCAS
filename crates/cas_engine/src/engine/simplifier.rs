@@ -7,6 +7,7 @@ use crate::options::StepsMode;
 use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
 use crate::target_kind::TargetKind;
+use crate::Step;
 use cas_ast::{Context, ExprId};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -44,6 +45,25 @@ pub struct Simplifier {
     pub(super) sticky_implicit_domain: Option<crate::ImplicitDomain>,
     /// Optional observer that receives rewrite events during simplification.
     pub(super) step_listener: Option<Box<dyn crate::StepListener>>,
+    /// P16: memo for repeated plain `simplify()` calls inside a solve scope.
+    /// The solver's handler chain re-simplifies the same interned expression
+    /// 4-8x per solve (measured up to 85% redundant calls). Keyed by
+    /// (input, sticky root) — sticky state changes simplify semantics — and
+    /// replaying the last_* side channels so a hit is observably identical
+    /// to a fresh call. Active only while `solve_memo_depth > 0`.
+    pub(super) solve_memo: HashMap<(ExprId, Option<ExprId>), SolveMemoEntry>,
+    pub(super) solve_memo_depth: u32,
+}
+
+/// Cached result of one plain `simplify()` call (P16 solve-scope memo).
+/// Captures the return value AND the per-call side channels so replaying a
+/// hit leaves the simplifier in the same observable state as a fresh call.
+pub(super) struct SolveMemoEntry {
+    pub(super) out: ExprId,
+    pub(super) steps: Vec<Step>,
+    pub(super) domain_warnings: Vec<(String, String)>,
+    pub(super) required_conditions: Vec<crate::ImplicitCondition>,
+    pub(super) blocked_hints: Vec<crate::BlockedHint>,
 }
 
 impl Default for Simplifier {
@@ -75,6 +95,8 @@ impl Simplifier {
             sticky_root_expr: None,
             sticky_implicit_domain: None,
             step_listener: None,
+            solve_memo: HashMap::new(),
+            solve_memo_depth: 0,
         }
     }
 
@@ -123,6 +145,8 @@ impl Simplifier {
             sticky_root_expr: None,
             sticky_implicit_domain: None,
             step_listener: None,
+            solve_memo: HashMap::new(),
+            solve_memo_depth: 0,
         };
         s.register_default_rules();
         s
@@ -204,6 +228,8 @@ impl Simplifier {
             sticky_root_expr: None,
             sticky_implicit_domain: None,
             step_listener: None,
+            solve_memo: HashMap::new(),
+            solve_memo_depth: 0,
         }
     }
 
@@ -352,12 +378,31 @@ impl Simplifier {
         self.sticky_root_expr = Some(root);
         self.sticky_implicit_domain =
             Some(infer_implicit_domain(&self.context, root, value_domain));
+        // Sticky state changes simplify semantics: drop any solve-scope memo.
+        self.solve_memo.clear();
     }
 
     /// Clear sticky implicit domain (call after pipeline completes).
     pub fn clear_sticky_implicit_domain(&mut self) {
         self.sticky_root_expr = None;
         self.sticky_implicit_domain = None;
+        self.solve_memo.clear();
+    }
+
+    /// P16: enter a solve-scoped simplify memo region (re-entrant).
+    /// While active, repeated plain `simplify()` calls on the same interned
+    /// expression replay the cached result and side channels.
+    pub fn begin_solve_simplify_memo(&mut self) {
+        self.solve_memo_depth += 1;
+    }
+
+    /// P16: leave the solve-scoped memo region; the cache drops when the
+    /// outermost scope exits.
+    pub fn end_solve_simplify_memo(&mut self) {
+        self.solve_memo_depth = self.solve_memo_depth.saturating_sub(1);
+        if self.solve_memo_depth == 0 {
+            self.solve_memo.clear();
+        }
     }
 
     /// Get the sticky implicit domain, if set.

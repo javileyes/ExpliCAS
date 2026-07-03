@@ -151,7 +151,35 @@ impl Simplifier {
     }
 
     pub fn simplify(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
-        self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::default())
+        // P16 solve-scope memo: the solver's handler chain re-simplifies the
+        // same interned expression 4-8x per solve. A hit replays the cached
+        // result AND the last_* side channels, so it is observably identical
+        // to a fresh call. Disabled when a step listener is attached (the
+        // listener would miss its per-rewrite notifications).
+        let memo_active = self.solve_memo_depth > 0 && self.step_listener.is_none();
+        if memo_active {
+            if let Some(entry) = self.solve_memo.get(&(expr_id, self.sticky_root_expr)) {
+                self.last_domain_warnings = entry.domain_warnings.clone();
+                self.last_required_conditions = entry.required_conditions.clone();
+                self.last_blocked_hints = entry.blocked_hints.clone();
+                return (entry.out, entry.steps.clone());
+            }
+        }
+        let (out, steps) =
+            self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::default());
+        if memo_active {
+            self.solve_memo.insert(
+                (expr_id, self.sticky_root_expr),
+                super::simplifier::SolveMemoEntry {
+                    out,
+                    steps: steps.clone(),
+                    domain_warnings: self.last_domain_warnings.clone(),
+                    required_conditions: self.last_required_conditions.clone(),
+                    blocked_hints: self.last_blocked_hints.clone(),
+                },
+            );
+        }
+        (out, steps)
     }
 
     /// Simplify with custom options controlling phases and policies.

@@ -5990,6 +5990,23 @@ fn solve_local_core(
     opts: CoreSolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // P16: the handler chain below re-simplifies the same interned diff/lhs/rhs
+    // 4-8x per solve (measured up to 85% redundant `simplify` calls). Scope the
+    // engine's solve memo over the whole handler chain; re-entrant across the
+    // recursive sub-solves.
+    simplifier.begin_solve_simplify_memo();
+    let result = solve_local_core_inner(eq, var, simplifier, opts, ctx);
+    simplifier.end_solve_simplify_memo();
+    result
+}
+
+fn solve_local_core_inner(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: CoreSolverOptions,
+    ctx: &SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Solver-opaque function aliases (`log2`, `log10`, `csc`, `sec`, `cot`, `cbrt`) rewrite to
     // their canonical invertible forms up front, so every handler below sees solvable atoms
     // instead of erroring `función [...] no definida`.
