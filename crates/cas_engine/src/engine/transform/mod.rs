@@ -31,9 +31,6 @@ use tracing::debug;
 /// For deeper expressions, use `RUST_MIN_STACK=16777216` (16MB).
 const MAX_SIMPLIFY_DEPTH: usize = 50;
 
-/// Path to log expressions that exceed the depth limit for later investigation.
-const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";
-
 /// Cached env var check: avoids heap-allocated String lookup on every rule match.
 static CAS_TRACE_RULES_ENABLED: std::sync::LazyLock<bool> =
     std::sync::LazyLock::new(|| std::env::var("CAS_TRACE_RULES").is_ok());
@@ -218,29 +215,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 if !self.suppress_depth_overflow_warnings
                     && !crate::are_depth_overflow_warnings_suppressed()
                 {
-                    // Log the expression to file for later investigation
+                    // S8: a library must not write files as a side effect —
+                    // the old fixed world-shared /tmp log was a symlink/
+                    // collision/disk-fill hazard on every depth overflow from
+                    // ordinary input. The tracing warning below carries the
+                    // same information; subscribers decide where it goes.
                     let display = cas_formatter::DisplayExpr {
                         context: self.context,
                         id: self.root_expr,
                     };
                     let expr_str = display.to_string();
-                    let log_entry = format!(
-                        "[{:?}] Depth overflow at phase {:?}, depth {}: {}\n",
-                        std::time::SystemTime::now(),
-                        self.current_phase,
-                        self.current_depth,
-                        expr_str
-                    );
-
-                    // Append to log file (ignore errors - this is best-effort)
-                    use std::io::Write;
-                    if let Ok(mut file) = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(DEPTH_OVERFLOW_LOG_PATH)
-                    {
-                        let _ = file.write_all(log_entry.as_bytes());
-                    }
 
                     // Emit warning via tracing
                     tracing::warn!(
