@@ -5375,6 +5375,200 @@ fn try_emit_trig_interior_interval_union(
     })
 }
 
+/// PIU P3b: `A / trig(g) ⋚ c` (Div or `trig^(−1)` shapes, either side).
+/// Normalizes to `1/s ⋚ r` (s = trig(g), r = c/A, flip for A < 0), splits by
+/// the sign of `r` into window relations on `s`, sub-solves each through the
+/// full pipeline (the P2/P3a producers), and combines with the circular
+/// same-period algebra. Any sub-result outside {∅, ℝ, PIU} declines.
+fn try_solve_reciprocal_trig_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+
+    // Match `A · trig(g)^(−1)` or `A / trig(g)` (sin/cos/tan only).
+    let recip_trig = |ctx_: &Context, e: ExprId| -> Option<(BigRational, BuiltinFn, ExprId)> {
+        let (coeff, core) = peel_rational_coefficient(ctx_, e);
+        if coeff.is_zero() {
+            return None;
+        }
+        let trig_of = |ctx_: &Context, e2: ExprId| -> Option<(BuiltinFn, ExprId)> {
+            if let Expr::Function(fn_id, args) = ctx_.get(e2) {
+                if args.len() == 1 && contains_var(ctx_, args[0], var) {
+                    if let Some(f) = ctx_.builtin_of(*fn_id) {
+                        if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                            return Some((f, args[0]));
+                        }
+                    }
+                }
+            }
+            None
+        };
+        if let Expr::Pow(base, exp) = ctx_.get(core) {
+            let minus_one = BigRational::from_integer((-1).into());
+            if cas_math::numeric_eval::as_rational_const(ctx_, *exp) == Some(minus_one) {
+                if let Some((f, g)) = trig_of(ctx_, *base) {
+                    return Some((coeff, f, g));
+                }
+            }
+        }
+        if let Expr::Div(num, den) = ctx_.get(core) {
+            let a = cas_math::numeric_eval::as_rational_const(ctx_, *num)?;
+            if a.is_zero() {
+                return None;
+            }
+            if let Some((f, g)) = trig_of(ctx_, *den) {
+                return Some((coeff * a, f, g));
+            }
+        }
+        // The simplifier refolds UNIT-numerator reciprocals into the named
+        // functions (`1/sin → csc`, `1/cos → sec`, `1/tan → cot`); those ARE
+        // the reciprocal shape.
+        if let Expr::Function(fn_id, args) = ctx_.get(core) {
+            if args.len() == 1 && contains_var(ctx_, args[0], var) {
+                if let Some(f) = ctx_.builtin_of(*fn_id) {
+                    let base = match f {
+                        BuiltinFn::Csc => Some(BuiltinFn::Sin),
+                        BuiltinFn::Sec => Some(BuiltinFn::Cos),
+                        BuiltinFn::Cot => Some(BuiltinFn::Tan),
+                        _ => None,
+                    };
+                    if let Some(bf) = base {
+                        return Some((coeff, bf, args[0]));
+                    }
+                }
+            }
+        }
+        None
+    };
+    let (a_coeff, trig_fn, g, c_expr, op) =
+        if let Some((a, f, g)) = recip_trig(&simplifier.context, lhs) {
+            if contains_var(&simplifier.context, rhs, var) {
+                return None;
+            }
+            (a, f, g, rhs, eq.op.clone())
+        } else if let Some((a, f, g)) = recip_trig(&simplifier.context, rhs) {
+            if contains_var(&simplifier.context, lhs, var) {
+                return None;
+            }
+            (a, f, g, lhs, flip_inequality(eq.op.clone()))
+        } else {
+            return None;
+        };
+    let c_val = cas_math::numeric_eval::as_rational_const(&simplifier.context, c_expr)?;
+
+    // A/s ⋚ c ⟺ 1/s ⋚' r with r = c/A (dividing by A flips for A < 0).
+    let r = c_val / &a_coeff;
+    let op = if a_coeff.is_negative() {
+        flip_inequality(op)
+    } else {
+        op
+    };
+
+    // Sign case split for `1/s ⋚ r` (s ≠ 0 wherever 1/s is defined; the
+    // strict `s > 0` / `s < 0` windows exclude the pole by construction).
+    let zero = BigRational::zero();
+    let inv_r = if r.is_zero() {
+        zero.clone()
+    } else {
+        BigRational::from_integer(1.into()) / &r
+    };
+    // (conjunction?, parts): conjunction=true → intersect, false → union.
+    let (conj, parts): (bool, Vec<(RelOp, BigRational)>) = if r.is_zero() {
+        match op {
+            RelOp::Gt | RelOp::Geq => (true, vec![(RelOp::Gt, zero)]),
+            RelOp::Lt | RelOp::Leq => (true, vec![(RelOp::Lt, zero)]),
+            _ => return None,
+        }
+    } else if r.is_positive() {
+        match op {
+            RelOp::Gt => (true, vec![(RelOp::Gt, zero), (RelOp::Lt, inv_r)]),
+            RelOp::Geq => (true, vec![(RelOp::Gt, zero), (RelOp::Leq, inv_r)]),
+            RelOp::Lt => (false, vec![(RelOp::Lt, zero), (RelOp::Gt, inv_r)]),
+            RelOp::Leq => (false, vec![(RelOp::Lt, zero), (RelOp::Geq, inv_r)]),
+            _ => return None,
+        }
+    } else {
+        match op {
+            RelOp::Lt => (true, vec![(RelOp::Gt, inv_r), (RelOp::Lt, zero)]),
+            RelOp::Leq => (true, vec![(RelOp::Geq, inv_r), (RelOp::Lt, zero)]),
+            RelOp::Gt => (false, vec![(RelOp::Gt, zero), (RelOp::Lt, inv_r)]),
+            RelOp::Geq => (false, vec![(RelOp::Gt, zero), (RelOp::Leq, inv_r)]),
+            _ => return None,
+        }
+    };
+
+    // Sub-solve each `trig(g) ⋚ bound` through the full pipeline and combine.
+    let mut acc: Option<SolutionSet> = None;
+    for (sub_op, bound) in parts {
+        let bound_expr = rational_to_expr(&mut simplifier.context, &bound);
+        let trig_call = simplifier.context.call_builtin(trig_fn, vec![g]);
+        let sub_eq = Equation {
+            lhs: trig_call,
+            rhs: bound_expr,
+            op: sub_op,
+        };
+        let (set, _) = crate::solver_entrypoints_solve::solve(&sub_eq, var, simplifier).ok()?;
+        if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
+            return None; // unresolved piece: decline the whole relation
+        }
+        acc = Some(match acc {
+            None => set,
+            Some(prev) => combine_piu_sets(simplifier, prev, set, conj)?,
+        });
+    }
+    acc
+}
+
+/// Combine two sub-results where each is Empty/AllReals/PeriodicIntervalUnion;
+/// PIU pairs go through the circular same-period algebra. Anything else
+/// (mixed Periodic points, intervals) declines conservatively.
+fn combine_piu_sets(
+    simplifier: &mut Simplifier,
+    s1: SolutionSet,
+    s2: SolutionSet,
+    intersect: bool,
+) -> Option<SolutionSet> {
+    use SolutionSet::{AllReals, Empty, PeriodicIntervalUnion};
+    match (s1, s2) {
+        (AllReals, s) | (s, AllReals) if intersect => Some(s),
+        (AllReals, _) | (_, AllReals) => Some(AllReals),
+        (Empty, _) | (_, Empty) if intersect => Some(Empty),
+        (Empty, s) | (s, Empty) => Some(s),
+        (
+            PeriodicIntervalUnion {
+                windows: w1,
+                period: p1,
+            },
+            PeriodicIntervalUnion {
+                windows: w2,
+                period: p2,
+            },
+        ) => {
+            if intersect {
+                crate::periodic_interval_union::intersect_periodic_interval_unions_over_common_period(
+                    simplifier, &w1, p1, &w2, p2,
+                )
+            } else {
+                crate::periodic_interval_union::union_periodic_interval_unions_over_common_period(
+                    simplifier, &w1, p1, &w2, p2,
+                )
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Build an exact rational constant expression.
 fn rational_to_expr(ctx: &mut Context, r: &num_rational::BigRational) -> ExprId {
     ctx.add(Expr::Number(r.clone()))
@@ -6834,6 +7028,12 @@ fn solve_local_core_inner(
     // A SUM of ≥2 sign forms `Σ cᵢ·sign(gᵢ) {op} k` (`(x+1)/|x+1| + (x-1)/|x-1| > 0`) is a step function;
     // partition ℝ at the `gᵢ = 0` poles and test each region. The single-sign handler below keeps the
     // `n = 1` case (this requires ≥ 2 sign terms).
+    // PIU P3b: `A / trig(g) ⋚ c` — reduce by sign cases to window relations
+    // on `trig(g)` and combine with the circular same-period algebra
+    // (`1/sin(x) > 2` ⟺ 0 < sin(x) < 1/2 → two windows per period).
+    if let Some(set) = try_solve_reciprocal_trig_inequality(eq, var, simplifier) {
+        return Ok((set, Vec::new()));
+    }
     // Scout family C: `A/|g| ⋚ c` — the generic inversion lost the `g = 0`
     // pole (`1/|x| > 2 → (−1/2, 1/2)` including 0) and the c = 0 branch emitted
     // degenerate `(−∞,−∞)` endpoints. `A/|g| = |A/g|` exactly (for A > 0), and
