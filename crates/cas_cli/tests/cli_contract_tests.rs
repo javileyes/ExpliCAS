@@ -2680,9 +2680,10 @@ fn test_eval_reciprocal_positive_function_inequality_flips() {
 
 #[test]
 fn test_eval_periodic_trig_inequality_declines() {
-    // SOUNDNESS: a periodic `sin`/`cos`/`tan` inequality has an infinite periodic-union solution the
-    // engine cannot represent, so the monotonic inversion emitted a single wrong ray. It now declines
-    // to an honest residual (ok=true). The bare out-of-range cases (ℝ/∅) and equations are unaffected.
+    // SOUNDNESS: a periodic `sin`/`cos`/`tan` inequality has an infinite periodic-union solution
+    // that the monotonic inversion used to emit as a single wrong ray. Since cycle P2 the sin/cos
+    // interior cases SOLVE exactly via PeriodicIntervalUnion; tan still declines honestly (P3).
+    // The bare out-of-range cases (ℝ/∅) and equations are unaffected.
     let run = |input: &str| -> (bool, String) {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -2694,20 +2695,23 @@ fn test_eval_periodic_trig_inequality_declines() {
             wire["result"].as_str().unwrap_or("").to_string(),
         )
     };
-    for input in [
-        "sin(x)>0",
-        "cos(x)<0",
-        "sin(x)>1/2",
-        "tan(x)>1",
-        "sin(2*x)>0",
-        "cos(x)>=1/2",
+    for (input, expected) in [
+        ("sin(x)>0", "{ (k·2·pi, pi + k·2·pi) : k ∈ ℤ }"),
+        ("cos(x)<0", "{ (1/2·pi + k·2·pi, 3/2·pi + k·2·pi) : k ∈ ℤ }"),
+        (
+            "sin(x)>1/2",
+            "{ (1/6·pi + k·2·pi, 5/6·pi + k·2·pi) : k ∈ ℤ }",
+        ),
+        ("tan(x)>1", "solve(tan(x) > 1, x)"),
+        ("sin(2*x)>0", "{ (k·pi, 1/2·pi + k·pi) : k ∈ ℤ }"),
+        (
+            "cos(x)>=1/2",
+            "{ [-1/3·pi + k·2·pi, 1/3·pi + k·2·pi] : k ∈ ℤ }",
+        ),
     ] {
         let (ok, result) = run(input);
-        assert!(ok, "{input} should be ok=true residual, got {result:?}");
-        assert!(
-            result.contains("solve("),
-            "{input} should be a residual, got {result:?}"
-        );
+        assert!(ok, "{input} should be ok=true, got {result:?}");
+        assert_eq!(result, expected, "{input}");
     }
     let plain = |input: &str| run(input).1;
     // Out-of-range bare sin/cos are still answered exactly (not pre-empted by the residual decline).
@@ -4235,10 +4239,13 @@ fn test_eval_trig_inequality_out_of_range() {
     assert_eq!(r("sin(x)<2"), "All real numbers");
     assert_eq!(r("cos(x)>=-1"), "All real numbers"); // cos ≥ -1 always
     assert_eq!(r("sin(x)>=2"), "No solution");
-    // Controls: an in-range threshold is now the honest periodic residual (owned by the periodic
-    // decline of commit 145ec7a09 — the old `(1/6·pi, infinity)` ray was unsound: sin(x)>1/2 is
-    // false at x=pi, which lies in that ray). Equations are unchanged.
-    assert_eq!(r("sin(x)>1/2"), "solve(sin(x) > 1 / 2, x)");
+    // Controls: an in-range threshold now SOLVES exactly (cycle P2 PeriodicIntervalUnion; the old
+    // `(1/6·pi, infinity)` ray was unsound: sin(x)>1/2 is false at x=pi, which lies in that ray).
+    // Equations are unchanged.
+    assert_eq!(
+        r("sin(x)>1/2"),
+        "{ (1/6·pi + k·2·pi, 5/6·pi + k·2·pi) : k ∈ ℤ }"
+    );
     assert_eq!(r("cos(x)=2"), "No solution");
     assert_eq!(
         r("sin(x)=1/3"),

@@ -35,11 +35,19 @@ fn assert_pair(reversed: &str, direct: &str) {
 }
 
 #[test]
-fn reversed_interior_thresholds_decline_instead_of_wrong_rays() {
-    // The three live wrong answers found by the design review panel.
-    assert_eq!(solve("1/2<sin(x)"), "solve(sin(x) > 1 / 2, x)");
+fn reversed_interior_thresholds_solve_or_decline_instead_of_wrong_rays() {
+    // The three live wrong answers found by the design review panel. Since
+    // cycle P2 the sin/cos cases SOLVE (PeriodicIntervalUnion); tan declines
+    // honestly until its P3 handler. Neither may regress to a ray.
+    assert_eq!(
+        solve("1/2<sin(x)"),
+        "{ (1/6·pi + k·2·pi, 5/6·pi + k·2·pi) : k ∈ ℤ }"
+    );
     assert_eq!(solve("2<tan(x)"), "solve(tan(x) > 2, x)");
-    assert_eq!(solve("1/3<cos(x)"), "solve(cos(x) > 1 / 3, x)");
+    assert_eq!(
+        solve("1/3<cos(x)"),
+        "{ (-arccos(1/3) + k·2·pi, arccos(1/3) + k·2·pi) : k ∈ ℤ }"
+    );
 }
 
 #[test]

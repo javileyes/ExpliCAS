@@ -37,23 +37,25 @@ fn solve(input: &str) -> String {
 
 #[test]
 fn residual_preserves_strict_greater() {
-    assert_eq!(solve("solve(sin(x)>1/2, x)"), "solve(sin(x) > 1 / 2, x)");
+    // P2 recontract: sin/cos interior thresholds now SOLVE (PeriodicIntervalUnion);
+    // tan still declines until its P3 sibling handler and carries the pin.
+    assert_eq!(solve("solve(tan(x)>1/2, x)"), "solve(tan(x) > 1 / 2, x)");
 }
 
 #[test]
 fn residual_preserves_strict_less() {
-    assert_eq!(solve("solve(sin(x)<1/2, x)"), "solve(sin(x) < 1 / 2, x)");
+    assert_eq!(solve("solve(tan(x)<1/2, x)"), "solve(tan(x) < 1 / 2, x)");
 }
 
 #[test]
 fn residual_preserves_nonstrict_operators() {
-    assert_eq!(solve("solve(sin(x)>=1/2, x)"), "solve(sin(x) >= 1 / 2, x)");
+    assert_eq!(solve("solve(tan(x)>=1/2, x)"), "solve(tan(x) >= 1 / 2, x)");
     assert_eq!(solve("solve(tan(x)<=2, x)"), "solve(tan(x) <= 2, x)");
 }
 
 #[test]
 fn residual_latex_is_self_describing_without_dangling_zero() {
-    let wire = eval_wire("solve(sin(x)>1/2, x)");
+    let wire = eval_wire("solve(tan(x)>1/2, x)");
     let latex = wire["result_latex"].as_str().unwrap_or("");
     assert!(
         latex.contains(">") && !latex.contains("= 0") && !latex.contains("Solve:"),
@@ -129,10 +131,13 @@ fn exterior_thresholds_resolve_to_empty_or_all_reals() {
 }
 
 #[test]
-fn interior_thresholds_still_decline_honestly() {
-    // |c/A| < 1 has interval solutions — out of reach until
-    // PeriodicIntervalUnion; the contract is an HONEST residual, and tan is
-    // unbounded so it never hits a weak boundary.
-    assert_eq!(solve("solve(cos(2*x)>0, x)"), "solve(cos(2·x) > 0, x)");
+fn interior_thresholds_now_solve_or_decline_honestly() {
+    // P2 recontract: the sin/cos interior threshold this test was DESIGNED
+    // to hand over now solves via PeriodicIntervalUnion; tan stays an honest
+    // residual until the P3 sibling handler.
+    assert_eq!(
+        solve("solve(cos(2*x)>0, x)"),
+        "{ (-1/4·pi + k·pi, 1/4·pi + k·pi) : k ∈ ℤ }"
+    );
     assert_eq!(solve("solve(tan(x)>=1, x)"), "solve(tan(x) >= 1, x)");
 }
