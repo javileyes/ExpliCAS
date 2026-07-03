@@ -24,5 +24,8 @@ pub fn display_solution_set(ctx: &Context, set: &SolutionSet) -> String {
         SolutionSet::Periodic { bases, period } => {
             cas_formatter::display_periodic_family(ctx, bases, *period)
         }
+        SolutionSet::PeriodicIntervalUnion { windows, period } => {
+            cas_formatter::display_periodic_interval_union(ctx, windows, *period)
+        }
     }
 }

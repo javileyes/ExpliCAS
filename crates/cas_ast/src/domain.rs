@@ -374,6 +374,29 @@ pub enum SolutionSet {
         bases: Vec<ExprId>,
         period: ExprId,
     },
+    /// A periodic union of INTERVALS `∪_{k∈ℤ} ∪_i (windows[i] + k·period)` —
+    /// the solution shape of interior trig inequalities (`sin(x) > 1/2 →
+    /// (π/6 + 2kπ, 5π/6 + 2kπ)`), which `Periodic` (points only) cannot
+    /// represent. Membership: `x ∈ S ⟺ ∃k∈ℤ: x − k·period ∈ windows[i]`
+    /// for some `i`.
+    ///
+    /// Invariants (see `docs/DESIGN_PERIODIC_INTERVAL_UNION.md` §2):
+    /// - windows sorted by `min`, non-degenerate (`min < max` by VALUE),
+    ///   finite endpoints, pairwise disjoint and non-adjacent MODULO the
+    ///   period;
+    /// - SPAN invariant: `max(last) − min(first) ≤ period` — all windows fit
+    ///   in ONE length-period translate (windows may straddle any fixed
+    ///   fundamental domain, e.g. `(−π/3, π/3)`, but never overlap their own
+    ///   `+k·period` translates);
+    /// - `Σ len ≤ period`, with equality exactly for the single all-open
+    ///   window of length == period (the punctured line, `cos(x) < 1 →
+    ///   (2kπ, 2π + 2kπ) = ℝ ∖ {2kπ}`). Length == period with any closed
+    ///   endpoint denotes ℝ and must be emitted as `AllReals`, never as this
+    ///   variant.
+    PeriodicIntervalUnion {
+        windows: Vec<Interval>,
+        period: ExprId,
+    },
 }
 
 impl SolutionSet {

@@ -166,6 +166,7 @@ mod parse_error_render;
 mod parse_error_render_tests;
 #[cfg(test)]
 mod path_rewrite_tests;
+pub mod periodic_interval_union;
 #[allow(dead_code)]
 mod pipeline_display;
 #[cfg(test)]

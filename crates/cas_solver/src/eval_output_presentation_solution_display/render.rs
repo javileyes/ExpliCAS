@@ -60,5 +60,8 @@ pub(crate) fn format_output_solution_set(ctx: &Context, solution_set: &SolutionS
         SolutionSet::Periodic { bases, period } => {
             cas_formatter::display_periodic_family(ctx, bases, *period)
         }
+        SolutionSet::PeriodicIntervalUnion { windows, period } => {
+            cas_formatter::display_periodic_interval_union(ctx, windows, *period)
+        }
     }
 }

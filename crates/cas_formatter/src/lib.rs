@@ -45,7 +45,10 @@ pub use path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
     extract_add_terms, navigate_to_subexpr,
 };
-pub use periodic::{display_periodic_family, latex_periodic_family};
+pub use periodic::{
+    display_periodic_family, display_periodic_interval_union, latex_periodic_family,
+    latex_periodic_interval_union,
+};
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 pub use rule_scope::render_with_rule_scope;
 pub use visualizer::AstVisualizer;

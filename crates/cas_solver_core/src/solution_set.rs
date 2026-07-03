@@ -105,6 +105,67 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     cas_ast::ordering::compare_expr(ctx, a, b)
 }
 
+/// Fallible value comparison: the oracle chain of [`compare_values`]
+/// WITHOUT its value-blind structural fallback. Returns `None` when no
+/// exact oracle can decide, instead of silently falling back to structural
+/// order — the signal `compare_values` cannot give (it is total by design).
+///
+/// This is the comparator the `PeriodicIntervalUnion` window algebra must
+/// use (design §4/§6): merging or intersecting windows on a structurally
+/// ordered but value-unordered pair (e.g. generic `arcsin(1/3)` endpoints,
+/// which no oracle bounds yet) would corrupt the set. A structurally EQUAL
+/// pair is still a sound `Equal` (same node/structure ⇒ same value).
+pub fn try_compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Option<Ordering> {
+    let a_inf = is_infinity(ctx, a);
+    let b_inf = is_infinity(ctx, b);
+    let a_neg_inf = is_neg_infinity(ctx, a);
+    let b_neg_inf = is_neg_infinity(ctx, b);
+    if a_neg_inf {
+        return Some(if b_neg_inf {
+            Ordering::Equal
+        } else {
+            Ordering::Less
+        });
+    }
+    if b_neg_inf {
+        return Some(Ordering::Greater);
+    }
+    if a_inf {
+        return Some(if b_inf {
+            Ordering::Equal
+        } else {
+            Ordering::Greater
+        });
+    }
+    if b_inf {
+        return Some(Ordering::Less);
+    }
+    if let (Some(n1), Some(n2)) = (get_number(ctx, a), get_number(ctx, b)) {
+        return Some(n1.cmp(&n2));
+    }
+    if let Some(ord) = compare_quadratic_surds(ctx, a, b) {
+        return Some(ord);
+    }
+    if let Some(ord) = compare_nth_root_surds(ctx, a, b) {
+        return Some(ord);
+    }
+    if let (Some((a_lo, a_hi)), Some((b_lo, b_hi))) = (
+        cas_math::const_sign::const_value_bounds(ctx, a),
+        cas_math::const_sign::const_value_bounds(ctx, b),
+    ) {
+        if a_hi < b_lo {
+            return Some(Ordering::Less);
+        }
+        if a_lo > b_hi {
+            return Some(Ordering::Greater);
+        }
+    }
+    if cas_ast::ordering::compare_expr(ctx, a, b) == Ordering::Equal {
+        return Some(Ordering::Equal);
+    }
+    None
+}
+
 /// Decompose `expr` into the quadratic-surd normal form `A + B·√n` (`n ≥ 0` rational), also
 /// recognising the golden ratio `φ = ½ + ½·√5`. `None` for anything outside a single real
 /// quadratic surd (delegates to [`cas_math::root_forms::as_linear_surd`]).
@@ -545,6 +606,7 @@ fn sset_kind(s: &SolutionSet) -> &'static str {
         SolutionSet::Residual(_) => "Residual",
         SolutionSet::Conditional(_) => "Conditional",
         SolutionSet::Periodic { .. } => "Periodic",
+        SolutionSet::PeriodicIntervalUnion { .. } => "PeriodicIntervalUnion",
     }
 }
 
@@ -631,6 +693,23 @@ pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> S
         // finding.)
         (s1 @ (SolutionSet::Residual(_) | SolutionSet::Conditional(_)), _)
         | (s1, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) => return s1,
+        // A `PeriodicIntervalUnion` operand: window arithmetic needs a
+        // simplifier for the endpoint±period expressions, which this
+        // `&Context`-only core cannot build. Combine at the SOLVER layer
+        // (`union_periodic_interval_unions_over_common_period`); the
+        // reachability contract (design §6) requires solver-layer callers to
+        // pre-check combinability and decline the whole relation otherwise.
+        // Fail loud in debug rather than silently DROPPING the other operand.
+        (s1 @ SolutionSet::PeriodicIntervalUnion { .. }, s2)
+        | (s1, s2 @ SolutionSet::PeriodicIntervalUnion { .. }) => {
+            debug_assert!(
+                false,
+                "union_solution_sets: unrepresentable {} ∪ {} — combine at the solver layer",
+                sset_kind(&s1),
+                sset_kind(&s2)
+            );
+            return s1;
+        }
         // A PERIODIC family unioned with intervals/points needs the `base + k·period` membership test —
         // a symbolic simplification this `&Context`-only core cannot do. It must be combined at the
         // SOLVER layer (see `union_periodic_families_over_common_period`). Fail loud in debug rather
@@ -767,6 +846,20 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
         // restriction is resolved elsewhere; `Empty` is the accepted historical result here.
         (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _)
         | (_, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) => SolutionSet::Empty,
+        // A `PeriodicIntervalUnion` operand: same solver-layer deferral as the
+        // union arm above — clipping/intersecting windows needs endpoint
+        // arithmetic this core cannot do. Fail loud in debug rather than
+        // silently returning `Empty` (dropping real solutions).
+        (s1 @ SolutionSet::PeriodicIntervalUnion { .. }, s2)
+        | (s1, s2 @ SolutionSet::PeriodicIntervalUnion { .. }) => {
+            debug_assert!(
+                false,
+                "intersect_solution_sets: unhandled {} ∩ {} — resolve at the solver layer",
+                sset_kind(&s1),
+                sset_kind(&s2)
+            );
+            SolutionSet::Empty
+        }
         // A `Periodic ∩ interval` is a finite point set, but finding WHICH `base + k·period` land inside
         // needs solving — a symbolic simplification this `&Context`-only core cannot do; resolve at the
         // solver layer. Fail loud in debug rather than silently returning `Empty` (dropping real points).

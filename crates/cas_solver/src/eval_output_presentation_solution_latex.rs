@@ -17,5 +17,8 @@ pub(crate) fn solution_set_to_output_latex(ctx: &Context, solution_set: &Solutio
         SolutionSet::Periodic { bases, period } => {
             cas_formatter::latex_periodic_family(ctx, bases, *period)
         }
+        SolutionSet::PeriodicIntervalUnion { windows, period } => {
+            cas_formatter::latex_periodic_interval_union(ctx, windows, *period)
+        }
     }
 }

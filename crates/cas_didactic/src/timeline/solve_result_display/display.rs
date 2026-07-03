@@ -22,6 +22,9 @@ pub(super) fn display_solution_set(context: &Context, solution_set: &SolutionSet
         SolutionSet::Periodic { bases, period } => {
             cas_formatter::display_periodic_family(context, bases, *period)
         }
+        SolutionSet::PeriodicIntervalUnion { windows, period } => {
+            cas_formatter::display_periodic_interval_union(context, windows, *period)
+        }
     }
 }
 

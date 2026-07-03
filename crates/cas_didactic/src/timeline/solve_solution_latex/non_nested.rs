@@ -29,5 +29,8 @@ pub(super) fn render_non_nested_solution_set_to_latex(
         SolutionSet::Periodic { bases, period } => {
             cas_formatter::latex_periodic_family(context, bases, *period)
         }
+        SolutionSet::PeriodicIntervalUnion { windows, period } => {
+            cas_formatter::latex_periodic_interval_union(context, windows, *period)
+        }
     }
 }
