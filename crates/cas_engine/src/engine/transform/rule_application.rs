@@ -209,6 +209,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         self.profiler
                             .record_with_delta(self.current_phase, rule.name(), delta);
 
+                        // Health telemetry: one hit per domain assumption this
+                        // application relied on (set by the rule itself or attached
+                        // by the domain airbag in Assume mode).
+                        for _ in &rewrite.assumption_events {
+                            self.profiler
+                                .record_domain_assumption(self.current_phase, rule.name());
+                        }
+
                         // TRACE: Log applied rules for debugging cycles
                         if *CAS_TRACE_RULES_ENABLED {
                             use std::io::Write;
@@ -418,6 +426,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                     // Record rule application for profiling
                     self.profiler.record(self.current_phase, rule.name());
+
+                    // Health telemetry: one hit per domain assumption this
+                    // application relied on.
+                    for _ in &rewrite.assumption_events {
+                        self.profiler
+                            .record_domain_assumption(self.current_phase, rule.name());
+                    }
 
                     debug!(
                         "{}[DEBUG] Global Rule '{}' applied: {:?} -> {:?}",

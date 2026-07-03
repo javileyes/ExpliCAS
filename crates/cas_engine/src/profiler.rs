@@ -417,6 +417,17 @@ impl RuleProfiler {
         self.health_enabled = true;
     }
 
+    /// Toggle health tracking. Enabling implies profiling (health needs the
+    /// per-rule counters); disabling leaves base profiling as-is so an
+    /// independent `profile on` is not clobbered.
+    pub fn set_health_tracking(&mut self, on: bool) {
+        if on {
+            self.enable_health();
+        } else {
+            self.health_enabled = false;
+        }
+    }
+
     /// Disable profiling
     pub fn disable(&mut self) {
         self.enabled = false;

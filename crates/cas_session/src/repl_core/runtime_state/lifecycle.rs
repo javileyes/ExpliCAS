@@ -10,6 +10,12 @@ impl ReplCore {
     /// Rebuild simplifier from current eval profile.
     pub(crate) fn rebuild_simplifier_from_profile(&mut self) {
         self.engine.simplifier = Simplifier::with_profile(self.state.options());
+        // The profiler lives on the simplifier we just replaced: re-apply the
+        // session-level health flag so `health on` survives semantics/context
+        // rebuilds (otherwise health metrics silently stop recording).
+        if self.health_enabled() {
+            self.engine.simplifier.profiler.enable_health();
+        }
     }
 
     /// Clear session state history/bindings.

@@ -18,7 +18,13 @@ pub(crate) fn evaluate_health_command(
         HealthCommandInput::ShowLast => Ok(output::build_show_last_output(
             format_health_report_lines(last_stats, last_health_report),
         )),
-        HealthCommandInput::SetEnabled { enabled } => Ok(output::build_set_enabled_output(enabled)),
+        HealthCommandInput::SetEnabled { enabled } => {
+            // Keep the engine profiler in lockstep with the session flag —
+            // health metrics (incl. domain-assumption hits) are recorded by
+            // the simplifier's own profiler, not by session state.
+            simplifier.profiler.set_health_tracking(enabled);
+            Ok(output::build_set_enabled_output(enabled))
+        }
         HealthCommandInput::Clear => {
             clear_health_profiler(simplifier);
             Ok(output::build_clear_output())
