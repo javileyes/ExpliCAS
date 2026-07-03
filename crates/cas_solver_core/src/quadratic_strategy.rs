@@ -13,15 +13,6 @@ use crate::quadratic_didactic::{
 use crate::quadratic_formula::execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state;
 use crate::{isolation_utils::is_numeric_zero, quadratic_coeffs::extract_quadratic_coefficients};
 
-/// Prepared quadratic candidate for `a*x^2 + b*x + c = 0`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QuadraticPreparedCandidate {
-    pub sim_poly_expr: ExprId,
-    pub a: ExprId,
-    pub b: ExprId,
-    pub c: ExprId,
-}
-
 /// Prepare quadratic strategy candidate with default coefficient extraction:
 /// 1) normalize equation to `lhs - rhs`,
 /// 2) simplify + expand for coefficient extraction,

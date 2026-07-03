@@ -69,13 +69,6 @@ impl UnwrapExecutionItem {
     }
 }
 
-/// Didactic payload for a planned unwrap rewrite step.
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnwrapDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
-}
-
 /// Build narration for variable-base power unwrap rewrites.
 pub(crate) fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
     format!("Raise both sides to 1/{}", exponent_display)
@@ -369,15 +362,6 @@ pub(crate) fn collect_log_linear_assumption_records(
             other_side,
         })
         .collect()
-}
-
-/// Solved payload for one unwrap execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnwrapSolvedExecution<T> {
-    pub execution: UnwrapExecutionPlan,
-    pub assumption_records: Vec<LogLinearAssumptionRecord>,
-    pub rewritten_equation: Equation,
-    pub solved: T,
 }
 
 /// Resolve the equation to continue solving after unwrap execution.

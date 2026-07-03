@@ -115,13 +115,6 @@ pub const RECIPROCAL_COMBINE_STEP_DESCRIPTION: &str =
 /// Human-readable step description for reciprocal inversion.
 pub const RECIPROCAL_INVERT_STEP_DESCRIPTION: &str = "Take reciprocal";
 
-/// Didactic payload for one reciprocal-solve step.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ReciprocalDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
-}
-
 /// Planned equation targets for reciprocal solve `1/var = rhs`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReciprocalSolvePlan {

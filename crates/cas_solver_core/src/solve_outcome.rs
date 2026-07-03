@@ -46,16 +46,6 @@ pub enum IsolatedVariableOutcome {
     ContainsTargetVariable,
 }
 
-/// Fallback outcome when an isolated-variable RHS still contains the target.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CircularIsolatedOutcome<S> {
-    Solved {
-        solution_set: SolutionSet,
-        steps: Vec<S>,
-    },
-    Residual(SolutionSet),
-}
-
 /// Build a `Number` expression from a rational.
 fn num_expr_from_rational(ctx: &mut Context, r: &num_rational::BigRational) -> ExprId {
     ctx.add(Expr::Number(r.clone()))
@@ -1194,13 +1184,6 @@ pub enum PowExponentShortcutExecutionPlan {
     },
 }
 
-/// Didactic payload for a planned exponent-shortcut step.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PowExponentShortcutDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
-}
-
 /// One executable exponent-shortcut item aligned with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentShortcutExecutionItem {
@@ -1229,14 +1212,6 @@ pub enum PowExponentShortcutEngineAction {
         solutions: SolutionSet,
         items: Vec<PowExponentShortcutExecutionItem>,
     },
-}
-
-/// Solved outcome for exponent-shortcut action execution.
-#[derive(Debug, Clone, PartialEq)]
-pub enum PowExponentShortcutSolved<T> {
-    Continue,
-    Isolated(T),
-    ReturnedSolutionSet(SolutionSet),
 }
 
 /// Solved result for an exponent-shortcut execution pipeline.
@@ -1764,13 +1739,6 @@ pub enum PowBaseIsolationPlan {
     },
 }
 
-/// Didactic payload for a planned base-isolation step.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PowBaseIsolationDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
-}
-
 /// One executable base-isolation item aligned with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowBaseIsolationExecutionItem {
@@ -1798,13 +1766,6 @@ pub enum PowBaseIsolationEngineAction {
         op: RelOp,
         items: Vec<PowBaseIsolationExecutionItem>,
     },
-}
-
-/// Solved outcome for base-isolation action execution.
-#[derive(Debug, Clone, PartialEq)]
-pub enum PowBaseIsolationSolved<T> {
-    ReturnedSolutionSet(SolutionSet),
-    Isolated(T),
 }
 
 /// Solved result for a base-isolation execution pipeline.
@@ -3205,13 +3166,6 @@ pub(crate) fn isolated_denominator_negative_case_message(den_display: &str) -> S
     )
 }
 
-/// Didactic payload for one term-isolation rewrite step.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TermIsolationDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
-}
-
 /// Planned isolation rewrite plus its didactic step payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermIsolationRewritePlan {
@@ -4028,14 +3982,6 @@ impl DivisionDidacticExecutionItem {
     pub fn description(&self) -> &str {
         &self.description
     }
-}
-
-/// Didactic payload for denominator-sign split traces.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DivisionDenominatorSignSplitDidactic {
-    pub positive_case: DivisionCaseDidacticStep,
-    pub negative_case: DivisionCaseDidacticStep,
-    pub case_boundary: DivisionCaseDidacticStep,
 }
 
 /// Collect denominator sign-split execution items in display order:
@@ -5428,14 +5374,6 @@ pub enum AbsIsolationPlan {
     },
 }
 
-/// Solved outcome for absolute-value isolation planning.
-#[derive(Debug, Clone, PartialEq)]
-pub enum AbsIsolationSolved<TSingle, TSplit> {
-    ReturnedEmptySet,
-    IsolatedSingle(TSingle),
-    Split(TSplit),
-}
-
 /// Stateful variant of
 /// [`execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver`].
 ///
@@ -5589,12 +5527,6 @@ pub struct DivisionDenominatorDidacticPlan {
     pub divide_by: ExprId,
 }
 
-/// Didactic payload for the two explicit denominator-isolation steps.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DivisionDenominatorDidacticSteps {
-    pub items: Vec<DivisionDidacticExecutionItem>,
-}
-
 /// Collect denominator-isolation execution items in display order:
 /// multiply step first, divide step second.
 pub(crate) fn collect_division_denominator_execution_items(
@@ -5610,13 +5542,6 @@ pub struct DivisionDenominatorDidacticExecutionPlan {
     pub multiply_equation: Equation,
     pub divide_equation: Equation,
     pub items: Vec<DivisionDidacticExecutionItem>,
-}
-
-/// Solved payload for denominator-isolation didactic execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DivisionDenominatorDidacticSolved<T> {
-    pub execution: DivisionDenominatorDidacticExecutionPlan,
-    pub solved: T,
 }
 
 /// Solved payload for denominator-isolation execution pipeline:
@@ -6557,13 +6482,6 @@ pub(crate) fn abs_split_case_message(
     )
 }
 
-/// Didactic payload for both branches produced by absolute-value split.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AbsSplitDidacticPair {
-    pub positive: AbsSplitDidacticStep,
-    pub negative: AbsSplitDidacticStep,
-}
-
 /// One executable absolute-split item aligned with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbsSplitExecutionItem {
@@ -6639,14 +6557,6 @@ pub(crate) fn materialize_abs_split_execution(
         negative_equation,
         items: vec![],
     }
-}
-
-/// Solved payload for absolute-value branch split:
-/// `|A| op rhs` under positive and negative branch equations.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AbsSplitSolvedCases<TBranch> {
-    pub positive_branch: TBranch,
-    pub negative_branch: TBranch,
 }
 
 /// Solved payload for full absolute-value split execution:

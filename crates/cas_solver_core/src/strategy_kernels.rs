@@ -111,32 +111,11 @@ pub struct CollectTermsSolvedRewrite {
     pub items: Vec<StrategyExecutionItem>,
 }
 
-/// Solved payload for one collect-terms rewrite execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CollectTermsSolved<T> {
-    pub rewrite: CollectTermsSolvedRewrite,
-    pub solved: T,
-}
-
 /// Fully materialized rational-exponent rewrite ready for recursive solve.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentSolvedRewrite {
     pub equation: Equation,
     pub items: Vec<StrategyExecutionItem>,
-}
-
-/// Solved payload for one rational-exponent rewrite execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RationalExponentSolved<T> {
-    pub rewrite: RationalExponentSolvedRewrite,
-    pub solved: T,
-}
-
-/// Execution payload for collect-terms strategy rewrite.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CollectTermsExecutionPlan {
-    pub equation: Equation,
-    pub description: String,
 }
 
 /// Rewrite payload for `CollectTermsStrategy`.
@@ -368,13 +347,6 @@ pub(crate) fn materialize_rational_exponent_rewrite(
         equation: execution.equation,
         items,
     }
-}
-
-/// Solved result for a rational-exponent rewrite pipeline.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RationalExponentRewriteSolved<S> {
-    pub solution_set: SolutionSet,
-    pub steps: Vec<S>,
 }
 
 /// Stateful variant of

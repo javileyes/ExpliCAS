@@ -215,23 +215,7 @@ pub enum AdditiveOperator {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MulDistributionCandidate {
-    pub factor: ExprId,
-    pub additive: ExprId,
-    pub left_term: ExprId,
-    pub right_term: ExprId,
-    pub additive_operator: AdditiveOperator,
-    pub factor_on_left: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DivisionDistributionRewrite {
-    pub rewritten: ExprId,
-    pub desc: &'static str,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DistributionRewritePlan {
     pub rewritten: ExprId,
     pub desc: &'static str,
 }

@@ -1746,16 +1746,6 @@ impl LimitWireResponse {
 // script wire types
 // =============================================================================
 
-/// Result of processing a script via the script wire contract.
-#[derive(Serialize, Debug)]
-pub struct ScriptWireOutput {
-    pub ok: bool,
-    pub lines: Vec<ScriptLineResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_result: Option<EvalWireOutput>,
-    pub total_time_us: u64,
-}
-
 /// Result of processing a single line in a script.
 #[derive(Serialize, Debug)]
 pub struct ScriptLineResult {
@@ -1772,22 +1762,6 @@ pub struct ScriptLineResult {
 // =============================================================================
 // mm-gcd-modp wire types
 // =============================================================================
-
-/// Result of running mm_gcd benchmark via the mm-gcd-modp wire contract.
-#[derive(Serialize, Debug)]
-pub struct MmGcdModpWireOutput {
-    pub ok: bool,
-    pub modulus: u64,
-    pub a_terms: usize,
-    pub b_terms: usize,
-    pub g_terms: usize,
-    pub ag_terms: usize,
-    pub bg_terms: usize,
-    pub gcd_terms: usize,
-    pub gcd_total_degree: u32,
-    pub gcd_matches_g: bool,
-    pub timings_ms: MmGcdTimingsMs,
-}
 
 /// Timing breakdown for mm_gcd in milliseconds.
 #[derive(Serialize, Debug, Default)]

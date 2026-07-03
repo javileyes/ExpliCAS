@@ -646,12 +646,6 @@ pub enum LogExpInversePolicyPlan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExponentialLogInversePolicyPlan {
-    Block,
-    Rewrite { require_positive_subject: bool },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogPowerBasePolicyPlan {
     Block,
     Rewrite {

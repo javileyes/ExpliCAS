@@ -441,13 +441,6 @@ where
     vec![]
 }
 
-/// Solved payload for rational-roots strategy execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RationalRootsStrategySolved<TStep> {
-    pub solution_set: SolutionSet,
-    pub steps: Vec<TStep>,
-}
-
 /// Stateful variant of
 /// [`solve_rational_roots_strategy_result_for_equation_with_and_item`].
 ///

@@ -7,13 +7,6 @@ pub struct LinearCollectDidacticStep {
     pub equation_after: Equation,
 }
 
-/// Pair of didactic steps emitted by linear-collect execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LinearCollectDidacticPair {
-    pub collect: LinearCollectDidacticStep,
-    pub divide: LinearCollectDidacticStep,
-}
-
 /// One executable linear-collect item aligned with a didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearCollectExecutionItem {

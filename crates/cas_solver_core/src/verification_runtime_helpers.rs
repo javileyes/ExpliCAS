@@ -5,16 +5,6 @@
 
 use cas_ast::{Context, ExprId};
 
-/// Conservative phase-budget caps used by verification/ground-eval folds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ConservativePhaseBudgetCaps {
-    pub core_iters: usize,
-    pub transform_iters: usize,
-    pub rationalize_iters: usize,
-    pub post_iters: usize,
-    pub max_total_rewrites: usize,
-}
-
 /// Fold numeric islands under default limits with a caller-provided guard and
 /// candidate evaluator.
 pub(crate) fn fold_numeric_islands_with_guard_and_default_limits<

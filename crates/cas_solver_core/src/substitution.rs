@@ -36,13 +36,6 @@ pub struct SubstitutionDidacticStep {
     pub equation_after: Equation,
 }
 
-/// Didactic pair emitted when substitution is introduced (`u = ...` + rewritten equation).
-#[derive(Debug, Clone, PartialEq)]
-pub struct SubstitutionIntroDidacticSteps {
-    pub detected: SubstitutionDidacticStep,
-    pub rewritten: SubstitutionDidacticStep,
-}
-
 /// Collect substitution-introduction execution items in display order:
 /// detected substitution first, rewritten equation second.
 pub(crate) fn collect_substitution_intro_execution_items(
@@ -57,13 +50,6 @@ pub struct ExponentialSubstitutionExecutionPlan {
     pub substitution_expr: ExprId,
     pub equation: Equation,
     pub items: Vec<SubstitutionExecutionItem>,
-}
-
-/// Solved payload for one exponential substitution execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExponentialSubstitutionSolved<T> {
-    pub execution: ExponentialSubstitutionExecutionPlan,
-    pub solved: T,
 }
 
 /// One executable substitution item aligned with a didactic payload.
@@ -98,13 +84,6 @@ pub struct BackSubstitutionExecutionPlan {
 pub struct BackSubstitutionSolvePlan {
     pub equations: Vec<Equation>,
     pub items: Vec<BackSubstitutionExecutionItem>,
-}
-
-/// Solved payload for one back-substitution solve plan.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BackSubstitutionSolved<T> {
-    pub plan: BackSubstitutionSolvePlan,
-    pub solved: Vec<T>,
 }
 
 /// One executable back-substitution item: equation plus aligned didactic step.
@@ -268,21 +247,6 @@ where
         solved.push((solution_set, local_steps));
     }
     Ok(solved)
-}
-
-/// High-level solved outcome for exponential substitution strategy orchestration.
-#[derive(Debug, Clone, PartialEq)]
-pub enum SubstitutionStrategySolved<S> {
-    /// Solved successfully with discrete final solutions.
-    SolvedDiscrete {
-        solutions: Vec<ExprId>,
-        steps: Vec<S>,
-    },
-    /// Intermediate substitution solve returned a non-discrete set.
-    UnsupportedSolutionSet {
-        solution_set: SolutionSet,
-        steps: Vec<S>,
-    },
 }
 
 /// Aggregate solved back-substitution branches and append branch steps into the

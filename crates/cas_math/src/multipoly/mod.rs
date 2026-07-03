@@ -87,17 +87,6 @@ pub enum PolyOperation {
     PolyOps,
 }
 
-/// Lightweight pass stats for pure polynomial operations.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PolyPassStats {
-    pub op: PolyOperation,
-    pub rewrite_count: u64,
-    pub nodes_delta: i64,
-    pub terms_materialized: u64,
-    pub poly_ops: u64,
-    pub stop_reason: Option<&'static str>,
-}
-
 // =============================================================================
 // MultiPoly struct
 // =============================================================================

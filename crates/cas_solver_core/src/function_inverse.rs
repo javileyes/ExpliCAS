@@ -66,13 +66,6 @@ pub struct UnaryInverseRewritePlan {
     pub needs_rhs_cleanup: bool,
 }
 
-/// Didactic payload for unary inverse rewrites.
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnaryInverseDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
-}
-
 /// Combined unary-inverse rewrite plus didactic step for solver orchestration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryInverseIsolationStepPlan {
@@ -93,13 +86,6 @@ impl UnaryInverseExecutionItem {
     pub fn description(&self) -> &str {
         &self.description
     }
-}
-
-/// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RhsSimplificationDidacticStep {
-    pub description: String,
-    pub equation_after: Equation,
 }
 
 /// One executable RHS-simplification item aligned with didactic payload.
@@ -137,13 +123,6 @@ impl UnaryInverseSolveExecutionItem {
     pub fn description(&self) -> &str {
         &self.description
     }
-}
-
-/// Solved payload for one unary-inverse execution.
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnaryInverseSolvedExecution<T> {
-    pub execution: UnaryInverseSolveExecution,
-    pub solved: T,
 }
 
 /// Collect unary-inverse solve execution items in display order:
