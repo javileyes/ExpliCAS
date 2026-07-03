@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 497 (newest first)
+Active entries: 498 (newest first)
 
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
+- 2026-07-04 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_even_power_or_abs_... | CAPACIDAD+SOUNDNESS (wrapper par/abs de PIU): `sin(x)²⋚c`, `|sin(x)|⋚c` resuelven
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18382,3 +18383,19 @@ Active entries: 497 (newest first)
   - Un detector que exige el argumento LITERAL (`exponent == var`) pierde toda la familia afín que su hermano (base e) ya maneja; generalizar a `Polynomial::from_expr` grado 1 + pendiente efectiva es la extensión mínima. La constante aditiva `c` se absorbe en el factor que ya aparece en la antiderivada — no necesita reconstrucción.
   - "Verifica el verificador" (3ª vez esta sesión): `simplify(diff(∫)−integrando)` dejó un residuo NO-cero en `(x²+x)·3^(2x)` que parecía un wrong-answer; la verificación NUMÉRICA en 5 puntos (1e-14) probó que la antiderivada es exacta y simplify solo no colapsó la forma ln-potencia. Para familias con `ln(b)` anidado, el round-trip NUMÉRICO manda sobre el simbólico.
   - PRÓXIMO PELDAÑO: promover a filas de la matriz de integración (`linear_rational_base_affine_slope_by_parts` etc.) — el cambio de contadores en cascada (base_integration_policy_clusters/maturity_blocks/verification_regimes) es un mini-ciclo de harness aparte; hoy los unit tests dan la misma cobertura round-trip. Y `poly × b^(m·x+c) × otra_forma` (trig, log) sigue fuera de alcance.
+
+## 2026-07-04 - CAPACIDAD+SOUNDNESS (wrapper par/abs de PIU): `sin(x)²⋚c`, `|sin(x)|⋚c` resuelven
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_even_power_or_abs_trig_inequality` nuevo, despachado antes del handler recíproco-trig)
+- status: `retained`. Cierra el backlog "even-power/abs wrappers" de PIU (`sin(x)^2<1/4`, `|sin(x)|<1/2` declinaban) Y caza un wrong-answer latente.
+- capture:
+  - investment_class: capability (Fase 1, desigualdades trig) + soundness (el bug t=0).
+  - cell: `sin(x)^2<1/4` → `{(-π/6+2kπ,π/6+2kπ),(5π/6+2kπ,7π/6+2kπ)}` (= |sin|<1/2, 2 ventanas/2π); `|sin(x)|<1/2` idéntico; `tan(x)^2<1` → `(-π/4+kπ,π/4+kπ)`; `abs(tan(x))>1` → unión; `4*sin²<1`, orientación `1/4>sin²`, nonstrict `sin²≤1/4`, argumentos afines (`|sin(2x)|<1/2`, `sin(x+π/3)²<1/4`) — todos resuelven. Edges: `sin²<0`→∅, `sin²≥0`→ℝ, `cos²≤1`→ℝ, `sin²>0`→ℝ∖{kπ} (perforada). Declines honestos: umbral surd (`sin²<1/3`, √ irracional) y point-set (`cos²≤0` → cos=0).
+  - WRONG-ANSWER cazado en el proceso: `sin(x)^2 > 0` daba "All real numbers" (mi rama t≤0 devolvía AllReals para Gt); la verdad es ℝ∖{kπ} (excluye ceros de sin). Fix: separar t<0 (AllReals para Gt/Geq sin/cos) de t=0 (Gt fluye a la reducción r=0 → unión trig>0∪trig<0 → perforada; Geq→ℝ; Leq→point set decline).
+  - causa raíz del decline original: no había reducción `f²⋚c`/`|f|⋚c → sign-case en f`; y `tan(x)^2` se simplifica a `sin²/cos²` ANTES de la detección (lección raw-tree).
+  - fix: reducir `|trig|⋚r` a `trig⋛±r` (∩ para <, ∪ para >), sub-resolver por el pipeline (mis productores PIU) y combinar con `combine_piu_sets` (álgebra circular de P3b). Detección en árbol RAW (eq.lhs/eq.rhs sin simplificar) para cazar `Pow(tan,2)` antes del colapso. r=√c para el cuadrado (rational solo si c es cuadrado perfecto), r=c para el abs (siempre racional).
+  - validación: workspace 12179 failed:0; clippy --all-targets limpio; equivfuzz 0 non-equiv; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta. Barrido NUMÉRICO multi-k: 10 conjuntos × 6000 muestras → 0 discrepancias; 7 tests de contrato.
+  - retained learning:
+  - Reducir `|f|⋚r`/`f²⋚c` a un sign-case sobre `f` + combinación de conjuntos es el MISMO esqueleto que los recíprocos (P3b): `combine_piu_sets` ya componía ∩/∪ de PIUs. La reducción a-canónico paga otra vez: no un handler nuevo por caso, sino el reparto al productor del átomo (`trig(g)⋚c`) + el combinador.
+  - Un barrido que ramifica sobre `c` DEBE incluir `c=0` (lección repetida): el bug `sin²>0`→ℝ solo aparece en t=0 y habría pasado un barrido con c∈{1/4,1/2}. Y "verifica el verificador" no aplica aquí — el barrido numérico multi-k SÍ cazó el conjunto correcto.
+  - Limitación (peldaño): el productor PIU exige umbral RACIONAL, así que `f²⋚c` con c no-cuadrado-perfecto (`sin²<1/3`) declina — el arreglo real es soporte de umbral surd en el productor (P4, brazo arcsin en const_value_bounds). El resultado 2-ventanas/2π es correcto pero no de período mínimo (π) — detección de período mínimo es cosmético, follow-up.

@@ -5441,6 +5441,164 @@ fn try_emit_trig_interior_interval_union(
 /// the sign of `r` into window relations on `s`, sub-solves each through the
 /// full pipeline (the P2/P3a producers), and combines with the circular
 /// same-period algebra. Any sub-result outside {∅, ℝ, PIU} declines.
+/// `A·trig(g)² ⋚ c` and `A·|trig(g)| ⋚ c` (sin/cos/tan): reduce the even
+/// power / absolute value to a sign case split on `trig(g)` and combine the
+/// windows with the circular same-period algebra.
+///   `sin(x)² < 1/4` ⟺ `|sin(x)| < 1/2` ⟺ `sin(x) > −1/2 ∩ sin(x) < 1/2`
+///   `cos(x)² > 1/2` ⟺ `|cos(x)| > √2/2` ⟺ `cos > √2/2 ∪ cos < −√2/2`
+/// Point-set outcomes (`sin(x)² ≥ 1` ⟺ `sin(x) = ±1`) fall out as an honest
+/// residual: the sub-solves return `Periodic`, which the window combiner
+/// declines rather than mis-handle.
+fn try_solve_even_power_or_abs_trig_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // Detect on the RAW tree: `simplify` rewrites `tan(x)²` into
+    // `sin(x)²/cos(x)²`, which would hide the `Pow(tan, 2)` shape. The
+    // constant side is read exactly either way.
+    let lhs = eq.lhs;
+    let rhs = eq.rhs;
+
+    let trig_of = |ctx_: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId)> {
+        if let Expr::Function(fn_id, args) = ctx_.get(e) {
+            if args.len() == 1 && contains_var(ctx_, args[0], var) {
+                if let Some(f) = ctx_.builtin_of(*fn_id) {
+                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                        return Some((f, args[0]));
+                    }
+                }
+            }
+        }
+        None
+    };
+    // Match `A·trig(g)²` (is_square = true) or `A·|trig(g)|` (false).
+    let detect = |ctx_: &Context, e: ExprId| -> Option<(BigRational, BuiltinFn, ExprId, bool)> {
+        let (coeff, core) = peel_rational_coefficient(ctx_, e);
+        if coeff.is_zero() {
+            return None;
+        }
+        if let Expr::Pow(base, exp) = ctx_.get(core) {
+            if as_rational_const(ctx_, *exp) == Some(BigRational::from_integer(2.into())) {
+                if let Some((f, g)) = trig_of(ctx_, *base) {
+                    return Some((coeff, f, g, true));
+                }
+            }
+        }
+        if let Some(inner) = match_abs_argument(ctx_, core) {
+            if let Some((f, g)) = trig_of(ctx_, inner) {
+                return Some((coeff, f, g, false));
+            }
+        }
+        None
+    };
+    let (a_coeff, trig_fn, g, is_square, c_expr, op) =
+        if let Some((a, f, gg, sq)) = detect(&simplifier.context, lhs) {
+            if contains_var(&simplifier.context, rhs, var) {
+                return None;
+            }
+            (a, f, gg, sq, rhs, eq.op.clone())
+        } else if let Some((a, f, gg, sq)) = detect(&simplifier.context, rhs) {
+            if contains_var(&simplifier.context, lhs, var) {
+                return None;
+            }
+            (a, f, gg, sq, lhs, flip_inequality(eq.op.clone()))
+        } else {
+            return None;
+        };
+    let c_val = as_rational_const(&simplifier.context, c_expr)?;
+
+    // Divide by A: `trig² ⋚ t` (square) or `|trig| ⋚ t` (abs), flipping for A<0.
+    let t = c_val / &a_coeff;
+    let op = if a_coeff.is_negative() {
+        flip_inequality(op)
+    } else {
+        op
+    };
+
+    // Reduce to `|trig| ⋚ r` with r ≥ 0. For the square, r = √t; the
+    // non-positive-threshold edges settle by the sign of a square / abs.
+    let zero = BigRational::zero();
+    if t < zero {
+        // trig² (or |trig|) ≥ 0 > t everywhere it is defined.
+        return match op {
+            RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+            // `> t` / `≥ t` for t < 0 is always true — but tan is undefined
+            // at its poles, so only the bounded sin/cos are unconditionally ℝ.
+            RelOp::Gt | RelOp::Geq if matches!(trig_fn, BuiltinFn::Sin | BuiltinFn::Cos) => {
+                Some(SolutionSet::AllReals)
+            }
+            _ => None,
+        };
+    }
+    if t == zero {
+        match op {
+            RelOp::Lt => return Some(SolutionSet::Empty), // trig² < 0 impossible
+            RelOp::Leq => return None, // trig² ≤ 0 ⟺ trig = 0, a point set — decline
+            // trig² ≥ 0 is always true for the bounded sin/cos; tan is
+            // punctured at its poles, so decline there.
+            RelOp::Geq if matches!(trig_fn, BuiltinFn::Sin | BuiltinFn::Cos) => {
+                return Some(SolutionSet::AllReals)
+            }
+            RelOp::Geq => return None,
+            // trig² > 0 ⟺ trig ≠ 0: fall through to the r = 0 reduction
+            // (`trig > 0 ∪ trig < 0` → the punctured line), NOT AllReals.
+            RelOp::Gt => {}
+            _ => return None,
+        }
+    }
+
+    // r = √t for the square, r = t for the abs.
+    let r_expr = if is_square {
+        let t_expr = rational_to_expr(&mut simplifier.context, &t);
+        let sqrt_call = simplifier.context.call("sqrt", vec![t_expr]);
+        simplifier.simplify(sqrt_call).0
+    } else {
+        rational_to_expr(&mut simplifier.context, &t)
+    };
+    let neg_r_expr = {
+        let neg = simplifier.context.add(Expr::Neg(r_expr));
+        simplifier.simplify(neg).0
+    };
+
+    // `|trig| < r` ⟺ `trig > −r ∩ trig < r`; `> r` ⟺ `trig > r ∪ trig < −r`.
+    let (conj, parts): (bool, [(RelOp, ExprId); 2]) = match op {
+        RelOp::Lt => (true, [(RelOp::Gt, neg_r_expr), (RelOp::Lt, r_expr)]),
+        RelOp::Leq => (true, [(RelOp::Geq, neg_r_expr), (RelOp::Leq, r_expr)]),
+        RelOp::Gt => (false, [(RelOp::Gt, r_expr), (RelOp::Lt, neg_r_expr)]),
+        RelOp::Geq => (false, [(RelOp::Geq, r_expr), (RelOp::Leq, neg_r_expr)]),
+        _ => return None,
+    };
+
+    let mut acc: Option<SolutionSet> = None;
+    for (sub_op, bound_expr) in parts {
+        let trig_call = simplifier.context.call_builtin(trig_fn, vec![g]);
+        let sub_eq = Equation {
+            lhs: trig_call,
+            rhs: bound_expr,
+            op: sub_op,
+        };
+        let (set, _) = crate::solver_entrypoints_solve::solve(&sub_eq, var, simplifier).ok()?;
+        if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
+            return None;
+        }
+        acc = Some(match acc {
+            None => set,
+            Some(prev) => combine_piu_sets(simplifier, prev, set, conj)?,
+        });
+    }
+    acc
+}
+
 fn try_solve_reciprocal_trig_inequality(
     eq: &Equation,
     var: &str,
@@ -7276,6 +7434,12 @@ fn solve_local_core_inner(
     // A SUM of ≥2 sign forms `Σ cᵢ·sign(gᵢ) {op} k` (`(x+1)/|x+1| + (x-1)/|x-1| > 0`) is a step function;
     // partition ℝ at the `gᵢ = 0` poles and test each region. The single-sign handler below keeps the
     // `n = 1` case (this requires ≥ 2 sign terms).
+    // PIU: `A·trig(g)² ⋚ c` and `A·|trig(g)| ⋚ c` — reduce the even power /
+    // absolute value to a sign case split on `trig(g)` and combine windows
+    // (`sin(x)² < 1/4` ⟺ `|sin(x)| < 1/2` ⟺ `sin > −1/2 ∩ sin < 1/2`).
+    if let Some(set) = try_solve_even_power_or_abs_trig_inequality(eq, var, simplifier) {
+        return Ok((set, Vec::new()));
+    }
     // PIU P3b: `A / trig(g) ⋚ c` — reduce by sign cases to window relations
     // on `trig(g)` and combine with the circular same-period algebra
     // (`1/sin(x) > 2` ⟺ 0 < sin(x) < 1/2 → two windows per period).
