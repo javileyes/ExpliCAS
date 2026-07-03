@@ -431,11 +431,20 @@ impl Simplifier {
     pub fn disable_rule(&mut self, rule_name: &str) {
         self.materialize_profile_rules();
         self.disabled_rules.insert(rule_name.to_string());
+        // Rule toggling changes simplify semantics: any solve-scoped memo
+        // entries computed under the previous rule set are stale (P16).
+        self.solve_memo.clear();
     }
 
     pub fn enable_rule(&mut self, rule_name: &str) {
         self.materialize_profile_rules();
         self.disabled_rules.remove(rule_name);
+        self.solve_memo.clear();
+    }
+
+    /// Whether a rule is currently disabled by name.
+    pub fn is_rule_disabled(&self, rule_name: &str) -> bool {
+        self.disabled_rules.contains(rule_name)
     }
 
     /// Populate this simplifier with the default rule set.

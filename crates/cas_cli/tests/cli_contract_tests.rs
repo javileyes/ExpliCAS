@@ -2874,11 +2874,11 @@ fn test_eval_periodic_trig_product_equation_unions_families() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
-    // Explicit products, equal period: union the bases (one shared period).
-    assert_eq!(
-        r("solve(sin(x)*cos(x)=0, x)"),
-        "{ k·pi, 1/2·pi + k·pi : k ∈ ℤ }"
-    );
+    // Explicit products, equal period: the sin·cos product now reduces through
+    // the double angle (`sin·cos = 0 ⇔ sin(2x) = 0`), yielding the SAME set in
+    // its compact single-family form: {kπ} ∪ {π/2+kπ} ≡ {kπ/2} (k even ↦ kπ,
+    // k odd ↦ π/2+(k−1)π/2·2... i.e. exact set equality).
+    assert_eq!(r("solve(sin(x)*cos(x)=0, x)"), "{ k·1/2·pi : k ∈ ℤ }");
     assert_eq!(
         r("solve((2*cos(x)+1)*(cos(x)-1)=0, x)"),
         "{ 2/3·pi + k·2·pi, 4/3·pi + k·2·pi, k·2·pi : k ∈ ℤ }"
@@ -3051,10 +3051,9 @@ fn test_eval_homogeneous_linear_trig_equation_reduces_to_tangent() {
     // Controls: bare `sin/cos = 0` (owned by the periodic handler) and a product (not a sum) are
     // unchanged. (The inhomogeneous `… = c` is now solved by the auxiliary-angle handler — see below.)
     assert_eq!(r("solve(sin(x) = 0, x)"), "{ k·pi : k ∈ ℤ }");
-    assert_eq!(
-        r("solve(sin(x)*cos(x) = 0, x)"),
-        "{ k·pi, 1/2·pi + k·pi : k ∈ ℤ }"
-    );
+    // (Same compact-form recontract as the product-union test above:
+    // sin·cos = 0 reduces via sin(2x) = 0 to the equivalent {kπ/2}.)
+    assert_eq!(r("solve(sin(x)*cos(x) = 0, x)"), "{ k·1/2·pi : k ∈ ℤ }");
 }
 
 #[test]

@@ -4812,7 +4812,44 @@ fn solve_trig_equals_plus_minus(
     }
 }
 
+/// Multiple-angle EXPANSION rewrites (`sin(3x) → 3·sin(x) − 4·sin(x)³`, the
+/// quintuple analogue, and the recursive expander) destroy the `trig(n·x) = c`
+/// shape inside this handler's own simplifies BEFORE the periodic matcher can
+/// see it — the polynomial fallback then asserts a finite arcsin set as the
+/// complete answer (family-A soundness bug: `sin(3x)=1/2` lost `2kπ/3`
+/// periodicity). Contractions (`Double/Triple Angle Contraction`) stay live —
+/// they REBUILD the matchable shape (`sin·cos → sin(2x)/2`).
+const MULTIPLE_ANGLE_EXPANSION_RULES: &[&str] = &[
+    "Double Angle Identity",
+    "Double Angle Expansion",
+    "Triple Angle Identity",
+    "Quintuple Angle Identity",
+    "Recursive Trig Expansion",
+];
+
+/// Gated entry: disables the multiple-angle expansions for the duration of
+/// the periodic-trig handler (re-entrant: recursive reductions re-enter here
+/// and add nothing; only the outermost call restores).
 pub(crate) fn try_solve_periodic_trig_equation(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    let mut added: Vec<&'static str> = Vec::new();
+    for rule in MULTIPLE_ANGLE_EXPANSION_RULES {
+        if !simplifier.is_rule_disabled(rule) {
+            simplifier.disable_rule(rule);
+            added.push(rule);
+        }
+    }
+    let out = try_solve_periodic_trig_equation_ungated(eq, var, simplifier);
+    for rule in added {
+        simplifier.enable_rule(rule);
+    }
+    out
+}
+
+fn try_solve_periodic_trig_equation_ungated(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
@@ -4857,6 +4894,61 @@ pub(crate) fn try_solve_periodic_trig_equation(
         }
         None
     };
+    // `A·sin(arg)·cos(arg) = c` ⇔ `sin(2·arg) = 2c/A` — the double-angle
+    // contraction the default rewriter does not perform. Without it the
+    // fixpoint isolation echoed `solve(x - arcsin(c/cos(x)) = 0)` as an
+    // ok:true pseudo-result (scout family-A garbage case).
+    {
+        let sin_cos_product = |ctx: &Context, e: ExprId| -> Option<(ExprId, BigRational)> {
+            let (coeff, core) = peel_rational_coefficient(ctx, e);
+            if coeff.is_zero() {
+                return None;
+            }
+            if let Expr::Mul(a, b) = ctx.get(core) {
+                let (a, b) = (*a, *b);
+                let as_trig = |x: ExprId| -> Option<(BuiltinFn, ExprId)> {
+                    if let Expr::Function(fn_id, args) = ctx.get(x) {
+                        if args.len() == 1 && contains_var(ctx, args[0], var) {
+                            if let Some(f) = ctx.builtin_of(*fn_id) {
+                                if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                                    return Some((f, args[0]));
+                                }
+                            }
+                        }
+                    }
+                    None
+                };
+                if let (Some((fa, ua)), Some((fb, ub))) = (as_trig(a), as_trig(b)) {
+                    if ua == ub && fa != fb {
+                        return Some((ua, coeff));
+                    }
+                }
+            }
+            None
+        };
+        let hit = if let Some((arg, a)) = sin_cos_product(&simplifier.context, lhs) {
+            (!contains_var(&simplifier.context, rhs, var)).then_some((arg, a, rhs))
+        } else if let Some((arg, a)) = sin_cos_product(&simplifier.context, rhs) {
+            (!contains_var(&simplifier.context, lhs, var)).then_some((arg, a, lhs))
+        } else {
+            None
+        };
+        if let Some((arg, a_coeff, c)) = hit {
+            let cv = cas_math::numeric_eval::as_rational_const(&simplifier.context, c)?;
+            let target = (&cv + &cv) / a_coeff; // 2c/A
+            let two = simplifier.context.num(2);
+            let two_arg = simplifier.context.add(Expr::Mul(two, arg));
+            let sin_call = simplifier.context.call("sin", vec![two_arg]);
+            let target_expr = simplifier.context.add(Expr::Number(target));
+            let reduced = Equation {
+                lhs: sin_call,
+                rhs: target_expr,
+                op: RelOp::Eq,
+            };
+            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+        }
+    }
+
     let squared_hit = if let Some((f, arg, a)) = squared(&simplifier.context, lhs) {
         (!contains_var(&simplifier.context, rhs, var)).then_some((f, arg, rhs, a))
     } else if let Some((f, arg, a)) = squared(&simplifier.context, rhs) {
