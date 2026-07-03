@@ -128,6 +128,35 @@ where
         }
         Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => {
             let fn_name = context_ref(state).sym_name(fn_id).to_string();
+            // U4 soundness gate: inverting a PERIODIC trig function through
+            // its principal branch (`sin → arcsin`) is only the accepted
+            // convention when the argument is rational-AFFINE in the target
+            // variable (`sin(x) = c → { arcsin(c) }`; affine cases with a
+            // concrete RHS are owned by the periodic handler upstream). For
+            // a NON-affine argument the principal branch asserts a finite
+            // set while the true preimage is an infinite family the
+            // SolutionSet cannot represent (`cos(π·x²) = 1` returned
+            // `{ 0 }`, losing `±√(2k)`; `sin(π·sin(x)) = 1` returned
+            // `{ π/6 }`, losing `5π/6 + 2kπ` — final-audit adjacents).
+            // Decline to the honest operator-preserving residual instead.
+            if matches!(fn_name.as_str(), "sin" | "cos" | "tan") {
+                let ctx = context_ref(state);
+                let arg_is_rational_affine =
+                    cas_math::polynomial::Polynomial::from_expr(ctx, arg, var)
+                        .map(|p| p.degree() == 1)
+                        .unwrap_or(false)
+                        || matches!(
+                            ctx.get(arg),
+                            cas_ast::Expr::Variable(sym) if ctx.sym_name(*sym) == var
+                        );
+                if !arg_is_rational_affine {
+                    let ctx = context_mut(state);
+                    let lhs_call = ctx.call(&fn_name, vec![arg]);
+                    let residual =
+                        crate::solve_outcome::residual_solution_set(ctx, lhs_call, rhs, op, var);
+                    return Ok((residual, existing_steps));
+                }
+            }
             execute_unary_function_isolation_with_default_plan_with_state(
                 state,
                 &fn_name,
