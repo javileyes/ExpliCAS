@@ -8,7 +8,7 @@ pub(super) fn build_statement_request(
     auto_store: bool,
 ) -> Result<PreparedEvalRequest, String> {
     let stmt = crate::parse_statement_or_session_ref(ctx, raw_input)
-        .map_err(|e| format!("Parse error: {e}"))?;
+        .map_err(crate::parse_error_render::parse_error_message)?;
     match stmt {
         cas_parser::Statement::Equation(eq) => {
             let parsed = ctx.call(eq.op.builtin_name(), vec![eq.lhs, eq.rhs]);

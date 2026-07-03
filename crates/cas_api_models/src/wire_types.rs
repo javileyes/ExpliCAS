@@ -321,8 +321,20 @@ impl ErrorWireOutput {
     }
 
     pub fn from_eval_error_message(error: &str, input: &str) -> Self {
-        if error.starts_with("Parse error:") {
+        // Chokepoint E: match the span-carrying form ("Parse error at 2..3:")
+        // as well as the bare prefix, and route solver errors to their real
+        // kind/code instead of corrupting them to E_INTERNAL.
+        if error.starts_with("Parse error") {
             Self::parse_error(error, Some(input.to_string()))
+        } else if error.starts_with("Solver error:") {
+            Self {
+                schema_version: SCHEMA_VERSION,
+                ok: false,
+                kind: "SolverError".to_string(),
+                code: "E_SOLVER".to_string(),
+                error: error.to_string(),
+                input: Some(input.to_string()),
+            }
         } else {
             Self::with_input(error, input)
         }

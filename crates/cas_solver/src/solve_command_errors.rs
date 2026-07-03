@@ -1,7 +1,9 @@
 /// Format solve-prepare errors for end-user display.
 pub(crate) fn format_solve_prepare_error_message(error: &crate::SolvePrepareError) -> String {
     match error {
-        crate::SolvePrepareError::ParseError(e) => format!("Parse error: {e}"),
+        crate::SolvePrepareError::ParseError(e) => {
+            crate::parse_error_render::parse_error_message(e)
+        }
         crate::SolvePrepareError::NoVariable => "Error: solve() found no variable to solve for.\n\
                      Use solve(expr, x) to specify the variable."
             .to_string(),

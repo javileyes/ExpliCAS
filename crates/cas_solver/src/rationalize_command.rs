@@ -36,7 +36,9 @@ pub(crate) fn evaluate_rationalize_command_lines(
 
     let output =
         evaluate_rationalize_command_input(simplifier, rest).map_err(|error| match error {
-            RationalizeCommandEvalError::Parse(message) => format!("Parse error: {}", message),
+            RationalizeCommandEvalError::Parse(message) => {
+                crate::parse_error_render::parse_error_message(message)
+            }
         })?;
 
     Ok(format_rationalize_eval_lines(

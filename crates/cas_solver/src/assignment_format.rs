@@ -22,7 +22,7 @@ pub fn format_assignment_error_message(error: &AssignmentError) -> String {
                 name
             )
         }
-        AssignmentError::Parse(e) => format!("Parse error: {}", e),
+        AssignmentError::Parse(e) => crate::parse_error_render::parse_error_message(e),
     }
 }
 

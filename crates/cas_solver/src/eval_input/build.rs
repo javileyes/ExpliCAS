@@ -15,7 +15,7 @@ pub(crate) fn build_prepared_eval_request_for_input(
         return special::build_special_command_request(raw_input, ctx, auto_store, command);
     }
     if let Some(message) = parse_eval_limit_command_error(raw_input) {
-        return Err(format!("Parse error: {message}"));
+        return Err(crate::parse_error_render::parse_error_message(message));
     }
 
     statement::build_statement_request(raw_input, ctx, auto_store)

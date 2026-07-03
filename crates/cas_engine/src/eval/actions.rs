@@ -433,6 +433,9 @@ impl Engine {
                     vec![],
                 ))
             }
+            // Chokepoint E: SolverError's Display already self-prefixes; do
+            // not double it. Other variants keep the solver context.
+            Err(e @ crate::CasError::SolverError(_)) => Err(anyhow::anyhow!("{}", e)),
             Err(e) => Err(anyhow::anyhow!("Solver error: {}", e)),
         }
     }

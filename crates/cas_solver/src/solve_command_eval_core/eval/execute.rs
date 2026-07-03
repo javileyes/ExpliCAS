@@ -40,8 +40,15 @@ where
     let solver_opts = crate::SolverOptions::from_eval_options(&eval_options);
 
     let (solution_set, display_steps, solve_diagnostics) =
-        crate::solve_with_display_steps(&eq_to_solve, var, simplifier, solver_opts)
-            .map_err(|error| format!("Solver error: {error}"))?;
+        crate::solve_with_display_steps(&eq_to_solve, var, simplifier, solver_opts).map_err(
+            |error| match &error {
+                // Chokepoint E: SolverError's Display already carries the
+                // "Solver error: " prefix — do not double it. Other variants
+                // keep the solver context they historically had.
+                cas_solver_core::error_model::CasError::SolverError(_) => error.to_string(),
+                _ => format!("Solver error: {error}"),
+            },
+        )?;
 
     Ok(SolveSessionExecution {
         stored_id,

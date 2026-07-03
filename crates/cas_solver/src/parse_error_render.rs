@@ -40,6 +40,21 @@ pub(crate) fn render_parse_error(input: &str, error: &ParseError) -> String {
     if let Some(span) = error.span() {
         render_error_with_caret(input, span, error.message())
     } else {
-        format!("Parse error: {}", error)
+        parse_error_message(error)
+    }
+}
+
+/// Chokepoint E: single owner of the "Parse error: " message prefix.
+///
+/// The parser's `Display` for the `Syntax` variant already self-describes
+/// ("Parse error at <span>: ..."), so blindly prepending produced
+/// "Parse error: Parse error at ...". Callers building a parse-error MESSAGE
+/// string go through here and never prepend themselves.
+pub(crate) fn parse_error_message(error: impl std::fmt::Display) -> String {
+    let s = error.to_string();
+    if s.starts_with("Parse error") {
+        s
+    } else {
+        format!("Parse error: {s}")
     }
 }

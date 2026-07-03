@@ -49,6 +49,21 @@ mod tests {
     fn test_render_parse_error_without_span() {
         let error = ParseError::syntax("something wrong");
         let rendered = render_parse_error("a + b", &error);
-        assert!(rendered.contains("Parse error:"));
+        // Chokepoint E contract: exactly ONE "Parse error" prefix (the
+        // parser's own Display), never the doubled "Parse error: Parse
+        // error at ..." this test used to pin.
+        assert!(rendered.starts_with("Parse error"));
+        assert_eq!(rendered.matches("Parse error").count(), 1);
+        assert!(rendered.contains("something wrong"));
+    }
+
+    #[test]
+    fn parse_error_message_owns_the_prefix_exactly_once() {
+        use super::super::parse_error_render::parse_error_message;
+        // Self-prefixed parser Display passes through untouched.
+        let doubled_before = parse_error_message(ParseError::syntax("x"));
+        assert_eq!(doubled_before.matches("Parse error").count(), 1);
+        // Bare messages get the prefix added exactly once.
+        assert_eq!(parse_error_message("bad input"), "Parse error: bad input");
     }
 }
