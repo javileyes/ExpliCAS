@@ -3064,18 +3064,27 @@ fn try_decline_periodic_trig_inequality(
         return None;
     }
     let ctx = &simplifier.context;
-    if !contains_trig_of_var(ctx, eq.lhs, var) {
+    // Orientation-blind (PIU design-review P0): with the trig on the RHS
+    // (`1/2 < sin(x)`, `2 < tan(x)`) the LHS-only check used to fall through
+    // to the generic monotonic inversion, which asserted a WRONG ray like
+    // `(π/6, ∞)`. Normalize to trig-on-LHS (swapping sides flips the
+    // operator) and treat both orientations identically.
+    let (lhs, rhs, op) = if contains_trig_of_var(ctx, eq.lhs, var) {
+        (eq.lhs, eq.rhs, eq.op.clone())
+    } else if contains_trig_of_var(ctx, eq.rhs, var) {
+        (eq.rhs, eq.lhs, flip_inequality(eq.op.clone()))
+    } else {
         return None;
-    }
+    };
     // A bare sin/cos with an out-of-range / boundary threshold is solved exactly downstream — leave it.
-    if bare_sin_or_cos_of_var(ctx, eq.lhs, var) && classify_trig_threshold(ctx, eq.rhs).is_some() {
+    if bare_sin_or_cos_of_var(ctx, lhs, var) && classify_trig_threshold(ctx, rhs).is_some() {
         return None;
     }
     Some(cas_solver_core::solve_outcome::residual_solution_set(
         &mut simplifier.context,
-        eq.lhs,
-        eq.rhs,
-        eq.op.clone(),
+        lhs,
+        rhs,
+        op,
         var,
     ))
 }
@@ -3098,17 +3107,25 @@ fn try_solve_boundary_trig_inequality(
     if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
         return None;
     }
-    if !bare_sin_or_cos_of_var(&simplifier.context, eq.lhs, var) {
+    // Orientation-blind (PIU design-review P0): `1 > sin(x)` is the same
+    // complement case as `sin(x) < 1` — normalize trig-on-LHS (swapping
+    // sides flips the operator) so the RHS orientation cannot fall through
+    // to the generic monotonic inversion's wrong ray.
+    let (lhs, rhs, op) = if bare_sin_or_cos_of_var(&simplifier.context, eq.lhs, var) {
+        (eq.lhs, eq.rhs, eq.op.clone())
+    } else if bare_sin_or_cos_of_var(&simplifier.context, eq.rhs, var) {
+        (eq.rhs, eq.lhs, flip_inequality(eq.op.clone()))
+    } else {
         return None;
-    }
-    let region = classify_trig_threshold(&simplifier.context, eq.rhs)?;
-    match (region, eq.op.clone()) {
+    };
+    let region = classify_trig_threshold(&simplifier.context, rhs)?;
+    match (region, op.clone()) {
         // sin(x) ≥ 1  ⇔  sin(x) = 1 ; cos(x) ≤ -1  ⇔  cos(x) = -1 : the periodic touch points.
         (TrigThresholdRegion::AtUpperBound, RelOp::Geq)
         | (TrigThresholdRegion::AtLowerBound, RelOp::Leq) => {
             let reduced = Equation {
-                lhs: eq.lhs,
-                rhs: eq.rhs,
+                lhs,
+                rhs,
                 op: RelOp::Eq,
             };
             try_solve_periodic_trig_equation(&reduced, var, simplifier)
@@ -3118,9 +3135,9 @@ fn try_solve_boundary_trig_inequality(
         | (TrigThresholdRegion::AtLowerBound, RelOp::Gt) => {
             Some(cas_solver_core::solve_outcome::residual_solution_set(
                 &mut simplifier.context,
-                eq.lhs,
-                eq.rhs,
-                eq.op.clone(),
+                lhs,
+                rhs,
+                op,
                 var,
             ))
         }
