@@ -2238,6 +2238,46 @@ fn test_limit_scaled_sqrt_pos_infinity() {
 }
 
 #[test]
+fn test_limit_sqrt_quadratic_plus_linear_neg_infinity() {
+    // Mirror branch (scout limits sub-fix): at x → −∞ the square root behaves
+    // like −x (|x| = −x), so `sqrt(a·x²+b·x) + linear` can cancel its leading
+    // term and converge — the ADD companion of the long-supported difference
+    // `sqrt(x²+x) − x → 1/2` at +∞.
+    for (expr, expected) in [
+        ("sqrt(x^2 + 1) + x", "0"),
+        ("sqrt(x^2 + x) + x", "-1/2"),
+        ("sqrt(x^2 + 2*x) + x", "-1"),
+        ("sqrt(4*x^2 + x) + 2*x", "-1/4"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", "-infinity", "json");
+        assert!(success, "Command should succeed for {expr}");
+        let needle = format!("\"result\":\"{expected}\"");
+        assert!(
+            stdout.contains(&needle),
+            "{expr} at -inf should be {expected}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_plus_linear_divergent_stays_residual() {
+    // The leading-cancellation guard keeps genuinely divergent shapes honest:
+    // the same `+` form diverges to +∞ at +∞, and a mismatched coefficient
+    // (`+2x`) diverges at −∞ too — both stay the honest residual.
+    for (expr, to) in [
+        ("sqrt(x^2 + 1) + x", "infinity"),
+        ("sqrt(x^2 + 1) + 2*x", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} -> {to}");
+        assert!(
+            stdout.contains("\"result\":\"limit("),
+            "{expr} at {to} should stay residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
 fn test_limit_negative_sqrt_pos_infinity() {
     let (success, stdout) = run_limit("0 - sqrt(x)", "x", "infinity", "json");
     assert!(success, "Command should succeed");

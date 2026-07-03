@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 495 (newest first)
+Active entries: 496 (newest first)
 
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
+- 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18350,3 +18351,18 @@ Active entries: 495 (newest first)
   - El patrón "computa ambos laterales y combina con clasificación EXACTA" convierte una familia entera de declines conservadores en respuestas correctas sin tocar ninguna regla direccional: el valor estaba ya calculado, faltaba el árbitro. La clasificación del resultado lateral (±∞ / finito / inclasificable) debe RECHAZAR cualquier cosa con ∞/undefined/limit() EMBEBIDO — un finito compuesto con un residual dentro no es un lateral computado.
   - Un DNE es una AFIRMACIÓN (no un decline): exige que el desacuerdo esté PROBADO (racionales exactos distintos o clases ±∞ distintas). El par simbólico sin(−1)≠sin(1) es verdad pero no probado por los oráculos actuales → residual honesto; anotado como peldaño (oráculo de desigualdad simbólica o evaluación por intervalos).
   - PRÓXIMO PELDAÑO: exponer la sintaxis one-sided en el CLI (`limit(expr, x, 0, '+')` hoy es parse error — los laterales existen internamente); narración didáctica del DNE (los steps hoy solo muestran "undefined"); `sin(1/x)` merece el diagnóstico de oscilación del audit (item F).
+
+## 2026-07-04 - CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
+
+- area: `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_minus_linear_limit_at_infinity`)
+- status: `retained`. Cierra la segunda sub-fix de límites del scout ("mirror branch |x|=−x para sqrt@−∞"); la primera (combinador bilateral) fue el ciclo previo.
+- capture:
+  - investment_class: capability (Fase 1, límites — under-answer→resuelto, no wrong-answer).
+  - cell: `limit(sqrt(x²+1)+x, x, −∞)` → `0`; `sqrt(x²+x)+x` → `−1/2`; `sqrt(x²+2x)+x` → `−1`; `sqrt(4x²+x)+2x` → `−1/4`. Controles: la misma forma diverge a +∞ en +∞ (residual honesto), `sqrt(x²+1)+2x` diverge en −∞ (residual), y las formas Sub existentes (`sqrt(x²+x)−x → 1/2`) intactas.
+  - causa raíz: el handler solo reconocía `sqrt − linear` (una parte con Neg); la forma pura `sqrt + linear` (ambas positivas) declinaba, aunque en −∞ la raíz se comporta como −x y los términos líder pueden cancelar.
+  - fix: en la rama `Add(l,r)` sin Neg, tratar la suma como la diferencia `sqrt − (−linear)` negando el lado lineal y delegando en `_oriented` (que ya computa el asintótico con signo por `approach` y guarda la cancelación de líder). Reutilización pura: cero maquinaria nueva, el guard de cancelación mantiene honestos los casos divergentes.
+  - validación: workspace 12172 failed:0; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta (solo AÑADE resoluciones a casos antes residuales, ninguno en las lanes). Barrido adversarial: 24 formas naturales `sqrt(a x²+b x)+sa·x` (a∈{1,4,9}, b∈−3..3) vs verdad racional exacta → 0 wrong; 3 controles divergentes → declinan.
+- retained learning:
+  - Una suma `sqrt + linear` es una diferencia disfrazada en el infinito con signo: `_oriented` ya cargaba el signo del líder por `approach`, así que la extensión es negar el lado lineal y reusar — no un handler nuevo. El guard "líder cancela o declina" hace la corrección gratis (divergentes siguen residual).
+  - Disciplina de barrido: testear la forma PARENTIZADA `+(1*x+0)` fabricó 42 falsos "declina" — es un artefacto de aplanamiento n-ario (`Add(Add(sqrt,x),0)` entierra la raíz), un hueco PRE-EXISTENTE compartido por el path Sub, NO un bug del cambio. Barrer la forma NATURAL (sin paréntesis redundantes) dio 0 wrong. Verificar el generador del barrido antes de creer sus flags (gemelo de la lección del verificador de 1-ulp).
+  - PRÓXIMO PELDAÑO: robustez n-aria (matcher basado en `AddView` que aísle el único término sqrt-de-cuadrática y sume el resto como lineal) — cerraría `sqrt(x²+x)+x+1` y las formas con `+0` enterrado uniformemente; es un ciclo aparte con su propio chequeo de huella. Y la tercera sub-fix del scout: `∞−∞ vía Add→N/D`.

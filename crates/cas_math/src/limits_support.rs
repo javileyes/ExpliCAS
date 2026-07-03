@@ -6090,7 +6090,26 @@ fn sqrt_quadratic_minus_linear_limit_at_infinity(
             Expr::Neg(inner) => (l, inner),
             _ => match ctx.get(l).clone() {
                 Expr::Neg(inner) => (r, inner),
-                _ => return None,
+                // Pure `sqrt(...) + linear` (both positive). At x → −∞ the
+                // square root behaves like −x (|x| = −x), so the leading
+                // terms can cancel and the sum is finite —
+                // `sqrt(x²+1) + x → 0`, `sqrt(x²+x) + x → −1/2`. Treat it as
+                // the difference `sqrt − (−linear)` by negating the linear
+                // side; the leading-cancellation guard inside `_oriented`
+                // keeps the genuinely divergent cases (e.g. this shape at
+                // +∞, or `sqrt(x²+1) + 2x` at −∞) honestly residual.
+                _ => {
+                    let neg_r = ctx.add(Expr::Neg(r));
+                    let neg_l = ctx.add(Expr::Neg(l));
+                    return sqrt_quadratic_minus_linear_oriented(
+                        ctx, l, neg_r, true, &var_name, approach,
+                    )
+                    .or_else(|| {
+                        sqrt_quadratic_minus_linear_oriented(
+                            ctx, r, neg_l, true, &var_name, approach,
+                        )
+                    });
+                }
             },
         },
         _ => return None,
