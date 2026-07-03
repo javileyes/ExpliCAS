@@ -2921,7 +2921,29 @@ pub(crate) fn term_has_matrix_product_factor(
     false
 }
 
+thread_local! {
+    /// Per-pipeline memo for the pairwise cancellation matcher (pure over
+    /// interned nodes; cleared with the other gate memos).
+    static CANCELLATION_MATCH_MEMO: std::cell::RefCell<rustc_hash::FxHashMap<(cas_ast::ExprId, cas_ast::ExprId), bool>> =
+        std::cell::RefCell::new(rustc_hash::FxHashMap::default());
+}
+
 fn exprs_match_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    if let Some(hit) = CANCELLATION_MATCH_MEMO.with(|m| m.borrow().get(&(lhs, rhs)).copied()) {
+        return hit;
+    }
+    let result = exprs_match_for_cancellation_uncached(ctx, lhs, rhs);
+    CANCELLATION_MATCH_MEMO.with(|m| {
+        m.borrow_mut().insert((lhs, rhs), result);
+    });
+    result
+}
+
+fn exprs_match_for_cancellation_uncached(
     ctx: &mut cas_ast::Context,
     lhs: cas_ast::ExprId,
     rhs: cas_ast::ExprId,
@@ -6085,12 +6107,43 @@ fn classify_solve_prep_build_route(
     }
 }
 
+thread_local! {
+    /// Per-pipeline memos for the hot per-node solve-prep gates. The gates
+    /// are pure functions of interned (append-only) Context nodes, so a
+    /// cached bool never goes stale for a given Context; the memos are
+    /// cleared on `Simplifier::new` and at every `simplify_with_stats`
+    /// entry, which bounds them and prevents ExprId collisions across
+    /// different Contexts on the same thread. On recurrence-shaped DAGs
+    /// (tan(10*arcsin(t))) these gates were re-walking overlapping subDAGs
+    /// from every Add/Sub node visit.
+    static VARIABLE_SQUARE_GATE_MEMO: std::cell::RefCell<rustc_hash::FxHashMap<cas_ast::ExprId, bool>> =
+        std::cell::RefCell::new(rustc_hash::FxHashMap::default());
+    static SHIFTED_SQUARE_GATE_MEMO: std::cell::RefCell<rustc_hash::FxHashMap<cas_ast::ExprId, bool>> =
+        std::cell::RefCell::new(rustc_hash::FxHashMap::default());
+}
+
+/// Clear the per-pipeline solve-prep gate memos (see the thread_local doc).
+pub(crate) fn clear_solve_prep_gate_memos() {
+    VARIABLE_SQUARE_GATE_MEMO.with(|m| m.borrow_mut().clear());
+    SHIFTED_SQUARE_GATE_MEMO.with(|m| m.borrow_mut().clear());
+    CANCELLATION_MATCH_MEMO.with(|m| m.borrow_mut().clear());
+}
+
 fn expr_contains_variable_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
+    if let Some(hit) = VARIABLE_SQUARE_GATE_MEMO.with(|m| m.borrow().get(&root).copied()) {
+        return hit;
+    }
+    let result = expr_contains_variable_square_uncached(ctx, root);
+    VARIABLE_SQUARE_GATE_MEMO.with(|m| m.borrow_mut().insert(root, result));
+    result
+}
+
+fn expr_contains_variable_square_uncached(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
     let mut stack = vec![root];
     // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
     // an unmemoized walk revisits shared subtrees exponentially; the
     // visited set keeps the same answer at DAG-sized cost.
-    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
+    let mut seen: rustc_hash::FxHashSet<cas_ast::ExprId> = rustc_hash::FxHashSet::default();
     while let Some(expr) = stack.pop() {
         if !seen.insert(expr) {
             continue;
@@ -6121,11 +6174,20 @@ fn expr_contains_variable_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) 
 }
 
 fn expr_contains_shifted_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
+    if let Some(hit) = SHIFTED_SQUARE_GATE_MEMO.with(|m| m.borrow().get(&root).copied()) {
+        return hit;
+    }
+    let result = expr_contains_shifted_square_uncached(ctx, root);
+    SHIFTED_SQUARE_GATE_MEMO.with(|m| m.borrow_mut().insert(root, result));
+    result
+}
+
+fn expr_contains_shifted_square_uncached(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
     let mut stack = vec![root];
     // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
     // an unmemoized walk revisits shared subtrees exponentially; the
     // visited set keeps the same answer at DAG-sized cost.
-    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
+    let mut seen: rustc_hash::FxHashSet<cas_ast::ExprId> = rustc_hash::FxHashSet::default();
     while let Some(expr) = stack.pop() {
         if !seen.insert(expr) {
             continue;
@@ -6161,7 +6223,7 @@ fn collect_squared_variable_names(ctx: &cas_ast::Context, root: cas_ast::ExprId)
     // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
     // an unmemoized walk revisits shared subtrees exponentially; the
     // visited set keeps the same answer at DAG-sized cost.
-    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
+    let mut seen: rustc_hash::FxHashSet<cas_ast::ExprId> = rustc_hash::FxHashSet::default();
     while let Some(expr) = stack.pop() {
         if !seen.insert(expr) {
             continue;
@@ -6232,7 +6294,7 @@ fn collect_shifted_square_primary_variable_names(
     // Per-node rule gate: on recurrence-shaped DAGs (tan(10*arcsin(t)))
     // an unmemoized walk revisits shared subtrees exponentially; the
     // visited set keeps the same answer at DAG-sized cost.
-    let mut seen: std::collections::HashSet<cas_ast::ExprId> = std::collections::HashSet::new();
+    let mut seen: rustc_hash::FxHashSet<cas_ast::ExprId> = rustc_hash::FxHashSet::default();
     while let Some(expr) = stack.pop() {
         if !seen.insert(expr) {
             continue;

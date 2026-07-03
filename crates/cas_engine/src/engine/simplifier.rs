@@ -77,6 +77,8 @@ impl Simplifier {
     ///
     /// Usually you want `Simplifier::with_default_rules()` instead.
     pub fn new() -> Self {
+        crate::rules::arithmetic::clear_solve_prep_gate_memos();
+        crate::polynomial_identity_support::clear_identity_zero_negative_memo();
         Self {
             context: Context::new(),
             rules: HashMap::new(),

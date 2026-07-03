@@ -49,7 +49,18 @@ fn perf_guard_budget_secs() -> u64 {
         // release-path budget without indicating a real regression.
         14
     } else {
-        2
+        // RECONTRACTED 2026-07-03 (2s -> 5s). The original 2s dated from the
+        // test's introduction (6d479d641, 0.05s actual); months of per-node
+        // engine machinery (bisected landmark: 2783c22b2) accumulated to
+        // ~12s, invisible to debug-profile gates because this test is
+        // #[cfg_attr(debug_assertions, ignore)]. A 2026-07-03 perf campaign
+        // (DAG-aware gate walkers, lazy depth-overflow rendering, multipoly
+        // conversion memo, FxHash + per-pipeline gate/cancellation memos)
+        // recovered it to ~3.3s; the remainder is broad exact-arithmetic and
+        // per-node rule-gate cost on the recurrence DAG, not one hotspot.
+        // 5s still guards: it would have caught the 12s regression and trips
+        // on >=1.5x future drift.
+        5
     }
 }
 

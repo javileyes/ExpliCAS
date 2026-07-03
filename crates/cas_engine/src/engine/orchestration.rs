@@ -202,6 +202,8 @@ impl Simplifier {
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         // Clear blocked hints from previous simplifications
         crate::clear_blocked_hints();
+        crate::rules::arithmetic::clear_solve_prep_gate_memos();
+        crate::polynomial_identity_support::clear_identity_zero_negative_memo();
         self.last_required_conditions.clear();
 
         let mut orchestrator = crate::orchestrator::Orchestrator::new();

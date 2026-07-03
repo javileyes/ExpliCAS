@@ -36,8 +36,8 @@ pub fn multipoly_from_expr(
     // `vars` and `budget` are fixed within one top-level conversion, and the
     // Context is append-only (a node's value never changes), so hits return
     // the identical Result — errors included.
-    let mut memo: std::collections::HashMap<ExprId, Result<MultiPoly, PolyError>> =
-        std::collections::HashMap::new();
+    let mut memo: rustc_hash::FxHashMap<ExprId, Result<MultiPoly, PolyError>> =
+        rustc_hash::FxHashMap::default();
     from_expr_recursive(ctx, expr, &vars, budget, &mut memo)
 }
 
@@ -46,7 +46,7 @@ fn from_expr_recursive(
     expr: ExprId,
     vars: &[String],
     budget: &PolyBudget,
-    memo: &mut std::collections::HashMap<ExprId, Result<MultiPoly, PolyError>>,
+    memo: &mut rustc_hash::FxHashMap<ExprId, Result<MultiPoly, PolyError>>,
 ) -> Result<MultiPoly, PolyError> {
     if let Some(cached) = memo.get(&expr) {
         return cached.clone();
@@ -61,7 +61,7 @@ fn from_expr_recursive_uncached(
     expr: ExprId,
     vars: &[String],
     budget: &PolyBudget,
-    memo: &mut std::collections::HashMap<ExprId, Result<MultiPoly, PolyError>>,
+    memo: &mut rustc_hash::FxHashMap<ExprId, Result<MultiPoly, PolyError>>,
 ) -> Result<MultiPoly, PolyError> {
     match ctx.get(expr) {
         Expr::Number(n) => Ok(MultiPoly {

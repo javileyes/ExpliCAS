@@ -64,6 +64,24 @@ impl Default for PolynomialIdentityPolicy {
     }
 }
 
+thread_local! {
+    /// Per-pipeline NEGATIVE cache for the default-policy zero-identity proof.
+    /// The preorder shortcut in transform_binary attempts this at every
+    /// Add/Sub node; on recurrence-shaped DAGs the same interned nodes are
+    /// re-proven (and re-converted to MultiPoly) thousands of times. A `None`
+    /// outcome is a pure function of the immutable node under the fixed
+    /// default policy. Cleared alongside the arithmetic gate memos
+    /// (Simplifier::new / simplify_with_stats). Positive outcomes are NOT
+    /// cached: they rewrite the node to 0, so they occur at most once.
+    static IDENTITY_ZERO_NEGATIVE_MEMO: std::cell::RefCell<rustc_hash::FxHashSet<ExprId>> =
+        std::cell::RefCell::new(rustc_hash::FxHashSet::default());
+}
+
+/// Clear the per-pipeline negative identity-proof cache.
+pub(crate) fn clear_identity_zero_negative_memo() {
+    IDENTITY_ZERO_NEGATIVE_MEMO.with(|m| m.borrow_mut().clear());
+}
+
 /// Try to prove that `expr` is identically zero as a polynomial expression.
 ///
 /// Returns proof metadata for didactic rendering when successful.
@@ -71,7 +89,20 @@ pub(crate) fn try_prove_polynomial_identity_zero_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<PolynomialIdentityZeroPlan> {
-    try_prove_polynomial_identity_zero_with_policy(ctx, expr, &PolynomialIdentityPolicy::default())
+    if IDENTITY_ZERO_NEGATIVE_MEMO.with(|m| m.borrow().contains(&expr)) {
+        return None;
+    }
+    let result = try_prove_polynomial_identity_zero_with_policy(
+        ctx,
+        expr,
+        &PolynomialIdentityPolicy::default(),
+    );
+    if result.is_none() {
+        IDENTITY_ZERO_NEGATIVE_MEMO.with(|m| {
+            m.borrow_mut().insert(expr);
+        });
+    }
+    result
 }
 
 pub(crate) fn try_prove_polynomial_identity_zero_with_policy(

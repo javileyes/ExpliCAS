@@ -189,20 +189,34 @@ where
         });
     }
 
-    let (collector, previous_listener) = if matches!(config.steps_mode, EvalStepsMode::Off) {
-        (None, None)
-    } else {
-        let collector = EngineEventCollector::new();
-        let previous_listener = engine
-            .simplifier
-            .replace_step_listener(Some(Box::new(collector.clone())));
-        (Some(collector), Some(previous_listener))
-    };
+    let (collector, previous_listener, previous_steps_mode) =
+        if matches!(config.steps_mode, EvalStepsMode::Off) {
+            // Steps are off for this run: besides not attaching a listener,
+            // turn the engine's step COLLECTION off too. The Simplifier
+            // defaults to StepsMode::On, so without this every steps-off eval
+            // still built, productivity-filtered (display-string compares of
+            // the full expression per step) and then discarded the whole step
+            // trace — dominant cost on recurrence-shaped DAGs like
+            // tan(10·arcsin(t)). Domain warnings and required conditions
+            // survive Off mode via their dedicated side channels.
+            let previous_steps_mode = engine.simplifier.get_steps_mode();
+            engine.simplifier.set_steps_mode(cas_engine::StepsMode::Off);
+            (None, None, Some(previous_steps_mode))
+        } else {
+            let collector = EngineEventCollector::new();
+            let previous_listener = engine
+                .simplifier
+                .replace_step_listener(Some(Box::new(collector.clone())));
+            (Some(collector), Some(previous_listener), None)
+        };
 
     let output_view_result =
         crate::eval_request_runtime::evaluate_prepared_request_with_session(engine, session, req);
     if let Some(previous_listener) = previous_listener {
         let _ = engine.simplifier.replace_step_listener(previous_listener);
+    }
+    if let Some(previous_steps_mode) = previous_steps_mode {
+        engine.simplifier.set_steps_mode(previous_steps_mode);
     }
     let output_view = output_view_result?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
