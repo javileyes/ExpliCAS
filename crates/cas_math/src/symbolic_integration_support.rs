@@ -15408,14 +15408,28 @@ fn polynomial_times_constant_base_power_antiderivative(
     // Locate the unique constant-base power factor `a^x = Pow(base, x)`.
     let mut power_index = None;
     let mut base_expr = None;
+    let mut exponent_slope = None;
     for (index, &factor) in factors.iter().enumerate() {
         let Expr::Pow(base, exponent) = ctx.get(factor) else {
             continue;
         };
         let (base, exponent) = (*base, *exponent);
-        let is_var_exponent =
-            matches!(ctx.get(exponent), Expr::Variable(sym) if ctx.sym_name(*sym) == var);
-        if !is_var_exponent {
+        // The exponent must be AFFINE in the variable, `m·x + c` with a
+        // nonzero rational slope `m`. For `a^(m·x+c) = a^c·(a^m)^x` the
+        // effective by-parts slope of the series is `m·ln(a)`; the constant
+        // `a^c` is already carried inside the untouched power factor, so
+        // only the slope enters the formula. Bare `a^x` is the `m=1, c=0`
+        // special case (previously the ONLY accepted shape).
+        let Ok(exp_poly) = Polynomial::from_expr(ctx, exponent, var) else {
+            continue;
+        };
+        if exp_poly.degree() != 1 {
+            continue;
+        }
+        let Some(slope) = exp_poly.coeffs.get(1).cloned() else {
+            continue;
+        };
+        if slope.is_zero() {
             continue;
         }
         let Some(base_value) = crate::numeric_eval::as_rational_const(ctx, base) else {
@@ -15425,13 +15439,15 @@ fn polynomial_times_constant_base_power_antiderivative(
             continue;
         }
         if power_index.is_some() {
-            return None; // more than one a^x factor — out of scope
+            return None; // more than one a^(m·x+c) factor — out of scope
         }
         power_index = Some(index);
         base_expr = Some(base);
+        exponent_slope = Some(slope);
     }
     let power_index = power_index?;
     let base = base_expr?;
+    let exponent_slope = exponent_slope?;
     let power_factor = factors[power_index];
 
     // The remaining factors must form a polynomial cofactor of degree ≥ 1.
@@ -15451,8 +15467,18 @@ fn polynomial_times_constant_base_power_antiderivative(
         return None;
     }
 
-    // inner = Σ_{k=0}^{deg} (-1)^k p^(k)(x) / (ln a)^(k+1)
-    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    // inner = Σ_{k=0}^{deg} (-1)^k p^(k)(x) / (m·ln a)^(k+1), where the
+    // effective by-parts slope is `m·ln a` for the affine exponent `m·x+c`
+    // (m = 1 recovers the bare `a^x` denominator `ln a`).
+    let ln_base = {
+        let ln = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+        if exponent_slope.is_one() {
+            ln
+        } else {
+            let slope_expr = ctx.add(Expr::Number(exponent_slope));
+            ctx.add(Expr::Mul(slope_expr, ln))
+        }
+    };
     let mut derivative = poly.clone();
     let mut inner: Option<ExprId> = None;
     for k in 0..=degree {
@@ -24369,11 +24395,48 @@ mod tests {
             );
         }
 
+        // AFFINE exponents `a^(m·x+c)` integrate through the effective slope
+        // `m·ln a` — `x·2^(2x)`, `x·3^(2x)`, `x·2^(x+1)`, negative/fractional
+        // slopes — all round-trip to the integrand under differentiation.
+        for src in [
+            "x*2^(2*x)",
+            "x*3^(2*x)",
+            "x*2^(x+1)",
+            "x^2*3^(2*x)",
+            "x*2^(-x)",
+            "x*9^(x/2)",
+            "(3*x+1)*5^(2*x-1)",
+        ] {
+            let mut ctx = Context::new();
+            let integrand = parse(src, &mut ctx).expect("parse");
+            let out = integrate_symbolic_expr(&mut ctx, integrand, "x")
+                .unwrap_or_else(|| panic!("{src} should integrate"));
+            let derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx, out, "x",
+            )
+            .expect("differentiate");
+            let integrand = parse(src, &mut ctx).expect("re-parse");
+            for sample in [-2i64, -1, 1, 2, 3] {
+                let a = eval_numeric_at(&ctx, derivative, "x", sample).expect("eval derivative");
+                let b = eval_numeric_at(&ctx, integrand, "x", sample).expect("eval integrand");
+                assert!(
+                    (a - b).abs() < 1e-9,
+                    "{src}: d/dx(∫) {a} != integrand {b} at x={sample}"
+                );
+            }
+        }
+
         // Bare 2^x (degree-0 cofactor) is NOT this kernel — the table owns it.
         let bare = parse("2^x", &mut ctx).expect("parse");
         assert!(
             polynomial_times_constant_base_power_antiderivative(&mut ctx, bare, "x").is_none(),
             "bare 2^x must be left to the a^x table, not the by-parts kernel"
+        );
+        // A constant (degree-0) exponent is not an exponential in x — decline.
+        let const_exp = parse("x*2^3", &mut ctx).expect("parse");
+        assert!(
+            polynomial_times_constant_base_power_antiderivative(&mut ctx, const_exp, "x").is_none(),
+            "x*2^3 has a constant exponent — not an exponential in x"
         );
         // Base e is the exp kernel's job, not this one (no constant rational base).
         let exp_case = parse("x*exp(x)", &mut ctx).expect("parse");

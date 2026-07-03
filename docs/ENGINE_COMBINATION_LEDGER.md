@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 496 (newest first)
+Active entries: 497 (newest first)
 
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
+- 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18366,3 +18367,18 @@ Active entries: 496 (newest first)
   - Una suma `sqrt + linear` es una diferencia disfrazada en el infinito con signo: `_oriented` ya cargaba el signo del líder por `approach`, así que la extensión es negar el lado lineal y reusar — no un handler nuevo. El guard "líder cancela o declina" hace la corrección gratis (divergentes siguen residual).
   - Disciplina de barrido: testear la forma PARENTIZADA `+(1*x+0)` fabricó 42 falsos "declina" — es un artefacto de aplanamiento n-ario (`Add(Add(sqrt,x),0)` entierra la raíz), un hueco PRE-EXISTENTE compartido por el path Sub, NO un bug del cambio. Barrer la forma NATURAL (sin paréntesis redundantes) dio 0 wrong. Verificar el generador del barrido antes de creer sus flags (gemelo de la lección del verificador de 1-ulp).
   - PRÓXIMO PELDAÑO: robustez n-aria (matcher basado en `AddView` que aísle el único término sqrt-de-cuadrática y sume el resto como lineal) — cerraría `sqrt(x²+x)+x+1` y las formas con `+0` enterrado uniformemente; es un ciclo aparte con su propio chequeo de huella. Y la tercera sub-fix del scout: `∞−∞ vía Add→N/D`.
+
+## 2026-07-04 - CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
+
+- area: `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_constant_base_power_antiderivative` generalizada al exponente afín)
+- status: `retained`. Cierra el item S del scout ("`poly × b^(ax+c)` con b≠e — normalizar antes del by-parts").
+- capture:
+  - investment_class: capability (Fase 1, integración — G1-adyacente, universalidad de la integral).
+  - cell: `integrate(x·2^(2x))` → `x·2^(2x−1)/ln2 − 2^(2x)/(4ln²2)`; `x·3^(2x)`, `x·2^(x+1)`, `x²·3^(2x)`, `x·5^(3x+2)`, pendientes negativas (`x·2^(−x)`, `x·2^(−2x)`) y fraccionarias (`x·4^(x/2)`, `x·9^(x/2)`) — todas resuelven. Antes SOLO integraba con exponente EXACTAMENTE `x` (base e sí manejaba afines). Controles: base e intactos, `x·2^(x²)` (no afín) declina, `x·2^3` (exponente constante) declina.
+  - causa raíz: el detector exigía `matches!(exponent, Variable(sym) if sym==var)` — exponente literalmente `x`. `2^(2x)`, `2^(x+1)` no matcheaban aunque la base e sí los maneja.
+  - fix: aceptar exponente AFÍN `m·x+c` (`Polynomial::from_expr`, grado 1, pendiente m≠0 racional). Como `b^(m·x+c) = b^c·(b^a)^x` y la serie de by-parts usa la pendiente `ln b`, la generalización es: pendiente efectiva `m·ln b` en el denominador (`Pow(m·ln b, k+1)`) — el `b^c` ya viaja dentro del factor potencia sin tocar (c NO entra en la fórmula, solo m). m=1 recupera exactamente el caso previo. Verificado matemáticamente: `∫x·2^(2x) = 2^(2x)·[x/(2ln2)−1/(4ln²2)]` deriva de vuelta a `x·2^(2x)`.
+  - validación: workspace 12172 failed:0; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta. Round-trip diff (Δ=0 EXACTO) en 12 formas + verificación NUMÉRICA de `(x²+x)·3^(2x)` (correcta a 1e-14; el Δ simbólico no-cero era residuo de simplify, NO error). Unit test extendido a 7 formas afines × 5 muestras + 2 declines.
+- retained learning:
+  - Un detector que exige el argumento LITERAL (`exponent == var`) pierde toda la familia afín que su hermano (base e) ya maneja; generalizar a `Polynomial::from_expr` grado 1 + pendiente efectiva es la extensión mínima. La constante aditiva `c` se absorbe en el factor que ya aparece en la antiderivada — no necesita reconstrucción.
+  - "Verifica el verificador" (3ª vez esta sesión): `simplify(diff(∫)−integrando)` dejó un residuo NO-cero en `(x²+x)·3^(2x)` que parecía un wrong-answer; la verificación NUMÉRICA en 5 puntos (1e-14) probó que la antiderivada es exacta y simplify solo no colapsó la forma ln-potencia. Para familias con `ln(b)` anidado, el round-trip NUMÉRICO manda sobre el simbólico.
+  - PRÓXIMO PELDAÑO: promover a filas de la matriz de integración (`linear_rational_base_affine_slope_by_parts` etc.) — el cambio de contadores en cascada (base_integration_policy_clusters/maturity_blocks/verification_regimes) es un mini-ciclo de harness aparte; hoy los unit tests dan la misma cobertura round-trip. Y `poly × b^(m·x+c) × otra_forma` (trig, log) sigue fuera de alcance.
