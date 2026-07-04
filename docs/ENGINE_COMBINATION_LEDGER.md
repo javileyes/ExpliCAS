@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 499 (newest first)
+Active entries: 500 (newest first)
 
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
 - 2026-07-04 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_even_power_or_abs_... | CAPACIDAD+SOUNDNESS (wrapper par/abs de PIU): `sin(x)²⋚c`, `|sin(x)|⋚c` resuelven
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (brazo `Expr::Sub` de `try_limit_rule... | CAPACIDAD (∞−∞ en punto finito vía Add→N/D): `1/sin(x)−1/x → 0`
+- 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (brazo `Expr::Add` de `try_limit_rule... | CAPACIDAD+SOUNDNESS (∞−∞ en el brazo Add + fold de ∞+∞): completa la simetría del ciclo 5
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18415,3 +18416,18 @@ Active entries: 499 (newest first)
   - Un `?` en un brazo de dispatch que tiene un FALLBACK más abajo es una trampa de "bail temprano": cuando la maquinaria de recuperación ya existe (aquí la combinación N/D), el bug suele ser que el camino feliz aborta antes de llegar a ella. Patrón de fix: calcular el camino feliz con `if let (Some, Some)` en vez de `?`, dejando fluir al fallback. La combinación misma NO era el trabajo — el trabajo era ALCANZARLA.
   - Sondear la forma combinada MANUALMENTE (`limit((x−sin x)/(x sin x), 0)` → 0) antes de implementar confirmó que el downstream ya resuelve — el fix era de plomería (alcanzar el combinador), no de capacidad nueva. Ahorra construir maquinaria que ya está.
   - PRÓXIMO PELDAÑO: el brazo `Add` merece el mismo fallback (con un combinador de SUMA); el polo impar `1/(x-1)−1/(x²-1)` podría dar `undefined` (DNE) en vez de residual si la forma combinada `x/((x-1)(x+1))` detectara el polo bilateral. Y las filas de la matriz de límites para ∞−∞ (contadores en cascada, mini-ciclo de harness aparte — los unit tests dan la cobertura).
+
+## 2026-07-04 - CAPACIDAD+SOUNDNESS (∞−∞ en el brazo Add + fold de ∞+∞): completa la simetría del ciclo 5
+
+- area: `crates/cas_math/src/limits_support.rs` (brazo `Expr::Add` de `try_limit_rules_at_finite` + `finite_add_result_checked` + `combine_sum_over_common_denominator` nuevos)
+- status: `retained`. Companion simétrico del ciclo 5 (Sub); completa el manejo de ∞−∞ para ambas orientaciones.
+- capture:
+  - investment_class: capability (Fase 1, límites) + soundness (fold ∞+∞).
+  - cell: `limit(x/(x-1) + 1/(1-x), x, 1)` → `1` (era residual; = 1/(x+1)... no, = (x-1)/(x-1) = 1); `1/x + 1/(-x)` → `0`; `1/x + (-1/sin(x))` → `0`. Fold: `1/x² + 1/x²` → `infinity` (era el nodo basura `Add(∞,∞)` = "infinity + infinity"); `-1/x² + (-1/x²)` → `-infinity`. Colateral CORRECTO: `sqrt(x²+1)+x` en +∞ → `infinity` (vía sustitución recíproca → límite finito en 0+ → brazo Add combinado; era residual conservador — mejora, recontratado mi propio test del ciclo 2). Controles: `x+sin(x)`→0, `1/x+1/x`→undefined (DNE), `2/(x-1)+1/(1-x)`→residual (polo).
+  - causa raíz: idéntica al Sub del ciclo 5 — el `?` en el brazo Add abortaba antes del fallback; y `finite_add_result` construía `Add(∞,∞)` literal para ∞ mismo-signo (bug de presentación pre-existente).
+  - fix: (1) reestructurar Add sin `?` (if let (Some,Some)) para alcanzar el fallback; (2) `finite_add_result_checked` declina ∞+(-∞) indeterminado (→ combina) y pliega mismo-signo ∞+∞ → ese ∞; (3) `combine_sum_over_common_denominator` (gemelo con `Add` de la resta).
+  - validación: workspace 12182 failed:0; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta (tras recontratar el test propio del ciclo 2 cuyo caso divergente ahora resuelve correctamente). Verificación numérica de los nuevos; 1 test unitario (Add + fold). Matriz de límites 209/209.
+- retained learning:
+  - Completar una simetría (Sub→Add) suele destapar un bug latente adyacente: `finite_add_result` construía `Add(∞,∞)` visible ("infinity + infinity") — el fold mismo-signo lo cierra y de paso resuelve `sqrt(x²+1)+x@+∞` vía el puente sustitución-recíproca→finito. Un cambio en el brazo FINITO puede mejorar límites al ∞ porque la sustitución recíproca los reencamina al finito.
+  - Al recontratar un test PROPIO de un ciclo anterior en la misma sesión: si el caso "divergent_stays_residual" ahora RESUELVE a la ∞ con signo correcto, es una MEJORA (under-answer→resuelto), no una regresión — verificar el signo numéricamente y recontratar con la intención nueva.
+  - PRÓXIMO PELDAÑO (fuerte, documentado): `solve` de inverso-trig/hiperbólico (`arcsin(x)=1/2`, `sinh(x)=1`, `cosh(x)=2`, `arctan(x)=1`) hoy ERRORA "función no definida" — merece su propio ciclo con condiciones de rango/rama (arcsin: c∈[-π/2,π/2]; cosh: c≥1 dos ramas ±; tanh: c∈(-1,1); sinh incondicional). Es honestidad (error→resuelto/decline) + capacidad. También la definida `∫tan` deja `ln(cos(0)/cos(π/4))` sin plegar (el resultado de integrate es opaco al simplify externo).

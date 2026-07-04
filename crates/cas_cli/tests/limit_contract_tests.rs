@@ -2260,21 +2260,27 @@ fn test_limit_sqrt_quadratic_plus_linear_neg_infinity() {
 }
 
 #[test]
-fn test_limit_sqrt_quadratic_plus_linear_divergent_stays_residual() {
-    // The leading-cancellation guard keeps genuinely divergent shapes honest:
-    // the same `+` form diverges to +∞ at +∞, and a mismatched coefficient
-    // (`+2x`) diverges at −∞ too — both stay the honest residual.
-    for (expr, to) in [
-        ("sqrt(x^2 + 1) + x", "infinity"),
-        ("sqrt(x^2 + 1) + 2*x", "-infinity"),
-    ] {
-        let (success, stdout) = run_limit(expr, "x", to, "json");
-        assert!(success, "Command should succeed for {expr} -> {to}");
-        assert!(
-            stdout.contains("\"result\":\"limit("),
-            "{expr} at {to} should stay residual, got: {stdout}"
-        );
-    }
+fn test_limit_sqrt_quadratic_plus_linear_divergent_behaviour() {
+    // `sqrt(x²+1) + x` at +∞ genuinely diverges to +∞: the reciprocal
+    // substitution turns it into a finite one-sided limit at 0⁺ whose
+    // combined single fraction `(sqrt(1+u²)+1)/u → +∞` is now detected (the
+    // ∞ + ∞ fold / Add-arm combine), so it resolves to `infinity` instead of
+    // the earlier conservative residual.
+    let (success, stdout) = run_limit("sqrt(x^2 + 1) + x", "x", "infinity", "json");
+    assert!(success);
+    assert!(
+        stdout.contains("\"result\":\"infinity\""),
+        "sqrt(x^2+1) + x at +inf should be infinity, got: {stdout}"
+    );
+    // The mismatched-coefficient `+2x` at −∞ is an opposite-sign ∞ + (−∞)
+    // whose operands are not fractions, so the combine declines and it stays
+    // the honest residual.
+    let (success, stdout) = run_limit("sqrt(x^2 + 1) + 2*x", "x", "-infinity", "json");
+    assert!(success);
+    assert!(
+        stdout.contains("\"result\":\"limit("),
+        "sqrt(x^2+1) + 2x at -inf should stay residual, got: {stdout}"
+    );
 }
 
 #[test]

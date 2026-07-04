@@ -4004,9 +4004,23 @@ fn try_limit_rules_at_finite(
 
     match ctx.get(expr).clone() {
         Expr::Add(lhs, rhs) => {
-            let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
-            let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            Some(finite_add_result(ctx, lhs_limit, rhs_limit))
+            // Fast path: operand-wise when both sides have a limit. Computed
+            // without `?` so a None does not bail before the combine
+            // fallback (mirrors the Sub arm below).
+            if let (Some(lhs_limit), Some(rhs_limit)) = (
+                try_limit_rules_at_finite(ctx, lhs, var, point),
+                try_limit_rules_at_finite(ctx, rhs, var, point),
+            ) {
+                if let Some(result) = finite_add_result_checked(ctx, lhs_limit, rhs_limit) {
+                    return Some(result);
+                }
+            }
+            // Fallback: combine `lhs + rhs` over a common denominator and
+            // retry the single fraction — `x/(x-1) + 1/(1-x)` = `1` even
+            // though each operand diverges at x = 1. The combined form is a
+            // `Div`, so this does not loop.
+            let combined = combine_sum_over_common_denominator(ctx, lhs, rhs)?;
+            try_limit_rules_at_finite(ctx, combined, var, point)
         }
         Expr::Sub(lhs, rhs) => {
             // Fast path: operand-wise limits when BOTH converge (or are
@@ -5633,6 +5647,51 @@ fn finite_add_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
         return lhs;
     }
     ctx.add(Expr::Add(lhs, rhs))
+}
+
+/// Like [`finite_add_result`] but declines the indeterminate OPPOSITE-sign
+/// `∞ + (−∞)` (the additive twin of `finite_sub_result`'s same-sign guard),
+/// so the caller can combine over a common denominator instead of building a
+/// garbage `Add(∞, −∞)`. Same-sign `∞ + ∞` is a determinate ±∞ and falls
+/// through.
+fn finite_add_result_checked(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
+    if let (Some(lhs_sign), Some(rhs_sign)) = (
+        limit_value_infinite_sign(ctx, lhs),
+        limit_value_infinite_sign(ctx, rhs),
+    ) {
+        if lhs_sign != rhs_sign {
+            return None;
+        }
+        // Same-sign `∞ + ∞ = ±∞`: return the (already ±∞) operand rather than
+        // letting `finite_add_result` build a literal `Add(∞, ∞)` node.
+        return Some(lhs);
+    }
+    Some(finite_add_result(ctx, lhs, rhs))
+}
+
+/// Combine `lhs + rhs` over a common denominator into a single fraction
+/// `(num_l·den_r + num_r·den_l) / (den_l·den_r)` — the additive companion of
+/// [`combine_difference_over_common_denominator`]. `None` when neither side
+/// is a fraction. Resolves an `∞ + (−∞)` finite limit: `x/(x−1) + 1/(1−x)`
+/// becomes `(x·(1−x) + (x−1))/((x−1)(1−x))`, which reduces to `1`.
+fn combine_sum_over_common_denominator(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<ExprId> {
+    let lhs_frac = as_fraction(ctx, lhs);
+    let rhs_frac = as_fraction(ctx, rhs);
+    if lhs_frac.is_none() && rhs_frac.is_none() {
+        return None;
+    }
+    let one = ctx.num(1);
+    let (num_l, den_l) = lhs_frac.unwrap_or((lhs, one));
+    let (num_r, den_r) = rhs_frac.unwrap_or((rhs, one));
+    let t1 = ctx.add(Expr::Mul(num_l, den_r));
+    let t2 = ctx.add(Expr::Mul(num_r, den_l));
+    let num = ctx.add(Expr::Add(t1, t2));
+    let den = ctx.add(Expr::Mul(den_l, den_r));
+    Some(ctx.add(Expr::Div(num, den)))
 }
 
 /// Combine `lhs - rhs` over a common denominator into a single fraction

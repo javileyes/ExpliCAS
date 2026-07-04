@@ -255,6 +255,27 @@ fn infinity_minus_infinity_combines_over_common_denominator() {
 }
 
 #[test]
+fn infinity_minus_infinity_combines_in_the_add_arm_too() {
+    // The `+` companion: `x/(x-1) + 1/(1-x) = 1` even though each operand
+    // diverges at x = 1 (the two denominators are negatives of each other).
+    let mut ctx = Context::new();
+    let one_r = bilateral(&mut ctx, "x/(x-1) + 1/(1-x)", "1");
+    assert!(
+        matches!(ctx.get(one_r.expr), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into())),
+        "x/(x-1) + 1/(1-x) at 1 should be 1, got {:?}",
+        ctx.get(one_r.expr)
+    );
+    let zero = bilateral(&mut ctx, "1/x + 1/(-x)", "0");
+    assert!(matches!(ctx.get(zero.expr), Expr::Number(n) if n.is_zero()));
+    // Same-sign ∞ + ∞ folds to a single ±∞, not a literal Add(∞, ∞).
+    let pos = bilateral(&mut ctx, "1/x^2 + 1/x^2", "0");
+    assert!(matches!(
+        ctx.get(pos.expr),
+        Expr::Constant(Constant::Infinity)
+    ));
+}
+
+#[test]
 fn infinity_minus_infinity_stays_sound_on_degenerate_and_divergent_forms() {
     let mut ctx = Context::new();
     // f - f with f -> ∞ is 0 (exact cancellation), not indeterminate garbage.
