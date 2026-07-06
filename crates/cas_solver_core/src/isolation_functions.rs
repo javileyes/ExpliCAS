@@ -157,6 +157,29 @@ where
                     return Ok((residual, existing_steps));
                 }
             }
+            // Honesty gate: a DEFINED builtin whose inverse the isolation table
+            // does not carry (`arcsin`, `arccos`, `arctan`, `sinh`, `cosh`,
+            // `tanh`, and their aliases) otherwise falls into the executor and
+            // ERRORS `función [f] no definida` — misleading, because the
+            // function IS defined; only the solver cannot invert it here. The
+            // identical call nested one level deeper (`x + arcsin(x) = 1`)
+            // already declines to the operator-preserving residual; the bare
+            // form `arcsin(x) = a` should match, not error. Decline to the same
+            // honest residual. A genuinely UNKNOWN function (`gamma`, `erf`,
+            // `foo` — `BuiltinFn::from_name` is None) keeps the `no definida`
+            // error, which is the honest answer there (the function truly is
+            // not defined). Concrete-RHS invertible cases (`arcsin(x) = 1/2`)
+            // are already solved by the dedicated handler upstream; only the
+            // symbolic / undecidable-range residual reaches here.
+            if crate::function_inverse::UnaryInverseKind::from_name(&fn_name).is_none()
+                && cas_ast::builtin::BuiltinFn::from_name(&fn_name).is_some()
+            {
+                let ctx = context_mut(state);
+                let lhs_call = ctx.call(&fn_name, vec![arg]);
+                let residual =
+                    crate::solve_outcome::residual_solution_set(ctx, lhs_call, rhs, op, var);
+                return Ok((residual, existing_steps));
+            }
             execute_unary_function_isolation_with_default_plan_with_state(
                 state,
                 &fn_name,

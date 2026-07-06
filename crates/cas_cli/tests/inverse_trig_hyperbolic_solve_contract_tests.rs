@@ -84,3 +84,59 @@ fn sinh_is_unconditional_and_forward_trig_is_untouched() {
     assert_eq!(solve("cos(x) = 1"), "{ k·2·pi : k ∈ ℤ }");
     assert_eq!(solve("ln(x) = 2"), "{ e^2 }");
 }
+
+/// Runs `solve(input, x)` and returns `(ok, result_or_error)`.
+fn solve_raw(input: &str) -> (bool, String) {
+    let out = Command::new(cargo::cargo_bin!("cas_cli"))
+        .args(["eval", &format!("solve({input}, x)"), "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    let ok = wire["ok"].as_bool().unwrap_or(false);
+    let payload = if ok {
+        wire["result"].as_str().unwrap_or("").to_string()
+    } else {
+        wire["error"].as_str().unwrap_or("").to_string()
+    };
+    (ok, payload)
+}
+
+#[test]
+fn non_invertible_builtin_declines_to_a_residual_not_an_error() {
+    // A DEFINED builtin the isolation cannot invert used to ERROR
+    // `función [f] no definida` in the bare `f(x) = c` form — misleading,
+    // because the function IS defined; only the solver cannot invert it.
+    // It now declines to the honest operator-preserving residual, matching
+    // the compound form `x + arcsin(x) = 1` which already residualized.
+    assert_eq!(
+        solve_raw("arcsin(x) = a"),
+        (true, "solve(arcsin(x) = a, x)".into())
+    );
+    assert_eq!(
+        solve_raw("arccos(x) = a"),
+        (true, "solve(arccos(x) = a, x)".into())
+    );
+    assert_eq!(
+        solve_raw("arctan(x) = a"),
+        (true, "solve(arctan(x) = a, x)".into())
+    );
+    // The inverse hyperbolics (`asinh`, aliases) are defined builtins too.
+    assert_eq!(
+        solve_raw("asinh(x) = 1"),
+        (true, "solve(asinh(x) = 1, x)".into())
+    );
+}
+
+#[test]
+fn genuinely_unknown_functions_keep_the_no_definida_error() {
+    // `gamma`/`erf`/`foo` are NOT builtins — `no definida` is the honest
+    // answer (the function truly is not defined), so it must NOT residualize.
+    for f in ["gamma", "erf", "foo"] {
+        let (ok, msg) = solve_raw(&format!("{f}(x) = 1"));
+        assert!(!ok, "{f} should stay an error, got ok with {msg}");
+        assert!(
+            msg.contains("no definida"),
+            "{f} should keep the `no definida` error, got: {msg}"
+        );
+    }
+}

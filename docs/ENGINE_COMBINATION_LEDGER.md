@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 501 (newest first)
+Active entries: 502 (newest first)
 
+- 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18447,3 +18448,18 @@ Active entries: 501 (newest first)
   - La verificación de raíces subsume el DOMINIO ALGEBRAICO (radicandos ≥ 0, surdos que cancelan) pero NO el RANGO TRANSCENDENTE de una inversa (`arcsin(sin(5))≠5` no se evalúa) — para inversas de funciones acotadas, el gate de rango por la capa de decisión exacta es OBLIGATORIO, no opcional. Probar empíricamente el caso fuera-de-rango ANTES de confiar en la verificación reveló que `{sin(5)}` se fugaba.
   - Un handler dedicado con gate es preferible a extender la tabla compartida `UnaryInverseKind` cuando la reducción necesita una condición (rango/rama): la tabla aplica el inverso incondicionalmente y no tiene dónde poner el gate; el handler dedicado lo pone y mantiene el error/decline honesto para lo indecidible.
   - PRÓXIMO PELDAÑO: `arcsin(x)=a` SIMBÓLICO aún ERRORA (mi handler declina → la isolación errora); merece un decline honesto (residual) — es plomería de la isolación (error→residual para estas funciones). Y `cosh` en desigualdad, y estas inversas dentro de composiciones (`arcsin(x)+arccos(x)=...`).
+
+## 2026-07-07 - HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
+
+- area: `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `FunctionIsolationRoute::UnaryInvertible`, junto al gate U4 de sin/cos/tan)
+- status: `retained`. Cierra el peldaño que dejó abierto el ciclo previo (inverso-trig/hiperbólico concreto): el caso simbólico / rango-indecidible ERRORABA.
+- capture:
+  - investment_class: honestidad (error→decline), transversal a todo `solve`. Va antes que capacidad por la regla de fase.
+  - cell: `solve(arcsin(x)=a)` → `solve(arcsin(x) = a, x)` (residual honesto; era `Error: función [arcsin] no definida`). Igual para `arccos/arctan(x)=a`, `asinh(x)=1`, `sech(x)=1/2` (→ `solve(cosh(x)=2, x)`). Las funciones GENUINAMENTE desconocidas (`gamma`, `erf`, `foo` — no builtins) CONSERVAN el error `no definida` (es la respuesta honesta: la función de verdad no está definida). El caso RHS-concreto invertible (`arcsin(x)=1/2`→`{sin(1/2)}`) lo resuelve el handler del ciclo anterior aguas arriba; aquí solo cae el residual.
+  - causa raíz: el enrutador clasifica TODA función unaria de un arg (no abs/log) como `UnaryInvertible` optimista; si la tabla `UnaryInverseKind::from_name` no la conoce, el ejecutor invoca `unknown_function_error` → error duro. Pero un builtin como `arcsin` SÍ está definido; solo el solver no sabe invertirlo aquí. La MISMA llamada anidada un nivel (`x+arcsin(x)=1`) ya declinaba al residual operador-preservado — inconsistencia de honestidad según profundidad de anidamiento.
+  - gate (2 predicados, mínimos): `UnaryInverseKind::from_name(fn).is_none()` (isolación no sabe invertir) AND `cas_ast::builtin::BuiltinFn::from_name(fn).is_some()` (ES un builtin definido) → declina al `residual_solution_set` (el mismo builder que usa el gate U4 justo arriba). El segundo predicado es lo que preserva el error honesto para gamma/erf/foo.
+  - validación: workspace 12190 failed:0 (+2 tests de contrato); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta (los únicos deltas fueron `public_overhead_share_percent` y el reorden de `steady_engine_heavy_rows` — ruido de latencia conocido; state/passed/failed/total idénticos). 8 tests de contrato (4 residualizan, 3 conservan el error, + los 5 previos).
+  - retained learning:
+  - "Función no definida" y "no sé invertir esta función definida" son DOS honestidades distintas: la primera es correcta solo si `BuiltinFn::from_name` es None; para un builtin real es engañosa (implica que la función no existe). El predicado de builtin es lo que separa el residual honesto (arcsin) del error honesto (gamma) — sin él, el residual `solve(gamma(x)-1=0,x)` mentiría afirmando que el engine entiende gamma. Un gate de honestidad casi siempre necesita su predicado-espejo para no volverse deshonesto en el borde.
+  - La INCONSISTENCIA por profundidad de anidamiento es un olor de honestidad: si `x+f(x)=c` residualiza pero `f(x)=c` errora, el bare-form está en un camino de error que el compound-form evita. Alinear el bare al compound (mismo `residual_solution_set`) cierra el hueco sin tocar el contrato del compound.
+  - PRÓXIMO PELDAÑO (capacidad, no honestidad): `sech(x)=1/2` residualiza a `solve(cosh(x)=2,x)` que el handler del ciclo anterior SÍ sabe resolver — hay un gap de orden (la reescritura recíproca produce `cosh(x)=2` aguas abajo del dispatch del handler). Re-despachar el residual-cosh por el handler cerraría sech/csch/coth. Y `asinh/acosh/atanh(x)=c` como función EXTERNA (monótonas biyectivas → `x=sinh(c)` etc.) son capacidad barata añadible al handler del ciclo anterior.
