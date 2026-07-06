@@ -5911,6 +5911,188 @@ const MULTIPLE_ANGLE_EXPANSION_RULES: &[&str] = &[
 /// Gated entry: disables the multiple-angle expansions for the duration of
 /// the periodic-trig handler (re-entrant: recursive reductions re-enter here
 /// and add nothing; only the outermost call restores).
+/// `f(g(x)) = c` where `f` is an inverse-trig or hyperbolic function solved
+/// by applying its (single, monotone) inverse — `arcsin(x)=c → x=sin(c)`,
+/// `sinh(x)=c → x=asinh(c)`, `cosh(x)=c → x=±acosh(c)`. Each bounded-range
+/// function is GATED by the exact const-decision layer: a threshold provably
+/// outside the range is `No solution`, provably inside reduces and recurses,
+/// undecidable declines. (`solve`'s root verification does NOT catch these
+/// transcendental range violations, so the gate is mandatory — without it
+/// `arcsin(x)=5` would leak the spurious `sin(5)`.)
+fn try_solve_inverse_trig_hyperbolic_equation(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::const_sign::{provable_const_sign, ConstSign};
+    use cas_solver_core::isolation_utils::contains_var;
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    // Normalize to `f(g) = c` with the call on the LHS and `c` var-free.
+    let (call, c) = if contains_var(&simplifier.context, eq.lhs, var)
+        && !contains_var(&simplifier.context, eq.rhs, var)
+    {
+        (eq.lhs, eq.rhs)
+    } else if contains_var(&simplifier.context, eq.rhs, var)
+        && !contains_var(&simplifier.context, eq.lhs, var)
+    {
+        (eq.rhs, eq.lhs)
+    } else {
+        return None;
+    };
+    let (fn_name, g) = match simplifier.context.get(call) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            (simplifier.context.sym_name(*fn_id).to_string(), args[0])
+        }
+        _ => return None,
+    };
+    if !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+
+    // Sign of `expr` (a var-free constant) via the exact decision layer.
+    let const_sign = |simplifier: &Simplifier, expr: ExprId| -> Option<ConstSign> {
+        if let Some(q) = cas_math::numeric_eval::as_rational_const(&simplifier.context, expr) {
+            use num_traits::Zero;
+            return Some(if q.is_zero() {
+                ConstSign::Zero
+            } else if q > num_rational::BigRational::zero() {
+                ConstSign::Positive
+            } else {
+                ConstSign::Negative
+            });
+        }
+        provable_const_sign(&simplifier.context, expr)
+    };
+    // Is `c` provably within `[lo, hi]` (each bound an ExprId)? Verdict:
+    // Some(true) provably in, Some(false) provably out, None undecidable.
+    let in_closed_range = |simplifier: &mut Simplifier, lo: ExprId, hi: ExprId| -> Option<bool> {
+        let hi_minus_c = simplifier.context.add(Expr::Sub(hi, c));
+        let hi_minus_c = simplifier.simplify(hi_minus_c).0;
+        let c_minus_lo = simplifier.context.add(Expr::Sub(c, lo));
+        let c_minus_lo = simplifier.simplify(c_minus_lo).0;
+        let s_hi = const_sign(simplifier, hi_minus_c)?;
+        let s_lo = const_sign(simplifier, c_minus_lo)?;
+        if matches!(s_hi, ConstSign::Negative) || matches!(s_lo, ConstSign::Negative) {
+            return Some(false);
+        }
+        Some(true)
+    };
+
+    let pi = simplifier
+        .context
+        .add(Expr::Constant(cas_ast::Constant::Pi));
+    let two = simplifier.context.num(2);
+    let half_pi = {
+        let e = simplifier.context.add(Expr::Div(pi, two));
+        simplifier.simplify(e).0
+    };
+    let neg_half_pi = {
+        let e = simplifier.context.add(Expr::Neg(half_pi));
+        simplifier.simplify(e).0
+    };
+    let zero = simplifier.context.num(0);
+    let one = simplifier.context.num(1);
+    let neg_one = simplifier.context.num(-1);
+
+    // Reduce `g = forward(c)` and solve for x through the full pipeline.
+    let reduce_and_solve = |simplifier: &mut Simplifier, forward: &str| -> Option<SolutionSet> {
+        let target = simplifier.context.call(forward, vec![c]);
+        let target = simplifier.simplify(target).0;
+        let reduced = Equation {
+            lhs: g,
+            rhs: target,
+            op: RelOp::Eq,
+        };
+        let (set, _) = crate::solver_entrypoints_solve::solve(&reduced, var, simplifier).ok()?;
+        Some(set)
+    };
+
+    match fn_name.as_str() {
+        // Bounded ranges: gate `c`, then apply the forward function.
+        "arcsin" | "asin" => match in_closed_range(simplifier, neg_half_pi, half_pi)? {
+            true => reduce_and_solve(simplifier, "sin"),
+            false => Some(SolutionSet::Empty),
+        },
+        "arccos" | "acos" => match in_closed_range(simplifier, zero, pi)? {
+            true => reduce_and_solve(simplifier, "cos"),
+            false => Some(SolutionSet::Empty),
+        },
+        "arctan" | "atan" => match in_closed_range(simplifier, neg_half_pi, half_pi)? {
+            // tan is undefined at ±π/2, but a rational/const c never equals
+            // the transcendental π/2, so the closed check is exact here.
+            true => reduce_and_solve(simplifier, "tan"),
+            false => Some(SolutionSet::Empty),
+        },
+        // tanh's range is the OPEN (−1, 1): |c| = 1 has no real solution.
+        "tanh" => {
+            let hi_minus_c = simplifier.context.add(Expr::Sub(one, c));
+            let hi_minus_c = simplifier.simplify(hi_minus_c).0;
+            let c_minus_lo = simplifier.context.add(Expr::Sub(c, neg_one));
+            let c_minus_lo = simplifier.simplify(c_minus_lo).0;
+            match (
+                const_sign(simplifier, hi_minus_c)?,
+                const_sign(simplifier, c_minus_lo)?,
+            ) {
+                (ConstSign::Positive, ConstSign::Positive) => reduce_and_solve(simplifier, "atanh"),
+                (ConstSign::Negative | ConstSign::Zero, _)
+                | (_, ConstSign::Negative | ConstSign::Zero) => Some(SolutionSet::Empty),
+            }
+        }
+        // sinh is a bijection ℝ→ℝ: unconditional.
+        "sinh" => reduce_and_solve(simplifier, "asinh"),
+        // cosh(x)=c is even: c ≥ 1 → g = ±acosh(c) (two branches); c < 1 → ∅.
+        "cosh" => {
+            let c_minus_one = simplifier.context.add(Expr::Sub(c, one));
+            let c_minus_one = simplifier.simplify(c_minus_one).0;
+            match const_sign(simplifier, c_minus_one)? {
+                ConstSign::Negative => Some(SolutionSet::Empty),
+                _ => {
+                    let acosh = simplifier.context.call("acosh", vec![c]);
+                    let pos = simplifier.simplify(acosh).0;
+                    let neg = {
+                        let n = simplifier.context.add(Expr::Neg(pos));
+                        simplifier.simplify(n).0
+                    };
+                    // The two branches coincide when acosh(c) = 0 (c = 1):
+                    // solve one to avoid a duplicate `{0, 0}` root.
+                    let targets: &[ExprId] =
+                        if cas_ast::ordering::compare_expr(&simplifier.context, pos, neg)
+                            == std::cmp::Ordering::Equal
+                        {
+                            &[pos]
+                        } else {
+                            &[pos, neg]
+                        };
+                    let mut acc: Option<SolutionSet> = None;
+                    for &target in targets {
+                        let reduced = Equation {
+                            lhs: g,
+                            rhs: target,
+                            op: RelOp::Eq,
+                        };
+                        let (set, _) =
+                            crate::solver_entrypoints_solve::solve(&reduced, var, simplifier)
+                                .ok()?;
+                        acc = Some(match acc {
+                            None => set,
+                            Some(prev) => cas_solver_core::solution_set::union_solution_sets(
+                                &simplifier.context,
+                                prev,
+                                set,
+                            ),
+                        });
+                    }
+                    acc
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn try_solve_periodic_trig_equation(
     eq: &Equation,
     var: &str,
@@ -7373,6 +7555,11 @@ fn solve_local_core_inner(
     }
     // `csc/sec/cot(g) = c`: reduce to the owning sin/cos solver (full periodic family).
     if let Some(set) = try_solve_reciprocal_trig_equation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `arcsin/arccos/arctan/sinh/cosh/tanh(g) = c`: apply the (range-gated)
+    // inverse — the isolation dispatch has no inverse for these and errors.
+    if let Some(set) = try_solve_inverse_trig_hyperbolic_equation(eq, var, simplifier) {
         return Ok((set, Vec::new()));
     }
     // `trig(a·x + b) = c` with `b` a SYMBOLIC shift (π-multiple, arctan, surd): the angle-addition

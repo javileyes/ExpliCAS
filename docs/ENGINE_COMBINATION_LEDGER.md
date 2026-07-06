@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 500 (newest first)
+Active entries: 501 (newest first)
 
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
@@ -122,6 +122,7 @@ Active entries: 500 (newest first)
 - 2026-07-04 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_even_power_or_abs_... | CAPACIDAD+SOUNDNESS (wrapper par/abs de PIU): `sin(x)²⋚c`, `|sin(x)|⋚c` resuelven
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (brazo `Expr::Sub` de `try_limit_rule... | CAPACIDAD (∞−∞ en punto finito vía Add→N/D): `1/sin(x)−1/x → 0`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (brazo `Expr::Add` de `try_limit_rule... | CAPACIDAD+SOUNDNESS (∞−∞ en el brazo Add + fold de ∞+∞): completa la simetría del ciclo 5
+- 2026-07-04 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inverse_trig_hyper... | CAPACIDAD+HONESTIDAD (solve de inverso-trig/hiperbólico gateado): `arcsin/sinh/cosh(g)=c`
 - 2026-07-02 | `retained` | `crates/cas_math/src/const_sign.rs` (`interval_pow` + `nth_root_bounds`/`exac... | SOUNDNESS (P0-F-log + hermanos de guard): constantes `base^(p/q)` sign-decidibles en el chokepoint exacto
 - 2026-07-02 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_const_over_surd_af... | SOUNDNESS (P0-C conjugate-hole): el racionalizador fabrica un polo removible en el conjugado — reducir `c/g {op} 0` en CRUDO
 - 2026-07-02 | `retained` | `crates/cas_solver_core/src/rational_power.rs` (`base_is_provably_fraction_be... | SOUNDNESS (flip de base irracional): `sin(1)^x > 2` devolvía el rayo invertido
@@ -18431,3 +18432,18 @@ Active entries: 500 (newest first)
   - Completar una simetría (Sub→Add) suele destapar un bug latente adyacente: `finite_add_result` construía `Add(∞,∞)` visible ("infinity + infinity") — el fold mismo-signo lo cierra y de paso resuelve `sqrt(x²+1)+x@+∞` vía el puente sustitución-recíproca→finito. Un cambio en el brazo FINITO puede mejorar límites al ∞ porque la sustitución recíproca los reencamina al finito.
   - Al recontratar un test PROPIO de un ciclo anterior en la misma sesión: si el caso "divergent_stays_residual" ahora RESUELVE a la ∞ con signo correcto, es una MEJORA (under-answer→resuelto), no una regresión — verificar el signo numéricamente y recontratar con la intención nueva.
   - PRÓXIMO PELDAÑO (fuerte, documentado): `solve` de inverso-trig/hiperbólico (`arcsin(x)=1/2`, `sinh(x)=1`, `cosh(x)=2`, `arctan(x)=1`) hoy ERRORA "función no definida" — merece su propio ciclo con condiciones de rango/rama (arcsin: c∈[-π/2,π/2]; cosh: c≥1 dos ramas ±; tanh: c∈(-1,1); sinh incondicional). Es honestidad (error→resuelto/decline) + capacidad. También la definida `∫tan` deja `ln(cos(0)/cos(π/4))` sin plegar (el resultado de integrate es opaco al simplify externo).
+
+## 2026-07-04 - CAPACIDAD+HONESTIDAD (solve de inverso-trig/hiperbólico gateado): `arcsin/sinh/cosh(g)=c`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inverse_trig_hyperbolic_equation` nuevo, despachado antes del handler recíproco-trig)
+- status: `retained`. Cierra el peldaño del propio ledger del goal anterior (estas 6 funciones ERRORABAN "función no definida" en solve).
+- capture:
+  - investment_class: capability (Fase 1, ecuaciones elementales) + honestidad (error→resuelto/decline).
+  - cell: `solve(arcsin(x)=1/2)` → `{sin(1/2)}` (era error), `arccos(x)=1` → `{cos(1)}`, `arctan(x)=1` → `{tan(1)}`, `arctan(x)=π/3` → `{√3}` (pliega exacto), `sinh(x)=1` → `{asinh(1)}`, `tanh(x)=1/2` → `{atanh(1/2)}`, `cosh(x)=2` → `{acosh(2),−acosh(2)}` (DOS ramas), `cosh(x)=1` → `{0}` (ramas coinciden, dedup), `arcsin(2x)=1/2` → `{½·sin(1/2)}` (afín). FUERA de rango → No solution: `arcsin(x)=5/8·5`, `tanh(x)=2`, `cosh(x)=1/2`, `arctan(x)=π/2` (tan indefinida). Controles sin/cos/tan/ln INTACTOS.
+  - causa raíz: la tabla de inversión de la isolación (`UnaryInverseKind`: sqrt/ln/exp/sin/cos/tan) no conoce arcsin/arccos/arctan/sinh/cosh/tanh; llegaban a la isolación y erroraban.
+  - decisión de soundness (crítica): NO añadirlas a la tabla sin más — la verificación de raíces de solve (que SÍ filtra raíces extrañas de √) NO caza las violaciones de rango TRANSCENDENTES (`arcsin(x)=5` → `{sin(5)}` NO se filtra). Handler dedicado con GATE por la capa de decisión exacta: `provable_const_sign`/`const_value_bounds` sobre `π/2−c`, `π−c`, `1−c` → rango probablemente fuera = `Empty`, dentro = reduce `g=forward(c)` y recursa, indecidible (`arcsin(x)=a`) = declina. Reduce-a-canónico: delega al solver del átomo `g=valor` (los args afines componen gratis).
+  - validación: workspace 12188 failed:0; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella GUARD/PRESS 0-delta. Verificación NUMÉRICA (arcsin/cosh/tanh a 1e-4) + barrido adversarial de bordes FINOS: el gate distingue `157/100 < π/2` (resuelve) de `158/100 > π/2` (No solution), y `16/5 > π` de `3 < π` — el const-value-bounds sobre π es exacto y tight. 6 tests de contrato.
+  - retained learning:
+  - La verificación de raíces subsume el DOMINIO ALGEBRAICO (radicandos ≥ 0, surdos que cancelan) pero NO el RANGO TRANSCENDENTE de una inversa (`arcsin(sin(5))≠5` no se evalúa) — para inversas de funciones acotadas, el gate de rango por la capa de decisión exacta es OBLIGATORIO, no opcional. Probar empíricamente el caso fuera-de-rango ANTES de confiar en la verificación reveló que `{sin(5)}` se fugaba.
+  - Un handler dedicado con gate es preferible a extender la tabla compartida `UnaryInverseKind` cuando la reducción necesita una condición (rango/rama): la tabla aplica el inverso incondicionalmente y no tiene dónde poner el gate; el handler dedicado lo pone y mantiene el error/decline honesto para lo indecidible.
+  - PRÓXIMO PELDAÑO: `arcsin(x)=a` SIMBÓLICO aún ERRORA (mi handler declina → la isolación errora); merece un decline honesto (residual) — es plomería de la isolación (error→residual para estas funciones). Y `cosh` en desigualdad, y estas inversas dentro de composiciones (`arcsin(x)+arccos(x)=...`).
