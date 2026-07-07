@@ -6239,3 +6239,53 @@ fn test_eval_single_abs_equals_polynomial_solves_both_branches_with_domain() {
     assert_eq!(r("solve(x^2 - 3*abs(x) + 2 = 0, x)"), "{ 1, -1, 2, -2 }");
     assert_eq!(r("solve(abs(x-1) + abs(x+1) = 4, x)"), "{ -2, 2 }");
 }
+
+#[test]
+fn test_eval_single_abs_polynomial_inequality_sign_splits_at_the_abs_zero() {
+    // A polynomial inequality with a single `|f|` term was solved by an opaque
+    // path that returned a WRONG "No solution" (`x² − 3|x| + 2 < 0` is
+    // `(−2,−1) ∪ (1,2)`, not ∅). It now splits at `f = 0` into the `|f| = ±f`
+    // branches, solves each, intersects with the branch domain, and unions.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(abs(x)^2 - 3*abs(x) + 2 < 0, x)"),
+        "(-2, -1) U (1, 2)"
+    );
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 < 0, x)"), "(-2, -1) U (1, 2)");
+    // The `>=` complement, with closed boundaries.
+    assert_eq!(
+        r("solve(x^2 - 3*abs(x) + 2 >= 0, x)"),
+        "(-infinity, -2] U [-1, 1] U [2, infinity)"
+    );
+    // `<=` includes the boundary points.
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 <= 0, x)"), "[-2, -1] U [1, 2]");
+    assert_eq!(
+        r("solve(x^2 - abs(x) - 2 > 0, x)"),
+        "(-infinity, -2) U (2, infinity)"
+    );
+    // Shifted abs argument (the split is at x = 1, not symmetric).
+    assert_eq!(
+        r("solve(x^2 - 3*abs(x-1) + 2 < 0, x)"),
+        "(1/2·(-sqrt(13) - 3), 1/2·(sqrt(13) - 3))"
+    );
+    assert_eq!(
+        r("solve(2*abs(x-1) + x^2 - 5 < 0, x)"),
+        "(-1, 2·sqrt(2) - 1)"
+    );
+    // Always-signed remainders: empty / full without a spurious split.
+    assert_eq!(r("solve(x^2 + abs(x) + 1 < 0, x)"), "No solution");
+    assert_eq!(r("solve(x^2 + abs(x) + 1 > 0, x)"), "All real numbers");
+
+    // NO REGRESSION: bare `|f| {op} c`, two-abs, sign-form, and top-level
+    // `|quadratic| {op} c` keep their own handlers.
+    assert_eq!(r("solve(abs(x-1) <= 2, x)"), "[-1, 3]");
+    assert_eq!(r("solve(abs(x-1) < abs(x-3), x)"), "(-infinity, 2)");
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+}

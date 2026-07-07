@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 506 (newest first)
+Active entries: 507 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_abs`... | SOUNDNESS (leak de residual malformado en polinomio-en-|x|): `solve(|x|²−3|x|+2=0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_equals_... | SOUNDNESS (wrong-answer + leak en `|f|=g(x)` no-constante): `solve(x²+|x−1|−3=0)`
+- 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (wrong "No solution" en desigualdad poli-en-|x|): `solve(|x|²−3|x|+2<0)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18528,3 +18529,18 @@ Active entries: 506 (newest first)
   - Un WRONG-ANSWER Discrete es INVISIBLE a los post-procesos que solo reparan Residual/Conditional: hay que interceptar en el dispatch PRIMARIO (antes de la isolación buggy), no post-procesar. Los dos modos de fallo de la misma isolación (Discrete-incorrecto y Residual-malformado) se cierran con UN handler primario.
   - Gatear por `deg(g)≥2` aísla exactamente los casos que la isolación estropea sin tocar los que resuelve bien (g lineal) → huella 0-delta sin narrow-scoping frágil.
   - PRÓXIMO PELDAÑO: `|f|+|h|=g` (dos+ abs distintos con g no-constante) sigue siendo del handler piecewise; y `|f|=g` con g de signo indecidible declina (raro).
+
+## 2026-07-07 - SOUNDNESS (wrong "No solution" en desigualdad poli-en-|x|): `solve(|x|²−3|x|+2<0)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynomial_inequality`, despachado tras `try_solve_sign_via_abs`)
+- status: `retained`. P0 WRONG-ANSWER (∅ por conjunto no-vacío) — soundness, va antes que capacidad. Hermano-desigualdad del fix de ecuación del ciclo 3.
+- capture:
+  - investment_class: soundness (wrong-answer). Hallado en el barrido cross-front del ciclo 5.
+  - cell: `solve(|x|²−3|x|+2<0)` → `(−2,−1)∪(1,2)` (era `No solution`; en x=1.5 el valor es −0.25<0). `x²−3|x|+2≥0` → `(−∞,−2]∪[−1,1]∪[2,∞)` (complemento con bordes cerrados). `≤0` → `[−2,−1]∪[1,2]`. `x²−|x|−2>0` → `(−∞,−2)∪(2,∞)`. Abs DESPLAZADO `x²−3|x−1|+2<0` → `(½(−√13−3),½(√13−3))` (split en x=1, no simétrico). Coef `2|x−1|+x²−5<0` → `(−1,2√2−1)`. Restos signo-definidos → `No solution`/`All real numbers` sin split espurio.
+  - causa raíz: una desigualdad polinómica con un término `|f|` la trataba una vía genérica que ve el abs opaco y devuelve `No solution` (∅) — el operador se pierde / el abs bloquea el análisis de signo. No había handler piecewise para `P(|f|){op}0`.
+  - diseño (split de signo piecewise, reuso de maquinaria): en `f≥0`, `|f|=f`; en `f<0`, `|f|=−f`. Resolver cada rama polinómica recursivamente, intersecar con su dominio (`f≥0`/`f<0` vía `solve_relation_set`), y unir (`intersect_solution_sets`/`union_solution_sets` públicos — `finalize_sign_split_solution_set` es pub(crate) en cas_solver_core, inline). Gate: UN solo abs + resto polinómico-en-x con var (así `|f|{op}c` bare, sign-forms, dos-abs quedan con sus handlers correctos → huella 0-delta).
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Verificación NUMÉRICA (barrido de signo 1.6M pts) de los conjuntos + adversarial (bordes Leq/Geq cerrados; restos siempre-positivos → ∅/ℝ; abs desplazado; coef; sin regresión bare/dos-abs/sign-form/threshold).
+  - retained learning:
+  - El split piecewise-en-el-cero-del-abs (`|f|=±f` en `f≷0`, intersecar dominio, unir) es la maquinaria CANÓNICA para CUALQUIER relación con un solo `|f|` — ecuación o desigualdad. La ecuación ya se resolvía (ciclos 3/4 vía substitución+verify); la desigualdad necesitaba el split de dominio explícito porque el conjunto solución es un intervalo, no puntos. Reusar `intersect/union_solution_sets` lo hace un handler pequeño.
+  - Gatear por "resto polinómico-en-x con var" separa exactamente los casos que la vía genérica estropea (abs mezclado con poli) de los que resuelve bien (`|f|{op}c` bare) → huella 0-delta sin scoping frágil. El mismo criterio del ciclo 4 (deg(g)≥2) en clave de desigualdad.
+  - PRÓXIMO PELDAÑO: dos+ abs en una desigualdad polinómica (`x²+|x−1|+|x+1|<3`) sigue con el handler piecewise-lineal (que no mezcla con x²); y el split general de UN abs con rama NO-polinómica (trascendente) declina.

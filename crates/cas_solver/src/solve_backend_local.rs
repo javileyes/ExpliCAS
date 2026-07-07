@@ -2211,6 +2211,87 @@ fn try_solve_single_abs_equals_polynomial(
     }
 }
 
+/// Solve an INEQUALITY carrying a SINGLE `|f(x)|` term inside a polynomial-in-x
+/// context — `x² − 3|x| + 2 < 0` — by the textbook sign split at `f = 0`. The
+/// generic path treats the abs opaquely and returns a WRONG "No solution"
+/// (the true set is `(−2,−1) ∪ (1,2)`). On `f ≥ 0`, `|f| = f`; on `f < 0`,
+/// `|f| = −f`; solve each polynomial-inequality branch, intersect with its
+/// domain, and union.
+///
+/// Gated to a single abs whose removal leaves a genuine polynomial-in-x
+/// remainder — bare `|f| {op} c` (constant remainder), reciprocal/sign and
+/// multi-abs relations keep their own, already-correct handlers.
+fn try_solve_single_abs_polynomial_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    // Exactly one distinct `|f|` sub-term whose argument contains the variable.
+    let mut abs_terms: Vec<ExprId> = Vec::new();
+    collect_abs_of_var(&simplifier.context, diff, var, &mut abs_terms);
+    let mut distinct: Vec<ExprId> = Vec::new();
+    for t in abs_terms {
+        if !distinct.contains(&t) {
+            distinct.push(t);
+        }
+    }
+    if distinct.len() != 1 {
+        return None;
+    }
+    let abs_f = distinct[0];
+    let f = match simplifier.context.get(abs_f) {
+        Expr::Function(_, args) if args.len() == 1 => args[0],
+        _ => return None,
+    };
+
+    // Removing the abs must leave a genuine polynomial-in-x remainder — this is
+    // exactly what makes the generic path fail. A constant remainder is a bare
+    // `|f| {op} c`, owned by the threshold handler.
+    let zero = simplifier.context.num(0);
+    let rest = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, zero);
+    let (rest, _) = simplifier.simplify(rest);
+    if !contains_var(&simplifier.context, rest, var) {
+        return None;
+    }
+
+    // Branch substitutions: `|f| = f` (on f ≥ 0), `|f| = −f` (on f < 0). Both
+    // branches must be polynomials in x, else out of scope.
+    let neg_f = simplifier.context.add(Expr::Neg(f));
+    let pos_expr = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, f);
+    let (pos_expr, _) = simplifier.simplify(pos_expr);
+    let neg_expr = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, neg_f);
+    let (neg_expr, _) = simplifier.simplify(neg_expr);
+    if Polynomial::from_expr(&simplifier.context, pos_expr, var).is_err()
+        || Polynomial::from_expr(&simplifier.context, neg_expr, var).is_err()
+    {
+        return None;
+    }
+
+    let pos_branch = solve_relation_set(simplifier, var, pos_expr, zero, eq.op.clone())?;
+    let pos_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?;
+    let neg_branch = solve_relation_set(simplifier, var, neg_expr, zero, eq.op.clone())?;
+    let neg_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Lt)?;
+
+    let final_pos = intersect_solution_sets(&simplifier.context, pos_branch, pos_domain);
+    let final_neg = intersect_solution_sets(&simplifier.context, neg_branch, neg_domain);
+    Some(union_solution_sets(
+        &simplifier.context,
+        final_pos,
+        final_neg,
+    ))
+}
+
 /// Core of [`try_solve_polynomial_in_trig`]: treat `diff` as a polynomial of degree ≥ 2 in a single
 /// trig atom `sin(g)`/`cos(g)`/`tan(g)`, substitute `u = trig(g)`, solve `P(u) = 0`, and back-substitute
 /// each root through the periodic solver (range guard drops `|u| > 1`). Returns `None` if `diff` is not
@@ -7899,6 +7980,14 @@ fn solve_local_core_inner(
     // path returned a CLOSED ray that wrongly includes the 0/0 point (`x/|x| = 1 → [0, ∞)`) or "No
     // solution" for the inequality forms.
     if let Some(set) = try_solve_sign_via_abs(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A polynomial inequality with a SINGLE `|f|` term (`x² − 3|x| + 2 < 0`) —
+    // the generic path treats the abs opaquely and returns a wrong "No
+    // solution". Split at `f = 0` into the `|f| = ±f` branches. Placed after the
+    // sign/reciprocal-abs handlers so those keep their forms; the constant-`c`
+    // threshold handler below is unaffected (it has no polynomial remainder).
+    if let Some(set) = try_solve_single_abs_polynomial_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // `|g(x)| {op} c` (constant `c`) reduces to the polynomial inequalities on the
