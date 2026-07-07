@@ -6405,6 +6405,17 @@ fn test_eval_finite_geometric_sum_with_symbolic_ratio() {
     // own sibling builder — see the arithmetic-geometric contract test.)
     assert_eq!(r("sum(2^k, k, 0, n)"), "2^(n + 1) - 1");
     assert_eq!(r("sum(x^k, k, 0, 3)"), "x^3 + x^2 + x + 1");
+    // A leading coefficient (numeric or symbolic, index-free) is carried
+    // through: `sum(c·r^k) = c·(r^(n+1) - r^a)/(r - 1)`.
+    assert_eq!(r("sum(3*r^k, k, 0, n)"), "(3·r^(n + 1) - 3) / (r - 1)");
+    assert_eq!(r("sum(5*r^k, k, 1, n)"), "(5·r^(n + 1) - 5·r) / (r - 1)");
+    assert_eq!(r("sum(c*x^k, k, 0, n)"), "(c·x^(n + 1) - c) / (x - 1)");
+    // The bare index `k` is NOT a coefficient — `k·r^k` stays with the
+    // arithmetic-geometric builder, not hijacked into `k·(...)`.
+    assert_eq!(
+        r("sum(k*r^k, k, 1, n)"),
+        "r·(n·r^(n + 1) + r^n·(-n - 1) + 1) / (1 - r)^2"
+    );
 }
 
 #[test]

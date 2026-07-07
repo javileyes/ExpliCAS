@@ -1392,9 +1392,28 @@ pub(crate) fn try_build_geometric_symbolic_sum(
     if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
         return None;
     }
-    // Summand `base^k` with `base` free of the index and NOT a rational constant
-    // (those keep the cleaner numeric-ratio form from the builders above).
-    let Expr::Pow(base, exp) = ctx.get(summand) else {
+    // Peel an optional coefficient `c` free of the index: `c·base^k` or `base^k`.
+    // `c` may be any index-free expression (a number, a symbol, `y+1`); the bare
+    // index `k` is NOT a valid coefficient (that is the arithmetic-geometric
+    // builder's `k·r^k`, which this correctly declines).
+    let (coeff, pow_expr) = match ctx.get(summand) {
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if !contains_named_var(ctx, l, var) && matches!(ctx.get(r), Expr::Pow(..)) {
+                (Some(l), r)
+            } else if !contains_named_var(ctx, r, var) && matches!(ctx.get(l), Expr::Pow(..)) {
+                (Some(r), l)
+            } else {
+                return None;
+            }
+        }
+        Expr::Pow(..) => (None, summand),
+        _ => return None,
+    };
+    // `pow_expr = base^k` with `base` free of the index and NOT a rational
+    // constant (those keep the cleaner numeric-ratio form from the builders
+    // above).
+    let Expr::Pow(base, exp) = ctx.get(pow_expr) else {
         return None;
     };
     let base = *base;
@@ -1409,12 +1428,16 @@ pub(crate) fn try_build_geometric_symbolic_sum(
         return None;
     }
 
-    // (base^(n+1) − base^a) / (base − 1).
+    // c·(base^(n+1) − base^a) / (base − 1).
     let one = ctx.num(1);
     let end_plus_one = ctx.add(Expr::Add(end, one));
     let base_np1 = ctx.add(Expr::Pow(base, end_plus_one));
     let base_a = ctx.add(Expr::Pow(base, start));
-    let numerator = ctx.add(Expr::Sub(base_np1, base_a));
+    let diff = ctx.add(Expr::Sub(base_np1, base_a));
+    let numerator = match coeff {
+        Some(c) => mul2_raw(ctx, c, diff),
+        None => diff,
+    };
     let one2 = ctx.num(1);
     let denominator = ctx.add(Expr::Sub(base, one2));
     Some(ctx.add(Expr::Div(numerator, denominator)))
