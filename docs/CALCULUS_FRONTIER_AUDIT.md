@@ -1455,11 +1455,16 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
   recursivo antes de `boundary_value` ⇒ `∫_2^∞ 1/((x-1)(x²+1))=¼(ln5+2arctan2)−¼π` COMPUTA (y el expandido
   `1/(x³−x²+x−1)` igual); soundness polo/divergente intacta. Racional impropia convergente con factores reales + 1
   cuadrática irreducible: CUBIERTA.)*
-- [ ] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
-  `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`. INTENTADO y
-  REVERTIDO en el ciclo 6 — la reescritura atanh→log se enredó con el envoltorio `Hold` y la
-  condición de dominio `1−x²>0` adjunta que la certificación rechaza en `[2,3]`. Requiere
-  reescribir antiderivada Y soltar la condición atanh-domain juntas, con cuidado del `Hold`.
+- [x] **(F) Definida `1/(a²−x²)` fuera de `|x|<a`** (`1/(1−x²)` en `[2,3]`): la antiderivada
+  `atanh(x)` es real solo en `|x|<1`; el valor real fuera es `½ln|(1+x)/(1−x)|`.
+  *(graduado 2026-07-07 03a589bae: en vez de reescribir la antiderivada + soltar la condición
+  atanh-domain (lo que enredó al ciclo-6 previo con `Hold`), se reescribe el INTEGRANDO a la
+  forma hermana `−1/(x²−a²)` — identidad de signo, denominador positive-leading construido
+  directo para que el simplificador no lo colapse — y se DELEGA en la maquinaria log-form
+  existente, que ya evalúa el sibling. Gate estricto: solo fuera de `(−a,a)` (comparación por
+  cuadrados, exacta con `a` irracional); dentro conserva `atanh`, polo cruzado → `undefined`.
+  Peldaño: `a` irracional aún produce log feo — deuda de simplificación pre-existente del path
+  `x²−a²`, ortogonal.)*
 - [ ] **(F) `∫|g|` con `g` signo-definido NO racional** (`|eˣ−2|` con el cero `ln2` fuera del
   intervalo): el ciclo 6 cubre `|N/D|` racional; falta certificar el signo de un transcendente.
 - [ ] **(F) `∫|g|` con cero/polo EXACTAMENTE en un borde** (removible para la integral): hoy
