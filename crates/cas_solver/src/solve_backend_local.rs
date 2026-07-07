@@ -2255,26 +2255,33 @@ fn try_solve_single_abs_polynomial_inequality(
         _ => return None,
     };
 
-    // Removing the abs must leave a genuine polynomial-in-x remainder — this is
-    // exactly what makes the generic path fail. A constant remainder is a bare
-    // `|f| {op} c`, owned by the threshold handler.
-    let zero = simplifier.context.num(0);
-    let rest = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, zero);
-    let (rest, _) = simplifier.simplify(rest);
-    if !contains_var(&simplifier.context, rest, var) {
-        return None;
-    }
-
     // Branch substitutions: `|f| = f` (on f ≥ 0), `|f| = −f` (on f < 0). Both
     // branches must be polynomials in x, else out of scope.
+    let zero = simplifier.context.num(0);
     let neg_f = simplifier.context.add(Expr::Neg(f));
     let pos_expr = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, f);
     let (pos_expr, _) = simplifier.simplify(pos_expr);
     let neg_expr = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, neg_f);
     let (neg_expr, _) = simplifier.simplify(neg_expr);
-    if Polynomial::from_expr(&simplifier.context, pos_expr, var).is_err()
-        || Polynomial::from_expr(&simplifier.context, neg_expr, var).is_err()
-    {
+    let (Ok(pos_poly), Ok(neg_poly)) = (
+        Polynomial::from_expr(&simplifier.context, pos_expr, var),
+        Polynomial::from_expr(&simplifier.context, neg_expr, var),
+    ) else {
+        return None;
+    };
+
+    // The generic path only fails when the abs is entangled with genuine
+    // polynomial-in-x structure: either a non-constant remainder after removing
+    // the abs (`x² − 3|x| + 2`, the abs added to a polynomial) OR a degree-≥2
+    // branch (`|x|³ − |x| = |x|(x²−1)`, the abs a factor of one). A bare
+    // `|f| {op} c` reduces to two LINEAR branches with a constant remainder and
+    // stays with the threshold handler (no huella change).
+    let rest = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, zero);
+    let (rest, _) = simplifier.simplify(rest);
+    let entangled = contains_var(&simplifier.context, rest, var)
+        || pos_poly.degree() >= 2
+        || neg_poly.degree() >= 2;
+    if !entangled {
         return None;
     }
 

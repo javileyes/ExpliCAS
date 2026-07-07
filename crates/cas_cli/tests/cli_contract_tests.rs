@@ -6289,3 +6289,34 @@ fn test_eval_single_abs_polynomial_inequality_sign_splits_at_the_abs_zero() {
     assert_eq!(r("solve(abs(x-1) < abs(x-3), x)"), "(-infinity, 2)");
     assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
 }
+
+#[test]
+fn test_eval_abs_as_a_factor_inequality_sign_splits() {
+    // When the abs is a FACTOR rather than an added term (`|x|³ − |x| = |x|(x²−1)`),
+    // removing it leaves a constant remainder, so the earlier "non-constant
+    // remainder" gate wrongly declined and the generic path returned "No
+    // solution". The gate now also fires on a degree-≥2 branch, so the sign
+    // split still applies. `|x|³ − |x| < 0` is `(−1,0) ∪ (0,1)` — 0 excluded
+    // (the value there is exactly 0).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(abs(x)^3 - abs(x) < 0, x)"), "(-1, 0) U (0, 1)");
+    assert_eq!(
+        r("solve(abs(x)^3 - 4*abs(x) > 0, x)"),
+        "(-infinity, -2) U (2, infinity)"
+    );
+    // `>=` includes the isolated zero at x = 0.
+    assert_eq!(
+        r("solve(abs(x)^3 - abs(x) >= 0, x)"),
+        "(-infinity, -1] U [0, 0] U [1, infinity)"
+    );
+    // No regression on the added-term forms or bare `|f| {op} c`.
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 < 0, x)"), "(-2, -1) U (1, 2)");
+    assert_eq!(r("solve(abs(x-1) <= 2, x)"), "[-1, 3]");
+}

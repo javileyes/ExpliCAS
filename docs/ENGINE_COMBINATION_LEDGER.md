@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 507 (newest first)
+Active entries: 508 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
@@ -122,6 +122,7 @@ Active entries: 507 (newest first)
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_abs`... | SOUNDNESS (leak de residual malformado en polinomio-en-|x|): `solve(|x|²−3|x|+2=0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_equals_... | SOUNDNESS (wrong-answer + leak en `|f|=g(x)` no-constante): `solve(x²+|x−1|−3=0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (wrong "No solution" en desigualdad poli-en-|x|): `solve(|x|²−3|x|+2<0)`
+- 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (gate de `try_solve_single_abs... | SOUNDNESS (wrong "No solution" con abs como FACTOR): `solve(|x|³−|x|<0)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18544,3 +18545,18 @@ Active entries: 507 (newest first)
   - El split piecewise-en-el-cero-del-abs (`|f|=±f` en `f≷0`, intersecar dominio, unir) es la maquinaria CANÓNICA para CUALQUIER relación con un solo `|f|` — ecuación o desigualdad. La ecuación ya se resolvía (ciclos 3/4 vía substitución+verify); la desigualdad necesitaba el split de dominio explícito porque el conjunto solución es un intervalo, no puntos. Reusar `intersect/union_solution_sets` lo hace un handler pequeño.
   - Gatear por "resto polinómico-en-x con var" separa exactamente los casos que la vía genérica estropea (abs mezclado con poli) de los que resuelve bien (`|f|{op}c` bare) → huella 0-delta sin scoping frágil. El mismo criterio del ciclo 4 (deg(g)≥2) en clave de desigualdad.
   - PRÓXIMO PELDAÑO: dos+ abs en una desigualdad polinómica (`x²+|x−1|+|x+1|<3`) sigue con el handler piecewise-lineal (que no mezcla con x²); y el split general de UN abs con rama NO-polinómica (trascendente) declina.
+
+## 2026-07-07 - SOUNDNESS (wrong "No solution" con abs como FACTOR): `solve(|x|³−|x|<0)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (gate de `try_solve_single_abs_polynomial_inequality` — additivo)
+- status: `retained`. P0 WRONG-ANSWER (∅ por conjunto no-vacío). Refinamiento del gate del ciclo 5.
+- capture:
+  - investment_class: soundness (wrong-answer). Hallado en el barrido cross-front del ciclo 6.
+  - cell: `solve(|x|³−|x|<0)` → `(−1,0)∪(0,1)` (era `No solution`; en x=0.5 vale −0.375<0; EXCLUYE 0, donde vale exactamente 0). `|x|³−4|x|>0` → `(−∞,−2)∪(2,∞)`. `|x|³−|x|≥0` → `(−∞,−1]∪[0,0]∪[1,∞)` (el punto aislado {0}). Sin regresión en los casos de suma del ciclo 5 ni en bare `|f|{op}c`.
+  - causa raíz: `|x|³` se representa como `|x|·x²`, así que `|x|³−|x| = |x|·(x²−1)` — el abs es un FACTOR, no un término sumado. Al substituir `|x|→0` el resto es 0 (todo es múltiplo de |x|), así que el gate del ciclo 5 ("resto contiene var") lo rechazaba, aunque el split de ramas SÍ resuelve (`x³−x` y `−x³+x`).
+  - diseño (gate ADITIVO): la vía genérica solo falla cuando el abs está ENTRELAZADO con estructura polinómica-en-x — resto no-constante (abs sumado, ciclo 5) O rama de grado≥2 (abs como factor, este ciclo). `entangled = contains_var(rest) || deg(pos)≥2 || deg(neg)≥2`. Bare `|f|{op}c` → dos ramas LINEALES + resto constante → declina → threshold handler (huella 0-delta). Se calculan las ramas antes del gate para conocer sus grados.
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Verificación NUMÉRICA + el punto-frontera x=0 correctamente EXCLUIDO en `<0` (el sweep coarse lo fusionaba; el engine acierta) e INCLUIDO como {0} en `≥0`.
+  - retained learning:
+  - Un gate de "resto contiene var" para detectar "abs entrelazado con polinomio" es INCOMPLETO: falla cuando el abs es un FACTOR (`|x|·p(x)`), donde el resto colapsa a 0. La señal robusta de entrelazamiento es "resto-no-constante O rama-no-lineal": cubre abs-sumado Y abs-factor. Al escribir un gate anti-preempt, enumerar las FORMAS estructurales (sumado vs factor vs potencia) — no solo la primera que motivó el fix.
+  - `|x|^n` se normaliza a `|x|·x^(n−1)` (n impar) o `x^n` (n par) — el `|x|` sobrevive solo en potencias impares, como factor. Los detectores de abs deben contar con esta forma factor, no solo `Pow(|x|,n)`.
+  - PRÓXIMO PELDAÑO: el mismo gate aditivo podría beneficiar al handler de ECUACIÓN (`try_solve_single_abs_equals_polynomial`) si hay formas abs-factor en ecuaciones (`|x|³=|x|` — aunque el poli-en-|x| del ciclo 3 ya lo cubre vía u=|x|). Revisar simetría ecuación/desigualdad de los gates.
