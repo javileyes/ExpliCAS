@@ -910,6 +910,23 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    // Symbolic-ratio arithmetic-geometric (`sum(k·r^k, k, 0, n)`): the numeric
+    // decomposition above declines a symbolic base, so emit the closed form
+    // `r(1 − (n+1)r^n + n·r^(n+1))/(1 − r)²`.
+    if let Some(candidate) = try_build_arithmetic_geometric_symbolic_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::GeometricPower,
+        });
+    }
+
     // Linearity over a sum of geometric / arithmetic-geometric terms (the distributed affine
     // cofactor `(αk+β)·r^k` the engine expands to `r^k + α·k·r^(k+1)`).
     if let Some(candidate) = try_build_geometric_additive_sum(
@@ -1400,6 +1417,71 @@ pub(crate) fn try_build_geometric_symbolic_sum(
     let numerator = ctx.add(Expr::Sub(base_np1, base_a));
     let one2 = ctx.num(1);
     let denominator = ctx.add(Expr::Sub(base, one2));
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+/// Closed form of a finite arithmetic-geometric sum with a SYMBOLIC ratio and a
+/// bare index cofactor: `sum(k·r^k, k, a, n) = r(1 − (n+1)r^n + n·r^(n+1))/(1−r)²`
+/// for `a ∈ {0, 1}` (the `k = 0` term is zero, so both lower bounds share the
+/// formula). The numeric arithmetic-geometric builder decomposes the ratio as a
+/// `BigRational`, so it declines a symbolic base — the engine used to echo
+/// `sum(k·r^k, k, 1, n)`. The removable singularity at `r = 1` (true value
+/// `n(n+1)/2`) matches the engine's global removable-singularity convention.
+pub(crate) fn try_build_arithmetic_geometric_symbolic_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+    // Lower bound 0 or 1 only (higher bounds need a symbolic head correction).
+    let a = crate::expr_extract::extract_i64_integer(ctx, start)?;
+    if a != 0 && a != 1 {
+        return None;
+    }
+    // Summand `k · base^k` with `base` free of the index and not rational.
+    let Expr::Mul(l, r) = ctx.get(summand) else {
+        return None;
+    };
+    let (l, r) = (*l, *r);
+    let pow_factor = if is_named_var(ctx, l, var) {
+        r
+    } else if is_named_var(ctx, r, var) {
+        l
+    } else {
+        return None;
+    };
+    let Expr::Pow(base, exp) = ctx.get(pow_factor) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+    if !is_named_var(ctx, exp, var) {
+        return None;
+    }
+    if contains_named_var(ctx, base, var) {
+        return None;
+    }
+    if as_rational_const(ctx, base, 8).is_some() {
+        return None;
+    }
+
+    // r·(1 − (n+1)·r^n + n·r^(n+1)) / (1 − r)².
+    let one = ctx.num(1);
+    let n_plus_1 = ctx.add(Expr::Add(end, one));
+    let r_pow_n = ctx.add(Expr::Pow(base, end));
+    let r_pow_np1 = ctx.add(Expr::Pow(base, n_plus_1));
+    let term2 = mul2_raw(ctx, n_plus_1, r_pow_n); // (n+1)·r^n
+    let term3 = mul2_raw(ctx, end, r_pow_np1); // n·r^(n+1)
+    let inner = ctx.add(Expr::Sub(one, term2)); // 1 − (n+1)r^n
+    let inner = ctx.add(Expr::Add(inner, term3)); // + n·r^(n+1)
+    let numerator = mul2_raw(ctx, base, inner); // r·inner
+    let one_minus_r = ctx.add(Expr::Sub(one, base));
+    let two = ctx.num(2);
+    let denominator = ctx.add(Expr::Pow(one_minus_r, two)); // (1 − r)²
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 

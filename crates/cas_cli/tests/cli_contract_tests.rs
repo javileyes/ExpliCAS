@@ -6401,8 +6401,42 @@ fn test_eval_finite_geometric_sum_with_symbolic_ratio() {
     assert_eq!(r("sum(x^k, k, 0, n)"), "(x^(n + 1) - 1) / (x - 1)");
     assert_eq!(r("sum((x+1)^k, k, 0, n)"), "((x + 1)^(n + 1) - 1) / x");
     // A numeric ratio keeps the cleaner integer-base form; a numeric upper bound
-    // still expands directly; the arithmetic-geometric k·r^k is untouched.
+    // still expands directly. (The arithmetic-geometric `k·r^k` is closed by its
+    // own sibling builder — see the arithmetic-geometric contract test.)
     assert_eq!(r("sum(2^k, k, 0, n)"), "2^(n + 1) - 1");
     assert_eq!(r("sum(x^k, k, 0, 3)"), "x^3 + x^2 + x + 1");
-    assert_eq!(r("sum(k*r^k, k, 1, n)"), "sum(k·r^k, k, 1, n)");
+}
+
+#[test]
+fn test_eval_finite_arithmetic_geometric_sum_with_symbolic_ratio() {
+    // A finite arithmetic-geometric sum `sum(k·r^k)` with a SYMBOLIC ratio used
+    // to decline: the numeric builder decomposes the ratio as a rational. It now
+    // emits the closed form `r(1 - (n+1)r^n + n·r^(n+1))/(1-r)^2` (verified
+    // numerically: at r=2, n=3 the value is 34).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("sum(k*r^k, k, 1, n)"),
+        "r·(n·r^(n + 1) + r^n·(-n - 1) + 1) / (1 - r)^2"
+    );
+    // Lower bound 0 shares the formula (the k=0 term is zero).
+    assert_eq!(
+        r("sum(k*r^k, k, 0, n)"),
+        "r·(n·r^(n + 1) + r^n·(-n - 1) + 1) / (1 - r)^2"
+    );
+    assert_eq!(
+        r("sum(k*x^k, k, 1, n)"),
+        "x·(n·x^(n + 1) + x^n·(-n - 1) + 1) / (1 - x)^2"
+    );
+    // Out of scope stays residual: a degree-2 cofactor, and a lower bound >= 2.
+    assert_eq!(r("sum(k^2*r^k, k, 1, n)"), "sum(k^2·r^k, k, 1, n)");
+    assert_eq!(r("sum(k*r^k, k, 2, n)"), "sum(k·r^k, k, 2, n)");
+    // The pure geometric sum (cycle sibling) is unaffected.
+    assert_eq!(r("sum(r^k, k, 0, n)"), "(r^(n + 1) - 1) / (r - 1)");
 }

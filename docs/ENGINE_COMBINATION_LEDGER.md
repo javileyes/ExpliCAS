@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 511 (newest first)
+Active entries: 512 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
@@ -126,6 +126,7 @@ Active entries: 511 (newest first)
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_multi_abs_polynomi... | SOUNDNESS (multi-abs + remanente polinómico → wrong "No solution"): `solve(x²+|x−1|+|x+1|<5)`
 - 2026-07-07 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | HONESTIDAD (apart de denominador grado-1 echoaba residual): `apart(1/(x-2))`
 - 2026-07-07 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_symbolic_sum... | CAPACIDAD (suma geométrica finita de razón SIMBÓLICA): `sum(r^k, k, 0, n)`
+- 2026-07-07 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | CAPACIDAD (suma aritmético-geométrica finita de razón SIMBÓLICA): `sum(k·r^k, k, 0, n)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18609,3 +18610,19 @@ Active entries: 511 (newest first)
   - Un extractor que devuelve un tipo NUMÉRICO (`BigRational`) es un techo silencioso de universalidad: casa `2^k` pero no `r^k`. El hermano simbólico (emite la forma cerrada estructural en vez de calcular un valor) es un ciclo barato de alto valor. Buscar extractores `-> BigRational`/`-> i64` en dominios donde la razón/exponente/coeficiente PODRÍA ser simbólico.
   - Consistencia de convención > pureza aislada: emitir `(r^(n+1)−1)/(r−1)` es "sound" porque el engine YA descarta singularidades removibles en todo el álgebra racional; un handler que las flaggeara SOLO aquí sería inconsistente. Alinear con la convención global del engine, no inventar una local.
   - PRÓXIMO PELDAÑO: arit-geométrico simbólico `sum(k·r^k,k,1,n)` (cofactor polinómico × geométrico simbólico) sigue declinando — el hermano simbólico de `try_convergent_infinite_arithmetic_geometric_sum` (que también es `-> BigRational`). Y `sum(c·r^k)` con coeficiente (mi builder es bare `r^k`).
+
+## 2026-07-07 - CAPACIDAD (suma aritmético-geométrica finita de razón SIMBÓLICA): `sum(k·r^k, k, 0, n)`
+
+- area: `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_symbolic_sum` nuevo, tras el arit-geo numérico). Hermano del builder geométrico simbólico del ciclo previo.
+- status: `retained`. Capacidad P1 (Fase 1, series). Cerró el peldaño del ciclo geométrico-simbólico.
+- capture:
+  - investment_class: capability (Fase 1, series). Peldaño documentado del ciclo geométrico-simbólico.
+  - cell: `sum(k·r^k,k,1,n)` → `r·(n·r^(n+1) + r^n·(−n−1) + 1)/(1−r)²` (era residual), `sum(k·r^k,k,0,n)` igual (término k=0 es 0), `sum(k·x^k,k,1,n)` con x. Razón NUMÉRICA intacta (`k·2^k` → forma numérica); `k²·r^k` (cofactor grado 2) y `a≥2` (bound bajo) declinan honestamente.
+  - causa raíz: `try_build_arithmetic_geometric_sum` numérico usa `decompose_arithmetic_geometric` → razón `BigRational` (numérica). Base simbólica declina.
+  - diseño: builder que casa `k·base^k` (`Mul(k, Pow(base,k))`, cualquier orden) con base libre del índice y no-racional; emite `r(1 − (n+1)r^n + n·r^(n+1))/(1−r)²`. Gate `a ∈ {0,1}` (mismo formulario; a≥2 necesita corrección de cabeza simbólica). Singularidad removible en r=1 (valor real n(n+1)/2) — consistente con la convención global de removibles del engine.
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip NUMÉRICO de la forma cerrada vs suma directa (r∈{2,3,½,−2,1.5}, n∈{0..7}) — todas exactas.
+  - fix que surgió: mi test del ciclo geométrico-simbólico afirmaba `sum(k·r^k,k,1,n)` → residual ("untouched"); este ciclo lo convierte en soportado → actualicé ese contrato (residual→formula), como manda el skill cuando un ciclo gradúa un residual.
+  - retained learning:
+  - Confirma el patrón "extractor `-> BigRational` = techo de universalidad" del ciclo previo, ahora en arit-geo: `decompose_arithmetic_geometric` devuelve razón numérica → el hermano simbólico emite la forma estructural. Cada builder de serie con razón numérica tiene un hermano simbólico barato.
+  - Cuando un ciclo N gradúa un residual que el ciclo N−1 fijó como "untouched" en un test, el fallo del workspace es ESPERADO y self-documenting (el assert dice exactamente qué cambió) — actualizar el contrato, no revertir. Registrar un residual como "untouched" en un test es una hipoteca sobre el ciclo siguiente.
+  - PRÓXIMO PELDAÑO: cofactor cuadrático simbólico `sum(k²·r^k)` (necesita `Σk²r^k = r(1+r − …)/(1−r)³`), cofactor afín general `(βk+γ)r^k`, y lower bound a≥2 (corrección de cabeza). Todos son extensiones del mismo builder.
