@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 508 (newest first)
+Active entries: 509 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
@@ -123,6 +123,7 @@ Active entries: 508 (newest first)
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_equals_... | SOUNDNESS (wrong-answer + leak en `|f|=g(x)` no-constante): `solve(x²+|x−1|−3=0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (wrong "No solution" en desigualdad poli-en-|x|): `solve(|x|²−3|x|+2<0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (gate de `try_solve_single_abs... | SOUNDNESS (wrong "No solution" con abs como FACTOR): `solve(|x|³−|x|<0)`
+- 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_multi_abs_polynomi... | SOUNDNESS (multi-abs + remanente polinómico → wrong "No solution"): `solve(x²+|x−1|+|x+1|<5)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18560,3 +18561,18 @@ Active entries: 508 (newest first)
   - Un gate de "resto contiene var" para detectar "abs entrelazado con polinomio" es INCOMPLETO: falla cuando el abs es un FACTOR (`|x|·p(x)`), donde el resto colapsa a 0. La señal robusta de entrelazamiento es "resto-no-constante O rama-no-lineal": cubre abs-sumado Y abs-factor. Al escribir un gate anti-preempt, enumerar las FORMAS estructurales (sumado vs factor vs potencia) — no solo la primera que motivó el fix.
   - `|x|^n` se normaliza a `|x|·x^(n−1)` (n impar) o `x^n` (n par) — el `|x|` sobrevive solo en potencias impares, como factor. Los detectores de abs deben contar con esta forma factor, no solo `Pow(|x|,n)`.
   - PRÓXIMO PELDAÑO: el mismo gate aditivo podría beneficiar al handler de ECUACIÓN (`try_solve_single_abs_equals_polynomial`) si hay formas abs-factor en ecuaciones (`|x|³=|x|` — aunque el poli-en-|x| del ciclo 3 ya lo cubre vía u=|x|). Revisar simetría ecuación/desigualdad de los gates.
+
+## 2026-07-07 - SOUNDNESS (multi-abs + remanente polinómico → wrong "No solution"): `solve(x²+|x−1|+|x+1|<5)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_multi_abs_polynomial_relation`, despachado antes de `try_solve_sum_of_abs_relation`)
+- status: `retained`. P0 WRONG-ANSWER (∅ por conjunto no-vacío). Cierra el peldaño de dos-abs de la campaña previa.
+- capture:
+  - investment_class: soundness (wrong-answer). El peldaño explícito del cierre del ciclo anterior.
+  - cell: `solve(x²+|x−1|+|x+1|<5)` → `(1−√6,√6−1)` (era `No solution`; en x=0 vale 2<5). `=5` → `{1−√6,√6−1}` (ecuación, los dos bordes). `≤2` → `{0}` (mín es 2 en x=0). `x²−|x−1|−|x+1|>0` → `(−∞,−2)∪(2,∞)`. 3-4 abs OK; coeficientes asimétricos OK; conjunto vacío → `No solution`.
+  - causa raíz: `try_solve_sum_of_abs_relation` (cas_solver_core) descompone en `Σcᵢ|aᵢx+bᵢ| + remanente LINEAL` y resuelve una relación LINEAL por segmento — un término x² hace declinar `decompose_sum_of_abs` y el generico devuelve `No solution`. El solver por-segmento polinómico necesita el solver completo (cas_solver), no cabe en cas_solver_core.
+  - diseño (partición piecewise + solve polinómico por segmento): reusa `collect_abs_of_var`; exige ≥2 abs afines (breakpoints `−bᵢ/aᵢ` racionales) + remanente deg≥2 (gate anti-overlap: 1-abs → sign-split ciclo 5; remanente lineal → sum-handler existente). Ordena breakpoints, y en cada segmento cerrado sustituye `|f|→±f` (signo en el punto interior de test), resuelve `poli {op} 0` con `solve_relation_set` (recursivo), clipa al segmento (via dos solves de semirrecta + `intersect_solution_sets`) y une. Maneja Eq e inecuaciones por igual.
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Verificación NUMÉRICA (sweep 3.2M pts) de los conjuntos + adversarial (3-4 abs; coeficientes asimétricos → breakpoints no simétricos; ecuación; punto aislado; vacío; sin regresión sum-lineal/single-abs).
+  - retained learning:
+  - Los tres handlers de abs forman una jerarquía por complejidad del remanente: (1) 1-abs → sign-split en el cero (ciclos 5/6); (2) ≥2-abs remanente LINEAL → sum-of-abs por segmento lineal (cas_solver_core); (3) ≥2-abs remanente POLINÓMICO → partición + solve polinómico por segmento (este ciclo). Cada nivel gatea por su forma y delega el resto. La misma máquina de partición-en-breakpoints escala; solo cambia qué se resuelve por segmento (lineal cerrado vs polinómico recursivo).
+  - Cuando la maquinaria por-segmento vive en cas_solver_core (linealidad autocontenida) pero el caso nuevo necesita el solver COMPLETO por segmento, el handler nuevo va en cas_solver y clipa segmentos vía `solve_relation_set(x≥lo)∩solve_relation_set(x≤hi)` — sin construir `Interval` a mano (sound, reusa el álgebra de conjuntos pública).
+  - PRÓXIMO PELDAÑO: argumentos de abs NO afines (`|x²−1|+x<...`, breakpoints = raíces del arg) siguen declinando; y abs anidados. La partición-en-raíces-del-arg generaliza el breakpoint de afín a poli.

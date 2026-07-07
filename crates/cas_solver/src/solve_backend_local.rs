@@ -2299,6 +2299,162 @@ fn try_solve_single_abs_polynomial_inequality(
     ))
 }
 
+/// Solve a relation with TWO OR MORE affine `|f|` terms AND a degree-≥2
+/// polynomial remainder — `x² + |x−1| + |x+1| < 5` — by the exact
+/// piecewise/breakpoint method. The linear sum-of-abs handler carries only a
+/// LINEAR remainder, so a quadratic term makes it decline and the generic path
+/// returns a wrong "No solution" (the true set is `(1−√6, √6−1)`).
+///
+/// Partition ℝ at the sorted breakpoints (`−bᵢ/aᵢ` of each affine argument). On
+/// each segment every `|f|` has a fixed sign, so substitute `|f| = ±f` and solve
+/// the resulting POLYNOMIAL relation on the whole line, then clip to the closed
+/// segment and union. Gated to ≥2 abs and a degree-≥2 remainder (single abs is
+/// the sign-split handler's job; a linear remainder the existing sum handler's).
+fn try_solve_multi_abs_polynomial_relation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    if !matches!(
+        eq.op,
+        RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq | RelOp::Eq
+    ) {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    // Distinct abs-of-var terms; require ≥ 2 (single abs handled elsewhere).
+    let mut raw: Vec<ExprId> = Vec::new();
+    collect_abs_of_var(&simplifier.context, diff, var, &mut raw);
+    let mut abs_exprs: Vec<ExprId> = Vec::new();
+    for t in raw {
+        if !abs_exprs.contains(&t) {
+            abs_exprs.push(t);
+        }
+    }
+    if abs_exprs.len() < 2 {
+        return None;
+    }
+
+    // Each argument must be AFFINE, giving a rational breakpoint `−b/a`.
+    let mut breakpoints: Vec<BigRational> = Vec::new();
+    let mut arg_polys: Vec<Polynomial> = Vec::new();
+    let mut args: Vec<ExprId> = Vec::new();
+    for &abs_e in &abs_exprs {
+        let arg = match simplifier.context.get(abs_e) {
+            Expr::Function(_, a) if a.len() == 1 => a[0],
+            _ => return None,
+        };
+        let poly = Polynomial::from_expr(&simplifier.context, arg, var).ok()?;
+        if poly.degree() != 1 {
+            return None;
+        }
+        let a = poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let b = poly
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if a.is_zero() {
+            return None;
+        }
+        breakpoints.push(-b / a);
+        arg_polys.push(poly);
+        args.push(arg);
+    }
+
+    // Gate: the abs-free remainder must be non-linear (deg ≥ 2) — the linear
+    // sum-of-abs handler already owns a linear remainder (`|x−1| + |x+1| < 3`).
+    let zero = simplifier.context.num(0);
+    let mut rem = diff;
+    for &abs_e in &abs_exprs {
+        rem = substitute_expr_by_id(&mut simplifier.context, rem, abs_e, zero);
+    }
+    let (rem, _) = simplifier.simplify(rem);
+    match Polynomial::from_expr(&simplifier.context, rem, var) {
+        Ok(p) if p.degree() >= 2 => {}
+        _ => return None,
+    }
+
+    breakpoints.sort();
+    breakpoints.dedup();
+    let n = breakpoints.len();
+    let two = BigRational::from_integer(2.into());
+
+    // Closed segment `[lo, hi]` as a solution set, via half-line solves; an open
+    // end (`None`) contributes `AllReals` (no constraint on that side).
+    let segment_set = |simplifier: &mut Simplifier,
+                       lo: Option<&BigRational>,
+                       hi: Option<&BigRational>|
+     -> Option<SolutionSet> {
+        let x = simplifier.context.var(var);
+        let lo_set = match lo {
+            Some(l) => {
+                let ln = simplifier.context.add(Expr::Number(l.clone()));
+                solve_relation_set(simplifier, var, x, ln, RelOp::Geq)?
+            }
+            None => SolutionSet::AllReals,
+        };
+        let hi_set = match hi {
+            Some(h) => {
+                let hn = simplifier.context.add(Expr::Number(h.clone()));
+                solve_relation_set(simplifier, var, x, hn, RelOp::Leq)?
+            }
+            None => SolutionSet::AllReals,
+        };
+        Some(intersect_solution_sets(&simplifier.context, lo_set, hi_set))
+    };
+
+    let mut solution = SolutionSet::Empty;
+    for seg_idx in 0..=n {
+        let (lo, hi, test): (Option<BigRational>, Option<BigRational>, BigRational) =
+            if seg_idx == 0 {
+                let a0 = breakpoints[0].clone();
+                let t = &a0 - BigRational::one();
+                (None, Some(a0), t)
+            } else if seg_idx == n {
+                let an = breakpoints[n - 1].clone();
+                let t = &an + BigRational::one();
+                (Some(an), None, t)
+            } else {
+                let al = breakpoints[seg_idx - 1].clone();
+                let ar = breakpoints[seg_idx].clone();
+                let t = (&al + &ar) / &two;
+                (Some(al), Some(ar), t)
+            };
+
+        // Resolve each `|f| → sign·f` using the sign at the interior test point.
+        let mut seg_expr = diff;
+        for (i, &abs_e) in abs_exprs.iter().enumerate() {
+            let val = arg_polys[i].eval(&test);
+            let replacement = if val.is_positive() {
+                args[i]
+            } else {
+                simplifier.context.add(Expr::Neg(args[i]))
+            };
+            seg_expr = substitute_expr_by_id(&mut simplifier.context, seg_expr, abs_e, replacement);
+        }
+        let (seg_expr, _) = simplifier.simplify(seg_expr);
+
+        let branch = solve_relation_set(simplifier, var, seg_expr, zero, eq.op.clone())?;
+        let seg_set = segment_set(simplifier, lo.as_ref(), hi.as_ref())?;
+        let clipped = intersect_solution_sets(&simplifier.context, branch, seg_set);
+        solution = union_solution_sets(&simplifier.context, solution, clipped);
+    }
+    Some(solution)
+}
+
 /// Core of [`try_solve_polynomial_in_trig`]: treat `diff` as a polynomial of degree ≥ 2 in a single
 /// trig atom `sin(g)`/`cos(g)`/`tan(g)`, substitute `u = trig(g)`, solve `P(u) = 0`, and back-substitute
 /// each root through the periodic solver (range guard drops `|u| > 1`). Returns `None` if `diff` is not
@@ -8014,6 +8170,15 @@ fn solve_local_core_inner(
     // `ln(x)^2 {op} c` is non-monotonic; the log-isolation path reports "All reals if
     // x>0". Reduce to the two single-`ln` inequalities before that path runs.
     if let Some(set) = try_solve_ln_square_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
+    }
+    // Two-or-more affine `|f|` terms PLUS a degree-≥2 polynomial remainder
+    // (`x² + |x−1| + |x+1| < 5`): the linear sum-of-abs handler below carries
+    // only a linear remainder, so it declines and the generic path returns a
+    // wrong "No solution". Partition at the breakpoints and solve the polynomial
+    // relation per segment. Runs before the linear handler (which owns the
+    // linear-remainder forms).
+    if let Some(set) = try_solve_multi_abs_polynomial_relation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = cas_solver_core::solve_outcome::try_solve_sum_of_abs_relation(

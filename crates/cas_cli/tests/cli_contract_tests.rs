@@ -6320,3 +6320,52 @@ fn test_eval_abs_as_a_factor_inequality_sign_splits() {
     assert_eq!(r("solve(x^2 - 3*abs(x) + 2 < 0, x)"), "(-2, -1) U (1, 2)");
     assert_eq!(r("solve(abs(x-1) <= 2, x)"), "[-1, 3]");
 }
+
+#[test]
+fn test_eval_multi_abs_polynomial_relation_partitions_at_breakpoints() {
+    // Two-or-more affine `|f|` terms PLUS a degree-≥2 remainder — the linear
+    // sum-of-abs handler carries only a linear remainder, so `x² + |x−1| + |x+1|
+    // < 5` used to return a wrong "No solution" (the true set is (1−√6, √6−1)).
+    // Partition at the breakpoints and solve the polynomial per segment.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(x^2 + abs(x-1) + abs(x+1) < 5, x)"),
+        "(1 - sqrt(6), sqrt(6) - 1)"
+    );
+    // The equation form gives the two boundary points.
+    assert_eq!(
+        r("solve(x^2 + abs(x-1) + abs(x+1) = 5, x)"),
+        "{ 1 - sqrt(6), sqrt(6) - 1 }"
+    );
+    // Minimum is 2 at x=0, so `<= 2` is the isolated point {0}.
+    assert_eq!(r("solve(x^2 + abs(x-1) + abs(x+1) <= 2, x)"), "[0, 0]");
+    assert_eq!(
+        r("solve(x^2 - abs(x-1) - abs(x+1) > 0, x)"),
+        "(-infinity, -2) U (2, infinity)"
+    );
+    // Three abs terms.
+    assert_eq!(
+        r("solve(x^2 + abs(x) + abs(x-1) + abs(x+1) < 6, x)"),
+        "(1/2·(3 - sqrt(33)), 1/2·(sqrt(33) - 3))"
+    );
+    // Shifted breakpoints (min 4 at 0, so `< 5` is (-1, 1)).
+    assert_eq!(r("solve(x^2 + abs(x-2) + abs(x+2) < 5, x)"), "(-1, 1)");
+    // Empty result stays empty.
+    assert_eq!(r("solve(x^2 - abs(x-1) - abs(x+1) < -3, x)"), "No solution");
+
+    // NO REGRESSION: a LINEAR remainder keeps the existing sum-of-abs handler.
+    assert_eq!(r("solve(abs(x-1) + abs(x+1) < 3, x)"), "(-3/2, 3/2)");
+    assert_eq!(
+        r("solve(abs(x) + abs(x-2) >= 4, x)"),
+        "(-infinity, -1] U [3, infinity)"
+    );
+    // Single abs stays with the sign-split handler.
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 < 0, x)"), "(-2, -1) U (1, 2)");
+}
