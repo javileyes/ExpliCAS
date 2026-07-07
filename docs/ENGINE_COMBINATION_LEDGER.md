@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 504 (newest first)
+Active entries: 505 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
+- 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_abs`... | SOUNDNESS (leak de residual malformado en polinomio-en-|x|): `solve(|x|²−3|x|+2=0)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18495,3 +18496,18 @@ Active entries: 504 (newest first)
   - Una condición de dominio de la ANTIDERIVADA (`−1<x<1` de atanh) no es un techo: es una elección de RAMA. Cuando la FTC declina por "condición de dominio de la antiderivada falla en el intervalo", a menudo existe OTRA antiderivada real (aquí acoth/log) para ese régimen. El fix no es relajar la condición (unsound) sino CAMBIAR de rama — y si una forma hermana (`1/(x²−a²)`) ya la implementa, reescribir a ella y delegar es mínimo-riesgo (additivo: solo convierte residuales en respuestas).
   - Reescribir a una forma equivalente para cambiar de rama exige construir la estructura destino DIRECTAMENTE (denominador positive-leading), no vía doble-negación de un Div — el simplificador canoniza `(−N)/(−D)` de vuelta a `N/D` y revierte la rama. Verificar empíricamente que la forma destino NO colapsa (probar `integrate(-1/(x²-1),...)` ANTES de construirla).
   - PRÓXIMO PELDAÑO: (a) `a` irracional produce log feo con abs anidado (`ln(|(2−√3)(√3−2)|/…)`) — deuda de SIMPLIFICACIÓN PRE-EXISTENTE en el path `x²−a²`, ortogonal (afecta al sibling igual). (b) el mismo patrón atanh→log aplica a `∫ 1/(x²−a²)` DENTRO de `(−a,a)` si alguna forma prefiere atanh; y a otras antiderivadas con condición de rama (acosh ya gateado, asin/acos). (c) polo en borde `[1,2]` da residual, podría dar `undefined`/divergencia honesta.
+
+## 2026-07-07 - SOUNDNESS (leak de residual malformado en polinomio-en-|x|): `solve(|x|²−3|x|+2=0)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_abs` nuevo, despachado junto a los hermanos `try_solve_polynomial_in_log` / `try_solve_rational_power_polynomial`)
+- status: `retained`. P0-honestidad/soundness (leak de residual malformado + pérdida de raíces) — va antes que capacidad por la regla de fase.
+- capture:
+  - investment_class: soundness (leak/wrong-answer). Hallado por sondeo cross-front adversarial del ciclo.
+  - cell: `solve(|x|²−3|x|+2=0)` → `{1,-1,2,-2}` (era el leak malformado `solve(x−(3|x|−2)^(1/2)=0,x) if …`, perdiendo la rama negativa Y toda raíz). Igual `x²−3|x|+2` (mismo tras `|x|²→x²`), `2|x|²−3|x|+1` → `{½,−½,1,−1}`, `|x|³−|x|` → `{0,1,−1}`, `x⁴−5|x|²+4` → `{−2,−1,1,2}`. Raíces SURD: `|x|²−3|x|+1` → 4 raíces `±½(3±√5)`; `|x|²−|x|−1` → `{φ,−φ}` (la raíz-u NEGATIVA (1−√5)/2 se descarta). u-roots todas negativas → No solution.
+  - causa raíz: el simplificador pliega `|x|²→x²`, así que `|x|²−3|x|+2` llega como `x²−3|x|+2` — se pierde la estructura poli-en-atom. La isolación reorienta `x²=3|x|−2 → x=√(3|x|−2)` y filtra un residual auto-referencial malformado (viola el contrato de honestidad del residual: eco NO es la ecuación original) perdiendo la rama ±.
+  - diseño (patrón hermano poli-en-atom + unificación de potencias pares): substituir `|x|→u`; VALIDAR que el diff es PAR en x (igualdad estructural tras `x→−x`, simplificado — `|x|` es par, así que par ⟺ x solo en potencias pares ⟺ poli-en-|x| válido); entonces `x→u` (unifica `x^(2k)=|x|^(2k)=u^(2k)`); delegar en `solve_polynomial_in_atom` con back-sub `|x|=u_root` (el solver de `|A|=c` aplica el dominio u≥0: descarta u<0, parte u≥0 en x=±u). Gateado a `|x|` de la VARIABLE DESNUDA (`|x|`, no `|x−1|` — solo ahí `x²=|x|²`).
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Verificación NUMÉRICA de las raíces surd (residuo <1e-15) + barrido adversarial de BORDES (c=0 → `{0,3,−3}`; coeficiente compuesto; grado par superior; raíz-u negativa descartada; no-par-en-x `x+|x|`,`x²+|x|−x` declinan y otro handler los resuelve correcto; `|x−1|` no-desnudo declina; grado-1 y poli llano intactos).
+  - retained learning:
+  - Cuando el simplificador COLAPSA la estructura de atom (`|x|²→x²`, como antes `e^x+e^(-x)→cosh`, `sin²→doble-ángulo`), la unificación no es "trabajar el árbol crudo" (aquí el crudo también colapsa vía solve-simplify) sino RECONSTRUIR la equivalencia algebraica: `x²=|x|²` permite `x→u` DESPUÉS de validar paridad-en-x. La paridad estructural (igualdad tras `x→−x` simplificado) es el gate exacto y barato para "es poli en |x|".
+  - El leak de "residual malformado auto-referencial" tiene una FAMILIA entera de causas (poli en x^(1/q), ln(x), |x|, base^x, trig) todas con el mismo síntoma (isolación reorienta a `x=f(x)`); cada una se cierra con el mismo patrón substituir-atom→solve_polynomial_in_atom. |x| era el miembro faltante. Buscar hermanos del mismo síntoma es alto-ROI.
+  - PRÓXIMO PELDAÑO: `x²−3|x−1|+2=0` (abs de argumento DESPLAZADO mezclado con x²) SIGUE leakeando el residual malformado — NO es poli en un atom único (`x²≠|x−1|²`), es un caso piecewise genuino (partir en x≷1). Leak PRE-EXISTENTE, no regresión; su cierre es el handler piecewise-abs general (partir por signo del argumento), otro ciclo.

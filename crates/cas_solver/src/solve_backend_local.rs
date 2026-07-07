@@ -1974,6 +1974,62 @@ fn try_solve_polynomial_in_log(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
+/// Solve an EQUATION that is a polynomial of degree ≥ 2 in `|x|`, e.g.
+/// `|x|² − 3·|x| + 2 = 0`. The simplifier folds `|x|² → x²`, so the equation
+/// reaches here as `x² − 3·|x| + 2 = 0`; because `x² = |x|²`, it is a quadratic
+/// in `u = |x|`. Substitute `u = |x|`, solve `u² − 3u + 2 = 0`, then
+/// back-substitute `|x| = u_root` — the recursive `|A| = c` solver drops a
+/// negative root and splits each `u_root ≥ 0` into `x = ±u_root`. Without this,
+/// the isolation path reorients to `x = √(3·|x| − 2)` and leaks a malformed
+/// `solve(...)` residual, dropping the negative branch and every root.
+///
+/// Gated to abs of the BARE variable (`|x|`, not `|x − 1|`): only then does
+/// `x^(2k) = |x|^(2k)` unify. Validated by requiring the difference to be EVEN
+/// in `x` — an odd term (`x + |x|`) is not a polynomial in `|x|` and declines to
+/// its own handler.
+fn try_solve_polynomial_in_abs(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_solver_core::isolation_utils::contains_var;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    // Atom is `|x|` — abs of the bare variable, so `x^(2k) = |x|^(2k)` unifies.
+    let x = simplifier.context.var(var);
+    let abs_x = simplifier.context.call_builtin(BuiltinFn::Abs, vec![x]);
+    let u_var = "__abs_u";
+    let u = simplifier.context.var(u_var);
+    let e1 = substitute_expr_by_id(&mut simplifier.context, diff, abs_x, u);
+    if e1 == diff {
+        return None; // no bare `|x|` present
+    }
+
+    // The difference must be EVEN in x for `x^(2k) = |x|^(2k)` (|x| is itself
+    // even): a surviving odd component (`x + |x|`) is not a polynomial in |x|.
+    let neg_x = simplifier.context.add(Expr::Neg(x));
+    let diff_negx = substitute_expr_by_id(&mut simplifier.context, diff, x, neg_x);
+    let (diff_negx, _) = simplifier.simplify(diff_negx);
+    if diff_negx != diff {
+        return None;
+    }
+
+    // Unify the even x-powers into the same atom: `x → u` turns `x² − 3u + 2`
+    // into `u² − 3u + 2`. Any leftover `x` (or a non-bare `|g|`, which
+    // `Polynomial::from_expr` inside the shared core rejects) declines.
+    let u_expr = substitute_expr_by_id(&mut simplifier.context, e1, x, u);
+    if contains_var(&simplifier.context, u_expr, var) {
+        return None;
+    }
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, abs_x)
+}
+
 /// Core of [`try_solve_polynomial_in_trig`]: treat `diff` as a polynomial of degree ≥ 2 in a single
 /// trig atom `sin(g)`/`cos(g)`/`tan(g)`, substitute `u = trig(g)`, solve `P(u) = 0`, and back-substitute
 /// each root through the periodic solver (range guard drops `|u| > 1`). Returns `None` if `diff` is not
@@ -7718,6 +7774,13 @@ fn solve_local_core_inner(
     // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
     // `u = ln(x)` substitution.
     if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // Equations that are a polynomial of degree ≥ 2 in `|x|` (`|x|² − 3·|x| + 2 = 0`,
+    // stored as `x² − 3·|x| + 2` after `|x|² → x²`) leak the same way — the isolation
+    // path reorients to `x = √(3·|x| − 2)`. Solve them by the `u = |x|` substitution
+    // (with the `x² = |x|²` even-power unification) here first.
+    if let Some(set) = try_solve_polynomial_in_abs(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Equations that mix an exponential with its RECIPROCAL (`e^x + e^(−x) = 2`, `2^x − 3 + 2^(1−x) = 0`)

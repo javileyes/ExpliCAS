@@ -6142,3 +6142,47 @@ fn test_eval_budget_exceeded_best_effort() {
         .map(|s| !s.is_empty())
         .unwrap_or(false));
 }
+
+#[test]
+fn test_eval_polynomial_in_absolute_value_substitutes_and_splits_branches() {
+    // `|x|² − 3|x| + 2 = 0` reaches solve as `x² − 3|x| + 2 = 0` (the simplifier
+    // folds `|x|² → x²`). Because `x² = |x|²` it is a quadratic in `u = |x|`:
+    // `u² − 3u + 2 = 0 ⟹ u ∈ {1,2} ⟹ x ∈ {±1, ±2}`. It used to leak a malformed
+    // `solve(x − √(3|x| − 2) = 0, …)` residual, dropping the negative branch and
+    // every root.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(abs(x)^2 - 3*abs(x) + 2 = 0, x)"),
+        "{ 1, -1, 2, -2 }"
+    );
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 = 0, x)"), "{ 1, -1, 2, -2 }");
+    assert_eq!(
+        r("solve(2*abs(x)^2 - 3*abs(x) + 1 = 0, x)"),
+        "{ 1/2, -1/2, 1, -1 }"
+    );
+    // c = 0 border: `u(u−3) = 0 ⟹ u ∈ {0,3}`, and `u = 0 ⟹ x = 0` is a single root.
+    assert_eq!(r("solve(abs(x)^2 - 3*abs(x) = 0, x)"), "{ 0, 3, -3 }");
+    assert_eq!(r("solve(abs(x)^3 - abs(x) = 0, x)"), "{ 0, 1, -1 }");
+    // Higher even degree: `u⁴ − 5u² + 4 = 0 ⟹ u ∈ {1,2}`.
+    assert_eq!(r("solve(x^4 - 5*abs(x)^2 + 4 = 0, x)"), "{ -2, -1, 1, 2 }");
+    // A negative `u`-root has no real pre-image and is dropped: `u = (1±√5)/2`,
+    // keep only `φ`.
+    assert_eq!(r("solve(abs(x)^2 - abs(x) - 1 = 0, x)"), "{ phi, -phi }");
+    // Every `u`-root negative ⇒ no real solution.
+    assert_eq!(r("solve(abs(x)^2 + 3*abs(x) + 2 = 0, x)"), "No solution");
+
+    // GATES: a term that breaks evenness in x (`x + |x|`) is not a polynomial in
+    // |x| — it declines here and the piecewise handler solves it.
+    assert_eq!(r("solve(x + abs(x) - 4 = 0, x)"), "{ 2 }");
+    assert_eq!(r("solve(x^2 + abs(x) - x = 0, x)"), "{ 0 }");
+    // Plain polynomials and the degree-1 `|x|` isolation are untouched.
+    assert_eq!(r("solve(x^2 - 3*x + 2 = 0, x)"), "{ 1, 2 }");
+    assert_eq!(r("solve(abs(x) = 2, x)"), "{ 2, -2 }");
+}
