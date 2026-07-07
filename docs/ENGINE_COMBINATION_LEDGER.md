@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 505 (newest first)
+Active entries: 506 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_polynomial_in_abs`... | SOUNDNESS (leak de residual malformado en polinomio-en-|x|): `solve(|x|²−3|x|+2=0)`
+- 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_equals_... | SOUNDNESS (wrong-answer + leak en `|f|=g(x)` no-constante): `solve(x²+|x−1|−3=0)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18511,3 +18512,19 @@ Active entries: 505 (newest first)
   - Cuando el simplificador COLAPSA la estructura de atom (`|x|²→x²`, como antes `e^x+e^(-x)→cosh`, `sin²→doble-ángulo`), la unificación no es "trabajar el árbol crudo" (aquí el crudo también colapsa vía solve-simplify) sino RECONSTRUIR la equivalencia algebraica: `x²=|x|²` permite `x→u` DESPUÉS de validar paridad-en-x. La paridad estructural (igualdad tras `x→−x` simplificado) es el gate exacto y barato para "es poli en |x|".
   - El leak de "residual malformado auto-referencial" tiene una FAMILIA entera de causas (poli en x^(1/q), ln(x), |x|, base^x, trig) todas con el mismo síntoma (isolación reorienta a `x=f(x)`); cada una se cierra con el mismo patrón substituir-atom→solve_polynomial_in_atom. |x| era el miembro faltante. Buscar hermanos del mismo síntoma es alto-ROI.
   - PRÓXIMO PELDAÑO: `x²−3|x−1|+2=0` (abs de argumento DESPLAZADO mezclado con x²) SIGUE leakeando el residual malformado — NO es poli en un atom único (`x²≠|x−1|²`), es un caso piecewise genuino (partir en x≷1). Leak PRE-EXISTENTE, no regresión; su cierre es el handler piecewise-abs general (partir por signo del argumento), otro ciclo.
+
+## 2026-07-07 - SOUNDNESS (wrong-answer + leak en `|f|=g(x)` no-constante): `solve(x²+|x−1|−3=0)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_equals_polynomial` + `collect_abs_of_var`, despachado tras `try_solve_polynomial_in_abs`)
+- status: `retained`. P0 WRONG-ANSWER (raíz espuria + raíz perdida) + leak malformado — soundness, va antes que capacidad.
+- capture:
+  - investment_class: soundness (wrong-answer, el peor tipo). Hallado sondeando el peldaño del ciclo previo (`|x−1|` desplazado).
+  - cell: `solve(x²+|x−1|−3=0)` → `{½(√17−1),−1}` (era `{−2.56, 1.56}` — `−2.56` NO es raíz, `f=7.12`, y FALTABA `−1`). `x²−3|x−1|+2` → `{½(−√13−3),½(√13−3)}` (era leak malformado). `|x−1|=x²−1` → `{1,−2}` (verifica g≥0, descarta 0). `abs(x)=x³−2` → raíz real (Cardano) descartando el candidato con g<0. `x²+|x−1|+3` / `|x−5|=−x²−1` → No solution (g<0). Coef en abs `x²+2|x−1|−5` → `{2√2−1,−1}`. Orientación invertida OK.
+  - causa raíz: `|f|=g` con g NO-constante — la isolación genérica resuelve solo la rama `f=g` (descarta `f=−g`) Y omite el dominio `g≥0`. Devuelve raíz espuria (de f=g con g<0) y pierde las de f=−g (Discrete WRONG), o filtra el residual auto-referencial (Residual malformado). El post-proceso que repara Residuals NO ve un Discrete incorrecto.
+  - diseño (dos-ramas + verificación exacta de dominio): extraer el único `|f|` (via `collect_abs_of_var`), exigir linealidad en `|f|` (`diff=c·|f|+rest`, c racional≠0, chequeo en 3 puntos), `g=−rest/c`; resolver `f=g` Y `f=−g`; quedarse con r sii `g(r)≥0` — la verificación EXACTA (`|f(r)|=|±g(r)|=g(r) ⟺ g(r)≥0`) decidida por `provable_const_sign` (surd-aware; indecidible → declina TODO el handler, nunca emite set semi-verificado). Gate `deg(g)≥2`: g lineal lo resuelve bien la isolación y se queda ahí (huella 0-delta).
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Verificación NUMÉRICA (roots <1e-15) + barrido adversarial (g toca 0 en raíz; ambas ramas vacías → No solution; g cúbica → Cardano con descarte g<0; coef en abs; orientación invertida; sin regresión en g-lineal/g-constante/bare-|x|/multi-abs).
+  - retained learning:
+  - "El g(r)≥0 ES la verificación" — para `|f|=g`, como toda raíz de rama cumple `|f(r)|=|g(r)|`, la única condición extra es el signo de g(r). No re-derivar dominios: la condición se colapsa a UN signo constante, que la capa exacta decide incluso para surds. Este colapso "verificación = un signo" es el patrón reutilizable para todo `|·|=g`.
+  - Un WRONG-ANSWER Discrete es INVISIBLE a los post-procesos que solo reparan Residual/Conditional: hay que interceptar en el dispatch PRIMARIO (antes de la isolación buggy), no post-procesar. Los dos modos de fallo de la misma isolación (Discrete-incorrecto y Residual-malformado) se cierran con UN handler primario.
+  - Gatear por `deg(g)≥2` aísla exactamente los casos que la isolación estropea sin tocar los que resuelve bien (g lineal) → huella 0-delta sin narrow-scoping frágil.
+  - PRÓXIMO PELDAÑO: `|f|+|h|=g` (dos+ abs distintos con g no-constante) sigue siendo del handler piecewise; y `|f|=g` con g de signo indecidible declina (raro).

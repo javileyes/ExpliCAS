@@ -6186,3 +6186,56 @@ fn test_eval_polynomial_in_absolute_value_substitutes_and_splits_branches() {
     assert_eq!(r("solve(x^2 - 3*x + 2 = 0, x)"), "{ 1, 2 }");
     assert_eq!(r("solve(abs(x) = 2, x)"), "{ 2, -2 }");
 }
+
+#[test]
+fn test_eval_single_abs_equals_polynomial_solves_both_branches_with_domain() {
+    // A single `|f|` term with a non-constant degree-≥2 remainder is `|f| = g(x)`.
+    // Isolating the abs and recursing is unsound: the generic path solved only the
+    // `f = g` branch and skipped `g ≥ 0`, so `x² + |x−1| − 3 = 0` returned the
+    // spurious `{−2.56, 1.56}` (missing the real `−1`), and `x² − 3|x−1| + 2 = 0`
+    // leaked a malformed residual. Both branches are now solved and each root kept
+    // only when `g(r) ≥ 0` (decided exactly, so surd roots verify).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Was `{ -2.56, 1.56 }` (spurious root, missing `-1`).
+    assert_eq!(
+        r("solve(x^2 + abs(x-1) - 3 = 0, x)"),
+        "{ 1/2·(sqrt(17) - 1), -1 }"
+    );
+    // Orientation-independent (abs on the RHS).
+    assert_eq!(
+        r("solve(3 - x^2 = abs(x-1), x)"),
+        "{ 1/2·(sqrt(17) - 1), -1 }"
+    );
+    // Was a malformed `solve(x − √(3|x−1| − 2))` residual.
+    assert_eq!(
+        r("solve(x^2 - 3*abs(x-1) + 2 = 0, x)"),
+        "{ 1/2·(-sqrt(13) - 3), 1/2·(sqrt(13) - 3) }"
+    );
+    // A coefficient on the abs term.
+    assert_eq!(
+        r("solve(x^2 + 2*abs(x-1) - 5 = 0, x)"),
+        "{ 2·sqrt(2) - 1, -1 }"
+    );
+    // `g(r) ≥ 0` verification keeps the on-domain root and drops the off-domain
+    // one: `|x−1| = x²−1` keeps `{1, −2}` (both have `x²−1 ≥ 0`).
+    assert_eq!(r("solve(abs(x-1) = x^2 - 1, x)"), "{ 1, -2 }");
+    // Every candidate has `g < 0` ⇒ no real solution.
+    assert_eq!(r("solve(x^2 + abs(x-1) + 3 = 0, x)"), "No solution");
+    assert_eq!(r("solve(abs(x-5) = -x^2 - 1, x)"), "No solution");
+
+    // NO REGRESSION: linear `g` stays with the isolation path, constant `g` and
+    // bare `|x|` polynomials with their own handlers, multi-abs with the
+    // piecewise handler.
+    assert_eq!(r("solve(abs(x-2) = x, x)"), "{ 1 }");
+    assert_eq!(r("solve(abs(2*x-1) = x + 1, x)"), "{ 2, 0 }");
+    assert_eq!(r("solve(abs(x^2-2*x) = 3, x)"), "{ -1, 3 }");
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 = 0, x)"), "{ 1, -1, 2, -2 }");
+    assert_eq!(r("solve(abs(x-1) + abs(x+1) = 4, x)"), "{ -2, 2 }");
+}

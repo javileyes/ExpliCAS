@@ -2030,6 +2030,187 @@ fn try_solve_polynomial_in_abs(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, abs_x)
 }
 
+/// Collect every distinct `|f|` sub-term of `expr` whose argument contains
+/// `var`, without descending into an abs argument (a nested abs makes the caller
+/// decline). Used to require a SINGLE absolute-value term.
+fn collect_abs_of_var(ctx: &Context, expr: ExprId, var: &str, out: &mut Vec<ExprId>) {
+    use cas_ast::BuiltinFn;
+    use cas_solver_core::isolation_utils::contains_var;
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Abs) =>
+        {
+            if contains_var(ctx, args[0], var) {
+                out.push(expr);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_abs_of_var(ctx, l, var, out);
+            collect_abs_of_var(ctx, r, var, out);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            let inner = *inner;
+            collect_abs_of_var(ctx, inner, var, out);
+        }
+        Expr::Function(_, args) => {
+            let args = args.clone();
+            for a in args {
+                collect_abs_of_var(ctx, a, var, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Solve an equation carrying a SINGLE absolute-value term `|f(x)|` linearly,
+/// with a NON-CONSTANT polynomial remainder of degree ≥ 2 — `x² + |x−1| − 3 = 0`,
+/// i.e. `|f| = g` where `g` is a polynomial. Isolating the abs and recursing is
+/// UNSOUND here: the generic path solves only the `f = g` branch (dropping
+/// `f = −g`) and skips the `g ≥ 0` domain, so it returns a spurious root and
+/// misses a real one (`x²+|x−1|−3=0 → {−2.56, 1.56}` instead of the true
+/// `{−1, (−1+√17)/2}`), or leaks a malformed `solve(x−√(3|x−1|−2))` residual
+/// (`x²−3|x−1|+2=0`).
+///
+/// Solve BOTH branches `f = g` and `f = −g`, then keep each root `r` iff
+/// `g(r) ≥ 0` — the exact verification, since `|f(r)| = |±g(r)| = g(r)` requires
+/// `g(r) ≥ 0` — decided by the constant-sign layer so surd roots are handled
+/// (an undecidable sign declines the whole handler, never emitting an
+/// unverified set). Gated to `deg(g) ≥ 2`: a linear `g` (`|x−2| = x`) is solved
+/// correctly by the isolation path and stays there.
+fn try_solve_single_abs_equals_polynomial(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::const_sign::{provable_const_sign, ConstSign};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    // Exactly one distinct `|f|` sub-term whose argument contains the variable.
+    let mut abs_terms: Vec<ExprId> = Vec::new();
+    collect_abs_of_var(&simplifier.context, diff, var, &mut abs_terms);
+    let mut distinct: Vec<ExprId> = Vec::new();
+    for t in abs_terms {
+        if !distinct.contains(&t) {
+            distinct.push(t);
+        }
+    }
+    if distinct.len() != 1 {
+        return None;
+    }
+    let abs_f = distinct[0];
+    let f = match simplifier.context.get(abs_f) {
+        Expr::Function(_, args) if args.len() == 1 => args[0],
+        _ => return None,
+    };
+
+    // `diff` must be linear in `|f|`: `diff = c·|f| + rest`, `c` a nonzero rational.
+    let u_var = "__absg_u";
+    let u = simplifier.context.var(u_var);
+    let diff_u = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, u);
+    let zero = simplifier.context.num(0);
+    let one = simplifier.context.num(1);
+    let two = simplifier.context.num(2);
+    let rest = substitute_expr_by_id(&mut simplifier.context, diff_u, u, zero);
+    let (rest, _) = simplifier.simplify(rest);
+    let at_one = substitute_expr_by_id(&mut simplifier.context, diff_u, u, one);
+    let c_diff = simplifier.context.add(Expr::Sub(at_one, rest));
+    let (c_diff, _) = simplifier.simplify(c_diff);
+    let c = as_rational_const(&simplifier.context, c_diff)?;
+    if c.is_zero() {
+        return None;
+    }
+    // Linearity: `diff_u[u→2] − (rest + 2c)` must be the zero polynomial in x.
+    let at_two = substitute_expr_by_id(&mut simplifier.context, diff_u, u, two);
+    let two_c = simplifier
+        .context
+        .add(Expr::Number(&c * BigRational::from_integer(2.into())));
+    let predicted = simplifier.context.add(Expr::Add(rest, two_c));
+    let lin_check = simplifier.context.add(Expr::Sub(at_two, predicted));
+    let (lin_check, _) = simplifier.simplify(lin_check);
+    if !Polynomial::from_expr(&simplifier.context, lin_check, var)
+        .map(|p| p.is_zero())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+
+    // `g = −rest / c`. Require it non-constant of degree ≥ 2 (linear `g` and a
+    // constant `g` are handled correctly elsewhere).
+    let neg_rest = simplifier.context.add(Expr::Neg(rest));
+    let c_num = simplifier.context.add(Expr::Number(c));
+    let g = simplifier.context.add(Expr::Div(neg_rest, c_num));
+    let (g, _) = simplifier.simplify(g);
+    if !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+    match Polynomial::from_expr(&simplifier.context, g, var) {
+        Ok(p) if p.degree() >= 2 => {}
+        _ => return None,
+    }
+
+    // Solve both branches `f = g` and `f = −g`.
+    let neg_g = simplifier.context.add(Expr::Neg(g));
+    let (neg_g, _) = simplifier.simplify(neg_g);
+    let mut candidates: Vec<ExprId> = Vec::new();
+    for rhs in [g, neg_g] {
+        let branch = Equation {
+            lhs: f,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let (sol, _) = crate::solver_entrypoints_solve::solve(&branch, var, simplifier).ok()?;
+        match sol {
+            SolutionSet::Discrete(roots) => candidates.extend(roots),
+            SolutionSet::Empty => {}
+            _ => return None, // a non-discrete branch ⇒ out of scope
+        }
+    }
+
+    // Keep `r` iff `g(r) ≥ 0`, decided exactly (surd-aware). Dedup by value.
+    let x = simplifier.context.var(var);
+    let mut kept: Vec<ExprId> = Vec::new();
+    for r in candidates {
+        let g_at_r = substitute_expr_by_id(&mut simplifier.context, g, x, r);
+        let (g_at_r, _) = simplifier.simplify(g_at_r);
+        let sign = if let Some(q) = as_rational_const(&simplifier.context, g_at_r) {
+            if q.is_zero() {
+                ConstSign::Zero
+            } else if q > BigRational::zero() {
+                ConstSign::Positive
+            } else {
+                ConstSign::Negative
+            }
+        } else {
+            provable_const_sign(&simplifier.context, g_at_r)?
+        };
+        if matches!(sign, ConstSign::Negative) {
+            continue;
+        }
+        if !kept.iter().any(|&k| {
+            cas_ast::ordering::compare_expr(&simplifier.context, k, r) == std::cmp::Ordering::Equal
+        }) {
+            kept.push(r);
+        }
+    }
+    if kept.is_empty() {
+        Some(SolutionSet::Empty)
+    } else {
+        Some(SolutionSet::Discrete(kept))
+    }
+}
+
 /// Core of [`try_solve_polynomial_in_trig`]: treat `diff` as a polynomial of degree ≥ 2 in a single
 /// trig atom `sin(g)`/`cos(g)`/`tan(g)`, substitute `u = trig(g)`, solve `P(u) = 0`, and back-substitute
 /// each root through the periodic solver (range guard drops `|u| > 1`). Returns `None` if `diff` is not
@@ -7781,6 +7962,14 @@ fn solve_local_core_inner(
     // path reorients to `x = √(3·|x| − 2)`. Solve them by the `u = |x|` substitution
     // (with the `x² = |x|²` even-power unification) here first.
     if let Some(set) = try_solve_polynomial_in_abs(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A single `|f(x)|` term with a NON-CONSTANT quadratic-or-higher remainder
+    // (`x² + |x−1| − 3 = 0`, `|x−1| = 3 − x²`) is `|f| = g(x)`. Isolating the abs
+    // is unsound: the generic path solves only `f = g` (dropping `f = −g`) and
+    // skips `g ≥ 0`, returning a spurious root while missing a real one — or
+    // leaking a malformed residual. Solve both branches and keep `g(r) ≥ 0`.
+    if let Some(set) = try_solve_single_abs_equals_polynomial(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Equations that mix an exponential with its RECIPROCAL (`e^x + e^(−x) = 2`, `2^x − 3 + 2^(1−x) = 0`)
