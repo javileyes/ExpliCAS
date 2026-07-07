@@ -6043,6 +6043,19 @@ fn try_solve_inverse_trig_hyperbolic_equation(
         }
         // sinh is a bijection ℝ→ℝ: unconditional.
         "sinh" => reduce_and_solve(simplifier, "asinh"),
+        // Inverse hyperbolics as the OUTER function — the mirror of the
+        // inverse-trig arms above. asinh: ℝ→ℝ and atanh: (−1,1)→ℝ are
+        // bijections, so the forward function applies unconditionally
+        // (`tanh(c) ∈ (−1,1)` always lands back in atanh's domain). acosh's
+        // range is [0, ∞), so `acosh(x) = c` needs `c ≥ 0`; then the preimage
+        // `x = cosh(c) ≥ 1` is single (acosh is the non-negative branch, not
+        // even like the forward cosh).
+        "asinh" | "arcsinh" => reduce_and_solve(simplifier, "sinh"),
+        "atanh" | "arctanh" => reduce_and_solve(simplifier, "tanh"),
+        "acosh" | "arccosh" => match const_sign(simplifier, c)? {
+            ConstSign::Negative => Some(SolutionSet::Empty),
+            _ => reduce_and_solve(simplifier, "cosh"),
+        },
         // cosh(x)=c is even: c ≥ 1 → g = ±acosh(c) (two branches); c < 1 → ∅.
         "cosh" => {
             let c_minus_one = simplifier.context.add(Expr::Sub(c, one));

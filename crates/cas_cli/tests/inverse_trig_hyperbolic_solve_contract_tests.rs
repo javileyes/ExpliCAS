@@ -120,11 +120,38 @@ fn non_invertible_builtin_declines_to_a_residual_not_an_error() {
         solve_raw("arctan(x) = a"),
         (true, "solve(arctan(x) = a, x)".into())
     );
-    // The inverse hyperbolics (`asinh`, aliases) are defined builtins too.
+    // The inverse-reciprocal trig (`acot`/`asec`, which rewrite through
+    // `arctan(1/x)`/`arccos(1/x)`) are defined builtins the handler does not
+    // reduce, so they residualize rather than error.
     assert_eq!(
-        solve_raw("asinh(x) = 1"),
-        (true, "solve(asinh(x) = 1, x)".into())
+        solve_raw("acot(x) = 1"),
+        (true, "solve(arctan(1 / x) = 1, x)".into())
     );
+}
+
+#[test]
+fn inverse_hyperbolics_as_outer_function_solve() {
+    // Mirror of the inverse-trig arms: asinh: ℝ→ℝ and atanh: (−1,1)→ℝ are
+    // bijections, so the forward hyperbolic applies unconditionally.
+    assert_eq!(solve("asinh(x) = 1"), "{ sinh(1) }");
+    assert_eq!(solve("atanh(x) = 1/2"), "{ tanh(1/2) }");
+    // atanh has no threshold — every real c reduces (tanh(c) ∈ (−1,1)).
+    assert_eq!(solve("atanh(x) = 5"), "{ tanh(5) }");
+    // Bijection onto ℝ ⇒ even a symbolic RHS solves (was a residual before).
+    assert_eq!(solve("asinh(x) = a"), "{ sinh(a) }");
+    // The `arcsinh` input spelling resolves to the same handler.
+    assert_eq!(solve("arcsinh(x) = 1"), "{ sinh(1) }");
+    // Affine arguments compose through the reduce-to-canonical recursion.
+    assert_eq!(solve("asinh(2*x) = 1"), "{ 1/2·sinh(1) }");
+}
+
+#[test]
+fn acosh_is_gated_on_the_nonnegative_range() {
+    // acosh's range is [0, ∞): `acosh(x) = c` needs `c ≥ 0`, and the preimage
+    // `x = cosh(c) ≥ 1` is single (acosh is the non-negative branch).
+    assert_eq!(solve("acosh(x) = 2"), "{ cosh(2) }");
+    assert_eq!(solve("acosh(x) = 0"), "{ 1 }"); // cosh(0) = 1
+    assert_eq!(solve("acosh(x) = -1"), "No solution"); // c < 0, no real preimage
 }
 
 #[test]
