@@ -528,7 +528,11 @@ pub fn apart_decomposition_expr(
     integrand: ExprId,
     variable: &str,
 ) -> Option<ExprId> {
-    const APART_MIN_DENOMINATOR_DEGREE: usize = 2;
+    // A degree-1 denominator IS already a partial fraction: a PROPER `c/(x−r)`
+    // decomposes to itself, and an IMPROPER `(x+1)/(x−2)` to `1 + 3/(x−2)` via the
+    // polynomial-division prelude below. Declining it (min degree 2) left `apart`
+    // echoing an unevaluated `apart(1/(x−2))` residual instead of the answer.
+    const APART_MIN_DENOMINATOR_DEGREE: usize = 1;
 
     let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
         Expr::Div(numerator, denominator) => (*numerator, *denominator),

@@ -2072,6 +2072,18 @@ fn test_eval_apart_partial_fractions() {
         r("apart(1/(x*(x-1)^2))"),
         "1 / x + 1 / (x - 1)^2 - 1 / (x - 1)"
     );
+    // A degree-1 denominator IS already a partial fraction. `apart` used to
+    // decline it (min denominator degree 2) and echo an unevaluated
+    // `apart(1/(x-2))` residual; it now returns the fraction. An IMPROPER
+    // degree-1 fraction gets the polynomial part split off.
+    assert_eq!(r("apart(1/(x-2))"), "1 / (x - 2)");
+    assert_eq!(r("apart(5/(x-3))"), "5 / (x - 3)");
+    assert_eq!(r("apart(1/(2*x-4))"), "1/2 / (x - 2)");
+    assert_eq!(r("apart((x+1)/(x-2))"), "3 / (x - 2) + 1");
+    assert_eq!(r("apart((3*x+1)/(x+2))"), "3 - 5 / (x + 2)");
+    // A shared numerator/denominator factor cancels to a degree-1 pole, which
+    // now decomposes (returns to itself) instead of echoing the residual.
+    assert_eq!(r("apart((x+1)/(x^2-x-2))"), "1 / (x - 2)");
 }
 
 #[test]

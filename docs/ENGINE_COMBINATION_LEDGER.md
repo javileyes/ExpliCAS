@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 509 (newest first)
+Active entries: 510 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
@@ -124,6 +124,7 @@ Active entries: 509 (newest first)
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (wrong "No solution" en desigualdad poli-en-|x|): `solve(|x|²−3|x|+2<0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (gate de `try_solve_single_abs... | SOUNDNESS (wrong "No solution" con abs como FACTOR): `solve(|x|³−|x|<0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_multi_abs_polynomi... | SOUNDNESS (multi-abs + remanente polinómico → wrong "No solution"): `solve(x²+|x−1|+|x+1|<5)`
+- 2026-07-07 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | HONESTIDAD (apart de denominador grado-1 echoaba residual): `apart(1/(x-2))`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18576,3 +18577,18 @@ Active entries: 509 (newest first)
   - Los tres handlers de abs forman una jerarquía por complejidad del remanente: (1) 1-abs → sign-split en el cero (ciclos 5/6); (2) ≥2-abs remanente LINEAL → sum-of-abs por segmento lineal (cas_solver_core); (3) ≥2-abs remanente POLINÓMICO → partición + solve polinómico por segmento (este ciclo). Cada nivel gatea por su forma y delega el resto. La misma máquina de partición-en-breakpoints escala; solo cambia qué se resuelve por segmento (lineal cerrado vs polinómico recursivo).
   - Cuando la maquinaria por-segmento vive en cas_solver_core (linealidad autocontenida) pero el caso nuevo necesita el solver COMPLETO por segmento, el handler nuevo va en cas_solver y clipa segmentos vía `solve_relation_set(x≥lo)∩solve_relation_set(x≤hi)` — sin construir `Interval` a mano (sound, reusa el álgebra de conjuntos pública).
   - PRÓXIMO PELDAÑO: argumentos de abs NO afines (`|x²−1|+x<...`, breakpoints = raíces del arg) siguen declinando; y abs anidados. La partición-en-raíces-del-arg generaliza el breakpoint de afín a poli.
+
+## 2026-07-07 - HONESTIDAD (apart de denominador grado-1 echoaba residual): `apart(1/(x-2))`
+
+- area: `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decomposition_expr`, `APART_MIN_DENOMINATOR_DEGREE` 2→1)
+- status: `retained`. Under-answer/honestidad en el comando `apart`/`partfrac` (declinaba un input que YA es su propia descomposición).
+- capture:
+  - investment_class: honestidad (residual echo → respuesta). Hallado en el barrido cross-front del ciclo.
+  - cell: `apart(1/(x-2))` → `1/(x-2)` (era el residual `apart(1/(x-2))`), `apart(5/(x-3))` → `5/(x-3)`, `apart(1/(2x-4))` → `(1/2)/(x-2)`, IMPROPIA `apart((x+1)/(x-2))` → `3/(x-2)+1`, `apart((3x+1)/(x+2))` → `3−5/(x+2)`, y `apart((x+1)/(x²−x−2))` → `1/(x-2)` (el factor compartido cancela a un polo grado-1 que ahora se descompone). grado≥2 intacto; no-fracción (`apart(x²+1)`, `apart(sin(x))`) sigue como residual honesto (contrato pineado).
+  - causa raíz: `apart_decomposition_expr` exigía `denominator.degree() >= 2` — un denominador grado-1 es YA una fracción parcial (propia `c/(x−r)` se descompone a sí misma; impropia via el prólogo de división polinómica que ya existe → `q + r/(x−r)`). Al declinar, la `ApartRule` echoaba el `apart(...)` sin evaluar.
+  - alcance/riesgo de huella: `apart_decomposition_expr` tiene UN solo consumidor (el comando apart en factoring.rs); NO lo usa integración. Bajar el mínimo a 1 solo afecta apart → huella 0-delta (verificado). El prólogo de div-polinómica y el ladder clásico ya manejan grado-1 sin cambios.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip NUMÉRICO (la descomposición ≡ input en 5 puntos) + regresión de los casos grado≥2 y del residual honesto de no-fracción.
+  - retained learning:
+  - Un umbral de grado mínimo horneado (`>= 2`) en un descompositor a menudo declina el caso TRIVIAL que ya está en forma canónica (grado-1 = ya-descompuesto), produciendo un residual echo en vez de la identidad. Cuando un comando ECHOA su propio input como residual, sospechar un umbral que excluye el caso base — devolver el input es la respuesta correcta, no declinar.
+  - Antes de relajar un umbral en una función compartida, `grep` los consumidores: aquí `apart_decomposition_expr` es apart-only (no integración), así que el cambio es huella-safe. Un umbral en una función que integración TAMBIÉN usa habría necesitado gate por-consumidor.
+  - PRÓXIMO PELDAÑO: `apart(x+1)` (polinomio, sin denominador) sigue como residual — la rama `Expr::Div` lo excluye; devolver el polinomio sería más completo, pero es contrato pineado actual (decisión deliberada, no urgente). Y `limit(x·ln(x),x,0)=0` (0·∞ en punto finito por un lado) sigue declinando — capacidad de límites.
