@@ -878,6 +878,23 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    // Symbolic-ratio finite geometric (`sum(x^k, k, 0, n)`, `sum(r^k, k, 1, n)`):
+    // the numeric builders above decline a symbolic base, so this emits the
+    // closed form `(r^(n+1) − r^a)/(r − 1)`.
+    if let Some(candidate) = try_build_geometric_symbolic_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::GeometricPower,
+        });
+    }
+
     // Arithmetic-geometric `sum(c·k·r^k)`: a linear cofactor times a geometric power.
     if let Some(candidate) = try_build_arithmetic_geometric_sum(
         ctx,
@@ -1339,6 +1356,51 @@ pub(crate) fn try_build_geometric_rational_sum(
     let numerator = mul2_raw(ctx, coeff_num, diff);
     let one_minus_r = ctx.add(Expr::Number(BigRational::one() - &ratio));
     Some(ctx.add(Expr::Div(numerator, one_minus_r)))
+}
+
+/// Closed form of a finite geometric sum with a SYMBOLIC ratio base:
+/// `sum(r^k, k, a, n) = (r^(n+1) − r^a)/(r − 1)`. The numeric-ratio builders
+/// above own a rational base; this catches a symbolic or transcendental base
+/// (`x`, `r`, `π`, `x+1`), for which the ratio cannot be proven `≠ 1` — so the
+/// engine used to decline and echo `sum(r^k, k, 0, n)`. The formula's removable
+/// singularity at `r = 1` (true value `n − a + 1`) matches how the engine
+/// already simplifies through removable singularities (`(x²−1)/(x−1) → x+1`).
+pub(crate) fn try_build_geometric_symbolic_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+    // Summand `base^k` with `base` free of the index and NOT a rational constant
+    // (those keep the cleaner numeric-ratio form from the builders above).
+    let Expr::Pow(base, exp) = ctx.get(summand) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+    if !is_named_var(ctx, exp, var) {
+        return None;
+    }
+    if contains_named_var(ctx, base, var) {
+        return None;
+    }
+    if as_rational_const(ctx, base, 8).is_some() {
+        return None;
+    }
+
+    // (base^(n+1) − base^a) / (base − 1).
+    let one = ctx.num(1);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let base_np1 = ctx.add(Expr::Pow(base, end_plus_one));
+    let base_a = ctx.add(Expr::Pow(base, start));
+    let numerator = ctx.add(Expr::Sub(base_np1, base_a));
+    let one2 = ctx.num(1);
+    let denominator = ctx.add(Expr::Sub(base, one2));
+    Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
 /// Build the best available finite-product evaluation plan for `product(...)`.

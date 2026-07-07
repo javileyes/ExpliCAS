@@ -6381,3 +6381,28 @@ fn test_eval_multi_abs_polynomial_relation_partitions_at_breakpoints() {
     // Single abs stays with the sign-split handler.
     assert_eq!(r("solve(x^2 - 3*abs(x) + 2 < 0, x)"), "(-2, -1) U (1, 2)");
 }
+
+#[test]
+fn test_eval_finite_geometric_sum_with_symbolic_ratio() {
+    // A finite geometric sum with a SYMBOLIC ratio used to decline and echo
+    // `sum(r^k, k, 0, n)`; the numeric-ratio builders only handle a rational
+    // base. It now emits the closed form `(r^(n+1) - r^a)/(r - 1)` (removable
+    // singularity at r=1, matching how the engine simplifies through such holes).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("sum(r^k, k, 0, n)"), "(r^(n + 1) - 1) / (r - 1)");
+    assert_eq!(r("sum(r^k, k, 1, n)"), "(r^(n + 1) - r) / (r - 1)");
+    assert_eq!(r("sum(x^k, k, 0, n)"), "(x^(n + 1) - 1) / (x - 1)");
+    assert_eq!(r("sum((x+1)^k, k, 0, n)"), "((x + 1)^(n + 1) - 1) / x");
+    // A numeric ratio keeps the cleaner integer-base form; a numeric upper bound
+    // still expands directly; the arithmetic-geometric k·r^k is untouched.
+    assert_eq!(r("sum(2^k, k, 0, n)"), "2^(n + 1) - 1");
+    assert_eq!(r("sum(x^k, k, 0, 3)"), "x^3 + x^2 + x + 1");
+    assert_eq!(r("sum(k*r^k, k, 1, n)"), "sum(k·r^k, k, 1, n)");
+}

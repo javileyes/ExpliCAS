@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 510 (newest first)
+Active entries: 511 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
@@ -125,6 +125,7 @@ Active entries: 510 (newest first)
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (gate de `try_solve_single_abs... | SOUNDNESS (wrong "No solution" con abs como FACTOR): `solve(|x|³−|x|<0)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_multi_abs_polynomi... | SOUNDNESS (multi-abs + remanente polinómico → wrong "No solution"): `solve(x²+|x−1|+|x+1|<5)`
 - 2026-07-07 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | HONESTIDAD (apart de denominador grado-1 echoaba residual): `apart(1/(x-2))`
+- 2026-07-07 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_symbolic_sum... | CAPACIDAD (suma geométrica finita de razón SIMBÓLICA): `sum(r^k, k, 0, n)`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18592,3 +18593,19 @@ Active entries: 510 (newest first)
   - Un umbral de grado mínimo horneado (`>= 2`) en un descompositor a menudo declina el caso TRIVIAL que ya está en forma canónica (grado-1 = ya-descompuesto), produciendo un residual echo en vez de la identidad. Cuando un comando ECHOA su propio input como residual, sospechar un umbral que excluye el caso base — devolver el input es la respuesta correcta, no declinar.
   - Antes de relajar un umbral en una función compartida, `grep` los consumidores: aquí `apart_decomposition_expr` es apart-only (no integración), así que el cambio es huella-safe. Un umbral en una función que integración TAMBIÉN usa habría necesitado gate por-consumidor.
   - PRÓXIMO PELDAÑO: `apart(x+1)` (polinomio, sin denominador) sigue como residual — la rama `Expr::Div` lo excluye; devolver el polinomio sería más completo, pero es contrato pineado actual (decisión deliberada, no urgente). Y `limit(x·ln(x),x,0)=0` (0·∞ en punto finito por un lado) sigue declinando — capacidad de límites.
+
+## 2026-07-07 - CAPACIDAD (suma geométrica finita de razón SIMBÓLICA): `sum(r^k, k, 0, n)`
+
+- area: `crates/cas_math/src/summation_support.rs` (`try_build_geometric_symbolic_sum` nuevo, despachado tras los builders geométricos numéricos)
+- status: `retained`. Capacidad P1 (Fase 1, series). Cerró un residual echo.
+- capture:
+  - investment_class: capability (Fase 1, forma cerrada de serie). Hallado en el barrido cross-front.
+  - cell: `sum(r^k,k,0,n)` → `(r^(n+1)−1)/(r−1)` (era el residual `sum(r^k,k,0,n)`), `sum(r^k,k,1,n)` → `(r^(n+1)−r)/(r−1)`, `sum(x^k,k,0,n)` → `(x^(n+1)−1)/(x−1)`, `sum((x+1)^k,k,0,n)` → `((x+1)^(n+1)−1)/x`. Razón NUMÉRICA intacta (`2^k` → `2^(n+1)−1`); bound numérico expande (`sum(x^k,k,0,3)` → `x^3+x^2+x+1`); arit-geométrico `k·r^k` sin tocar.
+  - causa raíz: los builders geométricos finitos (`try_build_geometric_power_sum`, `_rational_sum`) usan `extract_geometric_term`, que devuelve una razón `BigRational` — solo NUMÉRICA. Una razón simbólica (`x`, `r`, `π`) no casa → declina.
+  - diseño: builder nuevo que casa `base^k` con `base` libre del índice y NO racional-constante (los numéricos mantienen su forma más limpia); emite `(base^(n+1) − base^a)/(base − 1)`. Despachado DESPUÉS de los numéricos (deferencia de forma) y antes del arit-geométrico.
+  - decisión de soundness (r=1): la forma `(r^(n+1)−1)/(r−1)` tiene una singularidad REMOVIBLE en r=1 (valor real n−a+1). Emitirla es consistente con cómo el engine YA simplifica a través de singularidades removibles (`simplify((x²−1)/(x−1)) → x+1` descarta el hueco en x=1 sin flag). No es un wrong-answer nuevo: es la MISMA convención de removibles que el engine ya aplica en todo el álgebra racional. (Alternativa piecewise `{n+1 si r=1}` = plomería de condicional, peldaño futuro si se decide flaggear.)
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip NUMÉRICO de las formas cerradas vs suma directa (r∈{2,3,½,−2,5,1.7}, n∈{0..7}, incl. `(x+1)^k`) — todas exactas.
+  - retained learning:
+  - Un extractor que devuelve un tipo NUMÉRICO (`BigRational`) es un techo silencioso de universalidad: casa `2^k` pero no `r^k`. El hermano simbólico (emite la forma cerrada estructural en vez de calcular un valor) es un ciclo barato de alto valor. Buscar extractores `-> BigRational`/`-> i64` en dominios donde la razón/exponente/coeficiente PODRÍA ser simbólico.
+  - Consistencia de convención > pureza aislada: emitir `(r^(n+1)−1)/(r−1)` es "sound" porque el engine YA descarta singularidades removibles en todo el álgebra racional; un handler que las flaggeara SOLO aquí sería inconsistente. Alinear con la convención global del engine, no inventar una local.
+  - PRÓXIMO PELDAÑO: arit-geométrico simbólico `sum(k·r^k,k,1,n)` (cofactor polinómico × geométrico simbólico) sigue declinando — el hermano simbólico de `try_convergent_infinite_arithmetic_geometric_sum` (que también es `-> BigRational`). Y `sum(c·r^k)` con coeficiente (mi builder es bare `r^k`).
