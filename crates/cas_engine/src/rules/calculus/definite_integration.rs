@@ -992,6 +992,92 @@ fn abs_sign_definite_rational_definite_integral_rewrite(
     definite_integration_rewrite(ctx, &stripped_call)
 }
 
+/// `N/(a² − x²)` (constant `N`, `a² > 0`) integrated over an interval strictly
+/// OUTSIDE `(−a, a)`. The elementary antiderivative is `atanh(x/a)/a`, real only
+/// on `(−a, a)`, so the FTC path attaches the domain condition `−a < x < a` and
+/// declines beyond it. But `1/(a² − x²) = −1/(x² − a²)`, whose log-form
+/// antiderivative `(1/2a)·ln|(x−a)/(x+a)|` is real on the whole pole-free
+/// interval — and the ordinary rational FTC machinery already evaluates that
+/// sibling correctly. Flip the sign shape into the `x² − a²` orientation
+/// (`N/(c0+c2·x²) = −N/((−c2)·x² − c0)`, an identity) and delegate.
+///
+/// Gated to intervals strictly outside `(−a, a)` (compared via squares, exact
+/// for irrational `a = √(a²)`): an interval inside keeps the elegant `atanh`
+/// form, and one straddling a pole still resolves to `undefined` downstream.
+fn atanh_form_outside_domain_definite_rewrite(
+    ctx: &mut Context,
+    call: &DefiniteIntegralCall,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> Option<Rewrite> {
+    let (DefiniteBound::Finite(lo), DefiniteBound::Finite(hi)) = (lower_bound, upper_bound) else {
+        return None;
+    };
+    let lo_r = lo.as_pure_rational()?.clone();
+    let hi_r = hi.as_pure_rational()?.clone();
+    let (low_r, high_r) = if lo_r <= hi_r {
+        (lo_r, hi_r)
+    } else {
+        (hi_r, lo_r)
+    };
+
+    // Integrand `N / D` with a var-free constant `N` and `D` a quadratic
+    // `c0 + c2·x²` (no linear term), a positive constant minus a positive
+    // multiple of `x²` — the `a² − x²` shape that yields the `atanh` form.
+    let Expr::Div(num, den) = ctx.get(call.target).clone() else {
+        return None;
+    };
+    as_rational_const(ctx, num)?;
+    let den_poly = Polynomial::from_expr(ctx, den, &call.var_name).ok()?;
+    if den_poly.degree() != 2 {
+        return None;
+    }
+    let coeff = |i: usize| {
+        den_poly
+            .coeffs
+            .get(i)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    let c0 = coeff(0);
+    let c1 = coeff(1);
+    let c2 = coeff(2);
+    if !c1.is_zero() || !c2.is_negative() || !c0.is_positive() {
+        return None;
+    }
+    // D = c0 + c2·x² = (−c2)·(a² − x²), with a² = c0 / (−c2) > 0.
+    let neg_c2 = -c2;
+    let a_squared = &c0 / &neg_c2;
+    // Interval strictly outside (−a, a): low > a OR high < −a, via squares so
+    // the check stays exact when `a` is irrational. Being outside also
+    // guarantees the interval is pole-free (the only poles sit at ±a).
+    let outside_right = low_r.is_positive() && &low_r * &low_r > a_squared;
+    let outside_left = high_r.is_negative() && &high_r * &high_r > a_squared;
+    if !(outside_right || outside_left) {
+        return None;
+    }
+
+    // Build `−N / ((−c2)·x² − c0)` directly (a subtraction, positive-leading —
+    // structurally the `x² − a²` sibling, so it will NOT collapse back to the
+    // `atanh` orientation) and delegate to the ordinary FTC path.
+    let two = ctx.num(2);
+    let x_squared = ctx.add(Expr::Pow(call.var_expr, two));
+    let lead_coeff = ctx.add(Expr::Number(neg_c2));
+    let lead = ctx.add(Expr::Mul(lead_coeff, x_squared));
+    let c0_expr = ctx.add(Expr::Number(c0));
+    let new_den = ctx.add(Expr::Sub(lead, c0_expr));
+    let new_num = ctx.add(Expr::Neg(num));
+    let flipped = ctx.add(Expr::Div(new_num, new_den));
+    let delegated = DefiniteIntegralCall {
+        target: flipped,
+        var_expr: call.var_expr,
+        var_name: call.var_name.clone(),
+        lower: call.lower,
+        upper: call.upper,
+    };
+    definite_integration_rewrite(ctx, &delegated)
+}
+
 pub(super) fn definite_integration_rewrite(
     ctx: &mut Context,
     call: &DefiniteIntegralCall,
@@ -1064,6 +1150,16 @@ pub(super) fn definite_integration_rewrite(
     // the ordinary rational machinery — `integrate(|1/x|, x, 1, 2) = ln(2)`.
     if let Some(rewrite) =
         abs_sign_definite_rational_definite_integral_rewrite(ctx, call, &lower_bound, &upper_bound)
+    {
+        return Some(rewrite);
+    }
+
+    // `N/(a² − x²)` over an interval entirely OUTSIDE (−a, a): the `atanh`
+    // antiderivative is real only inside (−a, a), so the FTC path declines
+    // there; the equal `−N/(x² − a²)` has a real log antiderivative off the
+    // poles. Rewrite and delegate (gated to outside; inside keeps `atanh`).
+    if let Some(rewrite) =
+        atanh_form_outside_domain_definite_rewrite(ctx, call, &lower_bound, &upper_bound)
     {
         return Some(rewrite);
     }

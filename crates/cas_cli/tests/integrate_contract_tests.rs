@@ -15657,3 +15657,75 @@ fn integrate_contract_divergent_improper_area_function_is_undefined() {
         "arctan(x)"
     );
 }
+
+/// `N/(a² − x²)` definite-integrated over an interval strictly OUTSIDE (−a, a):
+/// the `atanh` antiderivative is real only inside (−a, a), so the FTC path used
+/// to decline; the equal `−N/(x² − a²)` has a real log antiderivative off the
+/// poles. Numeric ground truths (Simpson, verified): `∫₂³ 1/(1−x²) = ½ln(2/3)`,
+/// `∫₃⁵ 1/(4−x²) = ¼ln(7/15)`, `∫₄⁵ 1/(9−x²) = ⅙ln(4/7)`.
+#[test]
+fn definite_rational_reciprocal_difference_of_squares_outside_atanh_domain() {
+    // Outside (−a, a), pole-free: now evaluates via the log form.
+    assert_eq!(
+        simplified_integral("integrate(1/(1-x^2), x, 2, 3)"),
+        "1/2 * ln(2/3)"
+    );
+    // Negative interval reflects (even integrand) then evaluates identically.
+    assert_eq!(
+        simplified_integral("integrate(1/(1-x^2), x, -3, -2)"),
+        "1/2 * ln(2/3)"
+    );
+    assert_eq!(
+        simplified_integral("integrate(1/(4-x^2), x, 3, 5)"),
+        "1/4 * ln(7/15)"
+    );
+    assert_eq!(
+        simplified_integral("integrate(1/(9-x^2), x, 4, 5)"),
+        "1/6 * ln(4/7)"
+    );
+    // Scaled leading coefficient: 1/(2−2x²) = (1/2)/(1−x²).
+    assert_eq!(
+        simplified_integral("integrate(1/(2-2*x^2), x, 2, 3)"),
+        "1/4 * ln(2/3)"
+    );
+    // Reversed bounds negate the oriented integral.
+    assert_eq!(
+        simplified_integral("integrate(1/(1-x^2), x, 3, 2)"),
+        "1/2 * ln(3/2)"
+    );
+}
+
+/// The gate is strict: an interval INSIDE (−a, a) keeps the elegant `atanh`
+/// form, a pole crossing stays `undefined`, and non-`a²−x²` shapes are left to
+/// their own owners (arctan for `a²+x²`, residual for a linear term).
+#[test]
+fn definite_rational_atanh_domain_gate_is_strict() {
+    // Inside (−a, a): the atanh antiderivative is real, keep it.
+    assert_eq!(
+        simplified_integral("integrate(1/(1-x^2), x, 0, 1/2)"),
+        "atanh(1/2)"
+    );
+    assert_eq!(
+        simplified_integral("integrate(1/(4-x^2), x, 0, 1)"),
+        "1/2 * atanh(1/2)"
+    );
+    // A pole strictly inside the interval: divergent, undefined.
+    assert_eq!(
+        simplified_integral("integrate(1/(1-x^2), x, 0, 2)"),
+        "undefined"
+    );
+    assert_eq!(
+        simplified_integral("integrate(1/(1/4-x^2), x, -2, 1/4)"),
+        "undefined"
+    );
+    // Not the a²−x² family: `a²+x²` is arctan, a linear term declines — the
+    // gate must not hijack either.
+    assert_eq!(
+        simplified_integral("integrate(1/(-1-x^2), x, 2, 3)"),
+        "arctan(2) - arctan(3)"
+    );
+    assert_eq!(
+        simplified_integral("integrate(1/(1-x-x^2), x, 2, 3)"),
+        "integrate(1 / (1 - x^2 - x), x, 2, 3)"
+    );
+}
