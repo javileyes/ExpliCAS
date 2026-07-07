@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 513 (newest first)
+Active entries: 514 (newest first)
 
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
@@ -128,6 +128,7 @@ Active entries: 513 (newest first)
 - 2026-07-07 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_symbolic_sum... | CAPACIDAD (suma geométrica finita de razón SIMBÓLICA): `sum(r^k, k, 0, n)`
 - 2026-07-07 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_arithmetic_geometric_s... | CAPACIDAD (suma aritmético-geométrica finita de razón SIMBÓLICA): `sum(k·r^k, k, 0, n)`
 - 2026-07-07 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_geometric_symbolic_sum... | CAPACIDAD (coeficiente en suma geométrica simbólica): `sum(c·r^k, k, 0, n)`
+- 2026-07-07 | `retained` | `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_ln_quotient_... | HONESTIDAD/PRESENTACIÓN (change-of-base con base/arg fraccionario): `ln(8)/ln(1/2) → −3`
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (`try_bilateral_limit_from_lateral_ag... | CAPACIDAD+EDUCATIVO (combinador bilateral de límites): DNE/±∞ desde los laterales
 - 2026-07-04 | `retained` | `crates/cas_math/src/limits_support.rs` (rama pura-Add en `sqrt_quadratic_min... | CAPACIDAD (mirror branch sqrt@−∞): `sqrt(a·x²+b·x) + linear` converge en −∞
 - 2026-07-04 | `retained` | `crates/cas_math/src/symbolic_integration_support.rs` (`polynomial_times_cons... | CAPACIDAD (integración poly×b^(m·x+c) con base racional y exponente afín)
@@ -18641,3 +18642,19 @@ Active entries: 513 (newest first)
   - retained learning:
   - "Peel de coeficiente opcional" es un patrón de extensión barato y recurrente: un builder que casa `Pow`/`Func` bare se generaliza a `c·(…)` con un match `Mul(c, …)` gateado por `!contains_var(c, index)`. El gate por el ÍNDICE (no por cualquier var) es lo que distingue coeficiente-constante (`c`, `y`) de cofactor (`k`) — el segundo va a otro builder.
   - PRÓXIMO PELDAÑO: coeficiente en el arit-geo (`sum(c·k·r^k)` simbólico — el numérico ya lo hace); cofactor cuadrático `sum(k²·r^k)`; y coeficiente simbólico sobre base NUMÉRICA (`sum(c·2^k)`, que ni el numérico ni el simbólico cierran).
+
+## 2026-07-07 - HONESTIDAD/PRESENTACIÓN (change-of-base con base/arg fraccionario): `ln(8)/ln(1/2) → −3`
+
+- area: `crates/cas_math/src/logarithm_inverse_support.rs` (`try_rewrite_ln_quotient_to_rational_expr` usa `eval_log_rational_full` + extractor de arg RACIONAL)
+- status: `retained`. Presentación exacta (constante foldeable dejada simbólica); afecta fronteras de inecuaciones exponenciales.
+- capture:
+  - investment_class: honestidad/presentación (constante racional decidible dejada sin foldear). Hallado en el barrido cross-front del ciclo.
+  - cell: `ln(8)/ln(1/2)` → `−3` (era `ln(8)/ln(1/2)`), `ln(1/8)/ln(2)` → `−3`, `ln(1/4)/ln(2)` → `−2`, `ln(16)/ln(1/2)` → `−4`, `ln(1/9)/ln(3)` → `−2`. Entero sigue foldeando (`ln(8)/ln(2)` → 3); irracional declina (`ln(7)/ln(2)`). Frontera de solve foldeada: `(1/2)^x<8` → `(−3,∞)` (era `(ln(8)/ln(1/2),∞)`), `(1/2)^x=4` → `{−2}`, `2·4^x=3·9^x` → `{−1/2}`.
+  - causa raíz: el folder `ln(c)/ln(b)=log_b(c)` extraía c,b como ENTEROS positivos (`ln_positive_integer_argument`) y usaba `eval_log_rational` (guard b>1). Un arg/base FRACCIONARIO (1/2, 1/8) → decline. Pero YA existía `eval_log_rational_full` (maneja bases/args racionales, `log_{1/2}(16)=−4`) — el folder no lo usaba.
+  - diseño: extractor `ln_positive_rational_argument` (usa `as_rational_const` → maneja `Number(1/2)` Y `Div(1,2)` crudo, lección de "usar as_rational_const para formas plegables") + `eval_log_rational_full`. Borré el `ln_positive_integer_argument` muerto.
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Verificación NUMÉRICA de las 8 fold-cases; 5 tests de contrato PRE-EXISTENTES actualizados (afirmaban la forma sin foldear — graduados a la constante exacta que sus propios comentarios ya declaraban); +2 tests nuevos (unit + CLI).
+  - retained learning:
+  - Un evaluador "full" existente + un consumidor que usa el "restringido" = fruta madura: `grep` los pares `eval_X` / `eval_X_full` y verifica que cada consumidor use el full. Aquí el folder usaba `eval_log_rational` (enteros) teniendo `eval_log_rational_full` (racionales) al lado — un techo de universalidad autoinfligido.
+  - Un extractor de literal (`Expr::Number`) falla en el árbol CRUDO donde `1/2` es `Div(1,2)`; el unit test (parse crudo) lo caza aunque el CLI (post-simplify) pase. Usar `as_rational_const` desde el principio para args que puedan ser fracciones — cazado por el unit test raw, no por el CLI.
+  - Cuando un fold nuevo mejora una constante, los tests que afirmaban la forma SIN foldear fallan con el valor mejorado — y sus comentarios normalmente YA declaran el valor exacto (`// = -2`). Es graduación esperada: actualizar al valor foldeado, no revertir.
+  - PRÓXIMO PELDAÑO: `ln(a)/ln(b)` con a,b enteros pero SIN relación de potencia racional (`ln(6)/ln(2)`) correctamente declina (irracional) — no tocar. Bases negativas/complejas fuera de dominio real.

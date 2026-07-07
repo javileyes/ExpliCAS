@@ -4354,8 +4354,10 @@ fn test_eval_two_different_base_exponential_divides_to_a_log() {
     // `(4/9)^x = 1 ⟹ x = 0` (the ratio is 1, so `ln(1) = 0`).
     assert_eq!(r("solve(4^x - 9^x = 0, x)"), "{ 0 }");
     assert_eq!(r("solve(2^x - 5^x = 0, x)"), "{ 0 }");
-    // Non-unit coefficients ⟹ a genuine log.
-    assert_eq!(r("solve(2*4^x = 3*9^x, x)"), "{ ln(3/2) / ln(4/9) }");
+    // Non-unit coefficients ⟹ a genuine log. `ln(3/2)/ln(4/9)` folds to the
+    // exact rational −1/2 (`4/9 = (2/3)²`, `3/2 = (2/3)⁻¹`); a truly irrational
+    // ratio (`ln(1/5)/ln(2/3)`, distinct primes) stays symbolic.
+    assert_eq!(r("solve(2*4^x = 3*9^x, x)"), "{ -1/2 }");
     assert_eq!(r("solve(5*2^x = 3^x, x)"), "{ ln(1/5) / ln(2/3) }");
     // SOUNDNESS: `(M/N)^x > 0`, so a non-positive ratio has no real solution.
     assert_eq!(r("solve(4^x + 9^x = 0, x)"), "No solution");
@@ -4388,8 +4390,8 @@ fn test_eval_exponential_reciprocal_polynomial_clears_the_reciprocal() {
     assert_eq!(r("solve(e^x + 2*e^(-x) = 3, x)"), "{ 0, ln(2) }");
     // An affine exponent (`2^(1−x) = 2·2^(−x)`) folds the `2` into the coefficient.
     assert_eq!(r("solve(2^x - 3 + 2^(1-x) = 0, x)"), "{ 0, 1 }");
-    // `2^x + 2^(−x) = 5/2 ⟹ u ∈ {1/2, 2} ⟹ x ∈ {−1, 1}`.
-    assert_eq!(r("solve(2^x + 2^(-x) = 5/2, x)"), "{ ln(1/2) / ln(2), 1 }");
+    // `2^x + 2^(−x) = 5/2 ⟹ u ∈ {1/2, 2} ⟹ x ∈ {−1, 1}` (`ln(1/2)/ln(2)` folds to −1).
+    assert_eq!(r("solve(2^x + 2^(-x) = 5/2, x)"), "{ -1, 1 }");
     // `cosh(x) ≥ 1` always, so `= 1/2·2 = 1` (i.e. sum `= 1`) has NO real solution.
     assert_eq!(r("solve(e^x + e^(-x) = 1, x)"), "No solution");
     // SURD-discriminant roots: BOTH `u = 2 ± √3` are provably positive, so both back-substitute. The
@@ -4423,24 +4425,25 @@ fn test_eval_fractional_base_exponential_inequality_direction() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
-    // (1/2)^x > 4 ⟺ x < -2  (ln(4)/ln(1/2) = -2).
-    assert_eq!(r("(1/2)^x>4"), "(-infinity, ln(4) / ln(1/2))");
-    assert_eq!(r("(1/2)^x<1/4"), "(ln(1/4) / ln(1/2), infinity)"); // x > 2
-    assert_eq!(r("(1/2)^x>=2"), "(-infinity, ln(2) / ln(1/2)]"); // x <= -1
-    assert_eq!(r("0.3^x<0.09"), "(ln(9/100) / ln(3/10), infinity)"); // x > 2
-    assert_eq!(r("(1/3)^x>1/9"), "(-infinity, ln(1/9) / ln(1/3))"); // x < 2
-                                                                    // Controls: base > 1 keeps direction; equations are never flipped.
+    // (1/2)^x > 4 ⟺ x < -2. The change-of-base boundary `ln(c)/ln(b)` folds to
+    // the exact rational for these fractional-base/argument pairs.
+    assert_eq!(r("(1/2)^x>4"), "(-infinity, -2)");
+    assert_eq!(r("(1/2)^x<1/4"), "(2, infinity)"); // x > 2
+    assert_eq!(r("(1/2)^x>=2"), "(-infinity, -1]"); // x <= -1
+    assert_eq!(r("0.3^x<0.09"), "(2, infinity)"); // x > 2 (9/100 = (3/10)²)
+    assert_eq!(r("(1/3)^x>1/9"), "(-infinity, 2)"); // x < 2
+                                                    // Controls: base > 1 keeps direction; equations are never flipped.
     assert_eq!(r("2^x>4"), "(2, infinity)");
     assert_eq!(r("2^x<4"), "(-infinity, 2)");
     assert_eq!(r("2^x>=8"), "[3, infinity)");
-    assert_eq!(r("(1/2)^x=4"), "{ ln(4) / ln(1/2) }");
+    assert_eq!(r("(1/2)^x=4"), "{ -2 }");
     assert_eq!(r("2^x=4"), "{ 2 }");
     // SOUNDNESS: an ADDITIVE/scaled single exponential `a*base^x + c {op} k` is isolated to the pure
     // `base^x {op'} (k-c)/a` and solved by the terminal for EVERY base — including a fractional base
     // with a positive threshold (`(1/2)^x - 4 > 0 -> (1/2)^x > 4`) or a negative threshold
     // (`(1/2)^x + 1 > 0 -> (1/2)^x > -1 -> all reals`). The substitution path would decline a
     // fractional base to a residual, so the isolation runs first.
-    assert_eq!(r("(1/2)^x-4>0"), "(-infinity, ln(4) / ln(1/2))"); // x < -2
+    assert_eq!(r("(1/2)^x-4>0"), "(-infinity, -2)"); // x < -2
     assert_eq!(r("(1/2)^x-1>0"), "(-infinity, 0)");
     assert_eq!(r("(1/2)^x+1>0"), "All real numbers");
     assert_eq!(r("(1/2)^x+1<0"), "No solution");
@@ -6450,4 +6453,31 @@ fn test_eval_finite_arithmetic_geometric_sum_with_symbolic_ratio() {
     assert_eq!(r("sum(k*r^k, k, 2, n)"), "sum(k·r^k, k, 2, n)");
     // The pure geometric sum (cycle sibling) is unaffected.
     assert_eq!(r("sum(r^k, k, 0, n)"), "(r^(n + 1) - 1) / (r - 1)");
+}
+
+#[test]
+fn test_eval_ln_quotient_change_of_base_folds_fractional_bases() {
+    // `ln(c)/ln(b) = log_b(c)` now folds for reciprocal/fractional rationals
+    // (a negative rational), not just integer-power pairs. It used to leak
+    // `ln(8)/ln(1/2)` into a solve boundary as `(ln(8)/ln(1/2), inf)` instead of
+    // the folded `(-3, inf)`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("ln(8)/ln(1/2)"), "-3");
+    assert_eq!(r("ln(1/8)/ln(2)"), "-3");
+    assert_eq!(r("ln(1/4)/ln(2)"), "-2");
+    assert_eq!(r("ln(16)/ln(1/2)"), "-4");
+    // Integer-power pairs still fold; irrational ratios still decline.
+    assert_eq!(r("ln(8)/ln(2)"), "3");
+    assert_eq!(r("ln(8)/ln(4)"), "3/2");
+    assert_eq!(r("ln(7)/ln(2)"), "ln(7) / ln(2)");
+    // The exponential-inequality boundary now folds to the exact rational.
+    assert_eq!(r("solve((1/2)^x < 8, x)"), "(-3, infinity)");
+    assert_eq!(r("solve((1/3)^x > 9, x)"), "(-infinity, -2)");
 }
