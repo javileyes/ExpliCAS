@@ -6448,8 +6448,9 @@ fn test_eval_finite_arithmetic_geometric_sum_with_symbolic_ratio() {
         r("sum(k*x^k, k, 1, n)"),
         "x·(n·x^(n + 1) + x^n·(-n - 1) + 1) / (1 - x)^2"
     );
-    // Out of scope stays residual: a degree-2 cofactor, and a lower bound >= 2.
-    assert_eq!(r("sum(k^2*r^k, k, 1, n)"), "sum(k^2·r^k, k, 1, n)");
+    // The degree-2 cofactor `k^2*r^k` is now closed by its own sibling builder
+    // (see the quadratic-geometric contract test); a lower bound >= 2 still
+    // stays a residual (needs a symbolic head correction).
     assert_eq!(r("sum(k*r^k, k, 2, n)"), "sum(k·r^k, k, 2, n)");
     // The pure geometric sum (cycle sibling) is unaffected.
     assert_eq!(r("sum(r^k, k, 0, n)"), "(r^(n + 1) - 1) / (r - 1)");
@@ -6480,4 +6481,39 @@ fn test_eval_ln_quotient_change_of_base_folds_fractional_bases() {
     // The exponential-inequality boundary now folds to the exact rational.
     assert_eq!(r("solve((1/2)^x < 8, x)"), "(-3, infinity)");
     assert_eq!(r("solve((1/3)^x > 9, x)"), "(-infinity, -2)");
+}
+
+#[test]
+fn test_eval_finite_quadratic_geometric_sum_with_symbolic_ratio() {
+    // `sum(k^2*r^k)` with a symbolic ratio: the numeric arithmetic-geometric
+    // builder handles a rational ratio, but the symbolic case declined. It now
+    // emits the `(1-r)^3` closed form (verified numerically: at r=2, n=3 -> 90).
+    // The formula is large, so the SumRule must be budget-exempt or it is dropped.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("sum(k^2*r^k, k, 1, n)"),
+        "r·(r^(n + 1)·(2·n^2 + 2·n - 1) + r + 1 - n^2·r^(n + 2) - r^n·(n + 1)^2) / (1 - r)^3"
+    );
+    assert_eq!(
+        r("sum(k^2*x^k, k, 0, n)"),
+        "x·(x^(n + 1)·(2·n^2 + 2·n - 1) + x + 1 - n^2·x^(n + 2) - x^n·(n + 1)^2) / (1 - x)^3"
+    );
+    // Siblings unchanged: degree-1 arith-geo, pure geometric, numeric ratio,
+    // Faulhaber, and numeric-bound sums.
+    assert_eq!(
+        r("sum(k*r^k, k, 1, n)"),
+        "r·(n·r^(n + 1) + r^n·(-n - 1) + 1) / (1 - r)^2"
+    );
+    assert_eq!(r("sum(r^k, k, 0, n)"), "(r^(n + 1) - 1) / (r - 1)");
+    assert_eq!(r("sum(k^2, k, 1, n)"), "1/6·n·(n + 1)·(2·n + 1)");
+    assert_eq!(r("sum(k, k, 1, 10)"), "55");
+    // A degree-3 cofactor stays a residual.
+    assert_eq!(r("sum(k^3*r^k, k, 1, n)"), "sum(k^3·r^k, k, 1, n)");
 }

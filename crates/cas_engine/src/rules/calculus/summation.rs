@@ -30,7 +30,11 @@ define_rule!(
         let desc = render_sum_evaluation_desc(&plan.kind, &plan.call, |id| {
             format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
         });
-        Some(Rewrite::new(result).desc(desc))
+        // A closed form for `sum(...)` is THE evaluation, but it can be far larger
+        // than the compact `sum(...)` call it replaces (e.g. the quadratic-geometric
+        // `(1−r)³` form) — exempt it from the anti-worsen node budget, like the
+        // det/Wronskian rules, so a valid closed form is never dropped for size.
+        Some(Rewrite::new(result).desc(desc).budget_exempt())
     }
 );
 

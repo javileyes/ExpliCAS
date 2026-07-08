@@ -927,6 +927,22 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    // Symbolic-ratio quadratic-geometric (`sum(k²·r^k, k, 0, n)`): a `k²` cofactor
+    // times a symbolic-base geometric power, emitting the `(1 − r)³` closed form.
+    if let Some(candidate) = try_build_quadratic_geometric_symbolic_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::GeometricPower,
+        });
+    }
+
     // Linearity over a sum of geometric / arithmetic-geometric terms (the distributed affine
     // cofactor `(αk+β)·r^k` the engine expands to `r^k + α·k·r^(k+1)`).
     if let Some(candidate) = try_build_geometric_additive_sum(
@@ -1505,6 +1521,94 @@ pub(crate) fn try_build_arithmetic_geometric_symbolic_sum(
     let one_minus_r = ctx.add(Expr::Sub(one, base));
     let two = ctx.num(2);
     let denominator = ctx.add(Expr::Pow(one_minus_r, two)); // (1 − r)²
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+/// If `e = base^k` (exponent is the index `var`, `base` free of the index and not
+/// a rational constant), return `base`; spots the geometric factor of an
+/// arithmetic-geometric summand with a symbolic ratio.
+fn symbolic_geometric_base(ctx: &Context, e: ExprId, var: &str) -> Option<ExprId> {
+    let Expr::Pow(b, ex) = ctx.get(e) else {
+        return None;
+    };
+    let (b, ex) = (*b, *ex);
+    (is_named_var(ctx, ex, var)
+        && !contains_named_var(ctx, b, var)
+        && as_rational_const(ctx, b, 8).is_none())
+    .then_some(b)
+}
+
+/// True when `e = k^power` — the index `var` raised to the integer `power`.
+fn is_index_to_power(ctx: &Context, e: ExprId, var: &str, power: i64) -> bool {
+    let Expr::Pow(b, ex) = ctx.get(e) else {
+        return false;
+    };
+    let (b, ex) = (*b, *ex);
+    is_named_var(ctx, b, var)
+        && as_rational_const(ctx, ex, 8)
+            .is_some_and(|q| q == num_rational::BigRational::from_integer(power.into()))
+}
+
+/// Closed form of a finite quadratic-geometric sum with a SYMBOLIC ratio:
+/// `sum(k²·r^k, k, a, n) = r·[(1+r) − (n+1)²·r^n + (2n²+2n−1)·r^(n+1) − n²·r^(n+2)]/(1−r)³`
+/// for `a ∈ {0, 1}` (the `k = 0` term is zero). The numeric arithmetic-geometric
+/// builder handles a rational ratio; this catches the symbolic base. The removable
+/// singularity at `r = 1` (true value `n(n+1)(2n+1)/6`) matches the engine's global
+/// removable-singularity convention.
+pub(crate) fn try_build_quadratic_geometric_symbolic_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+    let a = crate::expr_extract::extract_i64_integer(ctx, start)?;
+    if a != 0 && a != 1 {
+        return None;
+    }
+    // Summand `k² · base^k` (either factor order).
+    let Expr::Mul(l, r) = ctx.get(summand) else {
+        return None;
+    };
+    let (l, r) = (*l, *r);
+    let base = if is_index_to_power(ctx, l, var, 2) {
+        symbolic_geometric_base(ctx, r, var)?
+    } else if is_index_to_power(ctx, r, var, 2) {
+        symbolic_geometric_base(ctx, l, var)?
+    } else {
+        return None;
+    };
+
+    // r·[(1+r) − (n+1)²·r^n + (2n²+2n−1)·r^(n+1) − n²·r^(n+2)] / (1−r)³.
+    let n = end;
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let n_plus_1 = ctx.add(Expr::Add(n, one));
+    let n_plus_2 = ctx.add(Expr::Add(n_plus_1, one));
+    let n_sq = ctx.add(Expr::Pow(n, two));
+    let n_plus_1_sq = ctx.add(Expr::Pow(n_plus_1, two));
+    // 2n² + 2n − 1.
+    let two_n_sq = mul2_raw(ctx, two, n_sq);
+    let two_n = mul2_raw(ctx, two, n);
+    let two_nsq_plus_2n = ctx.add(Expr::Add(two_n_sq, two_n));
+    let coeff_mid = ctx.add(Expr::Sub(two_nsq_plus_2n, one));
+    let r_pow_n = ctx.add(Expr::Pow(base, n));
+    let r_pow_np1 = ctx.add(Expr::Pow(base, n_plus_1));
+    let r_pow_np2 = ctx.add(Expr::Pow(base, n_plus_2));
+    let t1 = ctx.add(Expr::Add(one, base)); // 1 + r
+    let t2 = mul2_raw(ctx, n_plus_1_sq, r_pow_n); // (n+1)²·r^n
+    let t3 = mul2_raw(ctx, coeff_mid, r_pow_np1); // (2n²+2n−1)·r^(n+1)
+    let t4 = mul2_raw(ctx, n_sq, r_pow_np2); // n²·r^(n+2)
+    let inner = ctx.add(Expr::Sub(t1, t2));
+    let inner = ctx.add(Expr::Add(inner, t3));
+    let inner = ctx.add(Expr::Sub(inner, t4));
+    let numerator = mul2_raw(ctx, base, inner);
+    let one_minus_r = ctx.add(Expr::Sub(one, base));
+    let three = ctx.num(3);
+    let denominator = ctx.add(Expr::Pow(one_minus_r, three)); // (1 − r)³
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 

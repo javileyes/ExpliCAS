@@ -490,6 +490,7 @@ fn budget_exempt_allowlist() {
         "expansion.rs",        // SmallMultinomialExpansionRule (pred_terms≤35, n≤4)
         "matrix_ops.rs",       // MatrixMultiplyRule (MAX_N=16, output cells≤256, inner≤16)
         "factoring.rs",        // WronskianRule (function count ≤ 6 ⇒ ≤6×6 determinant)
+        "summation.rs", // SumRule (max_span=1000 cap; closed forms are fixed-size structural)
     ];
 
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));

@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 514 (newest first)
+Active entries: 515 (newest first)
 
+- 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18658,3 +18659,18 @@ Active entries: 514 (newest first)
   - Un extractor de literal (`Expr::Number`) falla en el árbol CRUDO donde `1/2` es `Div(1,2)`; el unit test (parse crudo) lo caza aunque el CLI (post-simplify) pase. Usar `as_rational_const` desde el principio para args que puedan ser fracciones — cazado por el unit test raw, no por el CLI.
   - Cuando un fold nuevo mejora una constante, los tests que afirmaban la forma SIN foldear fallan con el valor mejorado — y sus comentarios normalmente YA declaran el valor exacto (`// = -2`). Es graduación esperada: actualizar al valor foldeado, no revertir.
   - PRÓXIMO PELDAÑO: `ln(a)/ln(b)` con a,b enteros pero SIN relación de potencia racional (`ln(6)/ln(2)`) correctamente declina (irracional) — no tocar. Bases negativas/complejas fuera de dominio real.
+
+## 2026-07-08 - CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
+
+- area: `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_symbolic_sum` nuevo) + `crates/cas_engine/src/rules/calculus/summation.rs` (SumRule `.budget_exempt()`) + allowlist de budget-exempt
+- status: `retained`. Capacidad P1 (Fase 1, series). Cierra el peldaño cofactor-cuadrático de la tanda de series.
+- capture:
+  - investment_class: capability (Fase 1, series). Peldaño documentado.
+  - cell: `sum(k²·r^k,k,1,n)` → `r·(r^(n+1)(2n²+2n−1) + r + 1 − n²r^(n+2) − r^n(n+1)²)/(1−r)³` (era residual), `sum(k²·x^k,k,0,n)` con x. Razón NUMÉRICA intacta (`k²·2^k`); degree-1 `k·r^k`, geométrica, Faulhaber `k²`, bound numérico — todos intactos. `k³·r^k` (degree-3) declina.
+  - causa raíz: (1) los builders arit-geo numéricos usan `decompose_arithmetic_geometric` → razón `BigRational`; base simbólica declina. (2) BUG DESCUBIERTO: incluso con el builder, el SumRule DEJABA CAER la reescritura — la forma cerrada `(1−r)³` es GRANDE y excedía el presupuesto anti-worsen de nodos (los cierres previos geométrica/arit-geo-degree-1 eran suficientemente pequeños para pasar).
+  - diseño: builder que casa `k²·base^k` (`is_index_to_power(·,2)` + `symbolic_geometric_base`, cualquier orden), emite la forma `(1−r)³`. + SumRule `.budget_exempt()` (como det/Wronskian) — una forma cerrada de `sum(...)` ES la evaluación aunque sea transitoriamente más grande que el `sum(...)` compacto. + añadido `summation.rs` al allowlist de budget-exempt (guard: max_span=1000, forma cerrada fixed-size).
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta (el budget_exempt NO cambió ningún sum de las fixtures — ya pasaban). Round-trip NUMÉRICO (r∈{2,3,½,−2,1.5,5,−1.5}, n∈{0..10}) exacto. Actualizado 1 test previo (`k²·r^k` era "out of scope"→graduado).
+  - retained learning:
+  - **Un builder correcto puede fallar silenciosamente en el PRESUPUESTO anti-worsen del rule engine**: una reescritura `sum(...)` → forma-cerrada-grande se DESCARTA por tamaño de nodos aunque sea la respuesta. Debug: instrumentar el builder (llega al `Some`) confirmó que el fallo era DOWNSTREAM (consumo del plan), no en el match. Los cierres previos de la misma familia pasaron por ser más pequeños — el techo de tamaño es invisible hasta que una forma cerrada crece.
+  - `.budget_exempt()` en una rule REQUIERE registrarla en el allowlist (`inv_trig_n_angle_tests::budget_exempt_allowlist` escanea `.budget_exempt()` en los ficheros de reglas) — falla en test, no en runtime (lección `new-engine-function-wiring-gotchas` confirmada para budget_exempt). Guard requerido: MAX_N/output-cap/input-cap.
+  - PRÓXIMO PELDAÑO: cofactor afín/cuadrático general `(αk²+βk+γ)r^k` simbólico (combinar los tres builders por linealidad); cofactor `k³`; coeficiente en arit-geo; lower bound a≥2.
