@@ -1816,6 +1816,100 @@ fn try_solve_sum_of_two_radicals_equation(
     }
 }
 
+/// Solve a SINGLE radical equal to a polynomial, `√f = g` with `f` a polynomial of
+/// degree ≥ 2 and `g` a polynomial in the variable (`√(5x²+9x−2) = 3x`). The
+/// isolation core squares and then MIS-FILTERS several `√(quadratic) = c·x`
+/// monomial-RHS forms: `√(5x²+9x−2) = 3x` returns a wrong "No solution" (true
+/// `{1/4, 2}`) and `√(5x²+9x) = 3x` drops `9/4`. Square exactly to the polynomial
+/// `f − g² = 0`, solve it, and keep each root `r` with `g(r) ≥ 0` (the only
+/// extraneous-root filter: at a root `f(r) = g(r)² ≥ 0` already, and `√f(r) =
+/// |g(r)| = g(r)` iff `g(r) ≥ 0`).
+///
+/// Gated to a degree-≥2 radicand so the common `√(linear) = …` forms keep their
+/// existing (correct) isolation path (no huella churn), and to RATIONAL candidate
+/// roots (a surd candidate declines — the exact-sign verification of a surd root is
+/// a follow-up, matching the sum-of-radicals scope). `√f = √g` declines (the `g`
+/// side is not a polynomial), leaving it to its own owner.
+fn try_solve_single_radical_equals_polynomial(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Signed;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    let (lhs, _) = simplifier.simplify(eq.lhs);
+    let (rhs, _) = simplifier.simplify(eq.rhs);
+    // Identify the `√f` side (a bare `Pow(radicand, 1/2)`) and the polynomial `g` side.
+    let (radicand, g_expr) = if let Some(rad) = as_sqrt_radicand(&simplifier.context, lhs) {
+        (rad, rhs)
+    } else if let Some(rad) = as_sqrt_radicand(&simplifier.context, rhs) {
+        (rad, lhs)
+    } else {
+        return None;
+    };
+    if !contains_var(&simplifier.context, radicand, var) {
+        return None;
+    }
+    // `√f = √g` (both radicals) belongs to its own owner, not here.
+    if as_sqrt_radicand(&simplifier.context, g_expr).is_some() {
+        return None;
+    }
+    let f_poly = Polynomial::from_expr(&simplifier.context, radicand, var).ok()?;
+    let g_poly = Polynomial::from_expr(&simplifier.context, g_expr, var).ok()?;
+    // Degree-1 radicands (`√(x+1) = 2`) are handled correctly by the isolation path —
+    // stay off them to avoid huella churn. This handler owns the degree-≥2 radicands
+    // the isolation core mis-filters.
+    if f_poly.degree() < 2 {
+        return None;
+    }
+
+    // Square: `√f = g ⟹ f = g²`. Solve the polynomial `f − g² = 0`.
+    let diff_poly = f_poly.sub(&g_poly.mul(&g_poly));
+    if diff_poly.degree() == 0 {
+        // A nonzero constant `f − g²` has no root (`√f = g` has no solution); the zero
+        // polynomial is the `f ≡ g²` identity — a continuum we cannot enumerate.
+        return if diff_poly.is_zero() {
+            None
+        } else {
+            Some(SolutionSet::Empty)
+        };
+    }
+    let poly_expr = diff_poly.to_expr(&mut simplifier.context);
+    let zero = simplifier.context.num(0);
+    let poly_eq = Equation {
+        lhs: poly_expr,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+    let (sol, _) = crate::solver_entrypoints_solve::solve(&poly_eq, var, simplifier).ok()?;
+    let candidates = match sol {
+        SolutionSet::Discrete(roots) => roots,
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        _ => return None,
+    };
+
+    // Keep each root where `g(r) ≥ 0` (the extraneous-root filter). Rational scope.
+    let mut kept: Vec<ExprId> = Vec::new();
+    for r in candidates {
+        let rr = as_rational_const(&simplifier.context, r)?; // non-rational ⇒ decline (scope)
+        if !g_poly.eval(&rr).is_negative() {
+            kept.push(r);
+        }
+    }
+    if kept.is_empty() {
+        Some(SolutionSet::Empty)
+    } else {
+        Some(SolutionSet::Discrete(kept))
+    }
+}
+
 /// Shared core for "equation is a polynomial in an invertible atom `g(x)`": given
 /// the equation already rewritten as `u_expr = 0` in the fresh variable `u_var`
 /// (the atom replaced by `u`), require degree ≥ 2 in `u`, solve for `u`, then
@@ -8699,6 +8793,12 @@ fn solve_local_core_inner(
     // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks
     // the same isolation residual; reduce by squaring and verify exactly.
     if let Some(set) = try_solve_sum_of_two_radicals_equation(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // A single radical `√(quadratic+) = polynomial` (`√(5x²+9x−2) = 3x`): the
+    // isolation core mis-filters after squaring (wrong "No solution", or a dropped
+    // root). Square to `f − g² = 0`, solve, and keep roots with `g(r) ≥ 0`.
+    if let Some(set) = try_solve_single_radical_equals_polynomial(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Radical INEQUALITIES `√f {<,≤,>,≥} g`: solve by the correct case split,

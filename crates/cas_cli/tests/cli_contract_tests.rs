@@ -1307,6 +1307,44 @@ fn test_eval_sum_of_two_radicals_equation_solves_and_verifies() {
 }
 
 #[test]
+fn test_eval_single_radical_equals_polynomial_squares_and_verifies() {
+    // `√(quadratic) = polynomial` (`√(5x²+9x−2) = 3x`): the isolation core
+    // mis-filtered after squaring — a wrong "No solution" (true `{1/4, 2}`) or a
+    // dropped root (`√(5x²+9x) = 3x → {0}`, missing `9/4`). Square exactly to
+    // `f − g² = 0`, solve, and keep roots with `g(r) ≥ 0`. Cross-checked vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // The confirmed wrong-answers, now fixed.
+    assert_eq!(r("solve(sqrt(5*x^2+9*x-2) = 3*x, x)"), "{ 1/4, 2 }");
+    assert_eq!(r("solve(sqrt(5*x^2+9*x) = 3*x, x)"), "{ 0, 9/4 }");
+    assert_eq!(r("solve(sqrt(x^2-4) = x-1, x)"), "{ 5/2 }");
+    // `g(r) < 0` extraneous roots dropped: `√(6x²+x−1) = 2x` has candidates {1/2, −1};
+    // only 1/2 has `2x ≥ 0`.
+    assert_eq!(r("solve(sqrt(6*x^2+x-1) = 2*x, x)"), "{ 1/2 }");
+    // Squared quadratic with complex reduced roots, and a constant `f − g²`, stay
+    // "No solution".
+    assert_eq!(r("solve(sqrt(9*x^2+1) = 3*x, x)"), "No solution");
+    assert_eq!(r("solve(sqrt(x^2+5*x+6) = x+1, x)"), "No solution");
+
+    // NO REGRESSION: previously-correct degree-2 radicands (rational and surd
+    // roots), degree-1 radicands (isolation path), and the perfect-square identity
+    // are unchanged.
+    assert_eq!(r("solve(sqrt(2*x^2+x) = 2*x, x)"), "{ 0, 1/2 }");
+    assert_eq!(r("solve(sqrt(x^2+7*x) = x+3, x)"), "{ 9 }");
+    assert_eq!(
+        r("solve(sqrt(3*x^2+5*x-2) = 2*x, x)"),
+        "{ 1/2·(5 - sqrt(17)), 1/2·(sqrt(17) + 5) }"
+    );
+    assert_eq!(r("solve(sqrt(x+1) = 2, x)"), "{ 3 }");
+}
+
+#[test]
 fn test_eval_radical_inequality_keeps_argument_domain() {
     // `sqrt(g(x)) {<,<=} c` requires g(x) >= 0, but for a COMPOUND argument the
     // engine dropped that domain, returning e.g. `sqrt(x-1) < 3 → (-inf, 10)`
@@ -1406,8 +1444,12 @@ fn test_eval_radical_inequality_fractional_constant_and_degenerate() {
             "sqrt(x^2-4) <= (1/2)*x+5",
             "[2/3·(5 - 4·sqrt(7)), -2] U [2, 2/3·(4·sqrt(7) + 5)]",
         ),
-        // Boundary touch with fractional g: `√(9-x²) = (1/3)x-1` at x=3 (`√0=0`).
-        ("sqrt(-x^2+9) <= (1/3)*x-1", "{ 3 }"),
+        // Boundary touch with fractional g: `√(9-x²) = (1/3)x-1` at x=3 (`√0=0`). The
+        // single-radical equation solver now resolves this boundary (it previously
+        // leaked, so the non-strict root re-union was skipped), so x=3 re-unions as the
+        // degenerate `[3, 3]` — the engine's standard form for a point-only non-strict
+        // solution (`x² <= 0 → [0, 0]`), not the bug-dependent `{ 3 }`.
+        ("sqrt(-x^2+9) <= (1/3)*x-1", "[3, 3]"),
         // CONSTANT g: `solve(const, x)` errors, so the sign is taken from the constant.
         ("sqrt(4-x^2) < 5", "[-2, 2]"),
         ("sqrt(x-2) >= 0*x - 4", "[2, infinity)"),

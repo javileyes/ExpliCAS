@@ -8,7 +8,8 @@ Workflow multi-agente `frontier-audit-cycle4` (8 scouts read-only, uno por frent
 
 - [x] **Familia #1 — recíproco-de-abs vs 0** (`1/(|x|−1)<0`, 5 P0): CERRADA ciclo 4, commit `5f255c3e2`.
 - [x] **Familia recíproco-trig ecuación** (`2/sin(x)=4`, `1/sin(x)=2`, ~12 inputs P0): CERRADA ciclo 5.
-- [x] **diferencia-de-radicales ecuación** RAÍZ RACIONAL (`√(5x−1)−√(x+2)=1` → {2}): CERRADA ciclo 6. Peldaño: raíz irracional (`√(3x−1)−√(x+2)=1`) sigue leak; y el single-radical `√(quad)=c·x` directo sigue mal (bug isolación core).
+- [x] **diferencia-de-radicales ecuación** RAÍZ RACIONAL (`√(5x−1)−√(x+2)=1` → {2}): CERRADA ciclo 6. Peldaño: raíz irracional (`√(3x−1)−√(x+2)=1`) sigue leak.
+- [x] **single-radical `√(quad)=poly` directo** (`√(5x²+9x−2)=3x` → {1/4,2}, era "No solution"; `√(5x²+9x)=3x` dropeaba 9/4): CERRADA batch-2 ciclo 1 (handler reduce-a-polinomio + verify g(r)≥0, scope racional). Peldaño: raíces SURD (declina → isolación).
 - [ ] FTC definido-desde-antiderivada (`∫1/(e^x+1)`, `∫1/(1+cos x)` leak aunque la indefinida existe).
 - [ ] sign-via-abs con abs en denominador (`x/|x|=x`, `x/|x|=−x`, `−|x|/x=1`).
 - [ ] apart de numerador monomio `c·x^k` (`apart(2x/((x−1)²(x+1)))`).
