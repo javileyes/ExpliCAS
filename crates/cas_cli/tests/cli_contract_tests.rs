@@ -6306,6 +6306,52 @@ fn test_eval_single_abs_polynomial_inequality_sign_splits_at_the_abs_zero() {
 }
 
 #[test]
+fn test_eval_single_abs_polynomial_equation_sign_splits_at_the_abs_zero() {
+    // An EQUATION with a single `|f|` term entangled MULTIPLICATIVELY with a
+    // polynomial (`x·|x| = 4`) is not `|f| = g` (isolated) nor a pure
+    // polynomial-in-|x| (the odd `x` factor is not a function of `|x|`). The
+    // isolation path reoriented to `x = 4/|x|` and leaked a malformed
+    // `solve(x − 4/|x| = 0)` residual. The sign split at `f = 0` (same handler as
+    // the inequality form) now solves each `|f| = ±f` polynomial branch and keeps
+    // the roots on that branch's half-line.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `x·|x|` is a strictly increasing bijection: exactly one real root, its sign
+    // matching the RHS. Positive RHS lands in the `x ≥ 0` branch (`x² = c`).
+    assert_eq!(r("solve(x*abs(x) = 4, x)"), "{ 2 }");
+    assert_eq!(r("solve(x*abs(x) = 2, x)"), "{ sqrt(2) }");
+    // Negative RHS lands in the `x < 0` branch (`−x² = c`).
+    assert_eq!(r("solve(x*abs(x) = -4, x)"), "{ -2 }");
+    assert_eq!(r("solve(x*abs(x) + 1 = 0, x)"), "{ -1 }");
+    // Rational leading coefficient is cleared before the split.
+    assert_eq!(r("solve(2*x*abs(x) = 8, x)"), "{ 2 }");
+    // A quadratic branch keeps ALL in-domain roots and drops the out-of-domain
+    // one: `x·|x| − x = 0` is `x(|x|−1) = 0` → `{−1, 0, 1}`.
+    assert_eq!(r("solve(x*abs(x) - x = 0, x)"), "{ 0, 1, -1 }");
+    assert_eq!(r("solve(x*abs(x) + 2*x = 3, x)"), "{ 1 }");
+    // Shifted abs argument: the split is at x = 1, and `u·|u|` (u = x−1) is a
+    // bijection, so a single root.
+    assert_eq!(r("solve((x-1)*abs(x-1) = 4, x)"), "{ 3 }");
+    assert_eq!(r("solve(x*abs(x-1) = 6, x)"), "{ 3 }");
+
+    // NO REGRESSION: isolated-abs (`|f| = g`), poly-in-|x|, bare `|f| = c`, and
+    // the sign form keep their own, already-correct equation handlers.
+    assert_eq!(r("solve(abs(x) = 4, x)"), "{ 4, -4 }");
+    assert_eq!(r("solve(x^2 - 3*abs(x) + 2 = 0, x)"), "{ 1, -1, 2, -2 }");
+    assert_eq!(
+        r("solve(abs(x-1) = 3 - x^2, x)"),
+        "{ 1/2·(sqrt(17) - 1), -1 }"
+    );
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+}
+
+#[test]
 fn test_eval_abs_as_a_factor_inequality_sign_splits() {
     // When the abs is a FACTOR rather than an added term (`|x|³ − |x| = |x|(x²−1)`),
     // removing it leaves a constant remainder, so the earlier "non-constant

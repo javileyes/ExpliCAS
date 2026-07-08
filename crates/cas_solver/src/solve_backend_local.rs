@@ -2398,17 +2398,22 @@ fn try_solve_single_abs_equals_polynomial(
     }
 }
 
-/// Solve an INEQUALITY carrying a SINGLE `|f(x)|` term inside a polynomial-in-x
-/// context — `x² − 3|x| + 2 < 0` — by the textbook sign split at `f = 0`. The
-/// generic path treats the abs opaquely and returns a WRONG "No solution"
-/// (the true set is `(−2,−1) ∪ (1,2)`). On `f ≥ 0`, `|f| = f`; on `f < 0`,
-/// `|f| = −f`; solve each polynomial-inequality branch, intersect with its
-/// domain, and union.
+/// Solve a RELATION (inequality or equation) carrying a SINGLE `|f(x)|` term
+/// inside a polynomial-in-x context — `x² − 3|x| + 2 < 0`, `x·|x| = 4` — by the
+/// textbook sign split at `f = 0`. The generic path treats the abs opaquely: for
+/// the inequality it returns a WRONG "No solution" (the true set is
+/// `(−2,−1) ∪ (1,2)`); for a MULTIPLICATIVELY entangled equation like `x·|x| = 4`
+/// the isolation path reorients to `x = 4/|x|` and leaks a malformed
+/// `solve(x − 4/|x| = 0)` residual (true answer `{2}`). On `f ≥ 0`, `|f| = f`; on
+/// `f < 0`, `|f| = −f`; solve each polynomial branch, intersect with its domain,
+/// and union. For an equation the branch solve yields discrete roots and the
+/// intersection keeps only the ones in that branch's half-line.
 ///
 /// Gated to a single abs whose removal leaves a genuine polynomial-in-x
-/// remainder — bare `|f| {op} c` (constant remainder), reciprocal/sign and
-/// multi-abs relations keep their own, already-correct handlers.
-fn try_solve_single_abs_polynomial_inequality(
+/// remainder — bare `|f| {op} c` (constant remainder), reciprocal/sign,
+/// isolated-abs (`|f| = g`), poly-in-|x|, and multi-abs relations keep their
+/// own, already-correct handlers (this dispatches strictly after them).
+fn try_solve_single_abs_polynomial_relation(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
@@ -2418,7 +2423,10 @@ fn try_solve_single_abs_polynomial_inequality(
     use cas_solver_core::isolation_utils::contains_var;
     use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
 
-    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+    if !matches!(
+        eq.op,
+        RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq | RelOp::Eq
+    ) {
         return None;
     }
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
@@ -2459,15 +2467,31 @@ fn try_solve_single_abs_polynomial_inequality(
 
     // The generic path only fails when the abs is entangled with genuine
     // polynomial-in-x structure: either a non-constant remainder after removing
-    // the abs (`x² − 3|x| + 2`, the abs added to a polynomial) OR a degree-≥2
-    // branch (`|x|³ − |x| = |x|(x²−1)`, the abs a factor of one). A bare
-    // `|f| {op} c` reduces to two LINEAR branches with a constant remainder and
-    // stays with the threshold handler (no huella change).
+    // the abs (`x² − 3|x| + 2`, the abs added to a polynomial) OR a branch whose
+    // degree rises ABOVE the abs argument's own degree (multiplicative `x·|x|`,
+    // factor `|x|³ − |x| = |x|(x²−1)` — both raise a degree-1 argument to 2/3).
+    //
+    // The floor is op-aware. For an EQUATION with an ISOLATED abs of a
+    // higher-degree argument and a constant remainder (`|x²−4| = 3`), the split
+    // yields the right roots but an ugly form (`−7·7^(−1/2)`); the dedicated
+    // isolated-abs equation handler downstream emits the canonical `−√7`, so we
+    // decline (floor = the argument's degree keeps `deg == arg_deg` out).
+    // Inequalities keep the established `deg ≥ 2` gate (floor 1): their
+    // `|quadratic| {op} c` form has always been owned by THIS handler, and the
+    // committed contract pins that representation.
     let rest = substitute_expr_by_id(&mut simplifier.context, diff, abs_f, zero);
     let (rest, _) = simplifier.simplify(rest);
+    let entangle_floor = if matches!(eq.op, RelOp::Eq) {
+        Polynomial::from_expr(&simplifier.context, f, var)
+            .map(|p| p.degree())
+            .unwrap_or(1)
+            .max(1)
+    } else {
+        1
+    };
     let entangled = contains_var(&simplifier.context, rest, var)
-        || pos_poly.degree() >= 2
-        || neg_poly.degree() >= 2;
+        || pos_poly.degree() > entangle_floor
+        || neg_poly.degree() > entangle_floor;
     if !entangled {
         return None;
     }
@@ -8337,8 +8361,15 @@ fn solve_local_core_inner(
     // solution". Split at `f = 0` into the `|f| = ±f` branches. Placed after the
     // sign/reciprocal-abs handlers so those keep their forms; the constant-`c`
     // threshold handler below is unaffected (it has no polynomial remainder).
-    if let Some(set) = try_solve_single_abs_polynomial_inequality(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    // Inequality ops ONLY here: the equation form (`x·|x| = 4`) dispatches later,
+    // after the isolated-abs and poly-in-|x| equation handlers own their forms.
+    if matches!(
+        eq.op,
+        cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
+    ) {
+        if let Some(set) = try_solve_single_abs_polynomial_relation(simplifier, eq, var) {
+            return Ok((set, Vec::new()));
+        }
     }
     // `|g(x)| {op} c` (constant `c`) reduces to the polynomial inequalities on the
     // two sides of the abs; the isolation/split path below drops the operator and
@@ -8425,6 +8456,19 @@ fn solve_local_core_inner(
     // leaking a malformed residual. Solve both branches and keep `g(r) ≥ 0`.
     if let Some(set) = try_solve_single_abs_equals_polynomial(simplifier, eq, var) {
         return Ok((set, Vec::new()));
+    }
+    // A single `|f|` entangled MULTIPLICATIVELY with a polynomial (`x·|x| = 4`,
+    // `x·|x| − x = 0`) is neither `|f| = g` (isolated) nor a pure polynomial-in-|x|
+    // (the odd `x` factor is not a function of `|x|`); the isolation path reorients
+    // to `x = 4/|x|` and leaks a malformed `solve(x − 4/|x| = 0)` residual. Split at
+    // `f = 0` into the `|f| = ±f` polynomial branches, solve each, and keep the roots
+    // in that branch's half-line. Placed after the isolated-abs and poly-in-|x|
+    // equation handlers so they keep their forms (0 huella delta); equation ops only
+    // (the inequality dispatch above owns those).
+    if matches!(eq.op, cas_ast::RelOp::Eq) {
+        if let Some(set) = try_solve_single_abs_polynomial_relation(simplifier, eq, var) {
+            return Ok((set, Vec::new()));
+        }
     }
     // Equations that mix an exponential with its RECIPROCAL (`e^x + e^(−x) = 2`, `2^x − 3 + 2^(1−x) = 0`)
     // are Laurent polynomials in `base^x`; the isolation path rewrites them via the cosh identity and
