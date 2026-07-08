@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 515 (newest first)
+Active entries: 516 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
+- 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18674,3 +18675,18 @@ Active entries: 515 (newest first)
   - **Un builder correcto puede fallar silenciosamente en el PRESUPUESTO anti-worsen del rule engine**: una reescritura `sum(...)` → forma-cerrada-grande se DESCARTA por tamaño de nodos aunque sea la respuesta. Debug: instrumentar el builder (llega al `Some`) confirmó que el fallo era DOWNSTREAM (consumo del plan), no en el match. Los cierres previos de la misma familia pasaron por ser más pequeños — el techo de tamaño es invisible hasta que una forma cerrada crece.
   - `.budget_exempt()` en una rule REQUIERE registrarla en el allowlist (`inv_trig_n_angle_tests::budget_exempt_allowlist` escanea `.budget_exempt()` en los ficheros de reglas) — falla en test, no en runtime (lección `new-engine-function-wiring-gotchas` confirmada para budget_exempt). Guard requerido: MAX_N/output-cap/input-cap.
   - PRÓXIMO PELDAÑO: cofactor afín/cuadrático general `(αk²+βk+γ)r^k` simbólico (combinar los tres builders por linealidad); cofactor `k³`; coeficiente en arit-geo; lower bound a≥2.
+
+## 2026-07-08 - SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_laurent` + `x_root_laurent_leaf` + `collect_x_root_laurent_pairs`, despachado tras `try_solve_rational_power_polynomial`)
+- status: `retained`. P0 leak (residual auto-referencial malformado) + capacidad. Soundness va antes que capacidad.
+- capture:
+  - investment_class: soundness (leak malformado) + capability (resuelve φ²). Hallado en el barrido cross-front del ciclo.
+  - cell: `solve(√x−1/√x=1)` → `{1+phi}` (=φ²; era el leak `solve(x−(x^(-1/2)+1)^(1/1/2)=0)`), `√x+1/√x=5/2` → `{1/4,4}`, `2√x−3/√x=1` → `{9/4}` (coef), `√x−2/√x=0` → `{2}`, `√x+4/√x=4` → `{4}` (raíz doble), `√x+1/√x=1` → No solution (mín 2>1). Positive-only (`x−3√x+2`), Laurent-en-x (`1/x+x`), poli llano — intactos.
+  - causa raíz: `try_solve_rational_power_polynomial` (positive-power) usa `collect_x_power_exponents` que RECHAZA exponentes negativos (`x^(−1/2)`=1/√x). Sin handler para Laurent-en-x^(1/q), la isolación reorienta `√x = 1/√x + 1 → x = (…)^(1/(1/2))` y filtra el residual auto-referencial.
+  - diseño (espejo de `try_solve_exponential_reciprocal_polynomial`, Laurent-en-b^x): recolectar el mapa `k → coeff` de `Σ coeff·x^(k/q) = Σ coeff·u^k` (u=x^(1/q)); shift por −min_k (multiplicar por u^(−min_k)>0, no pierde raíz real); construir el polinomio en u TÉRMINO A TÉRMINO (un `Mul(laurent, u^K)` NO auto-distribuye — bug descubierto); `solve_polynomial_in_atom` back-substituye `x^(1/q)=u_root` (dominio de raíz: dropea u<0 para q par). El shift pone coeff nonzero en u^0 → sin u=0 espurio. Gate: q≥2 y min_k<0 (genuine reciprocal; positive-only al hermano).
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip NUMÉRICO exacto (6 casos incl. No-solution y raíz doble) + adversarial (coef, borde, vacío).
+  - retained learning:
+  - **Construir el polinomio-shift TÉRMINO A TÉRMINO, no vía `Mul(laurent, u^K)` + simplify**: `simplify` NO auto-distribuye un producto `(a+b/u−c)·u`, dejándolo como `Mul` que `Polynomial::from_expr` rechaza. El bug era invisible para el caso de raíces RACIONALES (que sí resolvía por otra vía) y solo se manifestó con raíces SURD — instrumentar el builder confirmó que llegaba al `Some` pero el cleared quedaba `Mul`. El handler exponencial-recíproco ya lo hace bien (mapa→términos); copiar el patrón EXACTO, no improvisar el clearing.
+  - Las familias de leak "residual malformado auto-referencial" (poli-en-x^(1/q), ln, |x|, base^x, y ahora LAURENT-en-x^(1/q)) comparten síntoma y patrón de fix (mapa/substitución de atom → solve_polynomial_in_atom). El Laurent-en-raíz era el miembro faltante entre el positive-power (ya cerrado) y el Laurent-en-exponencial (ya cerrado).
+  - PRÓXIMO PELDAÑO: Laurent-en-raíz que `simplify` COMBINA en una fracción `(x^(4/3)−x^(2/3))/x` (top-level Div) — `x^(1/3)−1/x^(1/3)` sigue leakeando (el colector rechaza el Div con x en denominador). Distribuir el Div-por-monomio o trabajar el árbol crudo lo cerraría.

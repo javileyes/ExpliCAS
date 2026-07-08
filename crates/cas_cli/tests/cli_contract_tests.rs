@@ -6517,3 +6517,32 @@ fn test_eval_finite_quadratic_geometric_sum_with_symbolic_ratio() {
     // A degree-3 cofactor stays a residual.
     assert_eq!(r("sum(k^3*r^k, k, 1, n)"), "sum(k^3·r^k, k, 1, n)");
 }
+
+#[test]
+fn test_eval_reciprocal_root_laurent_equation_solves() {
+    // A Laurent polynomial in `sqrt(x)` — a root mixed with its reciprocal — used
+    // to leak a malformed `solve(x - (x^(-1/2)+1)^(1/(1/2)))` residual. It now
+    // substitutes `u = x^(1/q)`, clears the `1/u^k`, and solves. `√x - 1/√x = 1`
+    // is `u^2 - u - 1 = 0`, so `u = φ` (the negative surd root is dropped since
+    // √x >= 0), giving `x = φ^2 = 1 + φ`.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(sqrt(x) - 1/sqrt(x) = 1, x)"), "{ 1 + phi }");
+    assert_eq!(r("solve(sqrt(x) + 1/sqrt(x) = 5/2, x)"), "{ 1/4, 4 }");
+    assert_eq!(r("solve(2*sqrt(x) - 3/sqrt(x) = 1, x)"), "{ 9/4 }");
+    assert_eq!(r("solve(sqrt(x) - 2/sqrt(x) = 0, x)"), "{ 2 }");
+    // A double root and a genuinely empty case.
+    assert_eq!(r("solve(sqrt(x) + 4/sqrt(x) = 4, x)"), "{ 4 }");
+    assert_eq!(r("solve(sqrt(x) + 1/sqrt(x) = 1, x)"), "No solution");
+    // No regression: pure-positive-power forms keep the sibling handler, plain
+    // polynomials and Laurent-in-x are untouched.
+    assert_eq!(r("solve(x - 3*sqrt(x) + 2 = 0, x)"), "{ 1, 4 }");
+    assert_eq!(r("solve(x^(2/3) - x^(1/3) - 2 = 0, x)"), "{ -1, 8 }");
+    assert_eq!(r("solve(1/x + x = 5/2, x)"), "{ 1/2, 2 }");
+}

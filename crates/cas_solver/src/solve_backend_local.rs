@@ -1944,6 +1944,172 @@ fn try_solve_rational_power_polynomial(
     solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
 }
 
+/// Match a leaf `coeff · x^e` (any rational `e`, incl. negative), a `var`-free
+/// constant `(0, value)`, or a reciprocal `c / x^e` `(−e, c)`. Returns
+/// `(exponent, coeff)`; `None` for any other shape. Used by the reciprocal-root
+/// solver to build the Laurent map `x^(p/q) → u^p`.
+fn x_root_laurent_leaf(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(num_rational::BigRational, num_rational::BigRational)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+    if !contains_var(ctx, expr, var) {
+        return Some((BigRational::zero(), as_rational_const(ctx, expr)?));
+    }
+    match ctx.get(expr) {
+        Expr::Variable(s) if ctx.sym_name(*s) == var => {
+            Some((BigRational::one(), BigRational::one()))
+        }
+        Expr::Pow(base, exp) => {
+            let (base, exp) = (*base, *exp);
+            if !matches!(ctx.get(base), Expr::Variable(s) if ctx.sym_name(*s) == var) {
+                return None;
+            }
+            Some((as_rational_const(ctx, exp)?, BigRational::one()))
+        }
+        Expr::Div(n, d) => {
+            let (n, d) = (*n, *d);
+            if contains_var(ctx, n, var) {
+                return None; // numerator carrying `x` ⇒ not a single leaf
+            }
+            let c = as_rational_const(ctx, n)?;
+            let (k, dc) = x_root_laurent_leaf(ctx, d, var)?;
+            if dc.is_zero() {
+                return None;
+            }
+            Some((-k, c / dc))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if !contains_var(ctx, l, var) {
+                let c = as_rational_const(ctx, l)?;
+                let (k, cc) = x_root_laurent_leaf(ctx, r, var)?;
+                Some((k, c * cc))
+            } else if !contains_var(ctx, r, var) {
+                let c = as_rational_const(ctx, r)?;
+                let (k, cc) = x_root_laurent_leaf(ctx, l, var)?;
+                Some((k, c * cc))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Collect the `(exponent, coeff)` pairs of a sum/difference of `x`-power leaves
+/// into `out`, tracking sign through `Add`/`Sub`/`Neg`. Returns `false` if any
+/// leaf is not an `x`-power (so the caller declines).
+fn collect_x_root_laurent_pairs(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    positive: bool,
+    out: &mut Vec<(num_rational::BigRational, num_rational::BigRational)>,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_x_root_laurent_pairs(ctx, l, var, positive, out)
+                && collect_x_root_laurent_pairs(ctx, r, var, positive, out)
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_x_root_laurent_pairs(ctx, l, var, positive, out)
+                && collect_x_root_laurent_pairs(ctx, r, var, !positive, out)
+        }
+        Expr::Neg(inner) => collect_x_root_laurent_pairs(ctx, *inner, var, !positive, out),
+        _ => match x_root_laurent_leaf(ctx, expr, var) {
+            Some((e, c)) => {
+                out.push((e, if positive { c } else { -c }));
+                true
+            }
+            None => false,
+        },
+    }
+}
+
+/// Solve an equation that is a LAURENT polynomial in `x^(1/q)` — a root mixed
+/// with its RECIPROCAL, e.g. `√x − 1/√x = 1`, `√x + 1/√x = 5/2`. Collect the
+/// Laurent map `x^(p/q) → u^p` (`u = x^(1/q)`), shift every exponent up by
+/// `−min_k` (multiply through by `u^(−min_k)`, a positive real ⇒ no real root
+/// lost) to get a POLYNOMIAL in `u` built term-by-term (a `Mul(...)·u^K` does not
+/// auto-distribute), then hand it to `solve_polynomial_in_atom`, which solves for
+/// `u` and back-substitutes `x^(1/q) = u_root` (the root domain drops `u < 0` for
+/// even `q`, keeps it for odd `q`). The shift places a nonzero coefficient at
+/// `u^0`, so no spurious `u = 0` is introduced.
+///
+/// Without this the isolation reorients to `x = (…)^(1/(1/2))` and leaks a
+/// malformed `solve(...)` residual. Pure-positive-power forms (`x − 3√x + 2`) are
+/// owned by [`try_solve_rational_power_polynomial`]: this needs a genuine
+/// negative exponent to clear.
+fn try_solve_rational_power_laurent(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use num_bigint::BigInt;
+    use num_integer::Integer;
+    use num_rational::BigRational;
+    use num_traits::{One, ToPrimitive, Zero};
+    use std::collections::BTreeMap;
+
+    if eq.op != cas_ast::RelOp::Eq {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (expr, _) = simplifier.simplify(diff);
+
+    let mut pairs: Vec<(BigRational, BigRational)> = Vec::new();
+    if !collect_x_root_laurent_pairs(&simplifier.context, expr, var, true, &mut pairs)
+        || pairs.is_empty()
+    {
+        return None;
+    }
+    let q_big = pairs
+        .iter()
+        .fold(BigInt::one(), |acc, (e, _)| acc.lcm(e.denom()));
+    if q_big <= BigInt::one() {
+        return None; // integer / Laurent-in-x — owned by the normal paths
+    }
+    let q_rat = BigRational::from(q_big.clone());
+    // Laurent map `k → coeff`, `k = q·exponent` (integer). Fold repeats.
+    let mut map: BTreeMap<i64, BigRational> = BTreeMap::new();
+    for (e, c) in &pairs {
+        let k = (e * &q_rat).to_integer().to_i64()?;
+        *map.entry(k).or_insert_with(BigRational::zero) += c;
+    }
+    map.retain(|_, c| !c.is_zero());
+    let min_k = *map.keys().next()?;
+    let max_k = *map.keys().next_back()?;
+    // Require a genuine reciprocal (`min_k < 0`) and span ≥ 2 (a proper quadratic
+    // in `u` after shifting). Pure-positive is owned by the sibling handler.
+    if min_k >= 0 || max_k - min_k < 2 {
+        return None;
+    }
+    // Build `Σ coeff·u^(k − min_k)` directly — a polynomial in `u`.
+    let u = simplifier.context.var("__rpl_u");
+    let mut u_expr = simplifier.context.num(0);
+    for (k, c) in &map {
+        let coeff = simplifier.context.add(Expr::Number(c.clone()));
+        let shift = simplifier.context.num(k - min_k);
+        let power = simplifier.context.add(Expr::Pow(u, shift));
+        let term = simplifier.context.add(Expr::Mul(coeff, power));
+        u_expr = simplifier.context.add(Expr::Add(u_expr, term));
+    }
+
+    let recip_q = simplifier
+        .context
+        .add(Expr::Number(BigRational::new(BigInt::one(), q_big)));
+    let x = simplifier.context.var(var);
+    let atom = simplifier.context.add(Expr::Pow(x, recip_q));
+    solve_polynomial_in_atom(simplifier, u_expr, "__rpl_u", var, atom)
+}
+
 /// Solve an EQUATION that is a polynomial of degree ≥ 2 in `ln(g)` for a single
 /// log atom `ln(g)` whose argument contains the variable (e.g.
 /// `ln(x)^2 - ln(x) - 2 = 0`, a quadratic in `ln(x)`). Substitute `u = ln(g)`,
@@ -8210,6 +8376,12 @@ fn solve_local_core_inner(
     // reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
     // dropping every root. Solve them by `u = x^(1/q)` substitution here first.
     if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // LAURENT polynomials in `x^(1/q)` — a root mixed with its reciprocal
+    // (`√x − 1/√x = 1`, `√x + 1/√x = 5/2`) — leak the same malformed residual
+    // (`x = (…)^(1/(1/2))`). Clear the `1/u^k` by shifting and solve in `u = x^(1/q)`.
+    if let Some(set) = try_solve_rational_power_laurent(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // Equations that are a polynomial of degree ≥ 2 in `ln(x)`
