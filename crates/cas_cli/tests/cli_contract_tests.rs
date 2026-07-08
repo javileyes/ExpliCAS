@@ -1277,6 +1277,16 @@ fn test_eval_sum_of_two_radicals_equation_solves_and_verifies() {
         // A difference exceeding its bound, and a negatively-signed one, are dropped by verification.
         ("sqrt(x+5) - sqrt(x) = 10", "No solution"),
         ("sqrt(x) - sqrt(x+5) = 1", "No solution"),
+        // MONOMIAL reduced RHS (`√(fg) = c·x`, no constant term): these returned a
+        // wrong "No solution" (or dropped a root) because the single-radical solver
+        // mishandles `√(quad) = c·x`. The reduction now squares to the POLYNOMIAL
+        // `fg − reduced_rhs² = 0` and verifies, bypassing that solver. Cross-checked
+        // vs sympy solveset.
+        ("sqrt(5*x-1) - sqrt(x+2) = 1", "{ 2 }"),
+        ("sqrt(4*x+1) - sqrt(x) = 1", "{ 0, 4/9 }"),
+        ("sqrt(3*x+1) - sqrt(x) = 1", "{ 0, 1 }"),
+        ("sqrt(2*x+7) - sqrt(x+3) = 1", "{ -3, 1 }"),
+        ("sqrt(3*x+4) - sqrt(x) = 2", "{ 0, 4 }"),
         // EQUAL radicands with `c = 0` (the both-sides equality `√A = √B`): the candidate makes
         // both radicands equal but IRRATIONAL (√7 at x=2), so the verification must accept the
         // canceling surds rather than demanding each radicand be a perfect square.

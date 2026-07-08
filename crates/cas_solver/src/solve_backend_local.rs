@@ -1706,7 +1706,6 @@ fn try_solve_sum_of_two_radicals_equation(
 ) -> Option<SolutionSet> {
     use cas_math::numeric_eval::as_rational_const;
     use cas_math::polynomial::Polynomial;
-    use num_rational::BigRational;
     use num_traits::{Signed, Zero};
 
     if eq.op != cas_ast::RelOp::Eq {
@@ -1729,14 +1728,7 @@ fn try_solve_sum_of_two_radicals_equation(
     let g_poly = Polynomial::from_expr(&simplifier.context, g, var).ok()?;
 
     // Squaring `s_f·√f + s_g·√g = c` gives `f + g + 2·s_f·s_g·√(fg) = c²`, i.e. the reduced single
-    // radical `√(f·g) = s_f·s_g·(c² − f − g)/2` (the difference flips the sign of the RHS). Build the
-    // radicand as the EXPANDED polynomial product (the single-radical solver declines
-    // `√((x+1)(x-1))` but handles `√(x²-1)`).
-    let fg = f_poly.mul(&g_poly).to_expr(&mut simplifier.context);
-    let half = simplifier
-        .context
-        .add(Expr::Number(BigRational::new(1.into(), 2.into())));
-    let sqrt_fg = simplifier.context.add(Expr::Pow(fg, half));
+    // radical `√(f·g) = s_f·s_g·(c² − f − g)/2` (the difference flips the sign of the RHS).
     let c2 = simplifier.context.add(Expr::Number(c.clone() * &c));
     let c2_minus_f = simplifier.context.add(Expr::Sub(c2, f));
     let c2_minus_f_minus_g = simplifier.context.add(Expr::Sub(c2_minus_f, g));
@@ -1748,20 +1740,40 @@ fn try_solve_sum_of_two_radicals_equation(
     };
     let two = simplifier.context.num(2);
     let reduced_rhs_raw = simplifier.context.add(Expr::Div(numerator, two));
-    // Distribute the `/2` to the canonical polynomial form (`(9 - 2·x)/2 → 9/2 - x`)
-    // via a Polynomial round-trip; the single-radical solver declines the
-    // un-distributed `Div(poly, 2)` / `½·(…)` form but handles the affine form.
-    let reduced_rhs = match Polynomial::from_expr(&simplifier.context, reduced_rhs_raw, var) {
-        Ok(p) => p.to_expr(&mut simplifier.context),
-        Err(_) => reduced_rhs_raw,
-    };
-    let reduced_eq = Equation {
-        lhs: sqrt_fg,
-        rhs: reduced_rhs,
+    let reduced_rhs_poly = Polynomial::from_expr(&simplifier.context, reduced_rhs_raw, var).ok()?;
+
+    // Square `√(fg) = reduced_rhs` to the POLYNOMIAL `fg − reduced_rhs² = 0` and solve
+    // THAT, rather than delegating `√(fg) = reduced_rhs` to the single-radical solver:
+    // that solver drops or empties roots for several `√(quad) = c·x` monomial-RHS forms
+    // (`√(5x²+9x−2) = 3x` → wrong "No solution", `√(5x²+9x) = 3x` → drops `9/4`), which
+    // turned every difference `√f − √g = c` whose reduced RHS is a bare monomial into a
+    // wrong "No solution". The exact verification below (perfect-square radicands summing
+    // to `c`) re-imposes `reduced_rhs ≥ 0` and every domain condition, so squaring here
+    // introduces no unfiltered extraneous root.
+    let reduced_poly = f_poly
+        .mul(&g_poly)
+        .sub(&reduced_rhs_poly.mul(&reduced_rhs_poly));
+    // A CONSTANT `fg − reduced_rhs²` needs no variable solve (and `solve(const = 0, x)`
+    // with no `x` would leak): a nonzero constant means no `x` satisfies the squared
+    // equation → the original sum/difference has NO solution (`√(x+1) + √x = 0`, which
+    // squares to `−1/4 = 0`); the zero polynomial is the `fg ≡ reduced_rhs²` identity,
+    // a continuum we cannot enumerate → decline.
+    if reduced_poly.degree() == 0 {
+        return if reduced_poly.is_zero() {
+            None
+        } else {
+            Some(SolutionSet::Empty)
+        };
+    }
+    let poly_expr = reduced_poly.to_expr(&mut simplifier.context);
+    let zero = simplifier.context.num(0);
+    let poly_eq = Equation {
+        lhs: poly_expr,
+        rhs: zero,
         op: cas_ast::RelOp::Eq,
     };
     let (reduced_sol, _) =
-        crate::solver_entrypoints_solve::solve(&reduced_eq, var, simplifier).ok()?;
+        crate::solver_entrypoints_solve::solve(&poly_eq, var, simplifier).ok()?;
     let candidates = match reduced_sol {
         SolutionSet::Discrete(roots) => roots,
         SolutionSet::Empty => return Some(SolutionSet::Empty),
