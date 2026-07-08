@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 522 (newest first)
+Active entries: 523 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
@@ -124,6 +124,7 @@ Active entries: 522 (newest first)
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_reciprocal_trig_eq... | SOUNDNESS (recíproco-trig ecuación pierde rama+periodicidad): `solve(2/sin(x)=4)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | SOUNDNESS (diferencia-de-radicales dropea raíz racional): `solve(√(5x−1)−√(x+2)=1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_radical_equ... | SOUNDNESS (single-radical `√(quad)=poly` mis-filtra tras cuadrar): `solve(√(5x²+9x−2)=3x)`
+- 2026-07-08 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | SOUNDNESS (apart leakea con numerador monomio escalado): `apart(2x/((x-1)²(x+1)))`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18788,3 +18789,18 @@ Active entries: 522 (newest first)
   - **El patrón reduce-a-canónico + verify sortea un sub-solver buggy SIN tocar su núcleo profundo**: en vez de perseguir el bug de mis-filtrado en la isolación (`solve_runtime_flow_isolation_*`, sprawling), un handler dedicado que cuadra a polinomio y verifica `g(r)≥0` es sound, bounded, y reusa el solver polinómico. Mismo patrón que el ciclo 6 (diferencia-de-radicales). El filtro correcto de `√f=g` es UNA condición: `g(r)≥0` (f≥0 es automático en la raíz).
   - **Gatear por grado del radicando protege la huella**: degree≥2 deja las formas comunes `√(lineal)=const` (masivas en fixtures) a su dueño existente; el handler nuevo solo toca la familia degree-≥2 que el núcleo mis-filtra. El guard degree-0 de `f−g²` es obligatorio (identidad cuadrado-perfecto → declinar, no romper la narración condicional de la isolación).
   - PRÓXIMO PELDAÑO: `√(quad)=poly` con raíces SURD que el núcleo TAMBIÉN mis-filtraría (mi handler declina en surd → isolación; los casos probados la isolación los acierta, pero un surd mal-filtrado quedaría). Extender la verificación `g(r)≥0` a surds vía la capa de signo (`provable_sign_vs_zero`) lo cerraría. Resto backlog auditoría: FTC definido-desde-antiderivada, `∫1/x^(1/3)`, apart monomio, sign-via-abs.
+
+## 2026-07-08 - SOUNDNESS (apart leakea con numerador monomio escalado): `apart(2x/((x-1)²(x+1)))`
+
+- area: `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decomposition_expr`: normalizar la forma fracción-escalada antes del match `Div`)
+- status: `retained`. Leak de residual malformado (echo `apart(...)` sin evaluar). Backlog auditoría `docs/AUDITORIA_P0_SOUNDNESS_2026-07-08.md`.
+- capture:
+  - investment_class: soundness (leak). Aislado al comando `apart` (único caller de `apart_decomposition_expr`; la integración usa `apart_classical_ladder_decomposition` directo).
+  - cell: `apart(2x/((x-1)²(x+1)))` → `1/2/(x-1) + 1/(x-1)² − 1/2/(x+1)` (era leak), `apart(3x/((x-1)(x+1)))` → `3/2/(x-1)+3/2/(x+1)`, `apart(2x²/…)` → `1/2/(x+1)+1/(x-1)²+3/2/(x-1)`, `apart(5x/((x-2)(x+3)))` → `2/(x-2)+3/(x+3)`, `apart(2x³/((x-1)(x+2)))` → `…+2x−2` (impropia). Numerador unidad (`x/…`), constante (`1/…`, `2/…`), con término constante (`2x+3/…`), potencia pura (`x²/…`), Div directo — intactos. Verificado vs sympy en 8 casos (incl. cuadrático irreducible, denom coeficientado, impropia).
+  - causa raíz: una fracción ESCALADA `c·x^k/D` (c≠1) el simplificador la deja como `Mul(c, Div(x^k, D))` — la constante sale FUERA de la división → un `Mul` con un `Div` ANIDADO (ni `Div` top-level ni `Mul(…, D^(-1))` recíproco). `apart_decomposition_expr` casaba solo `Expr::Div` → None → `ApartRule` echa el residual. El numerador unidad `x/D` SÍ es `Div(x,D)` (por eso funcionaba); `2/D` constante también.
+  - diseño: para el caso no-`Div`, `collect_mul_factors_flat` + rutear cada factor `Div(n,d)` (numerador→num, denominador→den) y cada `Pow(b,−1)` (→den), el resto (constantes, potencias) →num; si no hay factor-denominador declina (no es fracción). `build_fraction_from_factor_vectors` reconstruye `num/den`. `decompose_fraction_like_factors` (el helper existente) NO servía: solo maneja `Pow(_,−1)` en Mul, no el `Div` anidado (`Mul(2, Div(x,D))` → None). Behavior-preserving para `Div` directo (mismo brazo).
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Sweep adversarial + oráculo sympy (8 casos).
+  - retained learning:
+  - **`c·x^k/D` (c≠1) NO es un `Div`, es `Mul(c, Div(x^k, D))`** — el simplificador saca la constante de la división. Un handler de fracciones que casa solo `Expr::Div` pierde toda fracción con coeficiente numerador ≠1 (el unidad y el constante-puro pasan porque sí quedan Div). El síntoma "funciona con numerador 1 y constante, leakea con c·x" es la firma de este bug. Normalizar TODA forma fracción-like (Div top-level, Div anidado en Mul, recíproco Pow) a `num/den` antes de procesar.
+  - `decompose_fraction_like_factors` maneja `Mul(…, D^(-1))` pero NO `Mul(c, Div(n,d))` (Div anidado) — instrumentar (variant + decomp result) confirmó `variant=Mul decomp=None` para el caso que leakeaba. No asumir qué forma produce el simplificador; medirla.
+  - PRÓXIMO PELDAÑO (backlog auditoría): `∫1/x^(1/3)` (simplify da `x^(2/3)/x` que el power-rule no reconoce), FTC definido-desde-antiderivada (`∫1/(e^x+1)`), sign-via-abs con abs denominador.

@@ -2187,6 +2187,29 @@ fn test_eval_apart_partial_fractions() {
     // A shared numerator/denominator factor cancels to a degree-1 pole, which
     // now decomposes (returns to itself) instead of echoing the residual.
     assert_eq!(r("apart((x+1)/(x^2-x-2))"), "1 / (x - 2)");
+    // A SCALED monomial numerator `c*x^k` (c != 1) simplifies to `Mul(c, Div(x^k,
+    // D))` — the constant pulls OUT of the division — so the old `Expr::Div`-only
+    // match echoed an unevaluated `apart(2x/…)` residual while the unit `x/…`
+    // decomposed fine. Any fraction-like shape (nested Div / reciprocal factor)
+    // now normalizes to `num/den` first. Cross-checked vs sympy.
+    assert_eq!(
+        r("apart((2*x)/((x-1)^2*(x+1)))"),
+        "1/2 / (x - 1) + 1 / (x - 1)^2 - 1/2 / (x + 1)"
+    );
+    assert_eq!(
+        r("apart((3*x)/((x-1)*(x+1)))"),
+        "3/2 / (x - 1) + 3/2 / (x + 1)"
+    );
+    assert_eq!(
+        r("apart((2*x^2)/((x-1)^2*(x+1)))"),
+        "1/2 / (x + 1) + 1 / (x - 1)^2 + 3/2 / (x - 1)"
+    );
+    assert_eq!(r("apart((5*x)/((x-2)*(x+3)))"), "2 / (x - 2) + 3 / (x + 3)");
+    // Scaled improper fraction: the polynomial quotient is split off.
+    assert_eq!(
+        r("apart((2*x^3)/((x-1)*(x+2)))"),
+        "2/3 / (x - 1) + 16/3 / (x + 2) + 2·x - 2"
+    );
 }
 
 #[test]

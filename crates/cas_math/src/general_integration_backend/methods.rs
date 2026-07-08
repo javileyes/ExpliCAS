@@ -534,9 +534,46 @@ pub fn apart_decomposition_expr(
     // echoing an unevaluated `apart(1/(x−2))` residual instead of the answer.
     const APART_MIN_DENOMINATOR_DEGREE: usize = 1;
 
+    // A SCALED fraction `2x/D` simplifies to `Mul(2, Div(x, D))` — the constant
+    // coefficient pulls OUT of the division, leaving a `Mul` whose fraction is a
+    // NESTED `Div` factor (not a top-level `Div` nor a `den^(-1)` reciprocal).
+    // Matching only `Expr::Div` left `apart(2x/((x-1)²(x+1)))` echoing an
+    // unevaluated residual while the unit `x/((x-1)²(x+1))` decomposed fine.
+    // Collect the flat product factors and route each `Div`/reciprocal factor's
+    // denominator to `den`, everything else (constants, bare powers) to `num`;
+    // non-fractions (no denominator factor) still decline.
     let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
         Expr::Div(numerator, denominator) => (*numerator, *denominator),
-        _ => return None,
+        _ => {
+            let factors = crate::fraction_factors::collect_mul_factors_flat(ctx, integrand);
+            let mut num_parts: Vec<ExprId> = Vec::new();
+            let mut den_parts: Vec<ExprId> = Vec::new();
+            for f in factors {
+                match ctx.get(f).clone() {
+                    Expr::Div(n, d) => {
+                        num_parts.push(n);
+                        den_parts.push(d);
+                    }
+                    Expr::Pow(b, e)
+                        if matches!(ctx.get(e), Expr::Number(n)
+                            if *n == BigRational::from_integer((-1).into())) =>
+                    {
+                        den_parts.push(b);
+                    }
+                    _ => num_parts.push(f),
+                }
+            }
+            if den_parts.is_empty() {
+                return None;
+            }
+            let rebuilt = crate::fraction_factors::build_fraction_from_factor_vectors(
+                ctx, &num_parts, &den_parts,
+            );
+            match ctx.get(rebuilt) {
+                Expr::Div(numerator, denominator) => (*numerator, *denominator),
+                _ => return None,
+            }
+        }
     };
     let denominator =
         crate::polynomial::Polynomial::from_expr(ctx, denominator_expr, variable).ok()?;
