@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 516 (newest first)
+Active entries: 517 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
+- 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18690,3 +18691,18 @@ Active entries: 516 (newest first)
   - **Construir el polinomio-shift TÉRMINO A TÉRMINO, no vía `Mul(laurent, u^K)` + simplify**: `simplify` NO auto-distribuye un producto `(a+b/u−c)·u`, dejándolo como `Mul` que `Polynomial::from_expr` rechaza. El bug era invisible para el caso de raíces RACIONALES (que sí resolvía por otra vía) y solo se manifestó con raíces SURD — instrumentar el builder confirmó que llegaba al `Some` pero el cleared quedaba `Mul`. El handler exponencial-recíproco ya lo hace bien (mapa→términos); copiar el patrón EXACTO, no improvisar el clearing.
   - Las familias de leak "residual malformado auto-referencial" (poli-en-x^(1/q), ln, |x|, base^x, y ahora LAURENT-en-x^(1/q)) comparten síntoma y patrón de fix (mapa/substitución de atom → solve_polynomial_in_atom). El Laurent-en-raíz era el miembro faltante entre el positive-power (ya cerrado) y el Laurent-en-exponencial (ya cerrado).
   - PRÓXIMO PELDAÑO: Laurent-en-raíz que `simplify` COMBINA en una fracción `(x^(4/3)−x^(2/3))/x` (top-level Div) — `x^(1/3)−1/x^(1/3)` sigue leakeando (el colector rechaza el Div con x en denominador). Distribuir el Div-por-monomio o trabajar el árbol crudo lo cerraría.
+
+## 2026-07-08 - SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_laurent` + `x_root_laurent_leaf`: preproceso top-level `Div(N, x^m)` + leaf generalizado `x^a/x^b`)
+- status: `retained`. P0 leak — cierra el peldaño del ciclo previo (Laurent-en-raíz que `simplify` combina).
+- capture:
+  - investment_class: soundness (leak malformado). Peldaño directo del ciclo Laurent-en-√x.
+  - cell: `solve(x^(1/3)−1/x^(1/3)=0)` → `{−1,1}` (era leak; raíz cúbica IMPAR conserva −1), `x^(1/3)−2/x^(1/3)=1` → `{−1,8}`, `x^(1/3)+1/x^(1/3)=5/2` → `{1/8,8}`, `x^(1/4)−1/x^(1/4)=0` → `{1}` (raíz PAR dropea negativo). sqrt del ciclo previo, positive-only, poli, rational — intactos.
+  - causa raíz: `simplify` COMBINA el Laurent sobre denominador común de dos formas: top-level `(x^(4/3)−x^(2/3))/x` (Div de una SUMA), y término-nivel `x^(2/3)/x` (= x^(−1/3), un `Div(x^a, x^b)`). El colector del ciclo previo rechazaba ambos (leaf de Div solo aceptaba numerador var-free).
+  - diseño (dos extensiones): (1) preproceso: si `expr = Div(N, D)` con D monomio (`x_root_laurent_leaf(D)`), colecta N y RESTA el exponente de D a cada término (N/D=0 ⟺ N=0 off el polo, que el dominio negativo ya excluye) — restaura las potencias negativas. (2) leaf de Div generalizado: `Div(x^a, x^b) → (a−b, coeff)` recursando AMBOS lados (antes solo numerador constante).
+  - validación: workspace exit 0, 0 failed (327 suites); clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip NUMÉRICO con raíz cúbica REAL (x=−1 da real, no complejo — cuidado con `**(1/3)` de Python que da complejo).
+  - retained learning:
+  - `simplify` combina Laurent-en-raíz INCONSISTENTEMENTE según q y RHS: para √x (q=2) deja Pow-sum, para x^(1/3) (q=3) combina en `Div` (top-level o término-nivel `x^a/x^b`). Un colector de Laurent debe manejar las TRES formas (Pow-sum, top-level Div-de-suma, término `x^a/x^b`) — enumerar cómo el rewriter representa el MISMO objeto matemático, no solo la primera forma.
+  - `x^a/x^b` NO se auto-simplifica a `x^(a−b)` en todos los casos (`1/x^(1/3)` queda como `x^(2/3)/x`) — el leaf debe recursar ambos lados del Div, no asumir numerador constante. La verificación numérica de raíces con `x^(1/3)` para x<0 debe usar la raíz REAL (−(−x)^(1/3)), no `x**(1/3)` (complejo en Python).
+  - PRÓXIMO PELDAÑO: `solve(x^2 = 2^x)` sigue leakeando residual auto-referencial (mezcla poli + exponencial, transcendental sin forma cerrada salvo x=2,4 — merece decline honesto o tabla de raíces enteras); y `solve(e^x = 2x)` (error→residual, dispatch profundo).

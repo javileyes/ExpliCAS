@@ -6546,3 +6546,29 @@ fn test_eval_reciprocal_root_laurent_equation_solves() {
     assert_eq!(r("solve(x^(2/3) - x^(1/3) - 2 = 0, x)"), "{ -1, 8 }");
     assert_eq!(r("solve(1/x + x = 5/2, x)"), "{ 1/2, 2 }");
 }
+
+#[test]
+fn test_eval_reciprocal_root_laurent_combined_fraction_and_higher_roots() {
+    // `simplify` combines the reciprocal-root Laurent over a common denominator
+    // (`x^(1/3) − 1/x^(1/3) → (x^(4/3) − x^(2/3))/x`) or renders a term as
+    // `x^(2/3)/x`. Handling the top-level `Div(N, x^m)` and the term-level
+    // `x^a/x^b` closes the cube/fourth-root reciprocal family (odd roots keep the
+    // negative solution).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(x^(1/3) - 1/x^(1/3) = 0, x)"), "{ -1, 1 }");
+    assert_eq!(r("solve(x^(1/3) - 2/x^(1/3) = 1, x)"), "{ -1, 8 }");
+    assert_eq!(r("solve(x^(1/3) + 1/x^(1/3) = 5/2, x)"), "{ 1/8, 8 }");
+    // An even root drops the negative branch (x^(1/4) >= 0).
+    assert_eq!(r("solve(x^(1/4) - 1/x^(1/4) = 0, x)"), "{ 1 }");
+    // The cycle-sibling sqrt Pow-sum forms remain correct.
+    assert_eq!(r("solve(sqrt(x) + 1/sqrt(x) = 5/2, x)"), "{ 1/4, 4 }");
+    // No regression: an ordinary rational `(x^2-1)/x = 0` is untouched.
+    assert_eq!(r("solve((x^2-1)/x = 0, x)"), "{ -1, 1 }");
+}

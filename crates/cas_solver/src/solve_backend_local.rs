@@ -1972,16 +1972,15 @@ fn x_root_laurent_leaf(
             Some((as_rational_const(ctx, exp)?, BigRational::one()))
         }
         Expr::Div(n, d) => {
+            // `x^a / x^b = x^(a−b)` (`1/x^(1/3)` renders as `x^(2/3)/x`). Recurse on
+            // BOTH sides so a monomial numerator is handled, not only a constant.
             let (n, d) = (*n, *d);
-            if contains_var(ctx, n, var) {
-                return None; // numerator carrying `x` ⇒ not a single leaf
-            }
-            let c = as_rational_const(ctx, n)?;
-            let (k, dc) = x_root_laurent_leaf(ctx, d, var)?;
+            let (ne, nc) = x_root_laurent_leaf(ctx, n, var)?;
+            let (de, dc) = x_root_laurent_leaf(ctx, d, var)?;
             if dc.is_zero() {
                 return None;
             }
-            Some((-k, c / dc))
+            Some((ne - de, nc / dc))
         }
         Expr::Mul(l, r) => {
             let (l, r) = (*l, *r);
@@ -2064,11 +2063,33 @@ fn try_solve_rational_power_laurent(
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
     let (expr, _) = simplifier.simplify(diff);
 
+    // `simplify` may COMBINE the Laurent over a common denominator into
+    // `Div(N, x^m)` (`x^(1/3) − 1/x^(1/3) → (x^(4/3) − x^(2/3))/x`). Since
+    // `N/D = 0 ⟺ N = 0` off the pole `D = 0` (which the negative-power domain
+    // already excludes), collect `N` and subtract the denominator monomial's
+    // exponent from every term, restoring the original Laurent's negative powers.
+    let (numer, den_exp, den_coeff) = match simplifier.context.get(expr) {
+        Expr::Div(n, d) => {
+            let (n, d) = (*n, *d);
+            match x_root_laurent_leaf(&simplifier.context, d, var) {
+                Some((de, dc)) if !dc.is_zero() => (n, de, dc),
+                _ => (expr, BigRational::zero(), BigRational::one()),
+            }
+        }
+        _ => (expr, BigRational::zero(), BigRational::one()),
+    };
+
     let mut pairs: Vec<(BigRational, BigRational)> = Vec::new();
-    if !collect_x_root_laurent_pairs(&simplifier.context, expr, var, true, &mut pairs)
+    if !collect_x_root_laurent_pairs(&simplifier.context, numer, var, true, &mut pairs)
         || pairs.is_empty()
     {
         return None;
+    }
+    if !den_exp.is_zero() || !den_coeff.is_one() {
+        for (e, c) in pairs.iter_mut() {
+            *e -= &den_exp;
+            *c /= &den_coeff;
+        }
     }
     let q_big = pairs
         .iter()
