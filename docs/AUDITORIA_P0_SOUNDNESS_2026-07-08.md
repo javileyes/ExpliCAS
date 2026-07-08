@@ -2,7 +2,18 @@
 
 Workflow multi-agente `frontier-audit-cycle4` (8 scouts read-only, uno por frente, ~35 probes c/u vía CLI + oráculo sympy + verificación por sustitución → verificación adversarial 2-lentes por hallazgo → síntesis rankeada por ROI). Lanzado durante `/auto-mejora 8` (ciclo 4).
 
-**20 defectos CONFIRMADOS** (0 falsos positivos tras refutación). Agrupados por causa-raíz. La familia #1 (recíproco-de-abs vs 0) se cerró en el ciclo 4 (commit al final); el resto es el backlog priorizado para los ciclos 5-8.
+**20 defectos CONFIRMADOS** (0 falsos positivos tras refutación). Agrupados por causa-raíz.
+
+## Estado de cierre (vivo)
+
+- [x] **Familia #1 — recíproco-de-abs vs 0** (`1/(|x|−1)<0`, 5 P0): CERRADA ciclo 4, commit `5f255c3e2`.
+- [x] **Familia recíproco-trig ecuación** (`2/sin(x)=4`, `1/sin(x)=2`, ~12 inputs P0): CERRADA ciclo 5.
+- [ ] diferencia-de-radicales ecuación (`√(5x−1)−√(x+2)=1` dropea {2}; hermanos leak).
+- [ ] FTC definido-desde-antiderivada (`∫1/(e^x+1)`, `∫1/(1+cos x)` leak aunque la indefinida existe).
+- [ ] sign-via-abs con abs en denominador (`x/|x|=x`, `x/|x|=−x`, `−|x|/x=1`).
+- [ ] apart de numerador monomio `c·x^k` (`apart(2x/((x−1)²(x+1)))`).
+- [ ] `∫1/x^p` p∈(0,1) (`∫1/x^(1/3)` leak simplificador-reescribe).
+- [ ] dos-sqrt INECUACIÓN dropea operador (`√x+√(x−1)>1`, multi-cycle).
 
 ## Hallazgos confirmados (por frente)
 

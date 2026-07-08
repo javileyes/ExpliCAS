@@ -918,6 +918,57 @@ fn test_eval_solver_function_aliases_solve_via_canonical_forms() {
 }
 
 #[test]
+fn test_eval_const_over_trig_equation_reduces_to_full_family() {
+    // SOUNDNESS: `c/trig(x) = k` (`2/sin(x)=4`) isolated to the boundary and
+    // returned only the PRINCIPAL value `{π/6}`, dropping the second branch and
+    // all periodicity; the coefficient-1 form (`1/sin(x)=2`) folded `1/sin → csc`
+    // mid-isolation and leaked `solve(csc(x)=2)`. Reduce `c/trig(g)=k` to
+    // `trig(g)=c/k` and route to the bare-trig solver for the full periodic family.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let sin_half =
+        "{ 1/6\u{b7}pi + k\u{b7}2\u{b7}pi, 5/6\u{b7}pi + k\u{b7}2\u{b7}pi : k \u{2208} \u{2124} }";
+    let cos_half =
+        "{ 1/3\u{b7}pi + k\u{b7}2\u{b7}pi, 5/3\u{b7}pi + k\u{b7}2\u{b7}pi : k \u{2208} \u{2124} }";
+    let tan_one = "{ 1/4\u{b7}pi + k\u{b7}pi : k \u{2208} \u{2124} }";
+    // Numerator ≠ 1: was principal-value-only.
+    assert_eq!(r("solve(2/sin(x)=4, x)"), sin_half);
+    assert_eq!(r("solve(5/cos(x)=10, x)"), cos_half);
+    // Numerator = 1: was the `solve(csc(x)=...)` leak.
+    assert_eq!(r("solve(1/sin(x)=2, x)"), sin_half);
+    assert_eq!(r("solve(1/cos(x)=2, x)"), cos_half);
+    // Tangent (reduces to `tan(g)=c/k`, not the cot homogeneous path).
+    assert_eq!(r("solve(3/tan(x)=3, x)"), tan_one);
+    assert_eq!(r("solve(1/tan(x)=1, x)"), tan_one);
+    // The reduced target is scale-invariant: `4/sin=8` and `2/sin=4` both give sin=1/2.
+    assert_eq!(r("solve(4/sin(x)=8, x)"), sin_half);
+    // Negative numerator flips the sign: sin(x) = -1/2.
+    assert_eq!(
+        r("solve(-2/sin(x)=4, x)"),
+        "{ -1/6\u{b7}pi + k\u{b7}2\u{b7}pi, 7/6\u{b7}pi + k\u{b7}2\u{b7}pi : k \u{2208} \u{2124} }"
+    );
+    // Shifted/scaled argument routes through the full-family solver too.
+    assert_eq!(
+        r("solve(2/sin(2*x)=4, x)"),
+        "{ 1/12\u{b7}pi + k\u{b7}pi, 5/12\u{b7}pi + k\u{b7}pi : k \u{2208} \u{2124} }"
+    );
+    // Range honesty: `|c/k| > 1` for sin/cos has no solution.
+    assert_eq!(r("solve(1/sin(x)=1/2, x)"), "No solution");
+    assert_eq!(r("solve(2/cos(x)=1, x)"), "No solution");
+
+    // NO REGRESSION: bare csc/sec/cot and `trig(x)/c` (constant DENOMINATOR) keep
+    // their own handling.
+    assert_eq!(r("solve(csc(x)=2, x)"), sin_half);
+    assert_eq!(r("solve(sin(x)/2=1, x)"), "No solution");
+}
+
+#[test]
 fn test_eval_second_derivative_of_sin_tan_is_numerically_equivalent() {
     // P0-G: `diff(sin(x)·tan(x), x, 2)` returned a NON-equivalent tree (wrong at
     // every sample point). Root cause: `collect_mul_factors_int_pow` returned a

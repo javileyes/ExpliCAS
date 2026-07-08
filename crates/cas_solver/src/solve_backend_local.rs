@@ -8243,6 +8243,47 @@ fn normalize_solver_function_aliases(ctx: &mut Context, expr: ExprId) -> Option<
     }
 }
 
+/// Match `c / trig(g)` or `c · trig(g)^(−1)` (nonzero rational `c`, `trig ∈
+/// {sin, cos, tan}`) and return `(c, trig_builtin, g)`, so `c/trig(g) = k` can
+/// reduce to the bare `trig(g) = c/k`.
+fn match_reciprocal_trig_call(
+    ctx: &Context,
+    e: ExprId,
+) -> Option<(num_rational::BigRational, cas_ast::BuiltinFn, ExprId)> {
+    use cas_ast::BuiltinFn;
+    use cas_math::numeric_eval::as_rational_const;
+    use num_traits::Zero;
+    // Peel the reciprocal shape to `(constant coefficient, trig-call node)`.
+    let (c, fn_node) = if let Expr::Div(num, den) = ctx.get(e) {
+        let (num, den) = (*num, *den);
+        (as_rational_const(ctx, num)?, den)
+    } else {
+        let (coeff, core) = peel_rational_coefficient(ctx, e);
+        if let Expr::Pow(base, exp) = ctx.get(core) {
+            let (base, exp) = (*base, *exp);
+            let minus_one = num_rational::BigRational::from_integer((-1).into());
+            if as_rational_const(ctx, exp) != Some(minus_one) {
+                return None;
+            }
+            (coeff, base)
+        } else {
+            return None;
+        }
+    };
+    if c.is_zero() {
+        return None;
+    }
+    if let Expr::Function(f, a) = ctx.get(fn_node) {
+        if a.len() == 1 {
+            if let Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)) = ctx.builtin_of(*f)
+            {
+                return Some((c, b, a[0]));
+            }
+        }
+    }
+    None
+}
+
 /// `csc(g) = c` / `sec(g) = c` / `cot(g) = c` at the EQUATION level (raw tree, constant
 /// `c`): reduce to the owning trig solver — `csc ⟺ sin(g) = 1/c` (`c = 0` ⇒ Empty, `1/sin`
 /// is never 0), `sec ⟺ cos(g) = 1/c`, and `cot ⟺ cos(g) − c·sin(g) = 0` (the homogeneous
@@ -8271,6 +8312,37 @@ fn try_solve_reciprocal_trig_equation(
     if contains_var(&simplifier.context, rhs, var) {
         return None;
     }
+
+    // `c / trig(g) = k` (nonzero constants `c`, `k`; trig ∈ {sin, cos, tan}) —
+    // `Div(c, trig(g))` or `c · trig(g)^(−1)`. Reduce to `trig(g) = c/k` and route to
+    // the bare-trig solver, which returns the FULL periodic family. Without this the
+    // reciprocal form isolates to the boundary and returns only the principal value
+    // (`2/sin(x)=4 → {π/6}`, dropping `5π/6` and every `+2kπ`), or the coefficient-1
+    // form folds `1/sin → csc` mid-isolation and leaks `solve(csc(x)=2)`.
+    if let Some((c, trig_builtin, g)) = match_reciprocal_trig_call(&simplifier.context, call) {
+        if !contains_var(&simplifier.context, g, var) {
+            return None;
+        }
+        let k = as_rational_const(&simplifier.context, rhs)?;
+        if k.is_zero() {
+            // `c/trig(g) = 0` with `c ≠ 0`: sin/cos are bounded so the value is never
+            // 0 → Empty; tan can be ±∞ at its poles (`c/tan = 0 ⇒ g = π/2 + kπ`), a
+            // distinct shape left to the isolation path.
+            return match trig_builtin {
+                BuiltinFn::Sin | BuiltinFn::Cos => Some(SolutionSet::Empty),
+                _ => None,
+            };
+        }
+        let target = simplifier.context.add(Expr::Number(c / k));
+        let trig_name = match trig_builtin {
+            BuiltinFn::Sin => "sin",
+            BuiltinFn::Cos => "cos",
+            _ => "tan",
+        };
+        let trig = simplifier.context.call(trig_name, vec![g]);
+        return solve_relation_set(simplifier, var, trig, target, RelOp::Eq);
+    }
+
     let (fn_id, args) = match simplifier.context.get(call) {
         Expr::Function(f, a) => (*f, a.clone()),
         _ => return None,
