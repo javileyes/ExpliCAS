@@ -5028,6 +5028,99 @@ fn try_solve_reciprocal_abs_inequality(
     }
 }
 
+/// `c / g(x) {op} 0` with a nonzero RATIONAL constant `c`, `0` on the RHS, and a
+/// denominator `g` that CONTAINS an absolute value (`1/(|x|−1) < 0`,
+/// `5/(|x−3|−1) > 0`, `1/(|x|+1) > 0`). The value `c/g` is never zero and shares
+/// `g`'s sign, so `c/g {op} 0 ⟺ g {op'} 0` with a STRICT `op'` (the pole `g = 0`
+/// is excluded even for `≤/≥`, since the value is undefined there rather than 0).
+///
+/// The bare `A/|g|` handler above matches only a lone `abs(g)` denominator, and
+/// the affine `c/g {op} 0` reducer (`try_solve_const_over_surd_affine_inequality`)
+/// requires `g` AFFINE, so `|x|−1` (abs minus a constant) falls to the generic
+/// rational-inequality path, which cannot find `g`'s zeros through the abs and
+/// returns garbage (`1/(|x|−1) < 0 → ℝ`; `> 0 → (−∞,−∞)∪(∞,∞)`). Reduce and
+/// delegate to the abs solver, which handles `|x|−1 {op} 0` correctly.
+///
+/// Gated to a denominator that actually contains an abs: affine and rational
+/// denominators keep their existing, already-correct owners (no huella change).
+fn try_solve_const_over_abs_denominator_vs_zero(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::const_sign::{provable_const_sign, ConstSign};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+    use std::cmp::Ordering;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // The RHS must be exactly 0 (the `k ≠ 0` reciprocal forms are owned elsewhere).
+    let k = as_rational_const(&simplifier.context, eq.rhs)?;
+    if !k.is_zero() {
+        return None;
+    }
+    // Peel negations into the constant's sign; expect `Div(const, g)` underneath.
+    let mut neg = false;
+    let mut node = eq.lhs;
+    while let Expr::Neg(inner) = simplifier.context.get(node) {
+        node = *inner;
+        neg = !neg;
+    }
+    let (num, den) = match simplifier.context.get(node) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    if contains_var(&simplifier.context, num, var) {
+        return None;
+    }
+    // Only the numerator's SIGN matters for the reduction. Decide it EXACTLY via the
+    // shared const-sign chokepoint: a rational directly, else a linear surd
+    // (`√2`, `−√2`) via `provable_sign_vs_zero`, else a transcendental constant
+    // (`e−3`, `π`) via `provable_const_sign`. A zero or undecidable numerator declines.
+    let mut num_sign = as_rational_const(&simplifier.context, num)
+        .map(|c| c.cmp(&num_rational::BigRational::from_integer(0.into())))
+        .or_else(|| cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, num))
+        .or_else(|| {
+            Some(match provable_const_sign(&simplifier.context, num)? {
+                ConstSign::Negative => Ordering::Less,
+                ConstSign::Zero => Ordering::Equal,
+                ConstSign::Positive => Ordering::Greater,
+            })
+        })?;
+    if num_sign == Ordering::Equal {
+        return None;
+    }
+    if neg {
+        num_sign = num_sign.reverse();
+    }
+    if !contains_var(&simplifier.context, den, var) {
+        return None;
+    }
+    // Restrict to denominators that CONTAIN an abs of the variable — the broken
+    // family. Affine/rational denominators already reduce correctly elsewhere.
+    let mut abs_terms: Vec<ExprId> = Vec::new();
+    collect_abs_of_var(&simplifier.context, den, var, &mut abs_terms);
+    if abs_terms.is_empty() {
+        return None;
+    }
+
+    // `c/g {op} 0 ⟺ g {op'} 0`, `op'` STRICT: the value is never 0, so `≤/≥`
+    // collapse to `</>`, and the pole `g = 0` (undefined value) stays excluded.
+    let op_is_upper = matches!(eq.op, RelOp::Gt | RelOp::Geq);
+    let num_is_positive = num_sign == Ordering::Greater;
+    let den_op = if op_is_upper == num_is_positive {
+        RelOp::Gt
+    } else {
+        RelOp::Lt
+    };
+    let zero = simplifier.context.num(0);
+    solve_relation_set(simplifier, var, den, zero, den_op)
+}
+
 fn try_solve_abs_threshold_inequality(
     eq: &Equation,
     var: &str,
@@ -8344,6 +8437,14 @@ fn solve_local_core_inner(
     // the abs-threshold path over a RATIONAL inner argument already punctures
     // poles correctly — rewrite into that twin shape and recurse.
     if let Some(set) = try_solve_reciprocal_abs_inequality(eq, var, simplifier, opts, ctx) {
+        return Ok((set, Vec::new()));
+    }
+    // `c/g {op} 0` with an abs INSIDE the denominator (`1/(|x|−1) < 0`) — the bare
+    // `A/|g|` handler above declines (denominator is `|x|−1`, not a lone `abs`),
+    // and the generic rational path returns garbage (`ℝ`, `(−∞,−∞)∪(∞,∞)`) because
+    // it cannot find `g`'s zeros through the abs. Reduce to `g {op'} 0` (strict)
+    // and let the abs solver handle it.
+    if let Some(set) = try_solve_const_over_abs_denominator_vs_zero(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {

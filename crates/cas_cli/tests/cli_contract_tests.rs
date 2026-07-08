@@ -2691,6 +2691,77 @@ fn test_eval_reciprocal_positive_function_inequality_flips() {
 }
 
 #[test]
+fn test_eval_const_over_abs_denominator_vs_zero_reduces_to_sign() {
+    // SOUNDNESS: `c/g {op} 0` with an abs INSIDE the denominator (`1/(|x|-1) < 0`)
+    // fell to the generic rational path, which cannot find g's zeros through the
+    // abs and returned garbage (`< 0 → ℝ`; `> 0 → (-∞,-∞)∪(∞,∞)`). Since `c/g` is
+    // never 0 and shares g's sign, `c/g {op} 0 ⟺ g {op'} 0` with a STRICT op' (the
+    // pole g=0 is undefined, not 0, so `≤/≥` collapse to `</>`). Delegate to the
+    // abs solver.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `< 0 ⟺ |x|-1 < 0 ⟺ |x| < 1`.
+    assert_eq!(r("solve(1/(abs(x) - 1) < 0, x)"), "(-1, 1)");
+    // `> 0 ⟺ |x|-1 > 0 ⟺ |x| > 1`.
+    assert_eq!(
+        r("solve(1/(abs(x) - 1) > 0, x)"),
+        "(-infinity, -1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(1/(abs(x) - 2) > 0, x)"),
+        "(-infinity, -2) U (2, infinity)"
+    );
+    // Always-positive denominator: the reduction gives an always-true `|x|+1 > 0`.
+    assert_eq!(r("solve(1/(abs(x) + 1) > 0, x)"), "All real numbers");
+    // Shifted abs argument and a non-unit numerator constant.
+    assert_eq!(
+        r("solve(5/(abs(x-3) - 1) > 0, x)"),
+        "(-infinity, 2) U (4, infinity)"
+    );
+    // Coefficiented abs argument.
+    assert_eq!(
+        r("solve(1/(abs(2*x) - 1) > 0, x)"),
+        "(-infinity, -1/2) U (1/2, infinity)"
+    );
+    // Non-strict operators keep the pole OPEN (the value is undefined at g=0, not 0).
+    assert_eq!(r("solve(1/(abs(x) - 1) <= 0, x)"), "(-1, 1)");
+    assert_eq!(
+        r("solve(1/(abs(x) - 1) >= 0, x)"),
+        "(-infinity, -1) U (1, infinity)"
+    );
+    // Negative numerator flips the reduced sign: `-1/(|x|-1) < 0 ⟺ |x|-1 > 0`.
+    assert_eq!(
+        r("solve(-1/(abs(x) - 1) < 0, x)"),
+        "(-infinity, -1) U (1, infinity)"
+    );
+    assert_eq!(r("solve(3/(abs(x) - 2) < 0, x)"), "(-2, 2)");
+
+    // The reduction needs only the numerator's SIGN, decided exactly via the shared
+    // const-sign chokepoint — so a surd (`√2`) or transcendental (`e−3`, `π`)
+    // numerator works too, not just a rational.
+    assert_eq!(
+        r("solve(sqrt(2)/(abs(x) - 1) > 0, x)"),
+        "(-infinity, -1) U (1, infinity)"
+    );
+    assert_eq!(r("solve(-sqrt(2)/(abs(x) - 1) > 0, x)"), "(-1, 1)");
+    // `e − 3 < 0` flips the reduced sign; `π > 0` keeps it.
+    assert_eq!(r("solve((e-3)/(abs(x) - 1) > 0, x)"), "(-1, 1)");
+    assert_eq!(r("solve(pi/(abs(x) - 2) < 0, x)"), "(-2, 2)");
+
+    // NO REGRESSION: non-abs reciprocal denominators, the bare `A/|g| {op} c` forms
+    // (c ≠ 0), and equations keep their existing owners.
+    assert_eq!(r("solve(1/(x - 1) < 0, x)"), "(-infinity, 1)");
+    assert_eq!(r("solve(5/(x - 3) > 0, x)"), "(3, infinity)");
+    assert_eq!(r("solve(1/abs(x) > 2, x)"), "(-1/2, 0) U (0, 1/2)");
+}
+
+#[test]
 fn test_eval_periodic_trig_inequality_declines() {
     // SOUNDNESS: a periodic `sin`/`cos`/`tan` inequality has an infinite periodic-union solution
     // that the monotonic inversion used to emit as a single wrong ray. Since cycle P2 the sin/cos
