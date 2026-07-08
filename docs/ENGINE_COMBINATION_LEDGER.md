@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 524 (newest first)
+Active entries: 525 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
@@ -126,6 +126,7 @@ Active entries: 524 (newest first)
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_radical_equ... | SOUNDNESS (single-radical `√(quad)=poly` mis-filtra tras cuadrar): `solve(√(5x²+9x−2)=3x)`
 - 2026-07-08 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | SOUNDNESS (apart leakea con numerador monomio escalado): `apart(2x/((x-1)²(x+1)))`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff`, brazo `Div... | SOUNDNESS (sign-via-abs con coeficiente en el numerador da conditional erróneo): `solve(-|x|/x = 1)`
+- 2026-07-08 | `retained` | `crates/cas_engine/src/rules/calculus/integrate_rule.rs` (`fold_var_power_quo... | CAPACIDAD/soundness (∫ de potencia recíproca fraccionaria leakea): `integrate(1/x^(1/3), x)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18820,3 +18821,19 @@ Active entries: 524 (newest first)
   - **`c·|x|/x` (c≠1) es `Div(Mul(c,|x|), x)`, no un abs desnudo** — TERCERA vez este batch que un coeficiente en el numerador rompe un matcher de forma-desnuda (single-radical, apart, sign-via-abs). La firma es siempre: "funciona con coeficiente 1, falla/leakea/wrong con c≠1". Pelar el coeficiente racional ANTES de casar la forma canónica es el fix uniforme. Los matchers de forma deben pelar coeficientes por defecto, no asumir forma desnuda.
   - Peor: el handler genérico que recogía el caso declinado emitía un conditional-all-reals que INCLUÍA el polo x=0 (0/0 indefinido) — un abs-sign wrong-answer no solo pierde el rayo sino que mete el polo. El fix correcto enruta a `try_solve_sign_via_abs` que excluye el polo (rayo abierto).
   - PRÓXIMO PELDAÑO (backlog auditoría): `∫1/x^(1/3)` (simplify→`x^(2/3)/x`, power-rule no reconoce; `var_power` tiene ~8 callers), FTC definido-desde-antiderivada (`∫1/(e^x+1)`), dos-sqrt inequality.
+
+## 2026-07-08 - CAPACIDAD/soundness (∫ de potencia recíproca fraccionaria leakea): `integrate(1/x^(1/3), x)`
+
+- area: `crates/cas_engine/src/rules/calculus/integrate_rule.rs` (`fold_var_power_quotient` + wiring en `IntegrateRule` indefinido y definido)
+- status: `retained`. Leak de residual auto-referencial (`integrate(x^(2/3)/x, x)`). Backlog auditoría `docs/AUDITORIA_P0_SOUNDNESS_2026-07-08.md`.
+- capture:
+  - investment_class: soundness/capacidad (leak → resuelve). Fase 1 (integración elemental real). Aislado a la entrada de `IntegrateRule`.
+  - cell: `∫1/x^(1/3)` → `3/2·x^(2/3)` (era leak), `∫1/x^(1/3) [1,8]` → `9/2` (definido, era leak), `∫1/x^(2/5)` → `5/3·x^(3/5)`, `∫1/x^(2/3)` → `3·x^(1/3)`, `∫3/x^(1/2)` → `6·√x`. Round-trip: `diff(3/2·x^(2/3))=x^(-1/3)` ✓; vs sympy `∫1/x^(1/3)[1,8]=9/2`, `∫1/x^(2/5)=5x^(3/5)/3` ✓. Even-root (`1/x^(1/4)`→`4/3 x^(3/4)`, ya funcionaba), enteros (`1/x`→ln|x|, `1/x^2`→−1/x, `x^3/x`→1/3 x^3) — intactos.
+  - causa raíz: el simplificador RACIONALIZA una potencia recíproca fraccionaria — `1/x^(1/3)` → `x^(2/3)/x` (NO `x^(-1/3)`), y `1/x^(2/5)` queda `Div(1, x^(2/5))` — así el matcher del power-rule (que reconoce `x^n`) las pierde. El handler even-root existente solo cubría `1/x^(1/(2k))`. `integrate(x^(-1/3))` directo SÍ funciona (power rule), solo la FORMA del integrando fallaba. Primer intento (extender `var_power` en cas_math) fue INEFECTIVO — el power-rule del integrando no usa `var_power`; palanca equivocada, revertida.
+  - diseño: normalizar el integrando en `IntegrateRule` ANTES del dispatch: `fold_var_power_quotient` pliega `(c·)x^a/x^b → c·x^(a-b)` (numerador potencia-de-var O constante racional; denominador potencia-de-var). GATE: solo exponente resultante FRACCIONARIO (`!e.is_integer()`) — los enteros (`1/x`, `1/x^2`, `x^3/x`) conservan su path existente (huella 0-delta). Aplicado en AMBOS paths: indefinido (`try_extract_integrate_call`) y definido (`try_extract_definite_integrate_call`). El power rule existente (`x^(-1/3)`) toma el relevo.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; rustfmt + `cargo fmt -p cas_engine --check` limpio (sin mod nuevos; el `sym_name==var` es comparación de variable, patrón aceptado, no función-literal → lint_string_compares no aplica); engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip diff-back + oráculo sympy.
+  - retained learning:
+  - **El simplificador racionaliza `1/x^(p/q)` INCONSISTENTEMENTE**: `1/x^(1/3)`→`x^(2/3)/x` (Div de potencias), `1/x^(2/5)`→queda `Div(1, x^(2/5))`, `1/x^(1/4)`→lo cubre el handler even-root. Un normalizador de integrando debe manejar las TRES formas (`x^a/x^b`, `Div(const, x^b)`) y plegar a `x^(a-b)`, gateado a exponente fraccionario para no tocar los enteros que ya funcionan.
+  - **Palanca equivocada cazada por probe end-to-end**: extender `var_power` (cas_math) NO arregló nada — el power-rule del integrando no lo usa. Confirmar la palanca con un probe end-to-end (¿cambió el output?) ANTES de invertir esfuerzo; revertir rápido al ver 0 efecto. El fix correcto es la NORMALIZACIÓN del integrando en la entrada de la regla, no el matcher profundo.
+  - **Normalizar en la ENTRADA de la regla (indefinido Y definido)**: el path definido (`try_extract_definite_integrate_call`) es SEPARADO del indefinido; un fix que solo toca el indefinido deja la forma definida leakeando (cazado en probe). Aplicar la normalización en ambas ramas de `IntegrateRule`.
+  - PRÓXIMO PELDAÑO (backlog auditoría): FTC definido-desde-antiderivada (`∫1/(e^x+1)` la indefinida da `ln(e^x/(e^x+1))` pero la definida leakea — certificado de intervalo profundo); dos-sqrt inequality; variable-RHS sign-via-abs (`x/|x|=x`).

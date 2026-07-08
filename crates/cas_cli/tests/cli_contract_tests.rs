@@ -4294,6 +4294,20 @@ fn test_eval_nth_root_reciprocal_integral_uses_correct_conjugate() {
     // Square-root rationalization (n=2) is unchanged.
     assert_eq!(r("integrate(1/sqrt(x),x)"), "2·sqrt(x)");
     assert_eq!(r("integrate(1/(x*sqrt(x)),x)"), "-2 / sqrt(x)");
+    // ODD-root and general fractional reciprocal powers: the simplifier rationalizes
+    // `1/x^(1/3)` to `x^(2/3)/x` (and leaves `1/x^(2/5)` as-is), which the power-rule
+    // matcher missed — only the even-root `1/x^(1/(2k))` cases above worked. Folding
+    // `(c·)x^a/x^b → c·x^(a-b)` for a FRACTIONAL exponent recovers the power rule, in
+    // both the indefinite and definite paths. Verified by diff-back and sympy.
+    assert_eq!(r("integrate(1/x^(1/3),x)"), "3/2·x^(2/3)");
+    assert_eq!(r("integrate(1/x^(1/3),x,1,8)"), "9/2");
+    assert_eq!(r("integrate(1/x^(2/5),x)"), "5/3·x^(3/5)");
+    assert_eq!(r("integrate(1/x^(2/3),x)"), "3·x^(1/3)");
+    assert_eq!(r("integrate(3/x^(1/2),x)"), "6·sqrt(x)");
+    assert_eq!(r("diff(3/2*x^(2/3),x)"), "x^(-1/3)");
+    // Integer-exponent quotients keep their existing (unfolded) path.
+    assert_eq!(r("integrate(1/x,x)"), "ln(|x|)");
+    assert_eq!(r("integrate(x^3/x,x)"), "1/3·x^3");
 }
 
 #[test]
