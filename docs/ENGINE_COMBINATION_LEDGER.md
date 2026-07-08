@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 523 (newest first)
+Active entries: 524 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
@@ -125,6 +125,7 @@ Active entries: 523 (newest first)
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sum_of_two_radical... | SOUNDNESS (diferencia-de-radicales dropea raíz racional): `solve(√(5x−1)−√(x+2)=1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_radical_equ... | SOUNDNESS (single-radical `√(quad)=poly` mis-filtra tras cuadrar): `solve(√(5x²+9x−2)=3x)`
 - 2026-07-08 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | SOUNDNESS (apart leakea con numerador monomio escalado): `apart(2x/((x-1)²(x+1)))`
+- 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff`, brazo `Div... | SOUNDNESS (sign-via-abs con coeficiente en el numerador da conditional erróneo): `solve(-|x|/x = 1)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18804,3 +18805,18 @@ Active entries: 523 (newest first)
   - **`c·x^k/D` (c≠1) NO es un `Div`, es `Mul(c, Div(x^k, D))`** — el simplificador saca la constante de la división. Un handler de fracciones que casa solo `Expr::Div` pierde toda fracción con coeficiente numerador ≠1 (el unidad y el constante-puro pasan porque sí quedan Div). El síntoma "funciona con numerador 1 y constante, leakea con c·x" es la firma de este bug. Normalizar TODA forma fracción-like (Div top-level, Div anidado en Mul, recíproco Pow) a `num/den` antes de procesar.
   - `decompose_fraction_like_factors` maneja `Mul(…, D^(-1))` pero NO `Mul(c, Div(n,d))` (Div anidado) — instrumentar (variant + decomp result) confirmó `variant=Mul decomp=None` para el caso que leakeaba. No asumir qué forma produce el simplificador; medirla.
   - PRÓXIMO PELDAÑO (backlog auditoría): `∫1/x^(1/3)` (simplify da `x^(2/3)/x` que el power-rule no reconoce), FTC definido-desde-antiderivada (`∫1/(e^x+1)`), sign-via-abs con abs denominador.
+
+## 2026-07-08 - SOUNDNESS (sign-via-abs con coeficiente en el numerador da conditional erróneo): `solve(-|x|/x = 1)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff`, brazo `Div`: pelar coeficiente racional de num y den antes de casar el abs desnudo)
+- status: `retained`. P0 wrong-answer ("All real numbers if …" incluyendo el polo, en vez del rayo abierto). Backlog auditoría `docs/AUDITORIA_P0_SOUNDNESS_2026-07-08.md`.
+- capture:
+  - investment_class: soundness (wrong-answer). Fix en `sign_form_coeff` (compartido sign-via-abs + sign-sum), aditivo.
+  - cell: `-|x|/x=1` → `(−∞,0)` (era "All real numbers if −x≥0"), `-|x|/x=−1` → `(0,∞)`, `2|x|/x=2` → `(0,∞)` (era "All reals if (2x)/2≥0"), `-2|x|/x=2` → `(−∞,0)`, `|x|/(2x)=1/2` → `(0,∞)`. Barrido por muestreo: 7/7 correctos. Bare `|x|/x=1`→(0,∞), `x/|x|`, `|x|/(−x)`, `3x/|x|` (abs en denominador, ya cubierto), offsets (`x/|x|+1>0`), inecuaciones — intactos.
+  - causa raíz: un signo escalado `c·|x|/x` (c≠1) el simplificador lo deja como `Div(Mul(c,|x|), x)` — el coeficiente entra en el NUMERADOR → el numerador crudo no es un abs DESNUDO, así que `abs_call_arg(num)` falla y `sign_form_coeff` declina → un handler genérico emite el conditional-all-reals erróneo (que ADEMÁS incluye el polo x=0). El bare `|x|/x` (c=1) sí queda `Div(|x|,x)` (por eso funcionaba); mismo shape que el bug de apart de este batch. El brazo `Neg` de `sign_form_coeff` cubría `Neg(Div(|x|,x))` pero el simplificador produce `Div(Neg(|x|),x)` (Neg DENTRO del Div).
+  - diseño: en el brazo `Div`, pelar `peel_rational_coefficient` de num y den → `(nc, num_core)`, `(dc, den_core)`; `scale = nc/dc`; luego el chequeo de abs desnudo sobre `num_core`/`den_core` (no los crudos); devolver `(a, scale·c)`. Behavior-preserving para `Div` directo (`|x|/x`: peel da (1,|x|),(1,x), scale=1, mismo c). `try_solve_sign_via_abs` (correcto) toma el relevo → rayo ABIERTO con polo excluido.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Barrido adversarial por muestreo (7 casos) + no-regresión de los 3 tests sign-via-abs existentes (bare, coef-en-denominador, offset).
+  - retained learning:
+  - **`c·|x|/x` (c≠1) es `Div(Mul(c,|x|), x)`, no un abs desnudo** — TERCERA vez este batch que un coeficiente en el numerador rompe un matcher de forma-desnuda (single-radical, apart, sign-via-abs). La firma es siempre: "funciona con coeficiente 1, falla/leakea/wrong con c≠1". Pelar el coeficiente racional ANTES de casar la forma canónica es el fix uniforme. Los matchers de forma deben pelar coeficientes por defecto, no asumir forma desnuda.
+  - Peor: el handler genérico que recogía el caso declinado emitía un conditional-all-reals que INCLUÍA el polo x=0 (0/0 indefinido) — un abs-sign wrong-answer no solo pierde el rayo sino que mete el polo. El fix correcto enruta a `try_solve_sign_via_abs` que excluye el polo (rayo abierto).
+  - PRÓXIMO PELDAÑO (backlog auditoría): `∫1/x^(1/3)` (simplify→`x^(2/3)/x`, power-rule no reconoce; `var_power` tiene ~8 callers), FTC definido-desde-antiderivada (`∫1/(e^x+1)`), dos-sqrt inequality.

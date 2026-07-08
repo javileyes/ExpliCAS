@@ -3733,6 +3733,15 @@ fn test_eval_sign_via_abs_with_coefficient_excludes_pole() {
     assert_eq!(r("solve(2*x/abs(x) = 2, x)"), "(0, infinity)");
     // `|g|/g` with a negated denominator: `|x|/(-x) = -sign(x)` (was a garbage conditional).
     assert_eq!(r("solve(abs(x)/(-x) = 1, x)"), "(-infinity, 0)");
+    // ABS in the NUMERATOR with a coefficient/negation: `c·|g|/g = c·sign(g)`. `2*abs(x)/x` and
+    // `-abs(x)/x` simplify to `Div(Mul(c, |x|), x)`, whose raw numerator is not a bare abs, so the
+    // coefficient sibling of `|x|/x` returned a garbage `All real numbers if [linear] >= 0`
+    // conditional (a wrong answer). Peeling `c` from BOTH sides of the division fixes it.
+    assert_eq!(r("solve(-abs(x)/x = 1, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(-abs(x)/x = -1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(2*abs(x)/x = 2, x)"), "(0, infinity)");
+    assert_eq!(r("solve(-2*abs(x)/x = 2, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(abs(x)/(2*x) = 1/2, x)"), "(0, infinity)");
     // Controls: the bare and matched-coefficient forms are unchanged; a rescaled RHS that no sign
     // value can hit is empty.
     assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");

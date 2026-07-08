@@ -11,7 +11,7 @@ Workflow multi-agente `frontier-audit-cycle4` (8 scouts read-only, uno por frent
 - [x] **diferencia-de-radicales ecuación** RAÍZ RACIONAL (`√(5x−1)−√(x+2)=1` → {2}): CERRADA ciclo 6. Peldaño: raíz irracional (`√(3x−1)−√(x+2)=1`) sigue leak.
 - [x] **single-radical `√(quad)=poly` directo** (`√(5x²+9x−2)=3x` → {1/4,2}, era "No solution"; `√(5x²+9x)=3x` dropeaba 9/4): CERRADA batch-2 ciclo 1 (handler reduce-a-polinomio + verify g(r)≥0, scope racional). Peldaño: raíces SURD (declina → isolación).
 - [ ] FTC definido-desde-antiderivada (`∫1/(e^x+1)`, `∫1/(1+cos x)` leak aunque la indefinida existe).
-- [ ] sign-via-abs con abs en denominador (`x/|x|=x`, `x/|x|=−x`, `−|x|/x=1`).
+- [~] sign-via-abs: `−|x|/x=1` / `c·|x|/x` (numerador abs con coef/negación, constant-RHS) CERRADO batch-2 ciclo 3 (pelar coef en el brazo Div de `sign_form_coeff`). PENDIENTE: RHS-variable `x/|x|=x`, `x/|x|=−x` (leak — necesita excluir polo x=0 + ruteo a `x·|x|`).
 - [x] **apart de numerador monomio `c·x^k`** (`apart(2x/((x−1)²(x+1)))`): CERRADA batch-2 ciclo 2 (normalizar `Mul(c, Div)` → `num/den` antes del match Div).
 - [ ] `∫1/x^p` p∈(0,1) (`∫1/x^(1/3)` leak simplificador-reescribe).
 - [ ] dos-sqrt INECUACIÓN dropea operador (`√x+√(x−1)>1`, multi-cycle).

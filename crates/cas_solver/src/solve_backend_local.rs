@@ -9585,32 +9585,46 @@ fn sign_form_coeff(
             }
         }
         Expr::Div(num, den) => {
-            let den_abs = abs_call_arg(&simplifier.context, den);
-            let num_abs = abs_call_arg(&simplifier.context, num);
+            // Peel a rational coefficient from BOTH sides first: a scaled sign form
+            // `2·|x|/x` or `−|x|/x` simplifies to `Div(Mul(2, |x|), x)` /
+            // `Div(Neg(|x|), x)`, so the bare-abs `abs_call_arg` on the raw numerator
+            // fails and the whole sign form is missed (the coefficient/negation sibling
+            // of the working `|x|/x`). Fold the peeled `nc/dc` into the returned coeff.
+            let (nc, num_core) = peel_rational_coefficient(&simplifier.context, num);
+            let (dc, den_core) = peel_rational_coefficient(&simplifier.context, den);
+            if dc.is_zero() {
+                return None;
+            }
+            let scale = nc / dc;
+            if scale.is_zero() {
+                return None;
+            }
+            let den_abs = abs_call_arg(&simplifier.context, den_core);
+            let num_abs = abs_call_arg(&simplifier.context, num_core);
             if let Some(a) = den_abs {
-                // `num/|a| = (num/a)·sign(a)`; `num/a` must fold to a nonzero rational constant.
+                // `num_core/|a| = (num_core/a)·sign(a)`; `num_core/a` must fold to a nonzero rational.
                 if !contains_var(&simplifier.context, a, var) {
                     return None;
                 }
-                let ratio = simplifier.context.add(Expr::Div(num, a));
+                let ratio = simplifier.context.add(Expr::Div(num_core, a));
                 let (ratio, _) = simplifier.simplify(ratio);
                 let c = as_rational_const(&simplifier.context, ratio)?;
                 if c.is_zero() {
                     return None;
                 }
-                Some((a, c))
+                Some((a, scale * c))
             } else if let Some(a) = num_abs {
-                // `|a|/den = (a/den)·sign(a)`; `a/den` must fold to a nonzero rational constant.
+                // `|a|/den_core = (a/den_core)·sign(a)`; `a/den_core` must fold to a nonzero rational.
                 if !contains_var(&simplifier.context, a, var) {
                     return None;
                 }
-                let ratio = simplifier.context.add(Expr::Div(a, den));
+                let ratio = simplifier.context.add(Expr::Div(a, den_core));
                 let (ratio, _) = simplifier.simplify(ratio);
                 let c = as_rational_const(&simplifier.context, ratio)?;
                 if c.is_zero() {
                     return None;
                 }
-                Some((a, c))
+                Some((a, scale * c))
             } else {
                 None
             }
