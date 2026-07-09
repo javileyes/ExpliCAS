@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 526 (newest first)
+Active entries: 527 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
@@ -128,6 +128,7 @@ Active entries: 526 (newest first)
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff`, brazo `Div... | SOUNDNESS (sign-via-abs con coeficiente en el numerador da conditional erróneo): `solve(-|x|/x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_engine/src/rules/calculus/integrate_rule.rs` (`fold_var_power_quo... | CAPACIDAD/soundness (∫ de potencia recíproca fraccionaria leakea): `integrate(1/x^(1/3), x)`
 - 2026-07-08 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | CAPACIDAD/soundness (FTC definido declina con denominador transcendental positivo): `integrate(1/(e^x+1), x, 0, 1)`
+- 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_form_equals_e... | SOUNDNESS (sign-via-abs con RHS variable leakea): `solve(x/|x| = x)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18852,3 +18853,18 @@ Active entries: 526 (newest first)
   - retained learning:
   - **El certificado de polo del FTC definido debe consultar la capa de signo para denominadores no-polinómicos**: `Polynomial::from_expr` falla en transcendentales, dejando `Unknown`→decline aunque la antiderivada exista. Un denominador provably-positive/negative-EVERYWHERE (`prove_positive` real) no tiene polo — es exactamente el chokepoint de signo que ya cierra familias P0. Reusarlo aquí (no re-derivar) cierra `1/(e^x+c)`. La positividad-everywhere es la certificación más FUERTE (subsume cualquier intervalo) y la más SEGURA (jamás certifica un denominador con raíz).
   - PRÓXIMO PELDAÑO: (1) `1/(cosh(x)+1)` — el INDEFINIDO leakea (falta la antiderivada Weierstrass/half-angle de cosh), no es mi certificado. (2) `1/(1+cos(x))` [0,π/2] y `1/(e^x−1)` [1,2] — denominador con raíz FUERA del intervalo: necesita certificación INTERVAL-específica (localizar la raíz, verificar fuera), no everywhere. (3) resto backlog: dos-sqrt inequality, variable-RHS sign-via-abs.
+
+## 2026-07-08 - SOUNDNESS (sign-via-abs con RHS variable leakea): `solve(x/|x| = x)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_sign_form_equals_expr`, despachado tras `try_solve_sign_via_abs`)
+- status: `retained`. Leak de residual malformado. Backlog auditoría `docs/AUDITORIA_P0_SOUNDNESS_2026-07-08.md` (con corrección: la "respuesta correcta" del audit para `x/|x|=−x` era ELLA MISMA errónea).
+- capture:
+  - investment_class: soundness (leak). Nuevo handler branch-split.
+  - cell: `x/|x|=x` → `{1,−1}` (era leak `solve(x−x·|x|=0)`), `abs(x)/x=x` → `{1,−1}`, `2x/|x|=x` → `{2,−2}` (coef 2), `x/|x|=2x` → `{1/2,−1/2}`, `x/|x|=x²` → `{1}` (rama x=−1 dropeada: sign≠x²), `x/|x|=x−2` → `{3}`, `x/|x|=−x` → No solution, `−x/|x|=x` → No solution. Constant-RHS (`x/|x|=1`→(0,∞)), inecuaciones (`x/|x|>0`), offset (`x/|x|+1>3`) — intactos. Barrido por muestreo 8/8 correctos.
+  - causa raíz: `try_solve_sign_via_abs` exige RHS CONSTANTE (`as_rational_const(otro_lado)?`); con RHS variable (`h(x)`) declina y la isolación limpia el denominador a `x = x·|x|` → leak malformado. NOTA: la auditoría afirmaba `x/|x|=−x` → `{−1,1}`, pero es FALSO (sign(x)=−x: x>0→−1=x contradice; x<0→1=x contradice) → No solution. No confiar ciegamente en la "correct answer" del audit; re-derivar.
+  - diseño: `coeff·sign(g)+offset = h(x)` es una step function → split en `sign(g)=±1`: rama +1 = solve(`h = coeff+offset`) ∩ `g>0`; rama −1 = solve(`h = −coeff+offset`) ∩ `g<0`; unión. El polo g=0 lo excluye la rama ESTRICTA (`g>0`/`g<0`). Gate: sign form en un lado, el otro contiene var pero NO es sign form (sign=sign → sign-sum handler). Op Eq only.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Barrido adversarial por muestreo (8 casos incl. rama-fuera-de-dominio y No-solution).
+  - retained learning:
+  - **Un sign form con RHS variable es una step function: split en `sign(g)=±1`, cada rama restringida a su semirrecta ESTRICTA** (que excluye el polo). El mismo patrón que el sign-via-abs constante, pero el RHS ahora se resuelve como ecuación en cada rama. La intersección con `g>0`/`g<0` es el filtro que descarta las raíces de la rama equivocada (`sign(x)=x²` keeps 1, drops −1).
+  - **La "respuesta correcta" de un informe de auditoría es una HIPÓTESIS, no un oráculo**: `x/|x|=−x` estaba anotado `{−1,1}` pero es No-solution. Re-derivar por sustitución antes de pinear el contrato — el barrido por muestreo lo cazó.
+  - PRÓXIMO PELDAÑO (backlog): `∫1/(1+cos x)` [0,π/2] (interval-específico), dos-sqrt inequality, `∫1/(cosh x+1)` (antiderivada faltante).

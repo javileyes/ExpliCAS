@@ -8635,6 +8635,12 @@ fn solve_local_core_inner(
     if let Some(set) = try_solve_sign_via_abs(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
+    // `coeff·sign(g) + offset = h(x)` with a VARIABLE RHS (`x/|x| = x`): the sign
+    // form is a step function, so the equation splits on `sign(g) = ±1`. The
+    // constant-RHS forms are owned by `try_solve_sign_via_abs` above.
+    if let Some(set) = try_solve_sign_form_equals_expr(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // A polynomial inequality with a SINGLE `|f|` term (`x² − 3|x| + 2 < 0`) —
     // the generic path treats the abs opaquely and returns a wrong "No
     // solution". Split at `f = 0` into the `|f| = ±f` branches. Placed after the
@@ -9533,6 +9539,60 @@ fn try_solve_polynomial_with_quartic_factor(
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(roots))
+}
+
+/// Solve `coeff·sign(g) + offset = h(x)` with a VARIABLE RHS `h` (EQUATION only) by
+/// the step-function split: `sign(g) ∈ {−1, +1}`, so the equation holds where
+/// `h = coeff + offset` on `g > 0`, OR where `h = −coeff + offset` on `g < 0`.
+/// `x/|x| = x` (`sign(x) = x`) → `{1} ∪ {−1} = {−1, 1}` (the pole `x = 0` is excluded
+/// by the STRICT `g`-branch); `x/|x| = −x` → `∅ ∪ ∅ = No solution`. The generic
+/// isolation instead clears the denominator to `x = x·|x|` and leaks a malformed
+/// residual. Constant-RHS forms stay with `try_solve_sign_via_abs`; a sign form on
+/// BOTH sides is left to the sign-sum handler.
+fn try_solve_sign_form_equals_expr(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_solver_core::isolation_utils::contains_var;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    // One side is a pure sign form `coeff·sign(g) + offset`; the other side `h`
+    // contains the variable but is NOT itself a sign form.
+    let (g, coeff, offset, h) =
+        if let Some((g, c, o)) = sign_form_coeff_offset(simplifier, eq.lhs, var) {
+            if !contains_var(&simplifier.context, eq.rhs, var) {
+                return None; // constant RHS: `try_solve_sign_via_abs` owns it
+            }
+            (g, c, o, eq.rhs)
+        } else if let Some((g, c, o)) = sign_form_coeff_offset(simplifier, eq.rhs, var) {
+            if !contains_var(&simplifier.context, eq.lhs, var) {
+                return None;
+            }
+            (g, c, o, eq.lhs)
+        } else {
+            return None;
+        };
+    if sign_form_coeff_offset(simplifier, h, var).is_some() {
+        return None; // sign(g) = sign(h): the sign-sum handler's job
+    }
+
+    let zero = simplifier.context.num(0);
+    // `sign(g) = +1` branch: `h = coeff + offset` restricted to `g > 0`.
+    let pos_target = simplifier.context.add(Expr::Number(&coeff + &offset));
+    let pos_roots = solve_relation_set(simplifier, var, h, pos_target, RelOp::Eq)?;
+    let pos_domain = solve_relation_set(simplifier, var, g, zero, RelOp::Gt)?;
+    let pos = intersect_solution_sets(&simplifier.context, pos_roots, pos_domain);
+    // `sign(g) = −1` branch: `h = −coeff + offset` restricted to `g < 0`.
+    let neg_target = simplifier.context.add(Expr::Number(-&coeff + &offset));
+    let neg_roots = solve_relation_set(simplifier, var, h, neg_target, RelOp::Eq)?;
+    let neg_domain = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+    let neg = intersect_solution_sets(&simplifier.context, neg_roots, neg_domain);
+    Some(union_solution_sets(&simplifier.context, pos, neg))
 }
 
 /// Return the `abs(arg)` argument of `x` (a unary `|·|` call), or None.

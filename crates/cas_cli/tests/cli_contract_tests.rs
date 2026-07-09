@@ -3790,6 +3790,41 @@ fn test_eval_sign_via_abs_with_additive_constant_excludes_pole() {
 }
 
 #[test]
+fn test_eval_sign_form_equals_variable_rhs_splits_on_sign() {
+    // `coeff·sign(g) + offset = h(x)` with a VARIABLE RHS (`x/|x| = x`) leaked a
+    // malformed residual (the isolation cleared the denominator to `x = x·|x|`).
+    // The sign form is a step function, so it splits on `sign(g) = ±1`: solve
+    // `h = coeff+offset` on `g > 0` and `h = -coeff+offset` on `g < 0`, unioning
+    // (the pole `g = 0` excluded by the STRICT branch). Verified by substitution.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(x/abs(x) = x, x)"), "{ 1, -1 }");
+    assert_eq!(r("solve(abs(x)/x = x, x)"), "{ 1, -1 }");
+    // Coefficiented sign form: `2·sign(x) = x`.
+    assert_eq!(r("solve(2*x/abs(x) = x, x)"), "{ 2, -2 }");
+    assert_eq!(r("solve(x/abs(x) = 2*x, x)"), "{ 1/2, -1/2 }");
+    // A branch's root can fall OUTSIDE its sign-domain and be dropped: `sign(x) = x²`
+    // keeps only x=1 (x=-1 has sign -1 ≠ 1).
+    assert_eq!(r("solve(x/abs(x) = x^2, x)"), "{ 1 }");
+    assert_eq!(r("solve(x/abs(x) = x - 2, x)"), "{ 3 }");
+    // `sign(x) = -x` and `-sign(x) = x` have NO solution (neither ±1 lands in its
+    // own half-line) — the audit's stated "{-1,1}" was itself wrong.
+    assert_eq!(r("solve(x/abs(x) = -x, x)"), "No solution");
+    assert_eq!(r("solve(-x/abs(x) = x, x)"), "No solution");
+
+    // NO REGRESSION: constant-RHS equations and inequalities keep their handler.
+    assert_eq!(r("solve(x/abs(x) = 1, x)"), "(0, infinity)");
+    assert_eq!(r("solve(-abs(x)/x = 1, x)"), "(-infinity, 0)");
+    assert_eq!(r("solve(x/abs(x) > 0, x)"), "(0, infinity)");
+}
+
+#[test]
 fn test_eval_sign_form_sum_partitions_at_poles() {
     // A SUM of ≥2 sign forms `Σ cᵢ·sign(gᵢ) {op} k` is a step function (the simplifier combines it over a
     // common denominator and the isolation path then returns "No solution" / a garbage residual). It now
