@@ -10,7 +10,7 @@ Workflow multi-agente `frontier-audit-cycle4` (8 scouts read-only, uno por frent
 - [x] **Familia recíproco-trig ecuación** (`2/sin(x)=4`, `1/sin(x)=2`, ~12 inputs P0): CERRADA ciclo 5.
 - [x] **diferencia-de-radicales ecuación** RAÍZ RACIONAL (`√(5x−1)−√(x+2)=1` → {2}): CERRADA ciclo 6. Peldaño: raíz irracional (`√(3x−1)−√(x+2)=1`) sigue leak.
 - [x] **single-radical `√(quad)=poly` directo** (`√(5x²+9x−2)=3x` → {1/4,2}, era "No solution"; `√(5x²+9x)=3x` dropeaba 9/4): CERRADA batch-2 ciclo 1 (handler reduce-a-polinomio + verify g(r)≥0, scope racional). Peldaño: raíces SURD (declina → isolación).
-- [ ] FTC definido-desde-antiderivada (`∫1/(e^x+1)`, `∫1/(1+cos x)` leak aunque la indefinida existe).
+- [~] FTC definido-desde-antiderivada: `∫1/(e^x+c)` (c>0), `∫e^x/(e^x+1)` CERRADO batch-3 ciclo 1 (certificado de polo consulta `prove_positive` para denominador transcendental positivo-everywhere). PENDIENTE: `∫1/(1+cos x)` [0,π/2] (raíz FUERA del intervalo → interval-específico); `∫1/(cosh x+1)` (falta la antiderivada, no el certificado).
 - [~] sign-via-abs: `−|x|/x=1` / `c·|x|/x` (numerador abs con coef/negación, constant-RHS) CERRADO batch-2 ciclo 3 (pelar coef en el brazo Div de `sign_form_coeff`). PENDIENTE: RHS-variable `x/|x|=x`, `x/|x|=−x` (leak — necesita excluir polo x=0 + ruteo a `x·|x|`).
 - [x] **apart de numerador monomio `c·x^k`** (`apart(2x/((x−1)²(x+1)))`): CERRADA batch-2 ciclo 2 (normalizar `Mul(c, Div)` → `num/den` antes del match Div).
 - [x] **`∫1/x^p` p fraccionaria** (`∫1/x^(1/3)` → `3/2·x^(2/3)`, definido `[1,8]` → `9/2`): CERRADA batch-2 ciclo 4 (normalizar `(c·)x^a/x^b → c·x^(a-b)` en la entrada de IntegrateRule, indefinido + definido, gateado a exponente fraccionario).

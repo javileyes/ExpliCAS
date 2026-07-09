@@ -2688,6 +2688,24 @@ fn quadratic_real_roots_clear_of_interval(
     IntervalCertificate::Certified
 }
 
+/// A denominator provably positive OR negative for EVERY real value of the
+/// variable (`e^x + 1`, `cosh(x) + 2`, `x² + 1`), hence never zero. Uses the
+/// shared real-domain sign prover, which decides `e^x > 0`, `cosh ≥ 1`, and sums
+/// thereof. Interval-independent (positivity everywhere subsumes any interval).
+fn denominator_provably_nonzero_everywhere(ctx: &mut Context, expr: ExprId) -> bool {
+    use cas_math::prove_sign::prove_positive_depth_with;
+    use cas_math::tri_proof::TriProof;
+    const DEPTH: usize = 4;
+    let prove_pos = |ctx: &Context, e: ExprId| {
+        prove_positive_depth_with(ctx, e, DEPTH, true, |_, _, _| TriProof::Unknown).is_proven()
+    };
+    if prove_pos(ctx, expr) {
+        return true;
+    }
+    let neg = ctx.add(Expr::Neg(expr));
+    prove_pos(ctx, neg)
+}
+
 fn nonzero_on_interval(
     ctx: &mut Context,
     expr: ExprId,
@@ -2707,8 +2725,20 @@ fn nonzero_on_interval(
             IntervalCertificate::Certified
         };
     }
-    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
-        return IntervalCertificate::Unknown;
+    let poly = match Polynomial::from_expr(ctx, expr, var_name) {
+        Ok(poly) => poly,
+        Err(_) => {
+            // A TRANSCENDENTAL denominator the polynomial path cannot parse
+            // (`e^x + 1`, `cosh(x) + 2`): if it is provably positive — or negative —
+            // EVERYWHERE, it has no pole anywhere, so the definite FTC path is safe on
+            // any interval. The real-domain sign prover decides `e^x > 0`, `cosh ≥ 1`,
+            // etc. Without this, `∫ 1/(e^x+1)` (whose antiderivative IS found) leaked a
+            // residual because the pole certificate returned Unknown.
+            if denominator_provably_nonzero_everywhere(ctx, expr) {
+                return IntervalCertificate::Certified;
+            }
+            return IntervalCertificate::Unknown;
+        }
     };
     match poly.degree() {
         0 => {

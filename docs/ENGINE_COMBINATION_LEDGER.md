@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 525 (newest first)
+Active entries: 526 (newest first)
 
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
@@ -127,6 +127,7 @@ Active entries: 525 (newest first)
 - 2026-07-08 | `retained` | `crates/cas_math/src/general_integration_backend/methods.rs` (`apart_decompos... | SOUNDNESS (apart leakea con numerador monomio escalado): `apart(2x/((x-1)²(x+1)))`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`sign_form_coeff`, brazo `Div... | SOUNDNESS (sign-via-abs con coeficiente en el numerador da conditional erróneo): `solve(-|x|/x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_engine/src/rules/calculus/integrate_rule.rs` (`fold_var_power_quo... | CAPACIDAD/soundness (∫ de potencia recíproca fraccionaria leakea): `integrate(1/x^(1/3), x)`
+- 2026-07-08 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_i... | CAPACIDAD/soundness (FTC definido declina con denominador transcendental positivo): `integrate(1/(e^x+1), x, 0, 1)`
 - 2026-07-07 | `retained` | `crates/cas_solver_core/src/isolation_functions.rs` (gate en la rama `Functio... | HONESTIDAD (builtin definido no-invertible: error → residual): `solve(arcsin(x)=a)`
 - 2026-07-07 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (arms nuevos en `try_solve_inv... | CAPACIDAD (inversas hiperbólicas como función externa): `solve(asinh/atanh/acosh(g)=c)`
 - 2026-07-07 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`atanh_form_o... | CAPACIDAD (integral definida racional fuera del dominio atanh): `∫ 1/(a²−x²)` en |x|>a
@@ -18837,3 +18838,17 @@ Active entries: 525 (newest first)
   - **Palanca equivocada cazada por probe end-to-end**: extender `var_power` (cas_math) NO arregló nada — el power-rule del integrando no lo usa. Confirmar la palanca con un probe end-to-end (¿cambió el output?) ANTES de invertir esfuerzo; revertir rápido al ver 0 efecto. El fix correcto es la NORMALIZACIÓN del integrando en la entrada de la regla, no el matcher profundo.
   - **Normalizar en la ENTRADA de la regla (indefinido Y definido)**: el path definido (`try_extract_definite_integrate_call`) es SEPARADO del indefinido; un fix que solo toca el indefinido deja la forma definida leakeando (cazado en probe). Aplicar la normalización en ambas ramas de `IntegrateRule`.
   - PRÓXIMO PELDAÑO (backlog auditoría): FTC definido-desde-antiderivada (`∫1/(e^x+1)` la indefinida da `ln(e^x/(e^x+1))` pero la definida leakea — certificado de intervalo profundo); dos-sqrt inequality; variable-RHS sign-via-abs (`x/|x|=x`).
+
+## 2026-07-08 - CAPACIDAD/soundness (FTC definido declina con denominador transcendental positivo): `integrate(1/(e^x+1), x, 0, 1)`
+
+- area: `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`nonzero_on_interval` + helper `denominator_provably_nonzero_everywhere`)
+- status: `retained`. Leak de residual (un-answer) — la antiderivada EXISTE pero el certificado de polo declinaba. Backlog auditoría `docs/AUDITORIA_P0_SOUNDNESS_2026-07-08.md`.
+- capture:
+  - investment_class: capacidad (leak→resuelve) + reutiliza el chokepoint de signo. Fase 1 (integración definida real).
+  - cell: `∫1/(e^x+1) [0,1]` → `ln(2e/(1+e))` (=ln2+1−ln(1+e), era leak; ✓ vs sympy 0.37989), `∫1/(e^x+3) [0,1]` → `1/3·ln(4e/(3+e))`, `∫e^x/(e^x+1) [0,1]` → `ln((1+e)/2)`, `∫1/(e^(2x)+1)`. Round-trip `diff(ln(2e^x/(1+e^x)))=1/(e^x+1)` ✓. SOUNDNESS: `∫1/(e^x−1) [−1,1]` → leak honesto (e^x−1 tiene raíz en 0, NO positivo-everywhere → no se certifica falsamente), `∫1/(x−1) [0,2]` → undefined (polo poly), `∫1/(x²+1)`→π/4, `∫1/x [1,e]`→1 — intactos.
+  - causa raíz: el certificado de polo del FTC definido (`integrand_risks_certified` → `DenominatorNonZero(factor)` → `nonzero_on_interval`) hacía `Polynomial::from_expr(factor)`; para un denominador TRANSCENDENTAL (`e^x+1`) eso FALLA → devolvía `Unknown` → certificado no-Certified → declina, AUNQUE la antiderivada `ln(e^x/(e^x+1))` sí se computa (`resolve_indefinite_for_definite` la halla). El indefinido funcionaba, el definido leakeaba.
+  - diseño: en el brazo `Err(_)` de `Polynomial::from_expr` de `nonzero_on_interval`, antes de `Unknown`, probar `denominator_provably_nonzero_everywhere`: usa el chokepoint de signo REAL `cas_math::prove_sign::prove_positive_depth_with(…, real_only=true).is_proven()` sobre `expr` y sobre `−expr` (positivo O negativo everywhere ⟹ sin polo en ningún sitio ⟹ seguro en cualquier intervalo). Decide `e^x>0`, `cosh≥1`, sumas de éstos. Interval-independiente (positividad everywhere subsume el intervalo). NO certifica denominadores con raíz real (`e^x−1`, `1+cos` con raíz en π) → sound.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets + `cargo fmt -p cas_engine` limpio; engine-fast + ambos scorecards verdes; huella 0-delta. Round-trip diff-back + oráculo sympy.
+  - retained learning:
+  - **El certificado de polo del FTC definido debe consultar la capa de signo para denominadores no-polinómicos**: `Polynomial::from_expr` falla en transcendentales, dejando `Unknown`→decline aunque la antiderivada exista. Un denominador provably-positive/negative-EVERYWHERE (`prove_positive` real) no tiene polo — es exactamente el chokepoint de signo que ya cierra familias P0. Reusarlo aquí (no re-derivar) cierra `1/(e^x+c)`. La positividad-everywhere es la certificación más FUERTE (subsume cualquier intervalo) y la más SEGURA (jamás certifica un denominador con raíz).
+  - PRÓXIMO PELDAÑO: (1) `1/(cosh(x)+1)` — el INDEFINIDO leakea (falta la antiderivada Weierstrass/half-angle de cosh), no es mi certificado. (2) `1/(1+cos(x))` [0,π/2] y `1/(e^x−1)` [1,2] — denominador con raíz FUERA del intervalo: necesita certificación INTERVAL-específica (localizar la raíz, verificar fuera), no everywhere. (3) resto backlog: dos-sqrt inequality, variable-RHS sign-via-abs.

@@ -4270,6 +4270,39 @@ fn test_eval_definite_integral_removable_pole_is_not_undefined() {
 }
 
 #[test]
+fn test_eval_definite_integral_provably_positive_transcendental_denominator() {
+    // `∫ 1/(e^x+1)` computes the antiderivative `ln(e^x/(e^x+1))`, but the DEFINITE
+    // form leaked: the pole certificate could not `Polynomial::from_expr` the
+    // transcendental denominator `e^x+1`, returned Unknown, and declined. Since
+    // `e^x+1 > 0` everywhere (the real-domain sign prover decides `e^x > 0`), it has
+    // no pole, so the FTC evaluation is safe. Cross-checked vs sympy.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // `∫₀¹ 1/(e^x+1) = ln(2) + 1 - ln(1+e)` = `ln(2e/(1+e))` ≈ 0.37989.
+    assert_eq!(r("integrate(1/(e^x+1), x, 0, 1)"), "ln((e·2)/(1 + e))");
+    assert_eq!(r("integrate(1/(e^x+3), x, 0, 1)"), "1/3·ln((e·4)/(3 + e))");
+    // Numerator = e^x (antiderivative ln(e^x+1)).
+    assert_eq!(r("integrate(e^x/(e^x+1), x, 0, 1)"), "ln(1/2·(1 + e))");
+    // SOUNDNESS: a denominator with a REAL root is NOT provably positive everywhere,
+    // so it is NOT falsely certified — `e^x-1` vanishes at x=0 (a genuine pole inside
+    // [-1,1]) and stays an honest residual, and polynomial poles are still caught.
+    assert_eq!(
+        r("integrate(1/(e^x-1), x, -1, 1)"),
+        "integrate(1 / (e^x - 1), x, -1, 1)"
+    );
+    assert_eq!(r("integrate(1/(x-1), x, 0, 2)"), "undefined");
+    // No regression on the already-working rational and log cases.
+    assert_eq!(r("integrate(1/(x^2+1), x, 0, 1)"), "1/4·pi");
+    assert_eq!(r("integrate(1/x, x, 1, e)"), "1");
+}
+
+#[test]
 fn test_eval_nth_root_reciprocal_integral_uses_correct_conjugate() {
     // `1/x^(1/n)` rationalized its denominator by multiplying by the BARE root `x^(1/n)`, which only
     // clears a SQUARE root: `x^(1/4)·x^(1/4) = x^(1/2) ≠ x`. So `1/x^(1/4)` became `x^(1/4)/x = x^(-3/4)`
