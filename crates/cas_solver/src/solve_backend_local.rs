@@ -5337,6 +5337,53 @@ fn try_solve_division_vs_const_sign_split(
     Some(union_solution_sets(&simplifier.context, case_pos, case_neg))
 }
 
+/// `|f(x)| {op} |g(x)|` with POLYNOMIAL arguments and an order operator
+/// (`|x²−1| < |x+1|`): both sides are non-negative, so the relation is EXACTLY
+/// `f² {op} g²` — one polynomial inequality, delegated to its correct owner via
+/// the exact expanded difference `f² − g² {op} 0`. No handler owned this shape
+/// (the single-abs handler requires ONE distinct abs, the threshold handler a
+/// CONSTANT side, the multi-abs handler affine arguments), so it fell to the
+/// generic path: "No solution" for `<`, boundary-only degenerate points for `≤`,
+/// a mangled conditional leak for `>`. Linear-vs-linear (`|2x+1| > |x−1|`)
+/// already has a correct owner and stays declined (degree gate).
+fn try_solve_abs_vs_abs_polynomial_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let f_arg = match_abs_argument(&simplifier.context, eq.lhs)?;
+    let g_arg = match_abs_argument(&simplifier.context, eq.rhs)?;
+    if !contains_var(&simplifier.context, f_arg, var)
+        || !contains_var(&simplifier.context, g_arg, var)
+    {
+        return None; // a constant side is the threshold handler's job
+    }
+    let (Ok(f_poly), Ok(g_poly)) = (
+        Polynomial::from_expr(&simplifier.context, f_arg, var),
+        Polynomial::from_expr(&simplifier.context, g_arg, var),
+    ) else {
+        return None;
+    };
+    if f_poly.degree().max(g_poly.degree()) < 2 {
+        return None; // affine-vs-affine already has a correct owner
+    }
+    // p = f² − g², built with EXACT polynomial arithmetic so it arrives expanded
+    // and canonically collected (an unexpanded Mul shape can defeat the recursive
+    // solver — the F17 lesson).
+    let p_poly = f_poly.mul(&f_poly).sub(&g_poly.mul(&g_poly));
+    let p_expr = p_poly.to_expr(&mut simplifier.context);
+    let zero = simplifier.context.num(0);
+    let set = solve_relation_set(simplifier, var, p_expr, zero, eq.op.clone())?;
+    is_concrete_solution_set(&set).then_some(set)
+}
+
 /// `f(x)·g(x) {op} 0` where at least one factor is NOT polynomial-parseable
 /// (`(x−1)·ln(x) < 0`, `x·e^x > 0`): split on the factor signs on the RAW tree.
 /// `f·g < 0 ⟺ (f>0 ∧ g<0) ∪ (f<0 ∧ g>0)` and `f·g > 0 ⟺` the matching-signs
@@ -8862,6 +8909,11 @@ fn solve_local_core_inner(
     // `f·g {op} 0` with a non-polynomial factor (`(x−1)·ln(x) < 0`): factor-sign
     // split on the RAW tree, before the prepass distributes the product away.
     if let Some(set) = try_solve_product_inequality_sign_split(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `|f| {op} |g|` with polynomial args: both sides non-negative, reduce to the
+    // exact polynomial inequality f² − g² {op} 0 (its correct owner).
+    if let Some(set) = try_solve_abs_vs_abs_polynomial_inequality(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {

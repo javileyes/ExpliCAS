@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 539 (newest first)
+Active entries: 540 (newest first)
 
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
@@ -128,6 +128,7 @@ Active entries: 539 (newest first)
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_product_inequality... | SOUNDNESS (producto con factor no-polinómico dividido asumiendo positividad): `solve((x-1)*ln(x)<0)`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (|f·g| vs c pierde la región entre ceros por rama Mul no-concreta): `solve(abs(x)*abs(x-1)<2)`
 - 2026-07-10 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`antiderivati... | SOUNDNESS (FTC ingenuo sobre antiderivada de Weierstrass discontinua): `integrate(1/(2+cos(x)), x, 0, 2*pi)`
+- 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (|f| vs |g| polinómico sin dueño en desigualdad): `solve(abs(x^2-1)<abs(x+1))`
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
@@ -19062,3 +19063,18 @@ Active entries: 539 (newest first)
   - **`echo OK` tras un `;` en una cadena de validación es un falso verde**: el clippy del ciclo F17 FALLÓ (unused_mut) y el `; echo CLIPPY_OK` incondicional lo enmascaró; se detectó un ciclo después al incluir "error" en el grep de verificación. Gatear cada eslabón con `&&` o un `if` explícito, y el grep del chequeo debe incluir SIEMPRE error/FAILED. El fix heredado (quitar `mut`) va en este commit.
   - **El certificado de dominio de la ANTIDERIVADA es una obligación separada del certificado del integrando** (segunda instancia tras acosh): toda ruta de integración que sustituya con inversa multivaluada/periódica (t=tan(kx/2)) produce antiderivadas discontinuas donde el integrando es suave; el patrón espejo-de-acosh (colector dirigido + no-Certified→Unknown) escala a futuras rutas. La democión a Unknown y no Undefined es la decisión de soundness clave.
   - PRÓXIMO PELDAÑO (capacidad): corrección analítica de salto — para `c·arctan(u)` con u→±∞ a través de cada polo interior, sumar c·π por salto convierte los residuales de esta familia en los valores de libro (2π/√3 para [0,2π]); requiere contar polos interiores (la maquinaria de escaneo exacto ya está en trig_nonzero_on_interval). Resto backlog: F15/F16 (abs-deep), F21-F23 (P1 leaks), tan(x)+1=2 periodicidad (hallazgo lateral F14), F1-F3 paramétricos.
+
+## 2026-07-10 - SOUNDNESS (|f| vs |g| polinómico sin dueño en desigualdad): `solve(abs(x^2-1)<abs(x+1))`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynomial_inequality`, handler nuevo: reducción exacta a cuadrados) + test de contrato `crates/cas_solver/tests/abs_vs_abs_inequality_tests.rs`
+- status: `retained`. FAMILIA P0 F15 del informe `docs/AUDITORIA_FRONTERA_2026-07-09.md` (16 miembros confirmados).
+- capture:
+  - investment_class: soundness (No solution para conjuntos no vacíos; frontera degenerada en ≤; leak condicional mangleado en >). Hueco de propiedad: cada handler de abs excluía la forma por un gate distinto (single-abs: 2 abs distintos; threshold: lado constante; multi-abs: args afines).
+  - cell: `|x²−1|<|x+1|` → `(0,2)` (era No solution), `<=` → `[−1,−1]∪[0,2]` (x=−1 anula ambos lados), `>` → `(−∞,−1)∪(−1,0)∪(2,∞)` (era leak; −1 excluido, igualdad ahí), `>=` → `(−∞,0]∪[2,∞)`, desplazados `|x²−4|<|x+2|` → `(1,3)`, `|x²−1|<|x−1|` → `(−2,0)`, `|x²−9|<|x−3|` → `(−4,−2)` — los 7 verificados a mano vía factorización `|x+a|·(|x−b|−1)`. Controles: afín-vs-afín `|2x+1|>|x−1|` (dueño existente, gate de grado declina), ecuaciones (representación pinneada `{−1,2,0}` intacta), threshold `|x−1|<2`, arg transcendental declina.
+  - causa raíz: la del audit — ningún handler op-aware posee `|f| {op} |g|` con argumento no-afín; caía al camino genérico abs-opaco.
+  - diseño: ambos lados son NO-NEGATIVOS, así que `|f| op |g| ⟺ f² op g²` EXACTAMENTE para los 4 ops de orden — una reducción de una línea matemática. `p = f²−g²` con aritmética polinómica exacta (`f_poly.mul(&f_poly).sub(...)`) para que llegue EXPANDIDO y canónico (lección F17: la forma Mul sin expandir derrota al solver recursivo), delegado al dueño polinómico vía solve_relation_set + guard de concreción. Gates: ops de orden (Eq queda con su dueño), ambos args con var y Polynomial-parseables, max(deg)≥2 (afín-vs-afín tiene dueño correcto).
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio (gateado); engine-fast + ambos scorecards verdes; huella estructural 0-delta. Tests: 3 tests / 10 asserts.
+  - retained learning:
+  - **Reduce-a-canónico con la monotonía correcta**: cuando ambos lados de una relación de orden son provably no-negativos, elevar al cuadrado es una EQUIVALENCIA (no introduce raíces extrañas) — la reducción más barata posible para |·| vs |·|. La combinación "aritmética polinómica exacta para construir p + delegar al dueño polinómico + guard de concreción" es ya el trío estándar de estos handlers.
+  - HALLAZGO LATERAL (pre-existente, stash-bisect): `solve(abs(ln(x))<abs(x))` → "No solution" (la verdad es un rayo (x₀,∞) con ln(x₀)=−x₀) — abs-vs-abs TRANSCENDENTAL, fuera del gate polinómico; candidato para el próximo audit.
+  - PRÓXIMO PELDAÑO: F16 (abs anidado vs RHS variable — diseño listo: partición en ceros de abs interiores reutilizando la maquinaria de segmentos del multi-abs), F21-F23 (P1 leaks), tan(x)+c=k periodicidad.
