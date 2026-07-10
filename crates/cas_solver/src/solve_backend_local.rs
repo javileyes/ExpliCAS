@@ -8000,11 +8000,19 @@ fn try_solve_periodic_trig_equation_ungated(
     // this the outside coefficient/offset leaves the trig side a `Mul`/`Add` that `detect` cannot see,
     // so the bare fall-through emitted only the principal value — an INCOMPLETE solution set presented
     // as complete (e.g. `solve(2·sin x = 1)` -> `{π/6}` instead of `{π/6 + 2kπ, 5π/6 + 2kπ}`), unsound.
-    {
-        let lhs_has = contains_var(&simplifier.context, lhs, var);
-        let rhs_has = contains_var(&simplifier.context, rhs, var);
+    // The peel probes the SIMPLIFIED sides first (historical behavior), then the RAW
+    // sides: the entry simplify can DESTROY the affine-in-tan structure (`tan(x) + 1`
+    // folds to `(sin(x) + cos(x)) / cos(x)`), which dropped the whole periodic family
+    // (`solve(tan(x) + 1 = 2)` → `{π/4}`, no `+kπ`) via the principal-only isolation.
+    for (side_l, side_r) in [(lhs, rhs), (eq.lhs, eq.rhs)] {
+        let lhs_has = contains_var(&simplifier.context, side_l, var);
+        let rhs_has = contains_var(&simplifier.context, side_r, var);
         if lhs_has != rhs_has {
-            let (var_side, const_side) = if lhs_has { (lhs, rhs) } else { (rhs, lhs) };
+            let (var_side, const_side) = if lhs_has {
+                (side_l, side_r)
+            } else {
+                (side_r, side_l)
+            };
             if let Some((call, a_coeff, b_offset)) =
                 peel_affine_trig(&mut simplifier.context, var_side, var)
             {

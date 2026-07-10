@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 543 (newest first)
+Active entries: 544 (newest first)
 
+- 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/log_isolation.rs` (`plan_log_isolation_step_with`... | SOUNDNESS (desigualdad log base fraccionaria no invierte): `solve(log(1/2,x)>1)`
@@ -19126,3 +19127,18 @@ Active entries: 543 (newest first)
   - **Delegar el producto al solver periódico une familias con períodos distintos gratis** (cos((u+v)/2) y sin((u−v)/2) tienen períodos distintos tras el map-back): la maquinaria union_periodic_families_over_common_period hace el trabajo exacto; el handler solo aporta la identidad. Presentación menos plegada que la óptima ({kπ} aparece como 2 bases sobre 2π) — P3 de plegado de bases, no soundness.
   - **`cargo test | tail -N && …` reporta el exit del TAIL, no del test** (segunda máscara de falso verde tras el echo incondicional): el commit del ciclo entró con el archivo de contrato ROJO — los pins venían del render del CLI (`1/3·pi`) y el harness in-process renderiza `1/3 * pi`. Regla: el comando de test va SOLO en su paso (sin pipe) o con `set -o pipefail`; y los pins de contrato se transcriben del HARNESS que los ejecuta, no del CLI. Corregido en commit inmediato posterior.
   - PRÓXIMO PELDAÑO: F23 (2 piezas: mangler derive_mul_isolation_route que mueve factores CON variable + extensión surd del single-radical `√(quad)=poly` — el peldaño surd del 2026-07-08); tan(x)+c=k periodicidad (isolación aditiva no re-entra al periódico); F1-F3 paramétricos (decline honesto primero); merge_intervals degenerados (auditoría dirigida); abs-vs-abs transcendental (`|ln(x)|<|x|` → "No solution" pre-existente); 16 P2 capability del audit.
+
+## 2026-07-11 - SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation_ungated`: el bloque de peel afín prueba también los lados CRUDOS de la ecuación) + test de contrato `crates/cas_solver/tests/tan_affine_periodicity_tests.rs`
+- status: `retained`. Hallazgo lateral de la 2ª tanda (stash-bisect: pre-existente), conjunto INCOMPLETO presentado como completo = P0-shape.
+- capture:
+  - investment_class: soundness (`{π/4}` sin `+kπ` — la clase histórica wrapper-bug de periodicidad).
+  - cell: `tan(x)+1=2` → `{π/4+kπ}` (era `{π/4}`), `2·tan(x)+1=3` → ídem, `tan(x)+1=0` → `{−π/4+kπ}`, arg escalado `tan(2x)+1=2` → `{π/8+kπ/2}` (map-back por pendiente), invertida `3−tan(x)=2` → `{π/4+kπ}`. Controles (7): `tan(x)=1`, `tan(x)=0`, `tan²=1`, aditivos sin/cos (`sin(x)+1=3/2`, `2·sin(x)=1`, `2·cos(x)−√3=0` con offset surd), ángulo auxiliar `sin(x)+cos(x)=1` — IDÉNTICOS.
+  - causa raíz: el simplificador pliega `tan(x)+1 → (sin(x)+cos(x))/cos(x)` (pero NO `tan(x)−1` ni `2·tan(x)−2`), y el handler periódico hace `simplify(eq.lhs)` A LA ENTRADA — el peel afín (`peel_affine_trig`, que SÍ acepta Tan) nunca ve la estructura y el handler declina → isolación arcotangente principal-only. Traza probatoria: "Toma arcotangente en ambos lados".
+  - diseño: el bloque de peel itera sobre `[(lhs_simplificado, rhs_simplificado), (eq.lhs, eq.rhs)]` — la primera vuelta replica el comportamiento histórico exacto; la segunda solo dispara si la primera no retornó (la lección del árbol crudo, aplicada quirúrgicamente al único bloque afectado en vez de cambiar el simplify de entrada).
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio (gateado); engine-fast + ambos scorecards verdes; huella estructural 0-delta. Test de contrato con asserts de SUBSTRING (contiene `k·pi` y la base) en vez de strings exactos — inmune a la divergencia de render CLI/harness que causó el falso verde de la tanda anterior.
+  - retained learning:
+  - **El `simplify` de entrada de un handler es parte de su superficie de matching**: un fold del simplificador selectivo por forma (`tan+1` sí, `tan−1` no) crea agujeros invisibles en el peel. El patrón barato: probar el matcher sobre AMBAS versiones (simplificada primero para conservar la histórica, cruda como fallback) — no quitar el simplify (otros brazos dependen de él).
+  - **Asserts de substring para conjuntos periódicos pinneados**: fija la matemática (base + período presentes) sin fijar el render — evita la clase de falso verde CLI-vs-harness sin perder el contrato.
+  - PRÓXIMO PELDAÑO: F23 pieza surd (extender el filtro g(r)≥0 del single-radical a raíces surd vía la cascada exacta — diseño listo), F1-F3 paramétricos, merge_intervals degenerados.
