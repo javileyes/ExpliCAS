@@ -1847,10 +1847,16 @@ fn try_solve_single_radical_equals_polynomial(
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
     // Identify the `√f` side (a bare `Pow(radicand, 1/2)`) and the polynomial `g` side.
+    // ALSO accept the MOVED form `c·√f + R(x) = 0` (rational c ≠ 0): the recursive
+    // isolation emits the subtracted shape (`x − √(1−x²) = 0`, from `x/√(1−x²) = 1`
+    // after the reciprocal power folds) which has no bare-√ side — reconstitute
+    // `√f = −R/c` so the same square-and-verify machinery applies.
     let (radicand, g_expr) = if let Some(rad) = as_sqrt_radicand(&simplifier.context, lhs) {
         (rad, rhs)
     } else if let Some(rad) = as_sqrt_radicand(&simplifier.context, rhs) {
         (rad, lhs)
+    } else if let Some((rad, g)) = reconstitute_moved_single_radical(simplifier, lhs, rhs, var) {
+        (rad, g)
     } else {
         return None;
     };
@@ -1895,11 +1901,43 @@ fn try_solve_single_radical_equals_polynomial(
         _ => return None,
     };
 
-    // Keep each root where `g(r) ≥ 0` (the extraneous-root filter). Rational scope.
+    // Keep each root where `g(r) ≥ 0` (the extraneous-root filter): a RATIONAL root
+    // evaluates exactly; a SURD/transcendental root builds `g(r)` symbolically
+    // (Horner over ExprIds) and decides through the exact const-sign cascade — an
+    // UNDECIDABLE sign declines the whole relation (never guess). `f(r) ≥ 0` is
+    // automatic at a root of `f − g²`.
     let mut kept: Vec<ExprId> = Vec::new();
     for r in candidates {
-        let rr = as_rational_const(&simplifier.context, r)?; // non-rational ⇒ decline (scope)
-        if !g_poly.eval(&rr).is_negative() {
+        let keep = if let Some(rr) = as_rational_const(&simplifier.context, r) {
+            !g_poly.eval(&rr).is_negative()
+        } else {
+            let mut acc = simplifier.context.num(0);
+            for c in g_poly.coeffs.iter().rev() {
+                let c_expr = simplifier.context.add(Expr::Number(c.clone()));
+                let mul = simplifier.context.add(Expr::Mul(acc, r));
+                acc = simplifier.context.add(Expr::Add(mul, c_expr));
+            }
+            let g_at_r = simplifier.simplify(acc).0;
+            let sign = as_rational_const(&simplifier.context, g_at_r)
+                .map(|q| q.cmp(&num_rational::BigRational::from_integer(0.into())))
+                .or_else(|| {
+                    cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, g_at_r)
+                })
+                .or_else(|| {
+                    use cas_math::const_sign::{provable_const_sign, ConstSign};
+                    Some(match provable_const_sign(&simplifier.context, g_at_r)? {
+                        ConstSign::Negative => std::cmp::Ordering::Less,
+                        ConstSign::Zero => std::cmp::Ordering::Equal,
+                        ConstSign::Positive => std::cmp::Ordering::Greater,
+                    })
+                });
+            match sign {
+                Some(std::cmp::Ordering::Less) => false,
+                Some(_) => true,
+                None => return None, // undecidable sign: decline honestly
+            }
+        };
+        if keep {
             kept.push(r);
         }
     }
@@ -1908,6 +1946,209 @@ fn try_solve_single_radical_equals_polynomial(
     } else {
         Some(SolutionSet::Discrete(kept))
     }
+}
+
+/// `U(x)/√f {=} k` (or the canonical `U·f^(−1/2)` product) with rational `k ≠ 0`:
+/// normalize to the bare-radical equation `√f = U/k` and delegate to the
+/// square-and-verify owner. The Mul isolation otherwise moves the VAR-CARRYING
+/// reciprocal power and emits the un-refolded `solve(x − 1/(1−x²)^(−1/2) = 0)`
+/// self-referential echo (`x/√(1−x²) = 1`, `tan(arcsin(x)) = 1` after its fold).
+fn try_solve_poly_over_sqrt_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    // Normalize var side / const side.
+    let (var_side, k) = if contains_var(&simplifier.context, eq.lhs, var)
+        && !contains_var(&simplifier.context, eq.rhs, var)
+    {
+        (eq.lhs, eq.rhs)
+    } else if contains_var(&simplifier.context, eq.rhs, var)
+        && !contains_var(&simplifier.context, eq.lhs, var)
+    {
+        (eq.rhs, eq.lhs)
+    } else {
+        return None;
+    };
+    let k_val = as_rational_const(&simplifier.context, k)?;
+    if k_val.is_zero() {
+        return None; // U/√f = 0 ⟺ U = 0 within the domain — ordinary isolation
+    }
+    let (var_side, _) = simplifier.simplify(var_side);
+    // Match `Div(U, √f)` or a flattened product with exactly one `f^(−1/2)` factor.
+    let neg_half = |ctx: &Context, e: ExprId| -> Option<ExprId> {
+        if let Expr::Pow(base, exp) = ctx.get(e) {
+            if let Some(q) = as_rational_const(ctx, *exp) {
+                if q == num_rational::BigRational::new((-1).into(), 2.into()) {
+                    return Some(*base);
+                }
+            }
+        }
+        None
+    };
+    let (u_expr, radicand) = match simplifier.context.get(var_side).clone() {
+        Expr::Div(num, den) => {
+            let rad = as_sqrt_radicand(&simplifier.context, den)
+                .or_else(|| neg_half(&simplifier.context, num).map(|_| den))?;
+            // (only the bare `√f` denominator shape; anything else declines)
+            let rad_ok = as_sqrt_radicand(&simplifier.context, den).is_some();
+            if !rad_ok {
+                return None;
+            }
+            (num, rad)
+        }
+        Expr::Mul(_, _) => {
+            // Flatten factors; exactly one must be `f^(−1/2)`.
+            fn flatten(ctx: &Context, e: ExprId, out: &mut Vec<ExprId>) {
+                if let Expr::Mul(l, r) = ctx.get(e).clone() {
+                    flatten(ctx, l, out);
+                    flatten(ctx, r, out);
+                } else {
+                    out.push(e);
+                }
+            }
+            let mut factors = Vec::new();
+            flatten(&simplifier.context, var_side, &mut factors);
+            let mut rad: Option<ExprId> = None;
+            let mut rest: Vec<ExprId> = Vec::new();
+            for f in factors {
+                if let Some(base) = neg_half(&simplifier.context, f) {
+                    if rad.is_some() {
+                        return None; // two reciprocal radicals: out of scope
+                    }
+                    rad = Some(base);
+                } else {
+                    rest.push(f);
+                }
+            }
+            let rad = rad?;
+            let mut u: Option<ExprId> = None;
+            for f in rest {
+                u = Some(match u {
+                    None => f,
+                    Some(acc) => simplifier.context.add(Expr::Mul(acc, f)),
+                });
+            }
+            (u?, rad)
+        }
+        _ => return None,
+    };
+    if !contains_var(&simplifier.context, radicand, var)
+        || !contains_var(&simplifier.context, u_expr, var)
+    {
+        return None;
+    }
+    // `U/√f = k ⟺ √f = U/k` (√f > 0 on the domain, so no orientation flip).
+    let k_node = simplifier.context.add(Expr::Number(k_val));
+    let g = simplifier.context.add(Expr::Div(u_expr, k_node));
+    let g = simplifier.simplify(g).0;
+    let sqrt_f = {
+        let half = simplifier.context.rational(1, 2);
+        simplifier.context.add(Expr::Pow(radicand, half))
+    };
+    let reduced = Equation {
+        lhs: sqrt_f,
+        rhs: g,
+        op: RelOp::Eq,
+    };
+    let set = try_solve_single_radical_equals_polynomial(simplifier, &reduced, var)?;
+    Some(set)
+}
+
+/// Match the MOVED single-radical form `c·√f + R(x) {=} 0` (exactly ONE
+/// sqrt-carrying additive term, rational `c ≠ 0`, `rhs = 0`) and reconstitute
+/// `(radicand, g)` with `g = −R/c` so the square-and-verify owner applies.
+fn reconstitute_moved_single_radical(
+    simplifier: &mut Simplifier,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+
+    if !as_rational_const(&simplifier.context, rhs)
+        .map(|q| q.is_zero())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    // Flatten additive terms with their signs.
+    fn collect_terms(ctx: &Context, e: ExprId, positive: bool, out: &mut Vec<(ExprId, bool)>) {
+        match ctx.get(e).clone() {
+            Expr::Add(l, r) => {
+                collect_terms(ctx, l, positive, out);
+                collect_terms(ctx, r, positive, out);
+            }
+            Expr::Sub(l, r) => {
+                collect_terms(ctx, l, positive, out);
+                collect_terms(ctx, r, !positive, out);
+            }
+            Expr::Neg(inner) => collect_terms(ctx, inner, !positive, out),
+            _ => out.push((e, positive)),
+        }
+    }
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_terms(&simplifier.context, lhs, true, &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+    // Exactly one term must carry the sqrt: `√f` or `q·√f` with rational q.
+    let sqrt_coeff_of = |ctx: &Context, e: ExprId| -> Option<(ExprId, num_rational::BigRational)> {
+        if let Some(rad) = as_sqrt_radicand(ctx, e) {
+            return Some((rad, num_traits::One::one()));
+        }
+        if let Expr::Mul(l, r) = ctx.get(e).clone() {
+            if let (Some(q), Some(rad)) = (as_rational_const(ctx, l), as_sqrt_radicand(ctx, r)) {
+                return Some((rad, q));
+            }
+            if let (Some(q), Some(rad)) = (as_rational_const(ctx, r), as_sqrt_radicand(ctx, l)) {
+                return Some((rad, q));
+            }
+        }
+        None
+    };
+    let mut sqrt_term: Option<(usize, ExprId, num_rational::BigRational)> = None;
+    for (i, (term, positive)) in terms.iter().enumerate() {
+        if let Some((rad, q)) = sqrt_coeff_of(&simplifier.context, *term) {
+            if sqrt_term.is_some() || q.is_zero() || !contains_var(&simplifier.context, rad, var) {
+                return None; // two radicals (sum-of-radicals owner) / degenerate
+            }
+            let signed = if *positive { q } else { -q };
+            sqrt_term = Some((i, rad, signed));
+        }
+    }
+    let (idx, radicand, c) = sqrt_term?;
+    // Rebuild R (everything else, with signs), then g = −R/c.
+    let mut rest: Option<ExprId> = None;
+    for (i, (term, positive)) in terms.iter().enumerate() {
+        if i == idx {
+            continue;
+        }
+        let t = if *positive {
+            *term
+        } else {
+            simplifier.context.add(Expr::Neg(*term))
+        };
+        rest = Some(match rest {
+            None => t,
+            Some(acc) => simplifier.context.add(Expr::Add(acc, t)),
+        });
+    }
+    let rest = rest?;
+    let neg_c = simplifier.context.add(Expr::Number(-c));
+    let g = simplifier.context.add(Expr::Div(rest, neg_c));
+    let g = simplifier.simplify(g).0;
+    Some((radicand, g))
 }
 
 /// Shared core for "equation is a polynomial in an invertible atom `g(x)`": given
@@ -9455,6 +9696,10 @@ fn solve_local_core_inner(
     // `√3·sin(x) − cos(x) = 0`) reduces to `tan(g) = −b/a`; the isolation path otherwise leaks an
     // `arcsin(cos(x)·…)` residual. The inhomogeneous `… = c` (c ≠ 0) declines.
     if let Some(set) = try_solve_homogeneous_linear_trig(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `U(x)/√f = k`: normalize to the bare radical `√f = U/k` (square-and-verify owner).
+    if let Some(set) = try_solve_poly_over_sqrt_equation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // `trig(u) = trig(v)` same-function, degree-≥3 multiple angles: sum-to-product

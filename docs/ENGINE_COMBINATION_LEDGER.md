@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 544 (newest first)
+Active entries: 545 (newest first)
 
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
+- 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/log_isolation.rs` (`plan_log_isolation_step_with`... | SOUNDNESS (desigualdad log base fraccionaria no invierte): `solve(log(1/2,x)>1)`
@@ -19142,3 +19143,18 @@ Active entries: 544 (newest first)
   - **El `simplify` de entrada de un handler es parte de su superficie de matching**: un fold del simplificador selectivo por forma (`tan+1` sí, `tan−1` no) crea agujeros invisibles en el peel. El patrón barato: probar el matcher sobre AMBAS versiones (simplificada primero para conservar la histórica, cruda como fallback) — no quitar el simplify (otros brazos dependen de él).
   - **Asserts de substring para conjuntos periódicos pinneados**: fija la matemática (base + período presentes) sin fijar el render — evita la clase de falso verde CLI-vs-harness sin perder el contrato.
   - PRÓXIMO PELDAÑO: F23 pieza surd (extender el filtro g(r)≥0 del single-radical a raíces surd vía la cascada exacta — diseño listo), F1-F3 paramétricos, merge_intervals degenerados.
+
+## 2026-07-11 - SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del MISMO dueño: `try_solve_poly_over_sqrt_equation` normalizador nuevo `U/√f=k → √f=U/k`; `reconstitute_moved_single_radical` para la forma movida `c·√f+R=0`; filtro `g(r)≥0` de `try_solve_single_radical_equals_polynomial` extendido a raíces SURD vía Horner simbólico + cascada exacta) + test de contrato `crates/cas_solver/tests/quotient_over_sqrt_tests.rs`
+- status: `retained`. FAMILIA P1 F23 del informe (6 miembros) + CIERRA el peldaño surd del 2026-07-08 ("extender g(r)≥0 a surds") + el item viejo de raíz extraña `√(x+1)=−x`.
+- capture:
+  - investment_class: honestidad→capacidad (eco mangleado `solve(x − 1/(1−x²)^(−1/2) = 0)` → raíces exactas). El mangler del core (derive_mul_isolation_route mueve factores CON variable) queda SIN tocar — las 3 extensiones del dueño radical cierran toda la cadena por fuera.
+  - cell: `x/√(1−x²)=1` → `{2^(−1/2)}`, `=−1` → `{−2^(−1/2)}` (el filtro de signo elige la rama negativa), `tan(arcsin(x))=1` → hereda por fold, `2x/√(1−x²)=1` → `{5^(−1/2)}`, `x/√(4−x²)=1` → `{√2}`, `x/√(x²+1)=1/2` → `{3^(−1/2)}` — 6/6 verificados a mano. Directas con raíz surd que YA funcionaban confirmadas intactas (`√(1−x²)=x`, `√(x²+1)=2x`); `√(x+1)=−x` → `{(1−√5)/2}` (raíz extraña (1+√5)/2 dropeada por g(r)<0 exacto). Controles: `1/√x=2` (U var-free declina → dueño U2), cociente racional, radicales racionales (`√(5x²+9x−2)=3x` → `{1/4,2}`), dos-radicales, `√(9x²+1)=3x` → No solution. Bonus verificado: la DESIGUALDAD `x/√(1−x²)>1` → `(2^(−1/2),1)` ya salía correcta vía el sign-split de división (C7/C8 de la 1ª tanda).
+  - causa raíz (probes discriminantes): (1) el mangler produce el doble-recíproco crudo y lo emite SIN re-entrar; (2) aun plegado, la forma MOVIDA `x − √(1−x²) = 0` no tenía dueño (el handler exigía √ desnuda en un LADO); (3) el filtro de raíces extrañas declinaba surds (`as_rational_const(r)?` bailaba el handler entero).
+  - diseño: (a) normalizador top-level `U/√f = k` (Div con den √ desnuda O producto aplanado con exactamente un factor `f^(−1/2)`; k racional ≠0; U y f con var) → `√f = U/k` con √ SIEMPRE desnuda en LHS → delega al dueño; (b) reconstitución de la forma movida: aplanar términos aditivos, exactamente UN término `±q·√f`, resto R → `√f = −R/q`; (c) filtro surd: `g(r)` por Horner sobre ExprIds + simplify + cascada `as_rational_const → provable_sign_vs_zero → provable_const_sign`; indecidible → decline del handler entero (nunca adivinar).
+  - validación: workspace exit 0, 0 failed; clippy limpio (gateado); engine-fast + scorecards verdes; huella estructural 0-delta. Tests: 3 tests / 12 asserts — la divergencia de render CLI/harness apareció otra vez y la cazó el RUN STANDALONE PREVIO a la cadena (la disciplina de la lección anterior funcionando).
+  - retained learning:
+  - **Tres gates del mismo dueño pueden cerrar una cadena rota en el core sin tocar el core**: normalizar-a-forma-desnuda + aceptar-la-forma-movida + ensanchar-el-filtro es más barato y seguro que arreglar el mangler del pipeline de isolación (que queda anotado, ya solo produce ecos que el dueño re-captura en la entrada top-level).
+  - **El filtro de raíces extrañas es OTRO consumidor de la capa const-sign** (enésima instancia del playbook): Horner simbólico + cascada exacta convierte "declina todo surd" en "decide exacto, declina solo lo indecidible".
+  - PRÓXIMO PELDAÑO: F1-F3 paramétricos (gate en dispatch_isolation con la plantilla del guard cuadrático; OJO el adyacente (a²+1)·x>b Discrete — sondear su ruta real), merge_intervals degenerados, clase A builder de segmentos.
