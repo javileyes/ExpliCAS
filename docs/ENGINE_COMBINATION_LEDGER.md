@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 541 (newest first)
+Active entries: 542 (newest first)
 
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
@@ -130,6 +130,7 @@ Active entries: 541 (newest first)
 - 2026-07-10 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`antiderivati... | SOUNDNESS (FTC ingenuo sobre antiderivada de Weierstrass discontinua): `integrate(1/(2+cos(x)), x, 0, 2*pi)`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (|f| vs |g| polinómico sin dueño en desigualdad): `solve(abs(x^2-1)<abs(x+1))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_nested_abs_relatio... | SOUNDNESS (abs anidado vs resto variable colapsa a rama imposible): `solve(abs(abs(x)-2)>x)`
+- 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inverse_trig_hyper... | SOUNDNESS (coeficiente exterior en arco/hiperbólicas: constante sin plegar + eco): `solve(2*arcsin(x)=pi/3)`
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
@@ -19094,3 +19095,17 @@ Active entries: 541 (newest first)
   - **El sweep de dueños vecinos caza churn de REPRESENTACIÓN, no solo de valor**: la primera versión reclamaba también anidado-vs-constante — mismo conjunto, otro ORDEN de raíces (`{−1,−3,3,1}` vs `{3,−3,1,−1}` pinneado). El gate de propiedad correcto ("resto contiene la variable tras anular los abs exteriores") expresa la FAMILIA del audit como intención declarada y devuelve al dueño viejo lo que ya hacía bien.
   - **La partición piecewise en ceros de abs interiores compone con los dueños existentes**: sustituir solo la capa INTERIOR deja una relación que el ecosistema ya resuelve; no hay que reimplementar el abs exterior. Cuarta reutilización de la maquinaria de segmentos (multi-abs, F11 producto, F16) — si aparece una quinta, extraer el builder de segmentos a un helper compartido (candidato clase A).
   - PRÓXIMO PELDAÑO: F22 (coeficiente exterior en arco-funciones — diseño listo: peel Neg/Mul/Div var-free plegando en c antes del match desnudo), F21/F23 (P1 leaks restantes), tan(x)+c=k periodicidad.
+
+## 2026-07-10 - SOUNDNESS (coeficiente exterior en arco/hiperbólicas: constante sin plegar + eco): `solve(2*arcsin(x)=pi/3)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inverse_trig_hyperbolic_equation`: peel de wrapper multiplicativo racional antes del match de Function desnuda) + test de contrato `crates/cas_solver/tests/arc_coefficient_equation_tests.rs`
+- status: `retained`. FAMILIA P1 F22 del informe `docs/AUDITORIA_FRONTERA_2026-07-09.md` (6 miembros + hermano hiperbólico descubierto en probes).
+- capture:
+  - investment_class: soundness/honestidad (leak self-referencial con constante mangleada `pi/3/2`; el hermano `4·arctan(x)=pi` demostró que incluso con constante YA plegada el eco quedaba sin despachar). Bug-shape histórico coeficiente≠1.
+  - cell: `2·arcsin(x)=π/3` → `{1/2}` (era eco `arcsin(x) = pi/3/2`), `3·arcsin(x)=π/2` → `{1/2}`, `2·arctan(x)=π/2` → `{1}`, `2·arccos(x)=π/2` → `{2^(-1/2)}`, `4·arctan(x)=π` → `{1}`, `arcsin(x)/2=π/12` → `{1/2}` (era `pi/12/1/2` doble-mangleado), `−arcsin(x)=π/6` → `{−1/2}`, rango post-peel `2·arcsin(x)=5` → No solution (5/2>π/2, sin sin(5/2) espurio), hiperbólico `2·sinh(x)=3` → `{asinh(3/2)}`. Controles (7): formas desnudas, guard de rango, `2·ln(x)=4` (dueño ln intacto), `2·sin(x)=1` (periódico con coeficiente), `cosh(x)=2` (dos ramas), coeficiente CON variable `x·arcsin(x)=1` declina honesto.
+  - causa raíz: (1) el handler exige `Expr::Function` DESNUDO en el lado-var — cualquier wrapper Mul/Div/Neg devuelve None; (2) la ruta genérica de aislamiento pela el coeficiente construyendo `Div(rhs, coef)` CRUDO sin plegar y su "honesty gate" emite el residual porque `UnaryInverseKind` no conoce arcsin/arccos/arctan/sinh/cosh/tanh — la ecuación reducida nunca re-entra al backend.
+  - diseño: bucle de peel ANTES del match desnudo: `Neg(inner)` → c←simplify(−c); `Mul(coef, inner)`/`Div(inner, den)` con coef/den var-free y RACIONAL ≠0 (as_rational_const; lo no-racional/cero o con variable declina — el gate expresa la familia como intención) → c←simplify(c/coef | c·den). Cada simplify pliega la constante, así los gates de rango downstream ven el umbral canónico. Terminación por descenso estricto. Los nombres no-arco (ln) siguen cayendo al match downstream → None → dueño previo intacto.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio (gateado); engine-fast + ambos scorecards verdes; huella estructural 0-delta. Tests: 3 tests / 14 asserts.
+  - retained learning:
+  - **El peel-antes-del-match-desnudo es la cura estándar del bug-shape coeficiente≠1** (enésima instancia): cuando un handler exige Function desnuda, el bucle Neg/Mul/Div con constante racional plegada-por-simplify en cada paso es ~30 líneas y hereda TODOS los gates del handler (el de rango disparó gratis para 5/2). La señal del gap: la ruta genérica emite el residual con la constante SIN PLEGAR (`pi/3/2`) — ese print es la firma de que el aislamiento aritmético construye Div crudo.
+  - PRÓXIMO PELDAÑO: F21 (sin(nx)=sin(mx) grado≥3 — diseño listo: suma-a-producto y delegar al producto-cero periódico), F23 (necesita 2 piezas: mangler derive_mul_isolation_route + extensión surd del single-radical — el peldaño surd ya estaba anotado del 2026-07-08), tan(x)+c=k periodicidad.

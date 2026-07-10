@@ -7312,6 +7312,54 @@ fn try_solve_inverse_trig_hyperbolic_equation(
     } else {
         return None;
     };
+    // Peel a var-free RATIONAL multiplicative wrapper (`A·f(g)`, `f(g)/A`, `−f(g)`)
+    // into the constant: `2·arcsin(x) = π/3` reduces to `arcsin(x) = π/6`. The
+    // bare-Function match below is the historic coefficient≠1 blind spot — the
+    // generic isolation peels the coefficient but builds an UNFOLDED `π/3/2` and
+    // leaks the reduced equation un-dispatched (`UnaryInverseKind` has no arc/hyp
+    // inverses). Each simplify folds the constant, so the range gates downstream
+    // see a canonical threshold.
+    let mut call = call;
+    let mut c = c;
+    loop {
+        match simplifier.context.get(call).clone() {
+            Expr::Neg(inner) => {
+                call = inner;
+                let neg = simplifier.context.add(Expr::Neg(c));
+                c = simplifier.simplify(neg).0;
+            }
+            Expr::Mul(l, r) => {
+                let (coef, inner) = if contains_var(&simplifier.context, r, var) {
+                    (l, r)
+                } else {
+                    (r, l)
+                };
+                if contains_var(&simplifier.context, coef, var) {
+                    return None;
+                }
+                match cas_math::numeric_eval::as_rational_const(&simplifier.context, coef) {
+                    Some(q) if !num_traits::Zero::is_zero(&q) => {}
+                    _ => return None, // non-rational/zero coefficient: not this family
+                }
+                let div = simplifier.context.add(Expr::Div(c, coef));
+                c = simplifier.simplify(div).0;
+                call = inner;
+            }
+            Expr::Div(num, den) => {
+                if contains_var(&simplifier.context, den, var) {
+                    return None;
+                }
+                match cas_math::numeric_eval::as_rational_const(&simplifier.context, den) {
+                    Some(q) if !num_traits::Zero::is_zero(&q) => {}
+                    _ => return None,
+                }
+                let mul = simplifier.context.add(Expr::Mul(c, den));
+                c = simplifier.simplify(mul).0;
+                call = num;
+            }
+            _ => break,
+        }
+    }
     let (fn_name, g) = match simplifier.context.get(call) {
         Expr::Function(fn_id, args) if args.len() == 1 => {
             (simplifier.context.sym_name(*fn_id).to_string(), args[0])
