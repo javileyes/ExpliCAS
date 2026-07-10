@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 537 (newest first)
+Active entries: 538 (newest first)
 
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
@@ -126,6 +126,7 @@ Active entries: 537 (newest first)
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_division_vs_const_... | SOUNDNESS (|f|/D vs c≠0 colapsa a la ecuación de frontera): `solve(abs(x)/(x-2)<1)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/solve_analysis.rs` (`collect_implicit_reciprocal_... | SOUNDNESS (identidad plegada a tautología pierde los polos trig implícitos): `solve(sec(x)^2-tan(x)^2=1)`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_product_inequality... | SOUNDNESS (producto con factor no-polinómico dividido asumiendo positividad): `solve((x-1)*ln(x)<0)`
+- 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (|f·g| vs c pierde la región entre ceros por rama Mul no-concreta): `solve(abs(x)*abs(x-1)<2)`
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
@@ -19030,3 +19031,18 @@ Active entries: 537 (newest first)
   - **Para ops no-estrictos en splits casewise, lleva la estrictez a los SUB-SOLVES en vez de unir raíces después**: `f=0 ∈ (f≥0)∩(f≤0)` hace que los ceros de cada factor fluyan por los intersects de intervalos cerrados — el camino "split estricto + union con Discrete de raíces" depende de que merge_intervals re-absorba degenerados contra endpoints abiertos, y NO lo hace de forma fiable (defecto latente observado: `[1,1]` puenteando `(0,1)∪(1,∞)` se pierde; `[2,2]` contra `(2,∞)` se pierde con dos puntos en juego). Ese merge es un candidato de investigación aparte.
   - **El prepass que distribuye productos destruye la estructura ANTES de la isolación**: un handler de forma-producto tiene que vivir en el dispatch top-level sobre el árbol crudo. El gate del split producto-cero interno (`rhs literal 0`) nunca ve la forma re-movida (`x·ln(x) < ln(x)`).
   - PRÓXIMO PELDAÑO: F17 (producto de DOS ABS < c — el simplificador pliega `|x|·|x−1|→|x²−x|` y el dueño es el single-abs handler: fallback a solve_poly_sign en ramas no concretas), F15/F16 (abs-deep), F18 (FTC-Weierstrass). El merge de degenerados contra endpoints abiertos en `merge_intervals` queda anotado como candidato de auditoría dirigida.
+
+## 2026-07-10 - SOUNDNESS (|f·g| vs c pierde la región entre ceros por rama Mul no-concreta): `solve(abs(x)*abs(x-1)<2)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynomial_relation`: fallback `solve_poly_sign` en ramas no-concretas) + test de contrato `crates/cas_solver/tests/abs_product_threshold_tests.rs`
+- status: `retained`. FAMILIA P0 F17 del informe `docs/AUDITORIA_FRONTERA_2026-07-09.md` (6 miembros).
+- capture:
+  - investment_class: soundness (región entera dropeada: `|x|·|x−1|<2` → `(−1,0]∪[1,2)` perdía `(0,1)`). Chokepoint: el dueño era el handler single-abs (el simplificador pliega `|x|·|x−1| → |x·(x−1)|`), no un handler de dos abs.
+  - cell: `abs(x)*abs(x-1)<2` → `(−1,2)`, `<=2` → `[−1,2]`, `abs(x)*abs(x+2)<3` → `(−3,1)`, `abs(x)*abs(x-2)<3` → `(−1,3)`, `>2` → `(−∞,−1)∪(2,∞)` (ya correcto, intacto), `>=2` → cerrado. Controles (8): forma directa expandida `abs(x^2-x)<2` (ya correcta — el discriminante del bug era exactamente Mul-sin-expandir vs expandido), fold diferencia-de-cuadrados `abs(x-1)*abs(x+1)<3`, surds `abs(x^2-4)<3`, afín `abs(x-1)<2`, ecuación `=2` → `{−1,2}`, entrelazadas históricas (`x²−2|x|−3>0`, `|x|²−3|x|+2=0`), `x·abs(x)=4`.
+  - causa raíz: el split de signo del handler resuelve cada rama con `solve_relation_set` sobre el árbol de la rama TAL CUAL; para el argumento en forma-Mul la rama negada `−x·(x−1)−2<0` derrota al solver recursivo (leak residual mangleado `solve(x - -2/(x-1) = 0)`), y el álgebra de conjuntos aguas abajo TRAGA el operando no-concreto, dropeando la región de esa rama. La rama expandida equivalente (`−x²+x−2<0` → AllReals) sí resuelve — el fix es de canonicalización, no de matemática.
+  - diseño: closure `solve_branch`: resolver el árbol crudo; si el set no pasa `is_concrete_solution_set`, re-resolver con `solve_poly_sign(var, &branch_poly, op)` sobre el polinomio YA parseado por el gate del handler (su `to_expr` canonicaliza expandido); si tampoco es concreto → None (decline honesto en vez de combinar un residual).
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella estructural 0-delta. Tests: 3 tests / 10 asserts.
+  - retained learning:
+  - **Cuando un handler ya parseó los polinomios para su gate, sus sub-solves deben tener fallback a esa forma canónica**: resolver el árbol crudo de la rama es más fiel a la presentación pero el solver recursivo no garantiza las formas Mul sin expandir; `poly.to_expr` es el puente barato. La firma del bug: "la forma directa expandida funciona, la plegada desde otra sintaxis no".
+  - **El álgebra de conjuntos traga operandos no-concretos en silencio**: todo intersect/union sobre resultados de sub-solves necesita el guard de concreción ANTES de combinar (tercera instancia: F11 merge de degenerados, F17 residual en intersect, y el guard interval_like de los handlers de división). Candidato de barrido: call-sites de intersect/union_solution_sets sin chequeo previo.
+  - PRÓXIMO PELDAÑO: F18 (FTC-Weierstrass — certificado de polos de la ANTIDERIVADA, diseño listo), F15/F16 (abs-deep restantes), F21-F23 (P1 leaks). merge_intervals con degenerados sigue anotado del ciclo F11.

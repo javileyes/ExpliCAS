@@ -2603,9 +2603,26 @@ fn try_solve_single_abs_polynomial_relation(
         return None;
     }
 
-    let pos_branch = solve_relation_set(simplifier, var, pos_expr, zero, eq.op.clone())?;
+    // A branch whose RAW tree keeps an unexpanded Mul shape can defeat the
+    // recursive solver (`−x·(x−1) − 2 < 0` leaks a mangled residual), and the set
+    // algebra below would silently swallow the non-concrete operand, dropping a
+    // whole region (`|x|·|x−1| < 2` lost the between-the-zeros interval (0, 1)).
+    // Fall back to the ALREADY-PARSED branch polynomial, whose `to_expr`
+    // canonicalizes to the expanded form the recursive solver does handle.
+    let mut solve_branch = |simplifier: &mut Simplifier,
+                            branch_expr: ExprId,
+                            branch_poly: &cas_math::polynomial::Polynomial|
+     -> Option<SolutionSet> {
+        let set = solve_relation_set(simplifier, var, branch_expr, zero, eq.op.clone())?;
+        if is_concrete_solution_set(&set) {
+            return Some(set);
+        }
+        let set = solve_poly_sign(simplifier, var, branch_poly, eq.op.clone())?;
+        is_concrete_solution_set(&set).then_some(set)
+    };
+    let pos_branch = solve_branch(simplifier, pos_expr, &pos_poly)?;
+    let neg_branch = solve_branch(simplifier, neg_expr, &neg_poly)?;
     let pos_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?;
-    let neg_branch = solve_relation_set(simplifier, var, neg_expr, zero, eq.op.clone())?;
     let neg_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Lt)?;
 
     let final_pos = intersect_solution_sets(&simplifier.context, pos_branch, pos_domain);
