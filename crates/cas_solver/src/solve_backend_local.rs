@@ -2609,9 +2609,9 @@ fn try_solve_single_abs_polynomial_relation(
     // whole region (`|x|·|x−1| < 2` lost the between-the-zeros interval (0, 1)).
     // Fall back to the ALREADY-PARSED branch polynomial, whose `to_expr`
     // canonicalizes to the expanded form the recursive solver does handle.
-    let mut solve_branch = |simplifier: &mut Simplifier,
-                            branch_expr: ExprId,
-                            branch_poly: &cas_math::polynomial::Polynomial|
+    let solve_branch = |simplifier: &mut Simplifier,
+                        branch_expr: ExprId,
+                        branch_poly: &cas_math::polynomial::Polynomial|
      -> Option<SolutionSet> {
         let set = solve_relation_set(simplifier, var, branch_expr, zero, eq.op.clone())?;
         if is_concrete_solution_set(&set) {

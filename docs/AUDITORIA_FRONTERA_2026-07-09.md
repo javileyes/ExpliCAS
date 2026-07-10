@@ -24,7 +24,7 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 - [x] **F14 [P0]** Identidad plegada a tautología pierde el guard de dominio (Constraint→AllReals) (`solve(sec(x)^2-tan(x)^2=1, x)`) — CERRADA ciclo 1 2ª tanda, commit `b83bc4134` (colector de polos implícitos de trig recíproca alimentando el guard RC-B existente)
 - [ ] **F15 [P0]** Desigualdad |cuadrático| vs |lineal|: resuelve la frontera y pierde el interior (`solve(abs(x^2-1)<abs(x+1), x)`)
 - [ ] **F16 [P0]** abs anidado vs RHS con variable: colapsa a rama imposible → No solution (`solve(abs(abs(x)-2)>x, x)`)
-- [ ] **F17 [P0]** Producto desnudo de dos abs < constante pierde el intervalo entre los ceros (`solve(abs(x)*abs(x-1)<2, x)`)
+- [x] **F17 [P0]** Producto desnudo de dos abs < constante pierde el intervalo entre los ceros (`solve(abs(x)*abs(x-1)<2, x)`) — CERRADA ciclo 3 2ª tanda, commit `f1c011f41` (fallback solve_poly_sign en ramas no-concretas del single-abs split)
 - [ ] **F18 [P0]** FTC ingenuo sobre antiderivada de Weierstrass discontinua: ∫1/(a±b·trig) → 0/negativo/undefined (`integrate(1/(2+cos(x)), x, 0, 2*pi)`)
 - [x] **F19 [P0]** Taylor de ln(a−x) centrado en a−1: signo del término líder flipeado en órdenes 3–4 (`taylor(ln(2-x), x, 1, 3)`) — CERRADA ciclo 5, commit `3456a05b4` (sign-tracking en collect_add_terms_for_const_fold; el bug corrompía también simplify de A·u^m±B·u^n vía HeuristicExtractCommonFactorAddRule)
 - [x] **F20 [P0]** Taylor de arco-función con argumento afín anulándose en el centro → undefined (0^0) (`taylor(atan(1-x), x, 1, 3)`) — CERRADA ciclo 5, commit `3456a05b4` (de regalo: el fold por-iteración de la derivada elimina los subárboles 0·u^k/u^0 que producían el 0^0)

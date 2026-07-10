@@ -1280,9 +1280,22 @@ pub(super) fn definite_integration_rewrite(
     );
     // The antiderivative may introduce an `acosh` whose real domain is narrower
     // than the integrand's; refuse to substitute a bound where it would be complex.
-    match combine_certificates(
+    let with_acosh = combine_certificates(
         conditions_and_integrand,
         antiderivative_acosh_domain_certificate(
+            ctx,
+            antiderivative,
+            &call.var_name,
+            &interval_low,
+            &interval_high,
+        ),
+    );
+    // A Weierstrass-substitution antiderivative is DISCONTINUOUS at the poles of
+    // its tan(k·x/2) even where the integrand is smooth; naive FTC across such a
+    // jump is a wrong value, so decline unless every carrier is zero-free.
+    match combine_certificates(
+        with_acosh,
+        antiderivative_trig_pole_certificate(
             ctx,
             antiderivative,
             &call.var_name,
@@ -2558,6 +2571,136 @@ fn e_enclosure() -> (BigRational, BigRational) {
 /// against the closed rational interval, via the pi enclosure: every zero
 /// enclosure disjoint from [low, high] certifies; an enclosure fully
 /// inside is a pole; overlap with the boundary stays Unknown.
+/// `Some(m)` iff `expr` is exactly `m·var` for a rational `m`: the bare variable
+/// (`m = 1`), `Number·var` / `var·Number`, `var/Number`, or a negation thereof.
+fn as_rational_multiple_of_var(ctx: &Context, expr: ExprId, var_name: &str) -> Option<BigRational> {
+    let is_var =
+        |e: ExprId| matches!(ctx.get(e), Expr::Variable(sym) if ctx.sym_name(*sym) == var_name);
+    match ctx.get(expr) {
+        Expr::Variable(sym) if ctx.sym_name(*sym) == var_name => {
+            Some(BigRational::from_integer(1.into()))
+        }
+        Expr::Neg(inner) => Some(-as_rational_multiple_of_var(ctx, *inner, var_name)?),
+        Expr::Mul(l, r) => {
+            let (num, v) = if is_var(*r) {
+                (*l, *r)
+            } else if is_var(*l) {
+                (*r, *l)
+            } else {
+                return None;
+            };
+            let _ = v;
+            match ctx.get(num) {
+                Expr::Number(n) => Some(n.clone()),
+                _ => None,
+            }
+        }
+        Expr::Div(l, r) => {
+            if !is_var(*l) {
+                return None;
+            }
+            match ctx.get(*r) {
+                Expr::Number(n) if !num_traits::Zero::is_zero(n) => {
+                    Some(BigRational::from_integer(1.into()) / n)
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Collect the trig-pole CARRIERS of an antiderivative: for every `tan(u)` term the
+/// carrier is `cos(u)` (built here — the tan pole is exactly `cos(u) = 0`), and for
+/// every `Div` denominator, any `sin`/`cos` call factor is a carrier as-is (the
+/// `arctan(sin(u)/(c·cos(u)))` presentation of the Weierstrass antiderivative).
+fn collect_trig_pole_carriers(ctx: &mut Context, expr: ExprId, out: &mut Vec<ExprId>) {
+    fn walk(ctx: &Context, expr: ExprId, tan_args: &mut Vec<ExprId>, den_trigs: &mut Vec<ExprId>) {
+        match ctx.get(expr).clone() {
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                walk(ctx, l, tan_args, den_trigs);
+                walk(ctx, r, tan_args, den_trigs);
+            }
+            Expr::Div(num, den) => {
+                walk(ctx, num, tan_args, den_trigs);
+                walk(ctx, den, tan_args, den_trigs);
+                collect_trig_call_factors(ctx, den, den_trigs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => walk(ctx, inner, tan_args, den_trigs),
+            Expr::Function(fn_id, args) => {
+                if args.len() == 1 && ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Tan) {
+                    tan_args.push(args[0]);
+                }
+                for arg in args {
+                    walk(ctx, arg, tan_args, den_trigs);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn collect_trig_call_factors(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+        match ctx.get(expr).clone() {
+            Expr::Mul(l, r) => {
+                collect_trig_call_factors(ctx, l, out);
+                collect_trig_call_factors(ctx, r, out);
+            }
+            Expr::Neg(inner) => collect_trig_call_factors(ctx, inner, out),
+            Expr::Function(fn_id, args)
+                if args.len() == 1
+                    && matches!(
+                        ctx.builtin_of(fn_id),
+                        Some(cas_ast::BuiltinFn::Sin) | Some(cas_ast::BuiltinFn::Cos)
+                    ) =>
+            {
+                out.push(expr);
+            }
+            _ => {}
+        }
+    }
+    let mut tan_args = Vec::new();
+    let mut den_trigs = Vec::new();
+    walk(ctx, expr, &mut tan_args, &mut den_trigs);
+    for arg in tan_args {
+        let cos_arg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
+        if !out.contains(&cos_arg) {
+            out.push(cos_arg);
+        }
+    }
+    for carrier in den_trigs {
+        if !out.contains(&carrier) {
+            out.push(carrier);
+        }
+    }
+}
+
+/// The Weierstrass route substitutes `t = tan(k·x/2)`, so its antiderivative is
+/// DISCONTINUOUS at the poles of tan even though the integrand is smooth there:
+/// `∫ 1/(2+cos x) dx = (2/√3)·arctan(tan(x/2)/√3)` jumps by `2π/√3` at every
+/// `x = (2m+1)π`. Naive FTC endpoint substitution across such a pole reported `0`
+/// over `[0, 2π]` for a strictly positive integrand (or a negative value, or a raw
+/// leak). Certify the interval only when EVERY trig-pole carrier of the
+/// antiderivative is provably zero-free on it; anything else — a pole inside, at an
+/// endpoint, or undecidable — DECLINES to an honest residual (`Unknown`), never
+/// `Undefined`: the antiderivative's jump is a representation artifact, the
+/// integral itself is finite.
+fn antiderivative_trig_pole_certificate(
+    ctx: &mut Context,
+    antiderivative: ExprId,
+    var_name: &str,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> IntervalCertificate {
+    let mut carriers = Vec::new();
+    collect_trig_pole_carriers(ctx, antiderivative, &mut carriers);
+    for carrier in carriers {
+        match trig_nonzero_on_interval(ctx, carrier, var_name, interval_low, interval_high) {
+            Some(IntervalCertificate::Certified) => {}
+            _ => return IntervalCertificate::Unknown,
+        }
+    }
+    IntervalCertificate::Certified
+}
+
 fn trig_nonzero_on_interval(
     ctx: &Context,
     expr: ExprId,
@@ -2565,19 +2708,22 @@ fn trig_nonzero_on_interval(
     interval_low: &Endpoint,
     interval_high: &Endpoint,
 ) -> Option<IntervalCertificate> {
-    let builtin = match ctx.get(expr) {
+    let (builtin, scale) = match ctx.get(expr) {
         Expr::Function(fn_id, args) if args.len() == 1 => {
-            let inner_is_var = matches!(ctx.get(args[0]),
-                Expr::Variable(sym) if ctx.sym_name(*sym) == var_name);
-            if !inner_is_var {
+            // Accept `m·x` arguments with a nonzero RATIONAL `m` (`cos(x/2)` from the
+            // Weierstrass antiderivative): the zeros of `trig(m·x)` are those of
+            // `trig(|m|·x)` (cos is even, sin is odd through zero), at
+            // `x = multiplier·π/|m|` — still π-pure rationals, comparisons stay exact.
+            let scale = as_rational_multiple_of_var(ctx, args[0], var_name)?;
+            if num_traits::Zero::is_zero(&scale) {
                 return None;
             }
-            ctx.builtin_of(*fn_id)?
+            (ctx.builtin_of(*fn_id)?, num_traits::Signed::abs(&scale))
         }
         _ => return None,
     };
     let half = BigRational::new(1.into(), 2.into());
-    // Zeros at multiplier * pi with multiplier in the arithmetic
+    // Zeros at (multiplier / scale) * pi with multiplier in the arithmetic
     // progression below.
     let (start, step) = match builtin {
         cas_ast::BuiltinFn::Cos => (half, BigRational::from_integer(1.into())),
@@ -2589,9 +2735,12 @@ fn trig_nonzero_on_interval(
     };
     let (pi_low, pi_high) = pi_enclosure();
 
-    // Multiplier window covering the interval generously.
-    let approx_low = &interval_low.enclosure().0 / &pi_high - BigRational::from_integer(2.into());
-    let approx_high = &interval_high.enclosure().1 / &pi_low + BigRational::from_integer(2.into());
+    // Multiplier window covering the interval generously (interval scaled by
+    // `scale` so the multiplier progression covers `scale·x/π`).
+    let approx_low =
+        &interval_low.enclosure().0 * &scale / &pi_high - BigRational::from_integer(2.into());
+    let approx_high =
+        &interval_high.enclosure().1 * &scale / &pi_low + BigRational::from_integer(2.into());
     let k_low = approx_low.floor().to_integer();
     let k_high = approx_high.ceil().to_integer();
 
@@ -2608,9 +2757,9 @@ fn trig_nonzero_on_interval(
     let mut k = k_low;
     while k <= k_high {
         let multiplier = &start + &step * BigRational::from_integer(k.clone());
-        // The zero is exactly multiplier * pi: pi-pure, so comparisons
+        // The zero is exactly (multiplier / scale) * pi: pi-pure, so comparisons
         // against pi-multiple bounds are exact rational comparisons.
-        let zero = Endpoint::from_pi_multiple(multiplier);
+        let zero = Endpoint::from_pi_multiple(multiplier / &scale);
         let cmp_low = zero.try_cmp(interval_low);
         let cmp_high = zero.try_cmp(interval_high);
         let before_interval = matches!(cmp_low, Some(std::cmp::Ordering::Less));
@@ -2856,6 +3005,34 @@ mod tests {
         assert!(eval_definite("integrate(x^2, x, 0, 1)").is_some());
         // Orientation is automatic: F(upper) - F(lower) with original bounds.
         assert!(eval_definite("integrate(x, x, 1, 0)").is_some());
+    }
+
+    #[test]
+    fn weierstrass_antiderivative_pole_in_interval_declines() {
+        // The Weierstrass antiderivative `arctan(tan(x/2)/√3)` JUMPS at x = (2m+1)π
+        // even though the integrand is smooth there; FTC across the jump fabricated
+        // 0 / negative values / raw leaks. Any trig-pole carrier zero inside (or at
+        // an endpoint of) the closed interval must DECLINE to an honest residual
+        // (None), never evaluate and never claim undefined — the integral is finite.
+        for src in [
+            "integrate(1/(2+cos(x)), x, 0, 2*pi)",
+            "integrate(1/(2+cos(x)), x, pi/2, 3*pi/2)",
+            "integrate(1/(2+sin(x)), x, 0, 2*pi)",
+            "integrate(1/(5+4*cos(x)), x, 0, 2*pi)",
+            "integrate(1/(2+cos(x)), x, 0, pi)",
+            "integrate(1/(2+cos(x)), x, 0, 4*pi)",
+        ] {
+            assert!(eval_definite(src).is_none(), "{src} must stay residual");
+        }
+        // Pole-free windows keep evaluating (the scaled-argument extension of
+        // trig_nonzero_on_interval certifies cos(x/2) ≠ 0 on them exactly).
+        for src in [
+            "integrate(1/(2+cos(x)), x, 0, pi/2)",
+            "integrate(1/(2+cos(x)), x, -pi/2, pi/2)",
+            "integrate(1/(2+cos(x)), x, 0, 1)",
+        ] {
+            assert!(eval_definite(src).is_some(), "{src} should evaluate");
+        }
     }
 
     #[test]
