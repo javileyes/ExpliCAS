@@ -26,12 +26,12 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 - [ ] **F16 [P0]** abs anidado vs RHS con variable: colapsa a rama imposible → No solution (`solve(abs(abs(x)-2)>x, x)`)
 - [ ] **F17 [P0]** Producto desnudo de dos abs < constante pierde el intervalo entre los ceros (`solve(abs(x)*abs(x-1)<2, x)`)
 - [ ] **F18 [P0]** FTC ingenuo sobre antiderivada de Weierstrass discontinua: ∫1/(a±b·trig) → 0/negativo/undefined (`integrate(1/(2+cos(x)), x, 0, 2*pi)`)
-- [ ] **F19 [P0]** Taylor de ln(a−x) centrado en a−1: signo del término líder flipeado en órdenes 3–4 (`taylor(ln(2-x), x, 1, 3)`)
-- [ ] **F20 [P0]** Taylor de arco-función con argumento afín anulándose en el centro → undefined (0^0) (`taylor(atan(1-x), x, 1, 3)`)
+- [x] **F19 [P0]** Taylor de ln(a−x) centrado en a−1: signo del término líder flipeado en órdenes 3–4 (`taylor(ln(2-x), x, 1, 3)`) — CERRADA ciclo 5, commit `3456a05b4` (sign-tracking en collect_add_terms_for_const_fold; el bug corrompía también simplify de A·u^m±B·u^n vía HeuristicExtractCommonFactorAddRule)
+- [x] **F20 [P0]** Taylor de arco-función con argumento afín anulándose en el centro → undefined (0^0) (`taylor(atan(1-x), x, 1, 3)`) — CERRADA ciclo 5, commit `3456a05b4` (de regalo: el fold por-iteración de la derivada elimina los subárboles 0·u^k/u^0 que producían el 0^0)
 - [ ] **F21 [P1]** trig f(nx)=g(mx) grado≥3: aislamiento por arcsin self-referencial (leak) (`solve(sin(3*x)=sin(x), x)`)
 - [ ] **F22 [P1]** Coeficiente exterior en ecuación de arco-función: constante sin plegar (pi/3/2) y eco (`solve(2*arcsin(x)=pi/3, x)`)
 - [ ] **F23 [P1]** Cociente x/sqrt(1±x²): árbol mangleado a doble-recíproco sin matcher aguas abajo (`solve(x/sqrt(1-x^2)=1, x)`)
-- [ ] **F24 [P1]** Taylor orden ≥6 de ln(c−x): depth_overflow vuelca el árbol crudo (leak, con hermano de valor incorrecto) (`taylor(ln(2-x), x, 1, 6)`)
+- [x] **F24 [P1]** Taylor orden ≥6 de ln(c−x): depth_overflow vuelca el árbol crudo (leak, con hermano de valor incorrecto) (`taylor(ln(2-x), x, 1, 6)`) — CERRADA ciclo 5, commit `3456a05b4` (fold_constant_subexprs del valor sustituido y de la derivada por iteración; órdenes 6-8 pliegan y verifican)
 
 ## Bloque A — familias con root-cause del run principal (solve/inecuaciones)
 
