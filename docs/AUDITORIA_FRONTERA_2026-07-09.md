@@ -11,7 +11,7 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 - [ ] **F1 [P0]** Desigualdad paramétrica monótona asume signo del parámetro (divide/eleva a ciegas) (`solve(a*x > b, x)`)
 - [ ] **F2 [P0]** abs/sqrt vs parámetro simbólico sin gate de signo/rango (ecuaciones y desigualdades) (`solve(abs(x) > a, x)`)
 - [ ] **F3 [P0]** Ecuación trig con RHS simbólico pierde periodicidad, rama suplementaria y gate |a|≤1 (`solve(sin(x) = a, x)`)
-- [ ] **F4 [P0]** abs-ecuación con RHS constante transcendental provablemente negativa: raíces espurias (`solve(abs(x)=ln(1/2), x)`)
+- [x] **F4 [P0]** abs-ecuación con RHS constante transcendental provablemente negativa: raíces espurias (`solve(abs(x)=ln(1/2), x)`) — CERRADA ciclo 1, commit `4d3e12901` (adaptador `const_numeric_sign`; bonus: `e^abs(x)=1` → `{0}`, miembro P2 F25)
 - [ ] **F5 [P0]** Recíproco-de-ln vs constante ≠0: rayo monótono sin split de signo en el polo x=1 (`solve(1/ln(x)>2, x)`)
 - [ ] **F6 [P0]** Frontera recíproca sin solución real fabrica endpoint no-real (e^infinity / undefined) (`solve(1/ln(x)>0, x)`)
 - [ ] **F7 [P0]** Recíproco-de-abs vs constante ≠0: intervalo ingenuo entre raíces frontera sin polo ni signo (`solve(1/(abs(x)-1)>1, x)`)

@@ -1992,11 +1992,12 @@ fn union_branch_solutions(
         solution = if matches!(solution, SolutionSet::Empty) {
             combined
         } else {
-            cas_solver_core::solution_set::union_solution_sets(
-                &simplifier.context,
-                solution,
-                combined,
-            )
+            // Discrete/interval branches mixed with a periodic family are unrepresentable by
+            // `union_solution_sets` (its catch-all fires a debug_assert and silently DROPS one
+            // operand in release — a latent wrong answer). Honor its documented contract:
+            // pre-check combinability at the solver layer and decline the whole relation,
+            // leaving an honest residual instead of an incomplete set.
+            return None;
         };
     }
     Some(solution)
@@ -5899,6 +5900,22 @@ fn classify_trig_unit_rhs(ctx: &Context, c: ExprId) -> Option<TrigUnitClass> {
                 Ordering::Less => TrigUnitClass::InOpen,
             }
         });
+    }
+    // Fallback: EXACT rational value-bounds decide the named/transcendental constants the two
+    // recognizers above miss — `phi` (the simplifier folds `(1+√5)/2` into the named constant,
+    // which `as_linear_surd` cannot see), `e`, `π/4`, `1/e`, `e − 2`. An open interval can only
+    // prove STRICT classifications: strictly outside `[−1, 1]` ⇒ OutOfRange, strictly inside
+    // `(−1, 1)` with a proven sign ⇒ InOpen. Equality with `{−1, 0, 1}` is unprovable from
+    // bounds, so any interval touching those points stays `None` (honest decline, as before).
+    if let Some((lo, hi)) = cas_math::const_sign::const_value_bounds(ctx, c) {
+        let neg_one = -one.clone();
+        if lo > one || hi < neg_one {
+            return Some(TrigUnitClass::OutOfRange);
+        }
+        let zero = BigRational::zero();
+        if lo > neg_one && hi < one && (lo > zero || hi < zero) {
+            return Some(TrigUnitClass::InOpen);
+        }
     }
     None
 }
@@ -10393,6 +10410,43 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn trig_unit_rhs_classifies_named_transcendental_constants_via_bounds() {
+        use super::{classify_trig_unit_rhs, TrigUnitClass};
+        use cas_ast::Constant;
+        let mut ctx = Context::new();
+        let phi = ctx.add(Expr::Constant(Constant::Phi));
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let pi = ctx.add(Expr::Constant(Constant::Pi));
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let four = ctx.num(4);
+        let neg_phi = ctx.add(Expr::Neg(phi));
+        let inv_e = ctx.add(Expr::Div(one, e));
+        let pi_4 = ctx.add(Expr::Div(pi, four));
+        let e_minus_2 = ctx.add(Expr::Sub(e, two));
+        // Strictly outside [-1, 1]: phi (the (1+sqrt(5))/2 fold), e, -phi.
+        for c in [phi, e, neg_phi] {
+            assert!(
+                matches!(
+                    classify_trig_unit_rhs(&ctx, c),
+                    Some(TrigUnitClass::OutOfRange)
+                ),
+                "expected OutOfRange"
+            );
+        }
+        // Strictly inside (-1, 1) with proven sign: 1/e, pi/4, e - 2.
+        for c in [inv_e, pi_4, e_minus_2] {
+            assert!(
+                matches!(classify_trig_unit_rhs(&ctx, c), Some(TrigUnitClass::InOpen)),
+                "expected InOpen"
+            );
+        }
+        // Symbolic RHS stays undecided (owned by the honest decline path).
+        let y = ctx.var("y");
+        assert!(classify_trig_unit_rhs(&ctx, y).is_none());
+    }
 
     #[test]
     fn trig_threshold_classification_and_bare_detection() {
