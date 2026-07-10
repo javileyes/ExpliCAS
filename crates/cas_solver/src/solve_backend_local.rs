@@ -5228,6 +5228,91 @@ fn try_solve_const_over_abs_denominator_vs_zero(
     solve_relation_set(simplifier, var, den, zero, den_op)
 }
 
+/// `c/g(x) {op} k` with a NONZERO rational `k` and a sign-indefinite NON-POLYNOMIAL
+/// denominator (`|x|−1`, `ln(x)`, `log(b,x)−c`): split on the denominator sign.
+/// `c/g {op} k ⟺ (c − k·g)/g {op} 0`, so under `g > 0` the relation is `p {op} 0`
+/// (`p = c − k·g`) and under `g < 0` it flips; the pole `g = 0` stays excluded by the
+/// strict sign cases, while non-strict boundaries (`p = 0`, where `c/g = k` exactly)
+/// survive inside each case. POLYNOMIAL denominators are owned by the rational
+/// inequality path (correct, runs later) and stay declined here; the naive legacy
+/// isolation this replaces multiplied by `g` without casing and returned the single
+/// interval between the boundary roots (including the pole and the wrong-sign region).
+fn try_solve_const_over_denominator_vs_nonzero_const(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::{contains_var, flip_inequality};
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+    use num_traits::Zero;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // Nonzero rational threshold only: the vs-zero form has its own strict reduction.
+    let k = as_rational_const(&simplifier.context, eq.rhs)?;
+    if k.is_zero() {
+        return None;
+    }
+    // Peel negations into the numerator; expect `Div(num, den)` underneath.
+    let mut neg = false;
+    let mut node = eq.lhs;
+    while let Expr::Neg(inner) = simplifier.context.get(node) {
+        node = *inner;
+        neg = !neg;
+    }
+    let (num, den) = match simplifier.context.get(node) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    if contains_var(&simplifier.context, num, var) || !contains_var(&simplifier.context, den, var) {
+        return None;
+    }
+    if Polynomial::from_expr(&simplifier.context, den, var).is_ok() {
+        return None;
+    }
+
+    let num_eff = if neg {
+        simplifier.context.add(Expr::Neg(num))
+    } else {
+        num
+    };
+    let k_expr = simplifier.context.add(Expr::Number(k));
+    let k_den = simplifier.context.add(Expr::Mul(k_expr, den));
+    let p = simplifier.context.add(Expr::Sub(num_eff, k_den));
+    let zero = simplifier.context.num(0);
+
+    // Every sub-solve must land on an interval/point set the exact set algebra can
+    // combine; anything else (residual, conditional, periodic) declines honestly.
+    fn interval_like(s: &SolutionSet) -> bool {
+        matches!(
+            s,
+            SolutionSet::Empty
+                | SolutionSet::AllReals
+                | SolutionSet::Continuous(_)
+                | SolutionSet::Union(_)
+                | SolutionSet::Discrete(_)
+        )
+    }
+    let den_pos = solve_relation_set(simplifier, var, den, zero, RelOp::Gt)?;
+    let den_neg = solve_relation_set(simplifier, var, den, zero, RelOp::Lt)?;
+    let p_same = solve_relation_set(simplifier, var, p, zero, eq.op.clone())?;
+    let p_flip = solve_relation_set(simplifier, var, p, zero, flip_inequality(eq.op.clone()))?;
+    if !(interval_like(&den_pos)
+        && interval_like(&den_neg)
+        && interval_like(&p_same)
+        && interval_like(&p_flip))
+    {
+        return None;
+    }
+    let case_pos = intersect_solution_sets(&simplifier.context, p_same, den_pos);
+    let case_neg = intersect_solution_sets(&simplifier.context, p_flip, den_neg);
+    Some(union_solution_sets(&simplifier.context, case_pos, case_neg))
+}
+
 fn try_solve_abs_threshold_inequality(
     eq: &Equation,
     var: &str,
@@ -8640,6 +8725,13 @@ fn solve_local_core_inner(
     // it cannot find `g`'s zeros through the abs. Reduce to `g {op'} 0` (strict)
     // and let the abs solver handle it.
     if let Some(set) = try_solve_const_over_abs_denominator_vs_zero(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `c/g {op} k` with k ≠ 0 and a sign-indefinite non-polynomial denominator
+    // (`1/(|x|−1) > 1`, `1/ln(x) > 2`): denominator sign-split. Dispatched after the
+    // bare-`A/|g|` and vs-zero owners; polynomial denominators decline inside (owned
+    // by the rational path).
+    if let Some(set) = try_solve_const_over_denominator_vs_nonzero_const(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {
