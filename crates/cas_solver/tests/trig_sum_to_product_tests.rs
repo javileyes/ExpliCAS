@@ -30,22 +30,22 @@ fn multiple_angle_sin_and_cos_equalities_resolve_periodically() {
     // sin(3x) = sin(x): {kπ} ∪ {π/4 + kπ/2}, presented as bases over 2π.
     assert_eq!(
         solve_display("sin(3*x)", "sin(x)"),
-        "{ k·2·pi, pi + k·2·pi, -1/4·pi + k·2·pi, 5/4·pi + k·2·pi, 1/4·pi + k·2·pi, 3/4·pi + k·2·pi : k ∈ ℤ }"
+        "{ k·2 * pi, pi + k·2 * pi, -1/4 * pi + k·2 * pi, 5/4 * pi + k·2 * pi, 1/4 * pi + k·2 * pi, 3/4 * pi + k·2 * pi : k ∈ ℤ }"
     );
     // sin(5x) = sin(x): {kπ/2} ∪ {π/6 + kπ/3} — eight bases over 2π.
     assert_eq!(
         solve_display("sin(5*x)", "sin(x)"),
-        "{ -1/2·pi + k·2·pi, -1/6·pi + k·2·pi, 7/6·pi + k·2·pi, k·2·pi, pi + k·2·pi, 1/6·pi + k·2·pi, 5/6·pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+        "{ -1/2 * pi + k·2 * pi, -1/6 * pi + k·2 * pi, 7/6 * pi + k·2 * pi, k·2 * pi, pi + k·2 * pi, 1/6 * pi + k·2 * pi, 5/6 * pi + k·2 * pi, 1/2 * pi + k·2 * pi : k ∈ ℤ }"
     );
     // sin(3x) = sin(2x): {2kπ} ∪ {π/5 + 2kπ/5}.
     assert_eq!(
         solve_display("sin(3*x)", "sin(2*x)"),
-        "{ k·2·pi, 1/5·pi + k·2·pi, 3/5·pi + k·2·pi, pi + k·2·pi, 7/5·pi + k·2·pi, 9/5·pi + k·2·pi : k ∈ ℤ }"
+        "{ k·2 * pi, 1/5 * pi + k·2 * pi, 3/5 * pi + k·2 * pi, pi + k·2 * pi, 7/5 * pi + k·2 * pi, 9/5 * pi + k·2 * pi : k ∈ ℤ }"
     );
     // cos(2x) = cos(x): {2kπ/3} (previously a conditional arccos leak).
     assert_eq!(
         solve_display("cos(2*x)", "cos(x)"),
-        "{ k·2·pi, 2/3·pi + k·2·pi, 4/3·pi + k·2·pi : k ∈ ℤ }"
+        "{ k·2 * pi, 2/3 * pi + k·2 * pi, 4/3 * pi + k·2 * pi : k ∈ ℤ }"
     );
 }
 
@@ -53,19 +53,22 @@ fn multiple_angle_sin_and_cos_equalities_resolve_periodically() {
 fn previously_working_trig_shapes_keep_their_owners() {
     assert_eq!(
         solve_display("sin(2*x)", "sin(x)"),
-        "{ k·2·pi, 1/3·pi + k·2·pi, pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+        "{ k·2 * pi, 1/3 * pi + k·2 * pi, pi + k·2 * pi, 5/3 * pi + k·2 * pi : k ∈ ℤ }"
     );
     assert_eq!(
         solve_display("sin(3*x) + sin(x)", "0"),
-        "{ -1/2·pi + k·2·pi, k·2·pi, pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }"
+        "{ -1/2 * pi + k·2 * pi, k·2 * pi, pi + k·2 * pi, 1/2 * pi + k·2 * pi : k ∈ ℤ }"
     );
     // Mixed sin/cos stays with its (correct) owners — not this handler's family.
-    assert_eq!(solve_display("sin(x)", "cos(x)"), "{ 1/4·pi + k·pi : k ∈ ℤ }");
+    assert_eq!(
+        solve_display("sin(x)", "cos(x)"),
+        "{ 1/4 * pi + k·pi : k ∈ ℤ }"
+    );
     // The identity case is the var-eliminated pipeline's.
     assert_eq!(solve_display("sin(x)", "sin(x)"), "All real numbers");
     // Bare periodic solves untouched.
     assert_eq!(
         solve_display("sin(x)", "1/2"),
-        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+        "{ 1/6 * pi + k·2 * pi, 5/6 * pi + k·2 * pi : k ∈ ℤ }"
     );
 }
