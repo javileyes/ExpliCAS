@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 542 (newest first)
+Active entries: 543 (newest first)
 
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
@@ -131,6 +131,7 @@ Active entries: 542 (newest first)
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (|f| vs |g| polinómico sin dueño en desigualdad): `solve(abs(x^2-1)<abs(x+1))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_nested_abs_relatio... | SOUNDNESS (abs anidado vs resto variable colapsa a rama imposible): `solve(abs(abs(x)-2)>x)`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_inverse_trig_hyper... | SOUNDNESS (coeficiente exterior en arco/hiperbólicas: constante sin plegar + eco): `solve(2*arcsin(x)=pi/3)`
+- 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_trig_sum_to_produc... | SOUNDNESS/CAPACIDAD (trig(nx)=trig(mx) grado≥3 leakea arcsin self-referencial): `solve(sin(3*x)=sin(x))`
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
@@ -19109,3 +19110,18 @@ Active entries: 542 (newest first)
   - retained learning:
   - **El peel-antes-del-match-desnudo es la cura estándar del bug-shape coeficiente≠1** (enésima instancia): cuando un handler exige Function desnuda, el bucle Neg/Mul/Div con constante racional plegada-por-simplify en cada paso es ~30 líneas y hereda TODOS los gates del handler (el de rango disparó gratis para 5/2). La señal del gap: la ruta genérica emite el residual con la constante SIN PLEGAR (`pi/3/2`) — ese print es la firma de que el aislamiento aritmético construye Div crudo.
   - PRÓXIMO PELDAÑO: F21 (sin(nx)=sin(mx) grado≥3 — diseño listo: suma-a-producto y delegar al producto-cero periódico), F23 (necesita 2 piezas: mangler derive_mul_isolation_route + extensión surd del single-radical — el peldaño surd ya estaba anotado del 2026-07-08), tan(x)+c=k periodicidad.
+
+## 2026-07-10 - SOUNDNESS/CAPACIDAD (trig(nx)=trig(mx) grado≥3 leakea arcsin self-referencial): `solve(sin(3*x)=sin(x))`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_trig_sum_to_product_equation`, handler nuevo con las 4 identidades suma-a-producto; despachado como ÚLTIMO recurso trig, tras try_solve_homogeneous_linear_trig) + test de contrato `crates/cas_solver/tests/trig_sum_to_product_tests.rs`
+- status: `retained`. FAMILIA P1 F21 del informe `docs/AUDITORIA_FRONTERA_2026-07-09.md` — CIERRA TODO EL BACKLOG P0/P1 restante alcanzable a un ciclo del audit (con F23 quedando multi-pieza).
+- capture:
+  - investment_class: honestidad→capacidad (leak self-referencial `solve(x − arcsin(2·sin(x)³) = 0)` → familia periódica completa y correcta).
+  - cell: `sin(3x)=sin(x)` → `{kπ}∪{π/4+kπ/2}` (8→6 bases sobre 2π), `sin(5x)=sin(x)` → `{kπ/2}∪{π/6+kπ/3}` (8 bases verificadas por SUSTITUCIÓN numérica), `sin(3x)=sin(2x)` → `{2kπ}∪{π/5+2kπ/5}`, `cos(2x)=cos(x)` → `{2kπ/3}` (era leak condicional arccos — miembro NUEVO detectado en el probe, más roto de lo que decía el audit). Controles: `sin(2x)=sin(x)`, `sin(4x)=sin(x)`, `sin(3x)+sin(x)=0`, mixto `sin(2x)=cos(x)`, identidad `sin(x)=sin(x)` → AllReals, bare periódicos — IDÉNTICOS (dueños previos intactos).
+  - causa raíz: la expansión de ángulo múltiple de grado ≥3 no es cuadrática-en-un-atom (`3sin−4sin³`), el poly-in-trig declina y la isolación genérica aplica arcsin dejando la variable dentro → eco self-referencial.
+  - diseño: identidades suma-a-producto (`sin u − sin v = 2·cos((u+v)/2)·sin((u−v)/2)` y las 3 hermanas; constantes descartadas — solo importa el conjunto de ceros), medio-suma/diferencia plegadas por simplify, producto delegado a `solve_relation_set` (el producto-cero periódico une sobre período común EXACTO — maquinaria de 2026-07-01). Acepta solo sets resueltos (Periodic/Discrete/…); residual → decline honesto. Gates: mismo builtin en ambos lados (sin/cos; mixto tiene dueños), u≠v estructural (identidad → pipeline var-eliminado), args con variable. DISPATCH como último recurso trig: la primera posición robaba `cos(3x)=cos(x)` a su dueño con presentación menos plegada — movido tras homogeneous_linear_trig; `cos(3x)=cos(x)` AÚN cambia de presentación (viene de una estrategia posterior a toda la cadena) pero el conjunto es idéntico (`{kπ/2}`), workspace 0 failed y huella limpia = ninguna fixture lo pinneaba.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio (gateado); engine-fast + ambos scorecards verdes; huella estructural 0-delta. Tests: 2 tests / 9 asserts con los conjuntos completos pinneados.
+  - retained learning:
+  - **El "último recurso" en una cadena de handlers NO garantiza no-robo si el dueño previo vive en una capa POSTERIOR (estrategias)**: mover el dispatch dentro de la cadena no protege contra dueños post-cadena. El árbitro real es la huella + workspace: si nadie pinnea la presentación vieja y el conjunto es idéntico, el cambio de presentación es aceptable — pero DOCUMENTARLO como decisión, no dejarlo implícito.
+  - **Delegar el producto al solver periódico une familias con períodos distintos gratis** (cos((u+v)/2) y sin((u−v)/2) tienen períodos distintos tras el map-back): la maquinaria union_periodic_families_over_common_period hace el trabajo exacto; el handler solo aporta la identidad. Presentación menos plegada que la óptima ({kπ} aparece como 2 bases sobre 2π) — P3 de plegado de bases, no soundness.
+  - PRÓXIMO PELDAÑO: F23 (2 piezas: mangler derive_mul_isolation_route que mueve factores CON variable + extensión surd del single-radical `√(quad)=poly` — el peldaño surd del 2026-07-08); tan(x)+c=k periodicidad (isolación aditiva no re-entra al periódico); F1-F3 paramétricos (decline honesto primero); merge_intervals degenerados (auditoría dirigida); abs-vs-abs transcendental (`|ln(x)|<|x|` → "No solution" pre-existente); 16 P2 capability del audit.

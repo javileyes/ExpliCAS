@@ -5337,6 +5337,132 @@ fn try_solve_division_vs_const_sign_split(
     Some(union_solution_sets(&simplifier.context, case_pos, case_neg))
 }
 
+/// `trig(u) = trig(v)` (same `sin`/`cos` on both sides, or their sum/difference
+/// vs 0) solved by the SUM-TO-PRODUCT identities: `sin u − sin v =
+/// 2·cos((u+v)/2)·sin((u−v)/2)`, `cos u − cos v = −2·sin((u+v)/2)·sin((u−v)/2)`,
+/// and the `+` variants. The product-zero equation then delegates each factor to
+/// the periodic trig solver, whose union over a common period is exact. Without
+/// this, a degree-≥3 multiple-angle expansion (`sin(3x) = sin(x)` →
+/// `3·sin − 4·sin³`) is not quadratic-in-u and the generic isolation leaks the
+/// self-referential `solve(x − arcsin(2·sin(x)³) = 0)`. Dispatched AFTER the
+/// existing trig owners, so already-working shapes keep their presentation.
+fn try_solve_trig_sum_to_product_equation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::BuiltinFn;
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+
+    if eq.op != RelOp::Eq {
+        return None;
+    }
+    let as_sin_cos = |ctx: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId)> {
+        match ctx.get(e) {
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                let b = ctx.builtin_of(*fn_id)?;
+                if matches!(b, BuiltinFn::Sin | BuiltinFn::Cos) {
+                    Some((b, args[0]))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    // Normalize to a DIFFERENCE `trig(u) − trig(v)`: either one call on each side,
+    // or `call ± call = 0` (the `+` flips through `sin(−v) = −sin v`; for cos the
+    // sum needs its own identity, handled by the `is_sum` flag).
+    let (builtin, u, v, is_sum) = if let (Some((bl, u)), Some((br, v))) = (
+        as_sin_cos(&simplifier.context, eq.lhs),
+        as_sin_cos(&simplifier.context, eq.rhs),
+    ) {
+        if bl != br {
+            return None;
+        }
+        (bl, u, v, false)
+    } else {
+        let rhs_zero = as_rational_const(&simplifier.context, eq.rhs)
+            .map(|q| q.is_zero())
+            .unwrap_or(false);
+        if !rhs_zero {
+            return None;
+        }
+        match simplifier.context.get(eq.lhs).clone() {
+            Expr::Sub(l, r) => {
+                let (bl, u) = as_sin_cos(&simplifier.context, l)?;
+                let (br, v) = as_sin_cos(&simplifier.context, r)?;
+                if bl != br {
+                    return None;
+                }
+                (bl, u, v, false)
+            }
+            Expr::Add(l, r) => {
+                let (bl, u) = as_sin_cos(&simplifier.context, l)?;
+                let (br, v) = as_sin_cos(&simplifier.context, r)?;
+                if bl != br {
+                    return None;
+                }
+                (bl, u, v, true)
+            }
+            _ => return None,
+        }
+    };
+    if !contains_var(&simplifier.context, u, var) || !contains_var(&simplifier.context, v, var) {
+        return None;
+    }
+    if cas_ast::ordering::compare_expr(&simplifier.context, u, v) == std::cmp::Ordering::Equal {
+        return None; // identity (0 = 0): owned by the var-eliminated pipeline
+    }
+    // Half-sum and half-difference, folded.
+    let two = simplifier.context.num(2);
+    let sum = simplifier.context.add(Expr::Add(u, v));
+    let half_sum = simplifier.context.add(Expr::Div(sum, two));
+    let half_sum = simplifier.simplify(half_sum).0;
+    let diff = simplifier.context.add(Expr::Sub(u, v));
+    let half_diff = simplifier.context.add(Expr::Div(diff, two));
+    let half_diff = simplifier.simplify(half_diff).0;
+    // Product factors (constants dropped: only the zero set matters):
+    //   sin u − sin v = 2·cos(hs)·sin(hd)      sin u + sin v = 2·sin(hs)·cos(hd)
+    //   cos u − cos v = −2·sin(hs)·sin(hd)     cos u + cos v = 2·cos(hs)·cos(hd)
+    let (f1, f2) = match (builtin, is_sum) {
+        (BuiltinFn::Sin, false) => (
+            simplifier.context.call("cos", vec![half_sum]),
+            simplifier.context.call("sin", vec![half_diff]),
+        ),
+        (BuiltinFn::Sin, true) => (
+            simplifier.context.call("sin", vec![half_sum]),
+            simplifier.context.call("cos", vec![half_diff]),
+        ),
+        (BuiltinFn::Cos, false) => (
+            simplifier.context.call("sin", vec![half_sum]),
+            simplifier.context.call("sin", vec![half_diff]),
+        ),
+        (BuiltinFn::Cos, true) => (
+            simplifier.context.call("cos", vec![half_sum]),
+            simplifier.context.call("cos", vec![half_diff]),
+        ),
+        _ => return None,
+    };
+    let product = simplifier.context.add(Expr::Mul(f1, f2));
+    let zero = simplifier.context.num(0);
+    let set = solve_relation_set(simplifier, var, product, zero, RelOp::Eq)?;
+    // Only a fully-resolved set is acceptable; a residual/conditional from the
+    // recursive solve must decline to the (honest) previous behavior.
+    match set {
+        SolutionSet::Discrete(_)
+        | SolutionSet::Empty
+        | SolutionSet::AllReals
+        | SolutionSet::Continuous(_)
+        | SolutionSet::Union(_)
+        | SolutionSet::Periodic { .. } => Some(set),
+        _ => None,
+    }
+}
+
 /// NESTED abs relation — an `abs` whose argument contains another `abs` with an
 /// AFFINE argument (`||x|−2| {op} x`): partition ℝ at the zeros of the INNER abs
 /// arguments, substitute `|u| → ±u` per region (the regional relation reduces to
@@ -9321,6 +9447,14 @@ fn solve_local_core_inner(
     // `√3·sin(x) − cos(x) = 0`) reduces to `tan(g) = −b/a`; the isolation path otherwise leaks an
     // `arcsin(cos(x)·…)` residual. The inhomogeneous `… = c` (c ≠ 0) declines.
     if let Some(set) = try_solve_homogeneous_linear_trig(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `trig(u) = trig(v)` same-function, degree-≥3 multiple angles: sum-to-product
+    // → periodic product-zero. LAST-RESORT among the trig owners (after the
+    // polynomial-in-trig expansion, which keeps its more-folded presentations for
+    // the shapes it already solves); without this the isolation leaks the
+    // self-referential arcsin echo.
+    if let Some(set) = try_solve_trig_sum_to_product_equation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     // An INHOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = c` (`3·sin(x) + 4·cos(x) = 5`,

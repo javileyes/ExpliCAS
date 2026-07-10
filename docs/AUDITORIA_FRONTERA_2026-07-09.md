@@ -29,7 +29,7 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 - [x] **F19 [P0]** Taylor de ln(a−x) centrado en a−1: signo del término líder flipeado en órdenes 3–4 (`taylor(ln(2-x), x, 1, 3)`) — CERRADA ciclo 5, commit `3456a05b4` (sign-tracking en collect_add_terms_for_const_fold; el bug corrompía también simplify de A·u^m±B·u^n vía HeuristicExtractCommonFactorAddRule)
 - [x] **F20 [P0]** Taylor de arco-función con argumento afín anulándose en el centro → undefined (0^0) (`taylor(atan(1-x), x, 1, 3)`) — CERRADA ciclo 5, commit `3456a05b4` (de regalo: el fold por-iteración de la derivada elimina los subárboles 0·u^k/u^0 que producían el 0^0)
 - [ ] **F21 [P1]** trig f(nx)=g(mx) grado≥3: aislamiento por arcsin self-referencial (leak) (`solve(sin(3*x)=sin(x), x)`)
-- [ ] **F22 [P1]** Coeficiente exterior en ecuación de arco-función: constante sin plegar (pi/3/2) y eco (`solve(2*arcsin(x)=pi/3, x)`)
+- [x] **F22 [P1]** Coeficiente exterior en ecuación de arco-función: constante sin plegar (pi/3/2) y eco (`solve(2*arcsin(x)=pi/3, x)`) — CERRADA ciclo 3 3ª tanda, commit `a7f5c21e4` (peel Neg/Mul/Div racional antes del match desnudo; el gate de rango dispara post-peel; cubre el hermano hiperbólico)
 - [ ] **F23 [P1]** Cociente x/sqrt(1±x²): árbol mangleado a doble-recíproco sin matcher aguas abajo (`solve(x/sqrt(1-x^2)=1, x)`)
 - [x] **F24 [P1]** Taylor orden ≥6 de ln(c−x): depth_overflow vuelca el árbol crudo (leak, con hermano de valor incorrecto) (`taylor(ln(2-x), x, 1, 6)`) — CERRADA ciclo 5, commit `3456a05b4` (fold_constant_subexprs del valor sustituido y de la derivada por iteración; órdenes 6-8 pliegan y verifican)
 
