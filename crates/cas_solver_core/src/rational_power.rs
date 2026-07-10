@@ -144,7 +144,7 @@ pub(crate) fn rewrite_variable_base_power_equation(
 /// directly; a constant irrational base (`sin(1)`, `√2/2`, `e^(-1)`) is decided by the exact
 /// value-bounds oracle. Undecidable/symbolic bases return `false` (no flip without proof —
 /// `sin(1)^x > 2` used to return the reversed ray because this only knew rationals).
-fn base_is_provably_fraction_below_one(ctx: &Context, base: ExprId) -> bool {
+pub(crate) fn base_is_provably_fraction_below_one(ctx: &Context, base: ExprId) -> bool {
     use num_traits::{One, Signed, Zero};
     if let Some(b) = cas_math::numeric_eval::as_rational_const(ctx, base) {
         return b > num_rational::BigRational::zero() && b < num_rational::BigRational::one();

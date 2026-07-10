@@ -20,7 +20,7 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 - [ ] **F10 [P0]** Diferencia de logs en desigualdad cae al pipeline de ecuación (singleton frontera) (`solve(ln(x)-ln(3-x)>0, x)`)
 - [ ] **F11 [P0]** Producto (afín·ln) con raíz compartida: análisis de signos asume signos opuestos (`solve((x-1)*ln(x)<0, x)`)
 - [ ] **F12 [P0]** Desigualdad log con base fraccionaria 0<b<1: no invierte el sentido (`solve(log(1/2,x)>1, x)`)
-- [ ] **F13 [P0]** Raíz φ plegada por el simplificador rompe el guard de rango |c|≤1 en trig cuadrática (`solve(sin(x)^2-sin(x)-1=0, x)`)
+- [x] **F13 [P0]** Raíz φ plegada por el simplificador rompe el guard de rango |c|≤1 en trig cuadrática (`solve(sin(x)^2-sin(x)-1=0, x)`) — CERRADA ciclo 2, commit `d43c20d48` (fallback const_value_bounds + pre-check del contrato Discrete∪Periodic en union_branch_solutions; cierra también `sin(x)=e` espurio y periodicidad de `1/e`, `π/4`, `e−2`)
 - [ ] **F14 [P0]** Identidad plegada a tautología pierde el guard de dominio (Constraint→AllReals) (`solve(sec(x)^2-tan(x)^2=1, x)`)
 - [ ] **F15 [P0]** Desigualdad |cuadrático| vs |lineal|: resuelve la frontera y pierde el interior (`solve(abs(x^2-1)<abs(x+1), x)`)
 - [ ] **F16 [P0]** abs anidado vs RHS con variable: colapsa a rama imposible → No solution (`solve(abs(abs(x)-2)>x, x)`)

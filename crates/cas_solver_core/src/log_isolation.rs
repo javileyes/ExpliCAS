@@ -227,6 +227,18 @@ where
     F: FnMut(&Context, ExprId) -> String,
 {
     let plan = plan_log_isolation(ctx, base, arg, rhs, var)?;
+    // `log_b` is DECREASING for a base provably in (0, 1): exponentiating both sides of an
+    // order relation must flip its direction (`log(1/2, x) > 1 ⟺ x < (1/2)^1`), exactly as
+    // the sibling `b^x = c` isolation already does. Only the solve-ARGUMENT shape is flipped;
+    // a variable-base plan keeps the incoming relation (separate ownership, unchanged).
+    let op = if matches!(plan, LogIsolationPlan::SolveArgument { .. })
+        && crate::isolation_utils::is_inequality_relop(&op)
+        && crate::rational_power::base_is_provably_fraction_below_one(ctx, base)
+    {
+        crate::isolation_utils::flip_inequality(op)
+    } else {
+        op
+    };
     let step = build_log_isolation_step_with(plan, ctx, base, op, |core_ctx, id| {
         render_expr(core_ctx, id)
     });
@@ -395,6 +407,42 @@ mod tests {
             "Exponentiate both sides with base rendered(b)"
         );
         assert_eq!(out.items[0].equation, out.equation);
+    }
+
+    #[test]
+    fn plan_log_isolation_step_with_flips_order_for_fraction_base_below_one() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        let rhs = ctx.num(1);
+        let half = ctx.rational(1, 2);
+        // log_{1/2} is decreasing: every order relation flips; Eq/Neq stay.
+        for (op, expected) in [
+            (RelOp::Gt, RelOp::Lt),
+            (RelOp::Lt, RelOp::Gt),
+            (RelOp::Geq, RelOp::Leq),
+            (RelOp::Leq, RelOp::Geq),
+            (RelOp::Eq, RelOp::Eq),
+        ] {
+            let out = plan_log_isolation_step_with(&mut ctx, half, arg, rhs, "x", op, |_, _| {
+                "1/2".to_string()
+            })
+            .expect("log isolation should apply");
+            assert_eq!(out.equation.op, expected, "base 1/2 relation");
+        }
+        // Base > 1 is increasing: the relation is preserved.
+        let two = ctx.num(2);
+        let out = plan_log_isolation_step_with(&mut ctx, two, arg, rhs, "x", RelOp::Gt, |_, _| {
+            "2".to_string()
+        })
+        .expect("log isolation should apply");
+        assert_eq!(out.equation.op, RelOp::Gt, "base 2 relation preserved");
+        // Symbolic base: no proof, no flip (variable-base ownership unchanged).
+        let b = ctx.var("b");
+        let out = plan_log_isolation_step_with(&mut ctx, b, arg, rhs, "x", RelOp::Gt, |_, _| {
+            "b".to_string()
+        })
+        .expect("log isolation should apply");
+        assert_eq!(out.equation.op, RelOp::Gt, "symbolic base preserved");
     }
 
     #[test]
