@@ -5337,6 +5337,211 @@ fn try_solve_division_vs_const_sign_split(
     Some(union_solution_sets(&simplifier.context, case_pos, case_neg))
 }
 
+/// NESTED abs relation — an `abs` whose argument contains another `abs` with an
+/// AFFINE argument (`||x|−2| {op} x`): partition ℝ at the zeros of the INNER abs
+/// arguments, substitute `|u| → ±u` per region (the regional relation reduces to
+/// a plain abs relation the existing owners solve), clip each result to its
+/// region and union. Every dedicated abs handler declines the nested shape
+/// (their `Polynomial::from_expr` gates fail on the interior abs), so it fell to
+/// the generic isolation, whose inner sub-solves came back as UNRESOLVED
+/// `Conditional` sets that the outer union swallowed: `||x|−2| > x` reported
+/// "No solution" for a truth of `(−∞, 1)` — for every relation direction.
+/// Deeper nesting recurses naturally: the regional solve re-enters the full
+/// solver, which fires this handler again on the next level.
+fn try_solve_nested_abs_relation(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    if !matches!(
+        eq.op,
+        RelOp::Eq | RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq
+    ) {
+        return None;
+    }
+    // Collect abs nodes that sit INSIDE another abs (the inner layer of nesting).
+    fn collect_inner_abs(ctx: &Context, expr: ExprId, inside_abs: bool, out: &mut Vec<ExprId>) {
+        match ctx.get(expr).clone() {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                collect_inner_abs(ctx, l, inside_abs, out);
+                collect_inner_abs(ctx, r, inside_abs, out);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => collect_inner_abs(ctx, inner, inside_abs, out),
+            Expr::Function(fn_id, args) => {
+                let is_abs = args.len() == 1 && ctx.is_builtin(fn_id, cas_ast::BuiltinFn::Abs);
+                if is_abs && inside_abs && !out.contains(&expr) {
+                    out.push(expr);
+                }
+                for arg in args {
+                    collect_inner_abs(ctx, arg, inside_abs || is_abs, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+    let mut inner_abs: Vec<ExprId> = Vec::new();
+    collect_inner_abs(&simplifier.context, diff, false, &mut inner_abs);
+    if inner_abs.is_empty() {
+        return None;
+    }
+    // Claim only the VARIABLE-remainder family (`||x|-2| {op} x`): with a constant
+    // remainder (`||x|-2| = 1`) the existing nested-vs-constant owner is already
+    // correct, and keeps its pinned root ordering. Discriminate by zeroing every
+    // OUTERMOST abs in the difference and checking the leftover for the variable.
+    fn collect_outer_abs(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+        match ctx.get(expr).clone() {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                collect_outer_abs(ctx, l, out);
+                collect_outer_abs(ctx, r, out);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => collect_outer_abs(ctx, inner, out),
+            Expr::Function(fn_id, args) => {
+                if args.len() == 1 && ctx.is_builtin(fn_id, cas_ast::BuiltinFn::Abs) {
+                    if !out.contains(&expr) {
+                        out.push(expr);
+                    }
+                } else {
+                    for arg in args {
+                        collect_outer_abs(ctx, arg, out);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut outer_abs: Vec<ExprId> = Vec::new();
+    collect_outer_abs(&simplifier.context, diff, &mut outer_abs);
+    let zero_probe = simplifier.context.num(0);
+    let mut remainder = diff;
+    for &abs_e in &outer_abs {
+        remainder = substitute_expr_by_id(&mut simplifier.context, remainder, abs_e, zero_probe);
+    }
+    let (remainder, _) = simplifier.simplify(remainder);
+    if !contains_var(&simplifier.context, remainder, var) {
+        return None;
+    }
+    // Every inner abs argument must be AFFINE in the variable (rational breakpoint).
+    let mut breakpoints: Vec<BigRational> = Vec::new();
+    let mut arg_polys: Vec<Polynomial> = Vec::new();
+    let mut args: Vec<ExprId> = Vec::new();
+    for &abs_e in &inner_abs {
+        let arg = match simplifier.context.get(abs_e) {
+            Expr::Function(_, a) if a.len() == 1 => a[0],
+            _ => return None,
+        };
+        if !contains_var(&simplifier.context, arg, var) {
+            return None;
+        }
+        let poly = Polynomial::from_expr(&simplifier.context, arg, var).ok()?;
+        if poly.degree() != 1 {
+            return None;
+        }
+        let a = poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let b = poly
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if a.is_zero() {
+            return None;
+        }
+        breakpoints.push(-b / a);
+        arg_polys.push(poly);
+        args.push(arg);
+    }
+    breakpoints.sort();
+    breakpoints.dedup();
+    let n = breakpoints.len();
+    let two = BigRational::from_integer(2.into());
+    let zero = simplifier.context.num(0);
+
+    // Closed segment `[lo, hi]` as a solution set (open end = no constraint).
+    let segment_set = |simplifier: &mut Simplifier,
+                       lo: Option<&BigRational>,
+                       hi: Option<&BigRational>|
+     -> Option<SolutionSet> {
+        let x = simplifier.context.var(var);
+        let lo_set = match lo {
+            Some(l) => {
+                let ln = simplifier.context.add(Expr::Number(l.clone()));
+                solve_relation_set(simplifier, var, x, ln, RelOp::Geq)?
+            }
+            None => SolutionSet::AllReals,
+        };
+        let hi_set = match hi {
+            Some(h) => {
+                let hn = simplifier.context.add(Expr::Number(h.clone()));
+                solve_relation_set(simplifier, var, x, hn, RelOp::Leq)?
+            }
+            None => SolutionSet::AllReals,
+        };
+        Some(intersect_solution_sets(&simplifier.context, lo_set, hi_set))
+    };
+
+    let mut solution = SolutionSet::Empty;
+    for seg_idx in 0..=n {
+        let (lo, hi, test): (Option<BigRational>, Option<BigRational>, BigRational) =
+            if seg_idx == 0 {
+                let a0 = breakpoints[0].clone();
+                let t = &a0 - BigRational::one();
+                (None, Some(a0), t)
+            } else if seg_idx == n {
+                let an = breakpoints[n - 1].clone();
+                let t = &an + BigRational::one();
+                (Some(an), None, t)
+            } else {
+                let al = breakpoints[seg_idx - 1].clone();
+                let ar = breakpoints[seg_idx].clone();
+                let t = (&al + &ar) / &two;
+                (Some(al), Some(ar), t)
+            };
+        // Resolve each inner `|u| → sign·u` by the argument's sign at the test point.
+        let mut seg_expr = diff;
+        for (i, &abs_e) in inner_abs.iter().enumerate() {
+            let val = arg_polys[i].eval(&test);
+            let replacement = if val.is_positive() {
+                args[i]
+            } else {
+                simplifier.context.add(Expr::Neg(args[i]))
+            };
+            seg_expr = substitute_expr_by_id(&mut simplifier.context, seg_expr, abs_e, replacement);
+        }
+        let (seg_expr, _) = simplifier.simplify(seg_expr);
+        let branch = solve_relation_set(simplifier, var, seg_expr, zero, eq.op.clone())?;
+        // An unresolved sub-solve must DECLINE the whole relation — the set algebra
+        // silently swallows non-concrete operands (the swallowed-Conditional was
+        // this family's root cause).
+        if !is_concrete_solution_set(&branch) {
+            return None;
+        }
+        let seg_set = segment_set(simplifier, lo.as_ref(), hi.as_ref())?;
+        let clipped = intersect_solution_sets(&simplifier.context, branch, seg_set);
+        solution = union_solution_sets(&simplifier.context, solution, clipped);
+    }
+    Some(solution)
+}
+
 /// `|f(x)| {op} |g(x)|` with POLYNOMIAL arguments and an order operator
 /// (`|x²−1| < |x+1|`): both sides are non-negative, so the relation is EXACTLY
 /// `f² {op} g²` — one polynomial inequality, delegated to its correct owner via
@@ -8914,6 +9119,11 @@ fn solve_local_core_inner(
     // `|f| {op} |g|` with polynomial args: both sides non-negative, reduce to the
     // exact polynomial inequality f² − g² {op} 0 (its correct owner).
     if let Some(set) = try_solve_abs_vs_abs_polynomial_inequality(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // NESTED abs (`||x|−2| {op} x`): partition at the inner-abs zeros, reduce each
+    // region to a plain abs relation, clip and union.
+    if let Some(set) = try_solve_nested_abs_relation(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 540 (newest first)
+Active entries: 541 (newest first)
 
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
@@ -129,6 +129,7 @@ Active entries: 540 (newest first)
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_single_abs_polynom... | SOUNDNESS (|f·g| vs c pierde la región entre ceros por rama Mul no-concreta): `solve(abs(x)*abs(x-1)<2)`
 - 2026-07-10 | `retained` | `crates/cas_engine/src/rules/calculus/definite_integration.rs` (`antiderivati... | SOUNDNESS (FTC ingenuo sobre antiderivada de Weierstrass discontinua): `integrate(1/(2+cos(x)), x, 0, 2*pi)`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (|f| vs |g| polinómico sin dueño en desigualdad): `solve(abs(x^2-1)<abs(x+1))`
+- 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_nested_abs_relatio... | SOUNDNESS (abs anidado vs resto variable colapsa a rama imposible): `solve(abs(abs(x)-2)>x)`
 - 2026-07-08 | `retained` | `crates/cas_math/src/summation_support.rs` (`try_build_quadratic_geometric_sy... | CAPACIDAD (suma cuadrático-geométrica finita de razón SIMBÓLICA): `sum(k²·r^k, k, 0, n)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (leak de residual malformado en Laurent-en-√x): `solve(√x − 1/√x = 1)`
 - 2026-07-08 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_rational_power_lau... | SOUNDNESS (Laurent-en-raíz combinado en fracción): `solve(x^(1/3) − 1/x^(1/3) = 0)`
@@ -19078,3 +19079,18 @@ Active entries: 540 (newest first)
   - **Reduce-a-canónico con la monotonía correcta**: cuando ambos lados de una relación de orden son provably no-negativos, elevar al cuadrado es una EQUIVALENCIA (no introduce raíces extrañas) — la reducción más barata posible para |·| vs |·|. La combinación "aritmética polinómica exacta para construir p + delegar al dueño polinómico + guard de concreción" es ya el trío estándar de estos handlers.
   - HALLAZGO LATERAL (pre-existente, stash-bisect): `solve(abs(ln(x))<abs(x))` → "No solution" (la verdad es un rayo (x₀,∞) con ln(x₀)=−x₀) — abs-vs-abs TRANSCENDENTAL, fuera del gate polinómico; candidato para el próximo audit.
   - PRÓXIMO PELDAÑO: F16 (abs anidado vs RHS variable — diseño listo: partición en ceros de abs interiores reutilizando la maquinaria de segmentos del multi-abs), F21-F23 (P1 leaks), tan(x)+c=k periodicidad.
+
+## 2026-07-10 - SOUNDNESS (abs anidado vs resto variable colapsa a rama imposible): `solve(abs(abs(x)-2)>x)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_nested_abs_relation`, handler nuevo: partición en ceros de abs interiores) + test de contrato `crates/cas_solver/tests/nested_abs_relation_tests.rs`
+- status: `retained`. FAMILIA P0 F16 del informe `docs/AUDITORIA_FRONTERA_2026-07-09.md` (11 miembros: =, <, >, ≥ con offsets 1/2/3 y arg interior desplazado).
+- capture:
+  - investment_class: soundness ("No solution" para conjuntos no vacíos en TODAS las direcciones de la relación).
+  - cell: `||x|−2|>x` → `(−∞,1)` (era No solution), `<x` → `(1,∞)`, `=x` → `{1}`, `>=x` → `(−∞,1]`, `||x|−3|>x` → `(−∞,3/2)`, `||x|−1|>x` → `(−∞,1/2)`, interior desplazado `||x−1|−2|>x` → `(−∞,3/2)` — los 7 verificados a mano por regiones. Controles: anidado vs CONSTANTE conserva su dueño Y su ORDEN de raíces pinneado (`||x|−2|=1` → `{3,−3,1,−1}` — el gate de resto-variable lo devuelve tras detectarse el churn de representación en el sweep), abs simple vs variable, suma-de-abs, multi-abs cuadrático, abs-vs-abs del ciclo anterior.
+  - causa raíz: todos los handlers dedicados de abs declinan la forma anidada (sus gates `Polynomial::from_expr` fallan con el abs interior); la isolación genérica SÍ recursa el split exterior y encuentra los candidatos, pero cada sub-solve interior con RHS variable vuelve como `Conditional[NonNegative(rhs) → set]` SIN resolver y la unión exterior lo traga → "No solution".
+  - diseño: partición de ℝ en los ceros (racionales) de los args AFINES de los abs INTERIORES — la maquinaria canónica split-piecewise, misma forma que el multi-abs handler: por segmento, test-point racional decide `|u|→±u` (sustitución por ExprId), la relación regional queda como abs simple que los dueños existentes resuelven EXACTO, clip al segmento (via half-line solves) y unión. Guard de concreción por rama (el Conditional tragado era la causa-raíz — no combinar jamás un operando no resuelto). Gate de propiedad: resto-con-variable tras anular los abs EXTERIORES (el caso resto-constante tiene dueño correcto con representación pinneada). Anidamiento más profundo recursa solo: el solve regional re-entra al solver completo y este handler vuelve a disparar.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio (gateado); engine-fast + ambos scorecards verdes; huella estructural 0-delta. Tests: 2 tests / 12 asserts.
+  - retained learning:
+  - **El sweep de dueños vecinos caza churn de REPRESENTACIÓN, no solo de valor**: la primera versión reclamaba también anidado-vs-constante — mismo conjunto, otro ORDEN de raíces (`{−1,−3,3,1}` vs `{3,−3,1,−1}` pinneado). El gate de propiedad correcto ("resto contiene la variable tras anular los abs exteriores") expresa la FAMILIA del audit como intención declarada y devuelve al dueño viejo lo que ya hacía bien.
+  - **La partición piecewise en ceros de abs interiores compone con los dueños existentes**: sustituir solo la capa INTERIOR deja una relación que el ecosistema ya resuelve; no hay que reimplementar el abs exterior. Cuarta reutilización de la maquinaria de segmentos (multi-abs, F11 producto, F16) — si aparece una quinta, extraer el builder de segmentos a un helper compartido (candidato clase A).
+  - PRÓXIMO PELDAÑO: F22 (coeficiente exterior en arco-funciones — diseño listo: peel Neg/Mul/Div var-free plegando en c antes del match desnudo), F21/F23 (P1 leaks restantes), tan(x)+c=k periodicidad.
