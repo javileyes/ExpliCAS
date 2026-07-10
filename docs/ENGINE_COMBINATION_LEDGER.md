@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 546 (newest first)
+Active entries: 547 (newest first)
 
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-11 | `retained` | `crates/cas_solver_core/src/solve_runtime_isolation_dispatch_bound_runtime.rs... | SOUNDNESS (desigualdad paramétrica monótona asume signo del parámetro): `solve(a*x>b)`
+- 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs vs parámetro de signo indecidible): `solve(abs(x)=a)` / `solve(abs(x)>a)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/log_isolation.rs` (`plan_log_isolation_step_with`... | SOUNDNESS (desigualdad log base fraccionaria no invierte): `solve(log(1/2,x)>1)`
@@ -19175,3 +19176,19 @@ Active entries: 546 (newest first)
   - **"Proven sign ⇒ transforma; unprovable ⇒ declina" es estrictamente mejor que declinar todo**: el mismo clasificador que protege el espacio paramétrico CIERRA de regalo el op-drop del linear-collect con la respuesta correcta ((a²+1) es probable estructuralmente). El tri-estado {positivo-probado, negativo-probado, indecidible} en el punto de decisión es la forma final del chokepoint de signo — y es EXACTAMENTE el contrato que Fase 2 (complejo) necesitará (indecidible → condición de rama).
   - **Un guard de dispatch no cubre rutas PRE-dispatch**: el linear-collect es estrategia (antes de la isolación) y even-root/const-numerator usan pipelines propios — el gemelo top-level con el mismo clasificador es el patrón (2 capas, una intención). Un fixture con comentario "assuming X > 0" es un pin de unsoundness documentado — grep barato para el próximo audit: `assuming.*>.*0` en tests.
   - PRÓXIMO PELDAÑO: F2 (abs vs parámetro — diseño listo: rayos universales para >, Conditional para </=), F3 (sin(x)=a paramétrico), upgrade futuro de F1 a Conditional sobre sign(a) (necesita ConditionPredicate::Negative — multi-cycle).
+
+## 2026-07-11 - SOUNDNESS (abs vs parámetro de signo indecidible): `solve(abs(x)=a)` / `solve(abs(x)>a)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_param`, handler top-level pre-estrategias) + test de contrato `crates/cas_solver/tests/abs_symbolic_param_tests.rs`
+- status: `retained`. FAMILIA P0 F2 del informe (15 miembros, brazo abs; los miembros sqrt quedan en el decline honesto del guard F1 como peldaño declarado). Audit a 23/24.
+- capture:
+  - investment_class: soundness (asunciones INCONSISTENTES entre paths: la ecuación asumía a≥0 — `{a,−a}` espurio para a<0 — y las desigualdades asumían a<0 — `>a`→AllReals, `<a`→No solution, `<=a`→`[a,a]∪[−a,−a]` degenerado).
+  - cell: `abs(x)=a` → `{a,−a} if a≥0`, `<a` → `(−a,a) if a>0`, `<=a` → `[−a,a] if a≥0`, `>a` → `(−∞,−a)∪(a,∞)` SIN condición (universalmente correcta para TODO a real — para a<0 los rayos se solapan y cubren ℝ; forma fuzz-verificada del audit), `>=a` → cerrada, arg afín `abs(x−1)=a` → `{a+1, 1−a} if a≥0`, coeficiente `2·abs(x)=a`, `abs(x)=y`, desigualdad afín `abs(2x+1)<a`. Controles (6): positividad probada `abs(x)=a²+1` → split incondicional intacto (el gate exige signo INDECIDIBLE — sin guard redundante, guardrail inter-fase de condiciones como contrato), racionales, F4 transcendental negativa, `abs(x)=0`.
+  - causa raíz: la del audit — `plan_abs_isolation` con `numeric_sign=None` hace SplitBranches incondicional (Eq) y los paths de desigualdad heredan asunciones opuestas.
+  - diseño: handler top-level gateado a (1) parámetro var-free NO-numérico con signo INDECIDIBLE por la cascada completa (oráculos exactos + prove_positive de ±c) — un signo probado devuelve None (dueños existentes, cero churn); (2) argumento AFÍN racional (endpoints invertidos en forma cerrada `(±c−r)/q`, orientación decidida por el SIGNO RACIONAL de la pendiente — nunca por comparación simbólica). Los conjuntos se construyen DIRECTAMENTE (Interval/Union/Discrete literales): el álgebra de sets no puede ordenar endpoints simbólicos (`c` vs `−c`) — pasarlos por union/merge es exactamente la clase de bug del audit. Guards con la convención single-case Conditional establecida (`e^x>a`).
+  - validación: workspace exit 0, 0 failed; clippy limpio (gateado); engine-fast + scorecards verdes; huella estructural 0-delta. Tests: 3 tests / 12 asserts (pins en el render PREFIJO del harness `if a >= 0: {…}` — 3ª aparición de la divergencia CLI/harness, cazada standalone).
+  - retained learning:
+  - **Construcción DIRECTA de conjuntos con endpoints simbólicos**: cuando la orientación del intervalo la decide un dato RACIONAL (la pendiente), construir Interval/Union literales es sound; delegar a intersect/union/merge con endpoints simbólicos no lo es (no pueden comparar c vs −c). La distinción "qué decide la forma: dato racional conocido vs comparación simbólica" es el criterio para elegir construcción directa vs álgebra.
+  - **La forma universal existe a veces**: `|x|>a` no necesita guard — los rayos son correctos para TODO a real. Detectar la forma incondicional (cuando la unión sobre-cubre benignamente) da una respuesta MÁS fuerte que el conditional; vale la pena derivarla a mano por operador antes de guardar por defecto.
+  - HALLAZGO LATERAL (pre-existente): `abs(x^2-1)<a` (arg CUADRÁTICO vs parámetro) → intervalo basura `(−√(a+1), −√(1−a))` — fuera de mi gate afín; hermano para el próximo audit.
+  - PRÓXIMO PELDAÑO: F3 (sin(x)=a — diseño listo: InOpen guardado por rango cerrado), sqrt-vs-param upgrade (hoy decline honesto del F1), abs-cuadrático-vs-param.

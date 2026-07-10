@@ -8,7 +8,7 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 
 ## Estado de cierre (vivo)
 
-- [ ] **F1 [P0]** Desigualdad paramétrica monótona asume signo del parámetro (divide/eleva a ciegas) (`solve(a*x > b, x)`)
+- [x] **F1 [P0]** Desigualdad paramétrica monótona asume signo del parámetro (divide/eleva a ciegas) (`solve(a*x > b, x)`) — CERRADA ciclo 3 4ª tanda, commit `3193b7eaa` (clasificador tri-estado en 2 capas: signo probado transforma exacto — (a²+1)x>b obtiene el rayo CORRECTO — indecidible declina con el mensaje canónico)
 - [ ] **F2 [P0]** abs/sqrt vs parámetro simbólico sin gate de signo/rango (ecuaciones y desigualdades) (`solve(abs(x) > a, x)`)
 - [ ] **F3 [P0]** Ecuación trig con RHS simbólico pierde periodicidad, rama suplementaria y gate |a|≤1 (`solve(sin(x) = a, x)`)
 - [x] **F4 [P0]** abs-ecuación con RHS constante transcendental provablemente negativa: raíces espurias (`solve(abs(x)=ln(1/2), x)`) — CERRADA ciclo 1, commit `4d3e12901` (adaptador `const_numeric_sign`; bonus: `e^abs(x)=1` → `{0}`, miembro P2 F25)

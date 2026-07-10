@@ -9411,6 +9411,184 @@ fn solve_local_core(
     result
 }
 
+/// `|affine(x)| {op} c` with a VAR-FREE parameter `c` of UNDECIDABLE sign
+/// (`abs(x) = a`, `abs(x) > a`): the unconditional split assumed `c ≥ 0` for the
+/// equation (`{a, −a}` — spurious for `a < 0`) while the inequality paths assumed
+/// `c < 0` (`> a` → AllReals, `< a` → No solution, `≤ a` → the degenerate
+/// `[a,a] ∪ [−a,−a]`). Emit the parameter-space-correct forms instead, built
+/// DIRECTLY (never through the set algebra, whose merge cannot order symbolic
+/// endpoints like `c` vs `−c`):
+///   `>` / `≥`: the two-ray union — universally correct for EVERY real `c`
+///   (for `c < 0` the rays overlap and cover ℝ).
+///   `=` / `<` / `≤`: guarded by `c ≥ 0` / `c > 0` / `c ≥ 0` (the established
+///   single-case Conditional convention, as in `e^x > a`).
+/// A parameter with a PROVEN sign keeps its existing (correct) owners.
+fn try_solve_abs_vs_symbolic_param(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_ast::{BoundType, Case, ConditionPredicate, ConditionSet, Constant, Interval};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(
+        eq.op,
+        RelOp::Eq | RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq
+    ) {
+        return None;
+    }
+    // Var side / const side; peel a rational coefficient off the abs (`2·|x| = a`).
+    let (var_side, c) = if contains_var(&simplifier.context, eq.lhs, var)
+        && !contains_var(&simplifier.context, eq.rhs, var)
+    {
+        (eq.lhs, eq.rhs)
+    } else if contains_var(&simplifier.context, eq.rhs, var)
+        && !contains_var(&simplifier.context, eq.lhs, var)
+    {
+        (eq.rhs, eq.lhs)
+    } else {
+        return None;
+    };
+    let (abs_call, mut op, c) = match simplifier.context.get(var_side).clone() {
+        Expr::Mul(l, r) => {
+            let (coef, inner) = if contains_var(&simplifier.context, r, var) {
+                (l, r)
+            } else {
+                (r, l)
+            };
+            let q = as_rational_const(&simplifier.context, coef)?;
+            if q.is_zero() {
+                return None;
+            }
+            let q_node = simplifier.context.add(Expr::Number(q.clone()));
+            let scaled = simplifier.context.add(Expr::Div(c, q_node));
+            let scaled = simplifier.simplify(scaled).0;
+            let op = if q.is_negative() {
+                cas_solver_core::isolation_utils::flip_inequality(eq.op.clone())
+            } else {
+                eq.op.clone()
+            };
+            (inner, op, scaled)
+        }
+        _ => (var_side, eq.op.clone(), c),
+    };
+    let _ = &mut op;
+    let f = match_abs_argument(&simplifier.context, abs_call)?;
+    if !contains_var(&simplifier.context, f, var) {
+        return None;
+    }
+    // The parameter must be genuinely UNDECIDABLE: not a plain number, no exact
+    // oracle verdict, and no structural positivity proof either way.
+    if as_rational_const(&simplifier.context, c).is_some() {
+        return None;
+    }
+    let sign_known = cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, c).is_some()
+        || cas_math::const_sign::provable_const_sign(&simplifier.context, c).is_some()
+        || matches!(
+            crate::solver_entrypoints_proof_verify::prove_positive(
+                &simplifier.context,
+                c,
+                crate::runtime::ValueDomain::RealOnly,
+            ),
+            cas_solver_core::domain_proof::Proof::Proven
+        )
+        || {
+            let neg_c = simplifier.context.add(Expr::Neg(c));
+            matches!(
+                crate::solver_entrypoints_proof_verify::prove_positive(
+                    &simplifier.context,
+                    neg_c,
+                    crate::runtime::ValueDomain::RealOnly,
+                ),
+                cas_solver_core::domain_proof::Proof::Proven
+            )
+        };
+    if sign_known {
+        return None;
+    }
+    // AFFINE argument with rational slope: endpoints invert in closed form and
+    // their ORDER is decided by the (rational) slope, never by symbolic compare.
+    let f_poly = Polynomial::from_expr(&simplifier.context, f, var).ok()?;
+    if f_poly.degree() != 1 {
+        return None;
+    }
+    let q = f_poly.coeffs.get(1).cloned()?;
+    let r = f_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(num_rational::BigRational::zero);
+    if q.is_zero() {
+        return None;
+    }
+    // x = (t − r)/q for t ∈ {c, −c}.
+    let invert = |simplifier: &mut Simplifier, t: ExprId| -> ExprId {
+        let r_node = simplifier.context.add(Expr::Number(r.clone()));
+        let shifted = simplifier.context.add(Expr::Sub(t, r_node));
+        let q_node = simplifier.context.add(Expr::Number(q.clone()));
+        let out = simplifier.context.add(Expr::Div(shifted, q_node));
+        simplifier.simplify(out).0
+    };
+    let neg_c = {
+        let n = simplifier.context.add(Expr::Neg(c));
+        simplifier.simplify(n).0
+    };
+    let from_c = invert(simplifier, c);
+    let from_neg_c = invert(simplifier, neg_c);
+    // Interval orientation by the RATIONAL slope: q > 0 keeps c on the upper side.
+    let (lo, hi) = if q.is_positive() {
+        (from_neg_c, from_c)
+    } else {
+        (from_c, from_neg_c)
+    };
+    let inf = simplifier.context.add(Expr::Constant(Constant::Infinity));
+    let neg_inf = {
+        let i = simplifier.context.add(Expr::Constant(Constant::Infinity));
+        simplifier.context.add(Expr::Neg(i))
+    };
+    let set = match op {
+        RelOp::Eq => SolutionSet::Conditional(vec![Case::new(
+            ConditionSet::single(ConditionPredicate::NonNegative(c)),
+            SolutionSet::Discrete(vec![from_c, from_neg_c]),
+        )]),
+        RelOp::Gt | RelOp::Geq => {
+            let (outer, inner_bound) = if matches!(op, RelOp::Gt) {
+                (BoundType::Open, BoundType::Open)
+            } else {
+                (BoundType::Open, BoundType::Closed)
+            };
+            SolutionSet::Union(vec![
+                Interval {
+                    min: neg_inf,
+                    min_type: outer.clone(),
+                    max: lo,
+                    max_type: inner_bound.clone(),
+                },
+                Interval {
+                    min: hi,
+                    min_type: inner_bound.clone(),
+                    max: inf,
+                    max_type: outer.clone(),
+                },
+            ])
+        }
+        RelOp::Lt => SolutionSet::Conditional(vec![Case::new(
+            ConditionSet::single(ConditionPredicate::Positive(c)),
+            SolutionSet::Continuous(Interval::open(lo, hi)),
+        )]),
+        RelOp::Leq => SolutionSet::Conditional(vec![Case::new(
+            ConditionSet::single(ConditionPredicate::NonNegative(c)),
+            SolutionSet::Continuous(Interval::closed(lo, hi)),
+        )]),
+        _ => return None,
+    };
+    Some(set)
+}
+
 /// Top-level twin of the isolation-dispatch parametric guard, for the routes that
 /// BYPASS it: the pre-strategy factored linear-collect (`(a²+1)·x > b` → the
 /// equation-only kernel dropped the operator to a DISCRETE boundary), the
@@ -9599,6 +9777,11 @@ fn solve_local_core_inner(
     // Solver-opaque function aliases (`log2`, `log10`, `csc`, `sec`, `cot`, `cbrt`) rewrite to
     // their canonical invertible forms up front, so every handler below sees solvable atoms
     // instead of erroring `función [...] no definida`.
+    // `|affine| {op} c` with an undecidable-sign parameter: emit the
+    // parameter-space-correct guarded/universal forms (before any strategy).
+    if let Some(set) = try_solve_abs_vs_symbolic_param(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
     // Parametric monotone guard: transform exactly on a proven sign or decline
     // honestly BEFORE any strategy (the factored linear-collect would otherwise
     // drop the operator for symbolic coefficients).
