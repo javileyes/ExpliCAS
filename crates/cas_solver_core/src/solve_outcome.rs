@@ -6457,13 +6457,17 @@ pub(crate) fn plan_abs_isolation(
 
 /// Build absolute-value isolation plan using numeric-sign classification derived
 /// directly from the RHS expression.
+///
+/// Uses the provably-constant sign adapter so a transcendental/surd constant RHS
+/// (`ln(1/2)`, `e − 3`) is decided exactly instead of splitting into spurious
+/// `x = ±c` branches; non-constant RHS stays undecided and splits as before.
 pub(crate) fn plan_abs_isolation_with_rhs_sign(
     ctx: &mut Context,
     arg: ExprId,
     rhs: ExprId,
     op: RelOp,
 ) -> AbsIsolationPlan {
-    let rhs_sign = crate::isolation_utils::numeric_sign(ctx, rhs);
+    let rhs_sign = crate::isolation_utils::const_numeric_sign(ctx, rhs);
     plan_abs_isolation(ctx, arg, rhs, op, rhs_sign)
 }
 
@@ -7712,6 +7716,37 @@ mod tests {
         let rhs = ctx.num(-1);
         let plan = plan_abs_isolation_with_rhs_sign(&mut ctx, arg, rhs, RelOp::Eq);
         assert_eq!(plan, AbsIsolationPlan::ReturnEmptySet);
+    }
+
+    #[test]
+    fn plan_abs_isolation_with_rhs_sign_detects_negative_transcendental_rhs() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        for src in ["ln(1/2)", "-ln(2)", "e - 3", "sqrt(2) - 2"] {
+            let rhs = cas_parser::parse(src, &mut ctx).expect("parse rhs");
+            let plan = plan_abs_isolation_with_rhs_sign(&mut ctx, arg, rhs, RelOp::Eq);
+            assert_eq!(
+                plan,
+                AbsIsolationPlan::ReturnEmptySet,
+                "|x| = {src} must have no real solution"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_abs_isolation_with_rhs_sign_still_splits_positive_and_unknown_rhs() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        // Provably-positive transcendental constants keep the regular split;
+        // a symbolic RHS stays undecided and splits as before.
+        for src in ["ln(2)", "2 - sqrt(2)", "y"] {
+            let rhs = cas_parser::parse(src, &mut ctx).expect("parse rhs");
+            let plan = plan_abs_isolation_with_rhs_sign(&mut ctx, arg, rhs, RelOp::Eq);
+            assert!(
+                matches!(plan, AbsIsolationPlan::SplitBranches { .. }),
+                "|x| = {src} must keep the two-branch split"
+            );
+        }
     }
 
     #[test]

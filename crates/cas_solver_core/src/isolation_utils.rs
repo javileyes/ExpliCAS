@@ -204,6 +204,31 @@ pub(crate) fn numeric_sign(ctx: &Context, expr: ExprId) -> Option<NumericSign> {
     }
 }
 
+/// Sign of a provably-constant expression for isolation decisions.
+///
+/// Fast-paths numeric literals via [`numeric_sign`], then consults the EXACT
+/// constant oracles: `root_forms::provable_sign_vs_zero` (linear surds `A + B·√n`)
+/// and `const_sign::provable_const_sign` (transcendentals `ln(1/2)`, `e − 3`).
+/// Returns `None` when the sign cannot be proven — callers must treat that as
+/// undecided, never as "non-negative".
+pub(crate) fn const_numeric_sign(ctx: &Context, expr: ExprId) -> Option<NumericSign> {
+    if let Some(sign) = numeric_sign(ctx, expr) {
+        return Some(sign);
+    }
+    if let Some(ord) = cas_math::root_forms::provable_sign_vs_zero(ctx, expr) {
+        return Some(match ord {
+            Ordering::Less => NumericSign::Negative,
+            Ordering::Equal => NumericSign::Zero,
+            Ordering::Greater => NumericSign::Positive,
+        });
+    }
+    match cas_math::const_sign::provable_const_sign(ctx, expr)? {
+        cas_math::const_sign::ConstSign::Negative => Some(NumericSign::Negative),
+        cas_math::const_sign::ConstSign::Zero => Some(NumericSign::Zero),
+        cas_math::const_sign::ConstSign::Positive => Some(NumericSign::Positive),
+    }
+}
+
 /// True iff expression is a numeric even integer literal.
 pub(crate) fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -493,6 +518,34 @@ pub(crate) fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
 mod tests {
     use super::*;
     use cas_ast::{BoundType, Expr, Interval};
+
+    #[test]
+    fn const_numeric_sign_decides_literals_surds_and_transcendentals() {
+        use cas_parser::parse;
+        let mut ctx = Context::new();
+        let cases = [
+            ("-2", Some(NumericSign::Negative)),
+            ("0", Some(NumericSign::Zero)),
+            ("3/2", Some(NumericSign::Positive)),
+            ("sqrt(2) - 2", Some(NumericSign::Negative)),
+            ("2 - sqrt(2)", Some(NumericSign::Positive)),
+            ("ln(1/2)", Some(NumericSign::Negative)),
+            ("-ln(2)", Some(NumericSign::Negative)),
+            ("e - 3", Some(NumericSign::Negative)),
+            ("ln(2)", Some(NumericSign::Positive)),
+            // Not provably constant: must stay undecided, never guessed.
+            ("y", None),
+            ("y - 1", None),
+        ];
+        for (src, expected) in cases {
+            let expr = parse(src, &mut ctx).expect("parse");
+            assert_eq!(
+                const_numeric_sign(&ctx, expr),
+                expected,
+                "const_numeric_sign({src})"
+            );
+        }
+    }
 
     #[test]
     fn factor_polynomial_inequality_applies_only_to_reducible_higher_degree() {
