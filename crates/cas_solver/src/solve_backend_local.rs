@@ -10291,7 +10291,14 @@ fn intersect_inequality_with_expression_domain(
     }
     let domain =
         cas_solver_core::domain_inference::infer_implicit_domain(&simplifier.context, eq.lhs, true);
-    let conds: Vec<ImplicitCondition> = domain.conditions().iter().cloned().collect();
+    let mut conds: Vec<ImplicitCondition> = domain.conditions().iter().cloned().collect();
+    // The RHS carries implicit domain too: `ln(x) > ln(3−x)` requires `3−x > 0`, but the
+    // monotonic isolation only records it as a `Requires` side-condition that never reaches
+    // the emitted set. A point where EITHER side is undefined cannot satisfy the relation,
+    // and intersecting can only SHRINK the set — same exactness/fallback discipline as LHS.
+    let rhs_domain =
+        cas_solver_core::domain_inference::infer_implicit_domain(&simplifier.context, eq.rhs, true);
+    conds.extend(rhs_domain.conditions().iter().cloned());
     let mut result = set;
     for cond in conds {
         let (arg, threshold, op) = match cond {
