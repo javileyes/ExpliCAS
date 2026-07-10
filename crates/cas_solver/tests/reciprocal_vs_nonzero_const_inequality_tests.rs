@@ -77,6 +77,41 @@ fn reciprocal_of_ln_vs_nonzero_const_splits_on_denominator_sign() {
 }
 
 #[test]
+fn abs_numerator_over_polynomial_denominator_splits_on_denominator_sign() {
+    // Family F8: `|f(x)|/D(x) {op} k` used to collapse to its boundary equation
+    // ("No solution" or a degenerate [a, a]). The same denominator sign-split covers
+    // the variable-numerator side of the quotient.
+    assert_eq!(
+        solve_display("abs(x)/(x - 2)", RelOp::Lt, "1"),
+        "(-infinity, 2)"
+    );
+    assert_eq!(
+        solve_display("abs(x)/(x - 2)", RelOp::Gt, "1"),
+        "(2, infinity)"
+    );
+    assert_eq!(solve_display("abs(x)/(x - 2)", RelOp::Lt, "-1"), "(1, 2)");
+    assert_eq!(
+        solve_display("abs(x)/(x + 2)", RelOp::Lt, "1"),
+        "(-infinity, -2) U (-1, infinity)"
+    );
+    // Positive-definite polynomial denominator: the g < 0 case is simply empty.
+    assert_eq!(
+        solve_display("abs(x)/(x^2 + 1)", RelOp::Lt, "1/2"),
+        "(-infinity, -1) U (-1, 1) U (1, infinity)"
+    );
+    // Non-strict boundary point recovered (was the degenerate [0, 0]).
+    assert_eq!(
+        solve_display("abs(x - 1)/(x + 1)", RelOp::Geq, "1"),
+        "(-1, 0]"
+    );
+    // Variable numerator over an abs-carrying denominator (the mixed orientation).
+    assert_eq!(
+        solve_display("x/(abs(x) - 1)", RelOp::Gt, "1"),
+        "(-1, -1/2) U (1, infinity)"
+    );
+}
+
+#[test]
 fn sibling_owners_are_unchanged() {
     // Polynomial denominators: owned by the rational-inequality path.
     assert_eq!(solve_display("1/(x - 1)", RelOp::Gt, "2"), "(1, 3/2)");

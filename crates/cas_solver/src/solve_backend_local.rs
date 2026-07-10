@@ -5228,16 +5228,18 @@ fn try_solve_const_over_abs_denominator_vs_zero(
     solve_relation_set(simplifier, var, den, zero, den_op)
 }
 
-/// `c/g(x) {op} k` with a NONZERO rational `k` and a sign-indefinite NON-POLYNOMIAL
-/// denominator (`|x|−1`, `ln(x)`, `log(b,x)−c`): split on the denominator sign.
-/// `c/g {op} k ⟺ (c − k·g)/g {op} 0`, so under `g > 0` the relation is `p {op} 0`
-/// (`p = c − k·g`) and under `g < 0` it flips; the pole `g = 0` stays excluded by the
-/// strict sign cases, while non-strict boundaries (`p = 0`, where `c/g = k` exactly)
-/// survive inside each case. POLYNOMIAL denominators are owned by the rational
-/// inequality path (correct, runs later) and stay declined here; the naive legacy
+/// `f(x)/g(x) {op} k` with a NONZERO rational `k`, where the quotient is NOT purely
+/// rational (an abs/ln/log leaf on either side: `1/(|x|−1) > 1`, `1/ln(x) > 2`,
+/// `|x|/(x−2) < 1`): split on the denominator sign.
+/// `f/g {op} k ⟺ (f − k·g)/g {op} 0`, so under `g > 0` the relation is `p {op} 0`
+/// (`p = f − k·g`) and under `g < 0` it flips; the pole `g = 0` stays excluded by the
+/// strict sign cases, while non-strict boundaries (`p = 0`, where `f/g = k` exactly)
+/// survive inside each case. A quotient of two POLYNOMIALS is owned by the rational
+/// inequality path (correct, runs later) and stays declined here; the naive legacy
 /// isolation this replaces multiplied by `g` without casing and returned the single
-/// interval between the boundary roots (including the pole and the wrong-sign region).
-fn try_solve_const_over_denominator_vs_nonzero_const(
+/// naive interval between boundary roots (or collapsed the whole relation to its
+/// boundary equation: `|x|/(x−2) < 1` → "No solution").
+fn try_solve_division_vs_const_sign_split(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
@@ -5268,10 +5270,15 @@ fn try_solve_const_over_denominator_vs_nonzero_const(
         Expr::Div(n, d) => (*n, *d),
         _ => return None,
     };
-    if contains_var(&simplifier.context, num, var) || !contains_var(&simplifier.context, den, var) {
+    // The sign-split needs a variable-carrying denominator (a constant denominator is
+    // ordinary isolation), and a quotient of two polynomials stays with the rational
+    // owner — claim only the forms it cannot parse (an abs/ln leaf on either side).
+    if !contains_var(&simplifier.context, den, var) {
         return None;
     }
-    if Polynomial::from_expr(&simplifier.context, den, var).is_ok() {
+    if Polynomial::from_expr(&simplifier.context, num, var).is_ok()
+        && Polynomial::from_expr(&simplifier.context, den, var).is_ok()
+    {
         return None;
     }
 
@@ -8727,11 +8734,11 @@ fn solve_local_core_inner(
     if let Some(set) = try_solve_const_over_abs_denominator_vs_zero(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
-    // `c/g {op} k` with k ≠ 0 and a sign-indefinite non-polynomial denominator
-    // (`1/(|x|−1) > 1`, `1/ln(x) > 2`): denominator sign-split. Dispatched after the
-    // bare-`A/|g|` and vs-zero owners; polynomial denominators decline inside (owned
-    // by the rational path).
-    if let Some(set) = try_solve_const_over_denominator_vs_nonzero_const(simplifier, eq, var) {
+    // `f/g {op} k` with k ≠ 0 where the quotient is not purely rational
+    // (`1/(|x|−1) > 1`, `1/ln(x) > 2`, `|x|/(x−2) < 1`): denominator sign-split.
+    // Dispatched after the bare-`A/|g|` and vs-zero owners; a polynomial/polynomial
+    // quotient declines inside (owned by the rational path).
+    if let Some(set) = try_solve_division_vs_const_sign_split(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {
