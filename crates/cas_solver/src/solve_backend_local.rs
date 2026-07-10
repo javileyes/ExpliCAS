@@ -5320,6 +5320,107 @@ fn try_solve_division_vs_const_sign_split(
     Some(union_solution_sets(&simplifier.context, case_pos, case_neg))
 }
 
+/// `f(x)·g(x) {op} 0` where at least one factor is NOT polynomial-parseable
+/// (`(x−1)·ln(x) < 0`, `x·e^x > 0`): split on the factor signs on the RAW tree.
+/// `f·g < 0 ⟺ (f>0 ∧ g<0) ∪ (f<0 ∧ g>0)` and `f·g > 0 ⟺` the matching-signs
+/// union; non-strict operators add the in-domain roots of `f·g = 0` (owned by the
+/// equation path, which already filters domain). This must run on the RAW form:
+/// the solve prepass DISTRIBUTES the product (`x·ln(x) − ln(x)`), after which the
+/// Mul-isolation fallback divides by the variable-carrying factor KEEPING the
+/// operator direction — `is_known_negative` is a constant oracle, so an unproven
+/// sign silently became "assume positive" (`(x−1)·ln(x) < 0` → `(0, 1)`, truth:
+/// no solution — both factors share the root x = 1 and the same sign elsewhere).
+/// Polynomial·polynomial products stay with the polynomial sign-analysis owner.
+fn try_solve_product_inequality_sign_split(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+    use num_traits::Zero;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // RHS must be literal zero: `f·g ⋚ k ≠ 0` does not reduce casewise.
+    let k = as_rational_const(&simplifier.context, eq.rhs)?;
+    if !k.is_zero() {
+        return None;
+    }
+    // Peel leading negations into the operator; expect `Mul(f, g)` underneath.
+    let mut op = eq.op.clone();
+    let mut node = eq.lhs;
+    while let Expr::Neg(inner) = simplifier.context.get(node) {
+        node = *inner;
+        op = cas_solver_core::isolation_utils::flip_inequality(op);
+    }
+    let (f, g) = match simplifier.context.get(node) {
+        Expr::Mul(l, r) => (*l, *r),
+        _ => return None,
+    };
+    // Both factors must carry the variable (a constant factor is ordinary
+    // isolation), and at least one must be non-polynomial — the polynomial
+    // product is owned by the correct sign-analysis path.
+    if !contains_var(&simplifier.context, f, var) || !contains_var(&simplifier.context, g, var) {
+        return None;
+    }
+    if Polynomial::from_expr(&simplifier.context, f, var).is_ok()
+        && Polynomial::from_expr(&simplifier.context, g, var).is_ok()
+    {
+        return None;
+    }
+
+    fn interval_like(s: &SolutionSet) -> bool {
+        matches!(
+            s,
+            SolutionSet::Empty
+                | SolutionSet::AllReals
+                | SolutionSet::Continuous(_)
+                | SolutionSet::Union(_)
+                | SolutionSet::Discrete(_)
+        )
+    }
+    // Strictness carries into the factor sub-solves: for non-strict operators a zero
+    // of EITHER factor (inside the other factor's domain) has product 0 and is
+    // covered because `f = 0` belongs to both `f ≥ 0` and `f ≤ 0` — no separate
+    // root union is needed (re-merging degenerate points into open endpoints is
+    // exactly where boundary points get lost).
+    let (op_pos, op_neg) = if matches!(op, RelOp::Gt | RelOp::Lt) {
+        (RelOp::Gt, RelOp::Lt)
+    } else {
+        (RelOp::Geq, RelOp::Leq)
+    };
+    let zero = simplifier.context.num(0);
+    let f_pos = solve_relation_set(simplifier, var, f, zero, op_pos.clone())?;
+    let f_neg = solve_relation_set(simplifier, var, f, zero, op_neg.clone())?;
+    let g_pos = solve_relation_set(simplifier, var, g, zero, op_pos)?;
+    let g_neg = solve_relation_set(simplifier, var, g, zero, op_neg)?;
+    if !(interval_like(&f_pos)
+        && interval_like(&f_neg)
+        && interval_like(&g_pos)
+        && interval_like(&g_neg))
+    {
+        return None;
+    }
+    let want_positive = matches!(op, RelOp::Gt | RelOp::Geq);
+    let (case_a, case_b) = if want_positive {
+        (
+            intersect_solution_sets(&simplifier.context, f_pos, g_pos),
+            intersect_solution_sets(&simplifier.context, f_neg, g_neg),
+        )
+    } else {
+        (
+            intersect_solution_sets(&simplifier.context, f_pos, g_neg),
+            intersect_solution_sets(&simplifier.context, f_neg, g_pos),
+        )
+    };
+    Some(union_solution_sets(&simplifier.context, case_a, case_b))
+}
+
 fn try_solve_abs_threshold_inequality(
     eq: &Equation,
     var: &str,
@@ -8739,6 +8840,11 @@ fn solve_local_core_inner(
     // Dispatched after the bare-`A/|g|` and vs-zero owners; a polynomial/polynomial
     // quotient declines inside (owned by the rational path).
     if let Some(set) = try_solve_division_vs_const_sign_split(simplifier, eq, var) {
+        return Ok((set, Vec::new()));
+    }
+    // `f·g {op} 0` with a non-polynomial factor (`(x−1)·ln(x) < 0`): factor-sign
+    // split on the RAW tree, before the prepass distributes the product away.
+    if let Some(set) = try_solve_product_inequality_sign_split(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
     if let Some(set) = try_solve_sign_sum_relation(simplifier, eq, var) {
