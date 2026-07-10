@@ -59,13 +59,30 @@ where
         map_depth_error,
         map_missing_var_error,
         |state, equation, solve_var, value_domain, solve_ctx| {
-            crate::solve_runtime_pipeline_preflight_context_bound_runtime::build_runtime_solve_preflight_state_with_adapter_state_and_default_domain_derivation(
+            // Reciprocal trig calls carry IMPLICIT poles (`tan`/`sec` ⇒ `cos(u) ≠ 0`,
+            // `cot`/`csc` ⇒ `sin(u) ≠ 0`) that the explicit-`Div` denominator collector
+            // cannot see; build the carriers here (the one spot with `&mut Context`)
+            // so the RC-B guard excludes them from identity `AllReals` results.
+            let implicit_poles =
+                crate::solve_analysis::collect_implicit_reciprocal_trig_pole_exclusions(
+                    state.runtime_context_mut(),
+                    equation.lhs,
+                    equation.rhs,
+                    solve_var,
+                );
+            let mut preflight = crate::solve_runtime_pipeline_preflight_context_bound_runtime::build_runtime_solve_preflight_state_with_adapter_state_and_default_domain_derivation(
                 &*state,
                 equation,
                 solve_var,
                 value_domain,
                 solve_ctx,
-            )
+            );
+            for pole in implicit_poles {
+                if !preflight.domain_exclusions.contains(&pole) {
+                    preflight.domain_exclusions.push(pole);
+                }
+            }
+            preflight
         },
         |kind, equation, solve_var, state, solve_opts, solve_ctx| {
             apply_strategy_with_runtime_state_and_default_recursive_routes(

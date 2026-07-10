@@ -976,6 +976,71 @@ fn collect_denominators_into_set(
     }
 }
 
+/// Collect the IMPLICIT pole carriers of reciprocal trig calls under both equation
+/// sides: `tan(u)`/`sec(u)` are undefined where `cos(u) = 0`, `cot(u)`/`csc(u)`
+/// where `sin(u) = 0`. The explicit-`Div` denominator collector cannot see these,
+/// so a Pythagorean identity folded to a tautology reported an unguarded `AllReals`
+/// (`sec(x)² − tan(x)² = 1` must exclude the poles of both calls). Two phases —
+/// walk immutably, then build the `cos(u)`/`sin(u)` carriers (needs `&mut Context`).
+pub fn collect_implicit_reciprocal_trig_pole_exclusions(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Vec<ExprId> {
+    use cas_ast::BuiltinFn;
+    fn walk(ctx: &Context, expr: ExprId, var: &str, out: &mut Vec<(bool, ExprId)>) {
+        match ctx.get(expr) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                walk(ctx, *l, var, out);
+                walk(ctx, *r, var, out);
+            }
+            Expr::Neg(e) | Expr::Hold(e) => walk(ctx, *e, var, out),
+            Expr::Function(fn_id, args) => {
+                if args.len() == 1 {
+                    if let Some(builtin) = ctx.builtin_of(*fn_id) {
+                        let cos_pole = matches!(builtin, BuiltinFn::Tan | BuiltinFn::Sec);
+                        let sin_pole = matches!(builtin, BuiltinFn::Cot | BuiltinFn::Csc);
+                        if (cos_pole || sin_pole)
+                            && super::isolation_utils::contains_var(ctx, args[0], var)
+                        {
+                            out.push((cos_pole, args[0]));
+                        }
+                    }
+                }
+                for arg in args {
+                    walk(ctx, *arg, var, out);
+                }
+            }
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    walk(ctx, *elem, var, out);
+                }
+            }
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    let mut carriers: Vec<(bool, ExprId)> = Vec::new();
+    walk(ctx, lhs, var, &mut carriers);
+    walk(ctx, rhs, var, &mut carriers);
+    let mut poles: Vec<ExprId> = Vec::new();
+    for (is_cos_pole, arg) in carriers {
+        let carrier = if is_cos_pole {
+            ctx.call_builtin(BuiltinFn::Cos, vec![arg])
+        } else {
+            ctx.call_builtin(BuiltinFn::Sin, vec![arg])
+        };
+        if !poles.contains(&carrier) {
+            poles.push(carrier);
+        }
+    }
+    poles
+}
+
 /// Apply non-zero exclusion guards to a solution set.
 pub(crate) fn apply_nonzero_exclusion_guards(
     solution_set: SolutionSet,
@@ -1276,6 +1341,45 @@ mod tests {
         let rhs = ctx.add(Expr::Div(one2, x));
         let denoms = collect_unique_denominators_with_var(&ctx, lhs, rhs, "x");
         assert_eq!(denoms.len(), 1);
+    }
+
+    #[test]
+    fn collect_implicit_reciprocal_trig_poles_builds_cos_and_sin_carriers() {
+        use cas_ast::BuiltinFn;
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        // lhs = sec(x)^2 - tan(x)^2, rhs = 1: both calls share the SAME cos(x) pole.
+        let sec = ctx.call_builtin(BuiltinFn::Sec, vec![x]);
+        let tan = ctx.call_builtin(BuiltinFn::Tan, vec![x]);
+        let two_a = ctx.num(2);
+        let two_b = ctx.num(2);
+        let sec2 = ctx.add(Expr::Pow(sec, two_a));
+        let tan2 = ctx.add(Expr::Pow(tan, two_b));
+        let lhs = ctx.add(Expr::Sub(sec2, tan2));
+        let poles = collect_implicit_reciprocal_trig_pole_exclusions(&mut ctx, lhs, one, "x");
+        let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![x]);
+        assert_eq!(poles, vec![cos_x], "tan/sec share one deduped cos(x) pole");
+
+        // cot(x)*tan(x): one sin(x) pole and one cos(x) pole.
+        let cot = ctx.call_builtin(BuiltinFn::Cot, vec![x]);
+        let tan_b = ctx.call_builtin(BuiltinFn::Tan, vec![x]);
+        let prod = ctx.add(Expr::Mul(cot, tan_b));
+        let one_b = ctx.num(1);
+        let poles = collect_implicit_reciprocal_trig_pole_exclusions(&mut ctx, prod, one_b, "x");
+        let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![x]);
+        // The SET is the contract (Mul operand order is canonicalized on insert).
+        assert_eq!(poles.len(), 2);
+        assert!(poles.contains(&sin_x) && poles.contains(&cos_x));
+
+        // Var-free arguments and plain sin/cos contribute NO implicit poles.
+        let y = ctx.var("y");
+        let tan_y = ctx.call_builtin(BuiltinFn::Tan, vec![y]);
+        let sin_x2 = ctx.call_builtin(BuiltinFn::Sin, vec![x]);
+        let mix = ctx.add(Expr::Add(tan_y, sin_x2));
+        let one_c = ctx.num(1);
+        let poles = collect_implicit_reciprocal_trig_pole_exclusions(&mut ctx, mix, one_c, "x");
+        assert!(poles.is_empty());
     }
 
     #[test]
