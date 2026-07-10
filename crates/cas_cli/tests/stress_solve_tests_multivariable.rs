@@ -268,7 +268,11 @@ fn test_symmetric_polynomial() {
 
 #[test]
 fn test_linear_inequality_multivar() {
-    // ax + by > c → x > (c - by)/a (assuming a > 0)
+    // ax + by > c: dividing by `a` requires its SIGN — the old "assuming a > 0"
+    // answer `x > (c - by)/a` is wrong for the whole a < 0 half of the parameter
+    // space, so the solver now declines honestly (same contract as the quadratic
+    // strategy's symbolic-inequality guard). A future case-split upgrade would
+    // return a Conditional over sign(a) instead.
     let mut s = Simplifier::with_default_rules();
     let lhs = cas_parser::parse("a*x + b*y", &mut s.context).unwrap();
     let rhs = cas_parser::parse("c", &mut s.context).unwrap();
@@ -280,9 +284,10 @@ fn test_linear_inequality_multivar() {
     };
     let result = solve(&eq, "x", &mut s);
 
+    let err = result.expect_err("parametric inequality must decline, not assume a > 0");
     assert!(
-        result.is_ok(),
-        "Should solve linear inequality with parameters"
+        format!("{err:?}").contains("symbolic coefficients"),
+        "wrong decline: {err:?}"
     );
 }
 

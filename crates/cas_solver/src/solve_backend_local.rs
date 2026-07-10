@@ -9411,6 +9411,184 @@ fn solve_local_core(
     result
 }
 
+/// Top-level twin of the isolation-dispatch parametric guard, for the routes that
+/// BYPASS it: the pre-strategy factored linear-collect (`(a²+1)·x > b` → the
+/// equation-only kernel dropped the operator to a DISCRETE boundary), the
+/// even-root threshold correction (`√x < a` → assumed `a ≥ 0` and squared to
+/// `[0, a²)`), and the constant-numerator division (`a/x > 1` → `(0, a)`).
+/// An ORDER relation whose next monotone step runs through a VAR-FREE NON-NUMERIC
+/// constant either transforms EXACTLY (proven sign: positive keeps direction,
+/// negative flips) or declines honestly with the canonical symbolic-inequality
+/// message. Numeric coefficients never match (zero churn on historical routes).
+fn try_parametric_monotone_guard(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // Var side / const side orientation.
+    let (lhs, rhs) = if contains_var(&simplifier.context, eq.lhs, var)
+        && !contains_var(&simplifier.context, eq.rhs, var)
+    {
+        (eq.lhs, eq.rhs)
+    } else if contains_var(&simplifier.context, eq.rhs, var)
+        && !contains_var(&simplifier.context, eq.lhs, var)
+    {
+        (eq.rhs, eq.lhs)
+    } else {
+        return None;
+    };
+    let var_free_non_numeric = |ctx: &Context, e: ExprId| -> bool {
+        !contains_var(ctx, e, var) && as_rational_const(ctx, e).is_none()
+    };
+    // Exact tri-state sign of a var-free constant-ish expression: surd/transcendental
+    // oracles first, then the structural positivity prover (`a² + 1`).
+    let sign_of = |simplifier: &Simplifier, e: ExprId| -> Option<std::cmp::Ordering> {
+        cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, e)
+            .or_else(|| {
+                use cas_math::const_sign::{provable_const_sign, ConstSign};
+                Some(match provable_const_sign(&simplifier.context, e)? {
+                    ConstSign::Negative => std::cmp::Ordering::Less,
+                    ConstSign::Zero => std::cmp::Ordering::Equal,
+                    ConstSign::Positive => std::cmp::Ordering::Greater,
+                })
+            })
+            .or_else(|| {
+                matches!(
+                    crate::solver_entrypoints_proof_verify::prove_positive(
+                        &simplifier.context,
+                        e,
+                        crate::runtime::ValueDomain::RealOnly,
+                    ),
+                    cas_solver_core::domain_proof::Proof::Proven
+                )
+                .then_some(std::cmp::Ordering::Greater)
+            })
+    };
+    let decline = || {
+        Some(Err(CasError::SolverError(
+            "Inequalities with symbolic coefficients not yet supported".to_string(),
+        )))
+    };
+    enum Action {
+        Scale {
+            kept: ExprId,
+            factor: ExprId,
+            rhs_multiplies: bool,
+        },
+        DeclineIfUndecidable {
+            probe: ExprId,
+        },
+    }
+    let action = match simplifier.context.get(lhs).clone() {
+        Expr::Mul(l, r) => {
+            let (kept, factor) = if contains_var(&simplifier.context, l, var)
+                && var_free_non_numeric(&simplifier.context, r)
+            {
+                (l, r)
+            } else if contains_var(&simplifier.context, r, var)
+                && var_free_non_numeric(&simplifier.context, l)
+            {
+                (r, l)
+            } else {
+                return None;
+            };
+            Action::Scale {
+                kept,
+                factor,
+                rhs_multiplies: false,
+            }
+        }
+        Expr::Div(num, den) => {
+            if contains_var(&simplifier.context, num, var)
+                && var_free_non_numeric(&simplifier.context, den)
+            {
+                Action::Scale {
+                    kept: num,
+                    factor: den,
+                    rhs_multiplies: true,
+                }
+            } else if contains_var(&simplifier.context, den, var)
+                && var_free_non_numeric(&simplifier.context, num)
+            {
+                Action::DeclineIfUndecidable { probe: num }
+            } else {
+                return None;
+            }
+        }
+        Expr::Pow(base, exp) => {
+            let is_sqrt = as_rational_const(&simplifier.context, exp)
+                .map(|q| q == num_rational::BigRational::new(1.into(), 2.into()))
+                .unwrap_or(false);
+            if is_sqrt
+                && contains_var(&simplifier.context, base, var)
+                && var_free_non_numeric(&simplifier.context, rhs)
+            {
+                Action::DeclineIfUndecidable { probe: rhs }
+            } else {
+                return None;
+            }
+        }
+        Expr::Function(fn_id, args) => {
+            if args.len() == 1
+                && simplifier
+                    .context
+                    .is_builtin(fn_id, cas_ast::BuiltinFn::Sqrt)
+                && contains_var(&simplifier.context, args[0], var)
+                && var_free_non_numeric(&simplifier.context, rhs)
+            {
+                Action::DeclineIfUndecidable { probe: rhs }
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+    match action {
+        Action::Scale {
+            kept,
+            factor,
+            rhs_multiplies,
+        } => match sign_of(simplifier, factor) {
+            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Less) => {
+                let negative =
+                    matches!(sign_of(simplifier, factor), Some(std::cmp::Ordering::Less));
+                let combined = if rhs_multiplies {
+                    simplifier.context.add(Expr::Mul(rhs, factor))
+                } else {
+                    simplifier.context.add(Expr::Div(rhs, factor))
+                };
+                let new_rhs = simplifier.simplify(combined).0;
+                let new_op = if negative {
+                    cas_solver_core::isolation_utils::flip_inequality(eq.op.clone())
+                } else {
+                    eq.op.clone()
+                };
+                let reduced = Equation {
+                    lhs: kept,
+                    rhs: new_rhs,
+                    op: new_op,
+                };
+                Some(crate::solver_entrypoints_solve::solve(
+                    &reduced, var, simplifier,
+                ))
+            }
+            Some(std::cmp::Ordering::Equal) => None,
+            None => decline(),
+        },
+        Action::DeclineIfUndecidable { probe } => match sign_of(simplifier, probe) {
+            Some(_) => None,
+            None => decline(),
+        },
+    }
+}
+
 fn solve_local_core_inner(
     eq: &Equation,
     var: &str,
@@ -9421,6 +9599,12 @@ fn solve_local_core_inner(
     // Solver-opaque function aliases (`log2`, `log10`, `csc`, `sec`, `cot`, `cbrt`) rewrite to
     // their canonical invertible forms up front, so every handler below sees solvable atoms
     // instead of erroring `función [...] no definida`.
+    // Parametric monotone guard: transform exactly on a proven sign or decline
+    // honestly BEFORE any strategy (the factored linear-collect would otherwise
+    // drop the operator for symbolic coefficients).
+    if let Some(result) = try_parametric_monotone_guard(simplifier, eq, var) {
+        return result;
+    }
     let nl = normalize_solver_function_aliases(&mut simplifier.context, eq.lhs);
     let nr = normalize_solver_function_aliases(&mut simplifier.context, eq.rhs);
     if nl.is_some() || nr.is_some() {
