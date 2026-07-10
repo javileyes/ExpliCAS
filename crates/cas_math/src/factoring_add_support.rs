@@ -229,16 +229,25 @@ fn build_quotient_term(ctx: &mut Context, term: ParsedTerm, g_exp: u32) -> ExprI
 
 fn simplify_add_constants(ctx: &mut Context, expr: ExprId) -> ExprId {
     let mut numeric_sum: i64 = 0;
-    let mut non_numeric: Vec<ExprId> = Vec::new();
+    let mut non_numeric: Vec<(ExprId, bool)> = Vec::new();
 
     collect_add_terms_for_const_fold(ctx, expr, true, &mut numeric_sum, &mut non_numeric);
 
     if non_numeric.is_empty() {
         ctx.num(numeric_sum)
     } else {
-        let mut result = non_numeric[0];
-        for term in &non_numeric[1..] {
-            result = ctx.add(Expr::Add(result, *term));
+        let (first_term, first_positive) = non_numeric[0];
+        let mut result = if first_positive {
+            first_term
+        } else {
+            ctx.add(Expr::Neg(first_term))
+        };
+        for (term, positive) in non_numeric[1..].iter().copied() {
+            result = if positive {
+                ctx.add(Expr::Add(result, term))
+            } else {
+                ctx.add(Expr::Sub(result, term))
+            };
         }
         if numeric_sum != 0 {
             let num_expr = ctx.num(numeric_sum);
@@ -248,12 +257,17 @@ fn simplify_add_constants(ctx: &mut Context, expr: ExprId) -> ExprId {
     }
 }
 
+/// Collect the terms of an Add/Sub/Neg tree, folding i64-integer literals into
+/// `numeric_sum` and pushing every other term WITH ITS SIGN into `non_numeric`.
+/// Dropping the sign here flipped subtracted non-numeric terms (`a − f(x)` became
+/// `a + f(x)`), which surfaced as wrong Taylor coefficients for `ln(c − x)` at a
+/// nonzero center once the common-factor extraction folded its quotient sum.
 fn collect_add_terms_for_const_fold(
     ctx: &Context,
     expr: ExprId,
     positive: bool,
     numeric_sum: &mut i64,
-    non_numeric: &mut Vec<ExprId>,
+    non_numeric: &mut Vec<(ExprId, bool)>,
 ) {
     match ctx.get(expr) {
         Expr::Add(l, r) => {
@@ -279,10 +293,10 @@ fn collect_add_terms_for_const_fold(
                     return;
                 }
             }
-            non_numeric.push(expr);
+            non_numeric.push((expr, positive));
         }
         _ => {
-            non_numeric.push(expr);
+            non_numeric.push((expr, positive));
         }
     }
 }
@@ -314,5 +328,58 @@ mod tests {
         let expr = parse("(x+1)^3 + (x+1)^2", &mut ctx).expect("parse");
         let out = try_extract_common_factor_add_expr(&mut ctx, expr).expect("out");
         assert!(cas_ast::hold::is_hold(&ctx, out));
+    }
+
+    /// Exact-rational evaluation of an expression tree over the single variable `x`.
+    fn eval_rational(
+        ctx: &Context,
+        expr: cas_ast::ExprId,
+        x: &num_rational::BigRational,
+    ) -> num_rational::BigRational {
+        use cas_ast::Expr;
+        match ctx.get(expr) {
+            Expr::Number(n) => n.clone(),
+            Expr::Variable(_) => x.clone(),
+            Expr::Add(l, r) => eval_rational(ctx, *l, x) + eval_rational(ctx, *r, x),
+            Expr::Sub(l, r) => eval_rational(ctx, *l, x) - eval_rational(ctx, *r, x),
+            Expr::Mul(l, r) => eval_rational(ctx, *l, x) * eval_rational(ctx, *r, x),
+            Expr::Neg(inner) => -eval_rational(ctx, *inner, x),
+            Expr::Pow(b, e) => {
+                let base = eval_rational(ctx, *b, x);
+                let Expr::Number(exp) = ctx.get(*e) else {
+                    panic!("test eval: non-numeric exponent");
+                };
+                use num_traits::ToPrimitive;
+                let n = exp.to_integer().to_i32().expect("small exponent");
+                let mut acc = num_rational::BigRational::from_integer(1.into());
+                for _ in 0..n {
+                    acc *= base.clone();
+                }
+                acc
+            }
+            Expr::Function(_, _) => panic!("test eval: unexpected function"),
+            other => panic!("test eval: unexpected node {other:?}"),
+        }
+    }
+
+    /// `2·(x+1)² − (x+1)³` must factor to `(x+1)²·(1 − x)`, NOT `(x+1)²·(x + 3)`:
+    /// the const-fold used to DROP the sign of the subtracted non-numeric quotient
+    /// term (`2 − (x+1)` collapsed to `(x+1) + 2`), flipping the factored value.
+    fn strip_hold(ctx: &Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+        cas_ast::hold::unwrap_hold(ctx, expr)
+    }
+
+    #[test]
+    fn subtracted_quotient_term_keeps_its_sign() {
+        let mut ctx = Context::new();
+        let expr = parse("2*(x+1)^2 - (x+1)^3", &mut ctx).expect("parse");
+        let out = try_extract_common_factor_add_expr(&mut ctx, expr).expect("factors");
+        let out = strip_hold(&ctx, out);
+        for xv in [-2i64, 0, 1, 3] {
+            let x = num_rational::BigRational::from_integer(xv.into());
+            let original = eval_rational(&ctx, expr, &x);
+            let factored = eval_rational(&ctx, out, &x);
+            assert_eq!(original, factored, "value mismatch at x = {xv}");
+        }
     }
 }

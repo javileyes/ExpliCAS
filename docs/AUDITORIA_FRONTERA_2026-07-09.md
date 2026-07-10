@@ -16,7 +16,7 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 - [ ] **F6 [P0]** Frontera recíproca sin solución real fabrica endpoint no-real (e^infinity / undefined) (`solve(1/ln(x)>0, x)`)
 - [ ] **F7 [P0]** Recíproco-de-abs vs constante ≠0: intervalo ingenuo entre raíces frontera sin polo ni signo (`solve(1/(abs(x)-1)>1, x)`)
 - [ ] **F8 [P0]** Fracción con abs en numerador vs constante ≠0 colapsa a la ecuación de frontera (`solve(abs(x)/(x-2)<1, x)`)
-- [ ] **F9 [P0]** Desigualdad ln(f)>ln(g): se descarta el dominio del argumento del RHS (`solve(ln(x)>ln(3-x), x)`)
+- [x] **F9 [P0]** Desigualdad ln(f)>ln(g): se descarta el dominio del argumento del RHS (`solve(ln(x)>ln(3-x), x)`) — CERRADA ciclo 4, commit `9df74a5d4` (dominio implícito de AMBOS lados en intersect_inequality_with_expression_domain; cubre también el hermano sqrt con borde no estricto)
 - [ ] **F10 [P0]** Diferencia de logs en desigualdad cae al pipeline de ecuación (singleton frontera) (`solve(ln(x)-ln(3-x)>0, x)`)
 - [ ] **F11 [P0]** Producto (afín·ln) con raíz compartida: análisis de signos asume signos opuestos (`solve((x-1)*ln(x)<0, x)`)
 - [x] **F12 [P0]** Desigualdad log con base fraccionaria 0<b<1: no invierte el sentido (`solve(log(1/2,x)>1, x)`) — CERRADA ciclo 3, commit `d591eb810` (flip de monotonía en plan_log_isolation_step_with con base_is_provably_fraction_below_one)

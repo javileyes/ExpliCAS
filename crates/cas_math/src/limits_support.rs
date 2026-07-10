@@ -4528,8 +4528,12 @@ pub fn taylor_series_at_point_expr(
     let mut factorial = BigInt::one();
     let mut sum: Option<ExprId> = None;
     for k in 0..=order {
-        // f^(k)(point) / k!
+        // f^(k)(point) / k!  — the substituted tree is fully constant; fold it to a
+        // compact rational NOW, or the raw k-th-derivative tree (exponential in k)
+        // overflows the simplifier's depth budget at order ≥ 6 and the whole series
+        // leaks as an unfolded raw tree.
         let value = cas_ast::substitute_expr_by_id(ctx, derivative, var_id, point);
+        let value = fold_constant_subexprs(ctx, value);
         let factorial_expr = ctx.add(Expr::Number(BigRational::from_integer(factorial.clone())));
         let coefficient = ctx.add(Expr::Div(value, factorial_expr));
         // · (var − point)^k
@@ -4549,6 +4553,10 @@ pub fn taylor_series_at_point_expr(
             derivative = crate::symbolic_differentiation_support::differentiate_symbolic_expr(
                 ctx, derivative, var_name,
             )?;
+            // Fold the chain-rule constant litter each iteration: the raw k-th derivative
+            // tree grows exponentially in k otherwise, and its unfolded `u^(2-1)·0`-style
+            // subtrees are also what collapsed arc-function expansions to `undefined`.
+            derivative = fold_constant_subexprs(ctx, derivative);
             factorial *= BigInt::from(k + 1);
         }
     }
