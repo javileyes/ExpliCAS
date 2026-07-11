@@ -744,7 +744,18 @@ fn merge_intervals(ctx: &Context, mut intervals: Vec<Interval>) -> Vec<Interval>
     if intervals.is_empty() {
         return vec![];
     }
-    intervals.sort_by(|a, b| compare_values(ctx, a.min, b.min));
+    // Tie-break equal mins by bound type, CLOSED first: a degenerate point `[1, 1]`
+    // must sort BEFORE the open-ended `(1, ∞)` sharing its min, so the point is
+    // `current` when the ray merges into it (`[1, ∞)`). Sorted the other way, the
+    // point arrived as `next`, the merge only ever extends the MAX side, and the
+    // endpoint was silently DROPPED (`(0,1) ∪ {1} ∪ (1,∞)` lost the `1`).
+    intervals.sort_by(|a, b| {
+        compare_values(ctx, a.min, b.min).then_with(|| match (&a.min_type, &b.min_type) {
+            (BoundType::Closed, BoundType::Open) => Ordering::Less,
+            (BoundType::Open, BoundType::Closed) => Ordering::Greater,
+            _ => Ordering::Equal,
+        })
+    });
 
     let mut merged = Vec::new();
     let mut current = intervals[0].clone();
@@ -761,6 +772,14 @@ fn merge_intervals(ctx: &Context, mut intervals: Vec<Interval>) -> Vec<Interval>
         };
 
         if should_merge {
+            // Defense in depth for the same drop: absorbing an interval that shares
+            // `current`'s min with a CLOSED bound must close the merged min too.
+            if next.min_type == BoundType::Closed
+                && current.min_type == BoundType::Open
+                && compare_values(ctx, current.min, next.min) == Ordering::Equal
+            {
+                current.min_type = BoundType::Closed;
+            }
             let cmp_maxs = compare_values(ctx, current.max, next.max);
             if cmp_maxs == Ordering::Less {
                 current.max = next.max;
@@ -924,6 +943,55 @@ fn assemble_intervals_and_points(
 mod tests {
     use super::*;
     use cas_ast::Context;
+
+    #[test]
+    fn union_absorbs_degenerate_points_bridging_open_intervals() {
+        use cas_parser::parse;
+        let mut ctx = Context::new();
+        let zero = parse("0", &mut ctx).unwrap();
+        let one = parse("1", &mut ctx).unwrap();
+        let inf = parse("infinity", &mut ctx).unwrap();
+        // (0,1) ∪ (1,∞) ∪ [1,1] must merge to (0, ∞): the point bridges the opens
+        // regardless of the arrival ORDER (the drop was order-dependent).
+        for point_first in [true, false] {
+            let opens =
+                SolutionSet::Union(vec![Interval::open(zero, one), Interval::open(one, inf)]);
+            let point = SolutionSet::Discrete(vec![one]);
+            let (a, b) = if point_first {
+                (point.clone(), opens.clone())
+            } else {
+                (opens, point)
+            };
+            let merged = union_solution_sets(&ctx, a, b);
+            match merged {
+                SolutionSet::Continuous(ref i) => {
+                    assert_eq!(i.min, zero);
+                    assert_eq!(i.min_type, BoundType::Open);
+                    assert_eq!(i.max, inf);
+                }
+                other => panic!("expected one merged interval, got {other:?}"),
+            }
+        }
+        // A point abutting a single open ray closes its endpoint: (2,∞) ∪ {2} = [2,∞).
+        let two = parse("2", &mut ctx).unwrap();
+        let ray = SolutionSet::Continuous(Interval::open(two, inf));
+        let merged = union_solution_sets(&ctx, ray, SolutionSet::Discrete(vec![two]));
+        match merged {
+            SolutionSet::Continuous(ref i) => {
+                assert_eq!(i.min, two);
+                assert_eq!(i.min_type, BoundType::Closed, "endpoint must close");
+            }
+            other => panic!("expected closed ray, got {other:?}"),
+        }
+        // Genuinely isolated points stay isolated (no spurious merging).
+        let five = parse("5", &mut ctx).unwrap();
+        let seg = SolutionSet::Continuous(Interval::open(zero, one));
+        let merged = union_solution_sets(&ctx, seg, SolutionSet::Discrete(vec![five]));
+        assert!(
+            matches!(merged, SolutionSet::Union(ref v) if v.len() == 2),
+            "isolated point must remain: {merged:?}"
+        );
+    }
 
     #[test]
     fn compare_values_orders_quadratic_surds_by_value() {

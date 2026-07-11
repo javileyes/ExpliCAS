@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 548 (newest first)
+Active entries: 549 (newest first)
 
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-11 | `retained` | `crates/cas_solver_core/src/solve_runtime_isolation_dispatch_bound_runtime.rs... | SOUNDNESS (desigualdad paramétrica monótona asume signo del parámetro): `solve(a*x>b)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs vs parámetro de signo indecidible): `solve(abs(x)=a)` / `solve(abs(x)>a)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (trig=parámetro pierde rama, periodicidad y gate de rango): `solve(sin(x)=a)`
+- 2026-07-11 | `retained` | `crates/cas_solver_core/src/solution_set.rs` (`merge_intervals`: desempate de... | SOUNDNESS (merge_intervals pierde degenerados [p,p] según el orden de llegada): álgebra de conjuntos compartida
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/log_isolation.rs` (`plan_log_isolation_step_with`... | SOUNDNESS (desigualdad log base fraccionaria no invierte): `solve(log(1/2,x)>1)`
@@ -19209,3 +19210,17 @@ Active entries: 548 (newest first)
   - **"Textbook principal answer" como contrato es un pin de conjunto incompleto**: la convención didáctica de libro (valor principal) es una PRESENTACIÓN, no un conjunto solución — si el motor promete conjuntos, el principal-only sin cualificar es unsound. El upgrade correcto conserva la didáctica (la primera base ES el principal) y añade la completitud + el guard.
   - **El flag-en-el-classify + wrap-en-el-return es el patrón barato para condicionar familias periódicas**: el map-back compartido (pendiente, coeficiente, offset) no necesita saber del guard; el guard hereda todos los pliegues gratis.
   - PRÓXIMO PELDAÑO: los 3 hallazgos laterales de esta tanda (abs-cuadrático vs param, |ln(x)|<|x| transcendental, sqrt-vs-param upgrade del decline a Conditional), merge_intervals degenerados (auditoría dirigida), clase A builder de segmentos (5 usos), 16 P2 capability del audit, y un frontier-audit NUEVO cuando este backlog se agote (el actual está 24/24).
+
+## 2026-07-11 - SOUNDNESS (merge_intervals pierde degenerados [p,p] según el orden de llegada): álgebra de conjuntos compartida
+
+- area: `crates/cas_solver_core/src/solution_set.rs` (`merge_intervals`: desempate del sort por tipo de bound + promoción de min_type en la absorción) + tests unitarios en el mod del archivo
+- status: `retained`. Soundness LATENTE en maquinaria compartida — documentado dos veces (ciclo F11: `[1,1]` puenteando `(0,1)∪(1,∞)` se perdía; `[2,2]` contra `(2,∞)` se perdía con dos puntos en juego) y esquivado entonces llevando la estrictez a los sub-solves; ahora cerrado en la raíz.
+- capture:
+  - investment_class: soundness (un punto real del conjunto solución desaparece en la unión; el defecto era ORDEN-DEPENDIENTE — la firma más traicionera).
+  - causa raíz: (1) el sort ordena solo por `min` — con mins iguales, `[1,1]` puede quedar DESPUÉS de `(1,∞)` (orden de llegada, sort estable); (2) la absorción solo extiende el lado MAX: cuando `next` comparte el `min` de `current` con bound CERRADO, el punto se "absorbe" sin cerrar el extremo → `1 ∉ (1,∞)` y se pierde. En el orden contrario la misma entrada fusionaba bien ((0,1)+[1,1] → (0,1] → +(1,∞) → (0,∞)) — por eso los probes históricos eran inconsistentes.
+  - diseño: (1) desempate del sort con mins iguales: Closed ANTES que Open — el degenerado siempre es `current` cuando llega el rayo abierto que comparte min; (2) defensa en profundidad en la absorción: si `next.min_type==Closed`, `current.min_type==Open` y los mins son EXACTAMENTE iguales (compare_values), promocionar `current.min_type` a Closed. Ambas decisiones por el comparador exacto existente — cero comparación nueva de símbolos.
+  - validación: workspace exit 0, 0 failed; clippy limpio (gateado); engine-fast + ambos scorecards verdes; huella estructural 0-delta (NINGUNA fixture pinneaba los endpoints dropeados). Tests unitarios: puente en AMBOS órdenes de llegada → `(0,∞)`, punto que cierra un rayo → `[2,∞)`, punto genuinamente aislado se conserva.
+  - retained learning:
+  - **Un merge orden-dependiente es un defecto de INVARIANTE, no de caso**: si `merge(sort(X))` da resultados distintos según el orden de inserción previo al sort, el sort no es una clave total sobre lo que el merge asume — el desempate por bound-type ES parte de la clave. El test correcto verifica AMBOS órdenes de llegada explícitamente.
+  - **"Esquivar en el caller, arreglar en la raíz después" funcionó**: el ciclo F11 evitó el merge (estrictez a los sub-solves) para no abrir esta caja a mitad de ciclo; con el backlog del audit cerrado, el fix raíz de 12 líneas cierra la clase entera para TODOS los callers (uniones no-estrictas, roots-unión, clip de segmentos).
+  - PRÓXIMO PELDAÑO (backlog post-audit): los 3 hallazgos laterales de las tandas (abs-cuadrático vs param, |ln(x)|<|x|, sqrt-vs-param a Conditional), clase A builder de segmentos (5 usos), 16 P2 capability, upgrade F1 a Conditional sobre sign(a) (falta ConditionPredicate::Negative), y un frontier-audit NUEVO — el del 2026-07-09 está 24/24 CERRADO.
