@@ -9,8 +9,8 @@ Objetivo: descubrir candidatos limpios NUEVOS para `/auto-mejora`. Lista de excl
 ## Estado de cierre (vivo)
 
 - [x] **F1 [P0]** Desigualdad paramétrica monótona asume signo del parámetro (divide/eleva a ciegas) (`solve(a*x > b, x)`) — CERRADA ciclo 3 4ª tanda, commit `3193b7eaa` (clasificador tri-estado en 2 capas: signo probado transforma exacto — (a²+1)x>b obtiene el rayo CORRECTO — indecidible declina con el mensaje canónico)
-- [ ] **F2 [P0]** abs/sqrt vs parámetro simbólico sin gate de signo/rango (ecuaciones y desigualdades) (`solve(abs(x) > a, x)`)
-- [ ] **F3 [P0]** Ecuación trig con RHS simbólico pierde periodicidad, rama suplementaria y gate |a|≤1 (`solve(sin(x) = a, x)`)
+- [x] **F2 [P0]** abs/sqrt vs parámetro simbólico sin gate de signo/rango (ecuaciones y desigualdades) (`solve(abs(x) > a, x)`) — CERRADA (brazo abs) ciclo 4 4ª tanda, commit `3efdac4cc` (formas parameter-correct construidas directamente: rayos universales para >/≥, Conditional para =/</≤; brazo sqrt queda en decline honesto del F1 como peldaño)
+- [x] **F3 [P0]** Ecuación trig con RHS simbólico pierde periodicidad, rama suplementaria y gate |a|≤1 (`solve(sin(x) = a, x)`) — CERRADA ciclo 5 4ª tanda, commit pendiente (InOpen dos-familias guardado por rango cerrado; map-back de período y coeficiente pliegan el guard) — AUDIT COMPLETO: 24/24 P0/P1 cerradas
 - [x] **F4 [P0]** abs-ecuación con RHS constante transcendental provablemente negativa: raíces espurias (`solve(abs(x)=ln(1/2), x)`) — CERRADA ciclo 1, commit `4d3e12901` (adaptador `const_numeric_sign`; bonus: `e^abs(x)=1` → `{0}`, miembro P2 F25)
 - [x] **F5 [P0]** Recíproco-de-ln vs constante ≠0: rayo monótono sin split de signo en el polo x=1 (`solve(1/ln(x)>2, x)`) — CERRADA ciclo 7, commit `a3f9501b8` (mismo handler sign-split genérico que F7: compartían la meta-forma c/g⋚k≠0)
 - [x] **F6 [P0]** Frontera recíproca sin solución real fabrica endpoint no-real (e^infinity / undefined) (`solve(1/ln(x)>0, x)`) — CERRADA ciclo 6, commit `f270df18d` (normalización del RHS para gates + ensanche del brazo None a denominador-contiene-var; helper afín muerto borrado)

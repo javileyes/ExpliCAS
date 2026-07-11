@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 547 (newest first)
+Active entries: 548 (newest first)
 
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-11 | `retained` | `crates/cas_solver_core/src/solve_runtime_isolation_dispatch_bound_runtime.rs... | SOUNDNESS (desigualdad paramétrica monótona asume signo del parámetro): `solve(a*x>b)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs vs parámetro de signo indecidible): `solve(abs(x)=a)` / `solve(abs(x)>a)`
+- 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (trig=parámetro pierde rama, periodicidad y gate de rango): `solve(sin(x)=a)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`const_numeric_sign`, adapta... | SOUNDNESS (abs-ecuación RHS constante transcendental negativa): `solve(abs(x)=ln(1/2))`
 - 2026-07-10 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`classify_trig_unit_rhs`: fal... | SOUNDNESS (trig=const con nombre pierde rango |c|≤1 y periodicidad): `solve(sin(x)^2-sin(x)-1=0)`
 - 2026-07-10 | `retained` | `crates/cas_solver_core/src/log_isolation.rs` (`plan_log_isolation_step_with`... | SOUNDNESS (desigualdad log base fraccionaria no invierte): `solve(log(1/2,x)>1)`
@@ -19192,3 +19193,19 @@ Active entries: 547 (newest first)
   - **La forma universal existe a veces**: `|x|>a` no necesita guard — los rayos son correctos para TODO a real. Detectar la forma incondicional (cuando la unión sobre-cubre benignamente) da una respuesta MÁS fuerte que el conditional; vale la pena derivarla a mano por operador antes de guardar por defecto.
   - HALLAZGO LATERAL (pre-existente): `abs(x^2-1)<a` (arg CUADRÁTICO vs parámetro) → intervalo basura `(−√(a+1), −√(1−a))` — fuera de mi gate afín; hermano para el próximo audit.
   - PRÓXIMO PELDAÑO: F3 (sin(x)=a — diseño listo: InOpen guardado por rango cerrado), sqrt-vs-param upgrade (hoy decline honesto del F1), abs-cuadrático-vs-param.
+
+## 2026-07-11 - SOUNDNESS (trig=parámetro pierde rama, periodicidad y gate de rango): `solve(sin(x)=a)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation_ungated`: fallback paramétrico del classify a InOpen + flag `parametric_range_guard` consumido en el map-back) + 1 contrato recontratado + test de contrato nuevo `parametric_trig_equation_tests.rs`
+- status: `retained`. FAMILIA P0 F3 del informe (5 miembros) — **CIERRA EL AUDIT COMPLETO: 24/24 familias P0/P1** (40 familias descubiertas el 2026-07-09; las 16 P2 capability quedan como backlog de capacidad).
+- capture:
+  - investment_class: soundness (conjunto incompleto presentado como completo: `{arcsin(a)}` sin rama suplementaria, sin +2kπ, sin gate |a|≤1).
+  - cell: `sin(x)=a` → `{arcsin(a)+2kπ, π−arcsin(a)+2kπ} if a+1≥0 and 1−a≥0` (la forma EXACTA del audit), `cos(x)=a` → dos familias arccos, `sin(x)=y`, arg escalado `sin(2x)=a` → período π con map-back, coeficiente `2·sin(x)=a` → `arcsin(a/2)` con guard plegado a a∈[−2,2]. Controles (7): `tan(x)=a` (paramétrico YA correcto — sin guard: tan acepta todo real), racional/Unit/Zero, `sin(x)=e` → No solution (F13), `sin(x)=1/e` periódico, cuadrática surd F13 intacta.
+  - causa raíz: `classify_trig_unit_rhs` no puede situar un símbolo libre frente a {−1,0,1}; el `?` declinaba el solver periódico ENTERO → inversión unaria principal-only.
+  - diseño: en el brazo Sin|Cos, classify None + `c` con símbolo libre ⇒ tomar la rama InOpen (correcta como CONJUNTO para todo −1≤c≤1: en los extremos las familias coinciden o se entrelazan, en 0 se alias — la observación del root-cause del audit) y marcar el flag; el return del map-back envuelve el Periodic en `Conditional[{c+1≥0, 1−c≥0}]`. El map-back compartido pliega período (pendiente racional) y el guard hereda el coeficiente plegado gratis (`(a+2)/2≥0`).
+  - efecto de contrato (1 test recontratado, NO regresión): `rational_affine_principal_convention_is_preserved` pinneaba "the textbook principal answer" `{arcsin(c)}` — la convención pre-audit que el audit clasificó como P0. Recontratado a las familias completas guardadas con nota.
+  - validación: workspace exit 0, 0 failed tras recontrato; clippy limpio (gateado); engine-fast + scorecards verdes (cadena previa; recontrato test-only); huella estructural 0-delta. Tests: 2 tests / 10 asserts substring render-agnósticos.
+  - retained learning:
+  - **"Textbook principal answer" como contrato es un pin de conjunto incompleto**: la convención didáctica de libro (valor principal) es una PRESENTACIÓN, no un conjunto solución — si el motor promete conjuntos, el principal-only sin cualificar es unsound. El upgrade correcto conserva la didáctica (la primera base ES el principal) y añade la completitud + el guard.
+  - **El flag-en-el-classify + wrap-en-el-return es el patrón barato para condicionar familias periódicas**: el map-back compartido (pendiente, coeficiente, offset) no necesita saber del guard; el guard hereda todos los pliegues gratis.
+  - PRÓXIMO PELDAÑO: los 3 hallazgos laterales de esta tanda (abs-cuadrático vs param, |ln(x)|<|x| transcendental, sqrt-vs-param upgrade del decline a Conditional), merge_intervals degenerados (auditoría dirigida), clase A builder de segmentos (5 usos), 16 P2 capability del audit, y un frontier-audit NUEVO cuando este backlog se agote (el actual está 24/24).

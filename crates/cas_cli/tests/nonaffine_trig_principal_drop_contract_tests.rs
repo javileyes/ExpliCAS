@@ -35,10 +35,22 @@ fn nonaffine_arguments_decline_instead_of_asserting_finite_sets() {
 
 #[test]
 fn rational_affine_principal_convention_is_preserved() {
-    // Symbolic RHS keeps the textbook principal answer.
-    assert_eq!(solve("sin(x)=c"), "{ arcsin(c) }");
-    assert_eq!(solve("sin(2*x)=c"), "{ 1/2·arcsin(c) }");
-    assert_eq!(solve("cos(x-1)=c"), "{ arccos(c) + 1 }");
+    // Symbolic RHS now carries the COMPLETE guarded two-family set (frontier-audit
+    // F3): the old bare principal `{arcsin(c)}` was an incomplete solution set
+    // presented as complete — no supplementary branch, no +2k·pi family, no
+    // |c| <= 1 range gate.
+    assert_eq!(
+        solve("sin(x)=c"),
+        "{ arcsin(c) + k·2·pi, pi - arcsin(c) + k·2·pi : k ∈ ℤ } if c + 1 >= 0 and 1 - c >= 0"
+    );
+    assert_eq!(
+        solve("sin(2*x)=c"),
+        "{ 1/2·arcsin(c) + k·pi, 1/2·(pi - arcsin(c)) + k·pi : k ∈ ℤ } if c + 1 >= 0 and 1 - c >= 0"
+    );
+    assert_eq!(
+        solve("cos(x-1)=c"),
+        "{ arccos(c) + 1 + k·2·pi, 1 + 2·pi - arccos(c) + k·2·pi : k ∈ ℤ } if c + 1 >= 0 and 1 - c >= 0"
+    );
     // Concrete RHS keeps the full periodic family (periodic handler).
     assert_eq!(
         solve("sin(x)=1/2"),

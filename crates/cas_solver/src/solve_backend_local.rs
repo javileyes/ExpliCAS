@@ -8331,6 +8331,9 @@ fn try_solve_periodic_trig_equation_ungated(
     let pi = simplifier.context.add(Expr::Constant(Constant::Pi));
     let two = simplifier.context.num(2);
     let two_pi = simplifier.context.add(Expr::Mul(two, pi));
+    // Set when the Sin/Cos RHS is a PARAMETER: the emitted periodic family is
+    // wrapped in the closed-range guard at the return.
+    let mut parametric_range_guard: Option<ExprId> = None;
 
     // Representative root(s) for the bare argument `u = a·x`, and the shared period.
     let (bases_u, period_u): (Vec<ExprId>, ExprId) = match func {
@@ -8345,7 +8348,26 @@ fn try_solve_periodic_trig_equation_ungated(
             // out-of-range `c` (|c| > 1) is NO real solution — returning `Empty` here also kills the
             // spurious `arcsin(c)` (= nan) the generic inversion would otherwise leak (`sin(x)^4 = 4`).
             let is_sin = matches!(func, BuiltinFn::Sin);
-            match classify_trig_unit_rhs(&simplifier.context, c)? {
+            // PARAMETRIC RHS (`sin(x) = a`): the classifier cannot place a free
+            // symbol against {−1, 0, 1}, and declining here fell through to the
+            // principal-only inversion (`{arcsin(a)}` — no supplementary branch, no
+            // +2kπ family, no range gate). The two-family InOpen form is correct as
+            // a SET for EVERY −1 ≤ c ≤ 1 (at the endpoints the families coincide or
+            // interlace; at 0 they alias), so emit it GUARDED by the closed range
+            // (`c + 1 ≥ 0` ∧ `1 − c ≥ 0`) via the flag consumed at the map-back tail.
+            let classified = classify_trig_unit_rhs(&simplifier.context, c);
+            let class = match classified {
+                Some(cl) => cl,
+                None => {
+                    if !cas_ast::collect_variables(&simplifier.context, c).is_empty() {
+                        parametric_range_guard = Some(c);
+                        TrigUnitClass::InOpen
+                    } else {
+                        return None;
+                    }
+                }
+            };
+            match class {
                 TrigUnitClass::OutOfRange => return Some(SolutionSet::Empty),
                 TrigUnitClass::Unit => {
                     // c = ±1: the two roots of the period coincide → ONE family, period 2π.
@@ -8401,7 +8423,22 @@ fn try_solve_periodic_trig_equation_ungated(
     let period_div = simplifier.context.add(Expr::Div(period_u, a_expr));
     let (period, _) = simplifier.simplify(period_div);
     let period = fold_rational(simplifier, period);
-    Some(SolutionSet::Periodic { bases, period })
+    let set = SolutionSet::Periodic { bases, period };
+    Some(match parametric_range_guard {
+        Some(c) => {
+            use cas_ast::{Case, ConditionPredicate, ConditionSet};
+            let one = simplifier.context.num(1);
+            let c_plus_one = simplifier.context.add(Expr::Add(c, one));
+            let c_plus_one = simplifier.simplify(c_plus_one).0;
+            let one_b = simplifier.context.num(1);
+            let one_minus_c = simplifier.context.add(Expr::Sub(one_b, c));
+            let one_minus_c = simplifier.simplify(one_minus_c).0;
+            let mut guard = ConditionSet::single(ConditionPredicate::NonNegative(c_plus_one));
+            guard.push(ConditionPredicate::NonNegative(one_minus_c));
+            SolutionSet::Conditional(vec![Case::new(guard, set)])
+        }
+        None => set,
+    })
 }
 
 /// Solve a residual product equation `f1·f2·… = 0` whose factors are each a periodic trig equation
