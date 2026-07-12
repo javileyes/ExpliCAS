@@ -12,6 +12,34 @@ use cas_solver::api::solve;
 use cas_solver::command_api::solve::display_solution_set;
 use cas_solver::runtime::Simplifier;
 
+fn solve_result(lhs: &str, op: RelOp, rhs: &str) -> Result<String, String> {
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");
+    let rhs = parse(rhs, &mut simplifier.context).expect("parse rhs");
+    let eq = Equation { lhs, rhs, op };
+    match solve(&eq, "x", &mut simplifier) {
+        Ok((set, _)) => Ok(display_solution_set(&simplifier.context, &set)),
+        Err(e) => Err(format!("{e:?}")),
+    }
+}
+
+#[test]
+fn non_polynomial_abs_vs_abs_declines_honestly() {
+    // |ln(x)| < |x| returned a FALSE "No solution" (the truth is a ray), and the
+    // other relations leaked mangled conditionals; all decline honestly now.
+    for (lhs, op, rhs) in [
+        ("abs(ln(x))", RelOp::Lt, "abs(x)"),
+        ("abs(ln(x))", RelOp::Gt, "abs(x)"),
+        ("abs(e^x - 1)", RelOp::Lt, "abs(x)"),
+    ] {
+        let err = solve_result(lhs, op, rhs).expect_err(lhs);
+        assert!(
+            err.contains("non-polynomial"),
+            "{lhs}: wrong decline: {err}"
+        );
+    }
+}
+
 fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");

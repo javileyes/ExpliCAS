@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 550 (newest first)
+Active entries: 551 (newest first)
 
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
+- 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (abs-vs-abs no-polinómico fabrica "No solution" falso): `solve(abs(ln(x))<abs(x))`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-11 | `retained` | `crates/cas_solver_core/src/solve_runtime_isolation_dispatch_bound_runtime.rs... | SOUNDNESS (desigualdad paramétrica monótona asume signo del parámetro): `solve(a*x>b)`
@@ -19239,3 +19240,17 @@ Active entries: 550 (newest first)
   - retained learning:
   - **Cuando un handler ya RECONOCE la familia pero solo resuelve un subconjunto, el complemento no debe caer al genérico**: None significa "no es mi familia", no "es mi familia pero no sé" — esa segunda situación es un decline explícito. La firma Option<Result> distingue las tres salidas (resuelto / mi-familia-declino / no-mi-familia) y es el patrón a reutilizar.
   - PRÓXIMO PELDAÑO: abs-vs-abs no-polinómico (|ln(x)|<|x| → "No solution" falso — mismo patrón en el handler F15), upgrade de estos declines a Conditional cuando llegue ConditionPredicate::Negative.
+
+## 2026-07-13 - SOUNDNESS (abs-vs-abs no-polinómico fabrica "No solution" falso): `solve(abs(ln(x))<abs(x))`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynomial_inequality`: firma a `Option<Result<…>>` y brazo no-polinómico → decline autodescriptivo) + tests extendidos en `abs_vs_abs_inequality_tests.rs`
+- status: `retained`. Lateral confirmado de la 3ª tanda (pre-existente, stash-bisect) — hermano transcendental de F15.
+- capture:
+  - investment_class: soundness (`|ln(x)|<|x|` → "No solution" FALSO — la verdad es un rayo (x₀,∞) con ln(x₀)=−x₀; `>`/`=` leakeaban condicionales mangleados `solve(x − e^x = 0) if x ≥ 0`; `|e^x−1|<|x|` erroría con mensaje engañoso de isolación).
+  - cell: `|ln(x)| {<,>} |x|`, `|e^x−1|<|x|`, `|sin|<|cos|` → decline canónico "relations between absolute values of non-polynomial expressions are not yet supported". Controles: F15 polinómico intacto (`|x²−1|<|x+1|` → `(0,2)`, ecuación con representación pinneada), afín-vs-afín, `|ln(x)|<1` racional.
+  - causa raíz: el handler F15 devolvía None para args no-polinómicos → path genérico abs-opaco (mismo shape que el ciclo anterior: "es mi familia pero no sé" expresado como "no es mi familia").
+  - diseño: patrón de tres salidas (resuelto / mi-familia-declino / no-mi-familia) — 2ª aplicación consecutiva. El eco trig `|sin|<|cos|` cambia de residual-echo a error (ambos declines honestos; ninguna fixture lo pinneaba — workspace 0 failed). La reducción a cuadrados SIGUE siendo equivalencia para args no-polinómicos (ambos lados ≥0) — el peldaño de capacidad declarado es resolver `ln(x)² < x²` transcendental, no el matching.
+  - validación: workspace exit 0, 0 failed; clippy limpio (gateado); engine-fast + scorecards verdes; huella estructural 0-delta. Tests: +1 test / 3 asserts.
+  - retained learning:
+  - **El patrón Option<Result> de tres salidas generaliza**: dos handlers consecutivos (abs-vs-param, abs-vs-abs) tenían el mismo defecto de expresividad — None colapsaba "reconozco pero no resuelvo" con "no es mío". Barrido futuro barato: grep de handlers cuyo match reconoce una familia amplia pero cuyo gate interno devuelve None (el genérico aguas abajo es casi siempre peor que un decline).
+  - PRÓXIMO PELDAÑO: capacidad sobre estos declines (|ln x| vs |x| vía cuadrados + solver transcendental de desigualdades; abs-cuadrático vs param a Conditional con endpoints surd-simbólicos), clase A builder de segmentos, 16 P2 del audit, peldaño F18 (+c·π), y frontier-audit NUEVO (el 2026-07-09 agotado).

@@ -5922,7 +5922,7 @@ fn try_solve_abs_vs_abs_polynomial_inequality(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<Result<SolutionSet, CasError>> {
     use cas_ast::RelOp;
     use cas_math::polynomial::Polynomial;
     use cas_solver_core::isolation_utils::contains_var;
@@ -5941,7 +5941,15 @@ fn try_solve_abs_vs_abs_polynomial_inequality(
         Polynomial::from_expr(&simplifier.context, f_arg, var),
         Polynomial::from_expr(&simplifier.context, g_arg, var),
     ) else {
-        return None;
+        // NON-POLYNOMIAL argument (`|ln(x)| < |x|`, `|e^x − 1| < |x|`): the generic
+        // path fabricated a false "No solution" for `<` and mangled conditional
+        // leaks for the other relations — DECLINE honestly. (The squared reduction
+        // is still an EQUIVALENCE here, but the resulting transcendental relation
+        // has no owner yet; this is the declared next step.)
+        return Some(Err(CasError::SolverError(
+            "relations between absolute values of non-polynomial expressions are not yet supported"
+                .to_string(),
+        )));
     };
     if f_poly.degree().max(g_poly.degree()) < 2 {
         return None; // affine-vs-affine already has a correct owner
@@ -5953,7 +5961,7 @@ fn try_solve_abs_vs_abs_polynomial_inequality(
     let p_expr = p_poly.to_expr(&mut simplifier.context);
     let zero = simplifier.context.num(0);
     let set = solve_relation_set(simplifier, var, p_expr, zero, eq.op.clone())?;
-    is_concrete_solution_set(&set).then_some(set)
+    is_concrete_solution_set(&set).then_some(Ok(set))
 }
 
 /// `f(x)·g(x) {op} 0` where at least one factor is NOT polynomial-parseable
@@ -9955,10 +9963,11 @@ fn solve_local_core_inner(
     if let Some(set) = try_solve_product_inequality_sign_split(simplifier, eq, var) {
         return Ok((set, Vec::new()));
     }
-    // `|f| {op} |g|` with polynomial args: both sides non-negative, reduce to the
-    // exact polynomial inequality f² − g² {op} 0 (its correct owner).
-    if let Some(set) = try_solve_abs_vs_abs_polynomial_inequality(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    // `|f| {op} |g|`: polynomial args reduce to the exact polynomial inequality
+    // f² − g² {op} 0 (its correct owner); non-polynomial args decline honestly
+    // (the generic path fabricated a false "No solution" / mangled leaks).
+    if let Some(result) = try_solve_abs_vs_abs_polynomial_inequality(simplifier, eq, var) {
+        return result.map(|set| (set, Vec::new()));
     }
     // NESTED abs (`||x|−2| {op} x`): partition at the inner-abs zeros, reduce each
     // region to a plain abs relation, clip and union.
