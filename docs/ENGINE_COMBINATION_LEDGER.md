@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 549 (newest first)
+Active entries: 550 (newest first)
 
+- 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-11 | `retained` | `crates/cas_solver_core/src/solve_runtime_isolation_dispatch_bound_runtime.rs... | SOUNDNESS (desigualdad paramétrica monótona asume signo del parámetro): `solve(a*x>b)`
@@ -19224,3 +19225,17 @@ Active entries: 549 (newest first)
   - **Un merge orden-dependiente es un defecto de INVARIANTE, no de caso**: si `merge(sort(X))` da resultados distintos según el orden de inserción previo al sort, el sort no es una clave total sobre lo que el merge asume — el desempate por bound-type ES parte de la clave. El test correcto verifica AMBOS órdenes de llegada explícitamente.
   - **"Esquivar en el caller, arreglar en la raíz después" funcionó**: el ciclo F11 evitó el merge (estrictez a los sub-solves) para no abrir esta caja a mitad de ciclo; con el backlog del audit cerrado, el fix raíz de 12 líneas cierra la clase entera para TODOS los callers (uniones no-estrictas, roots-unión, clip de segmentos).
   - PRÓXIMO PELDAÑO (backlog post-audit): los 3 hallazgos laterales de las tandas (abs-cuadrático vs param, |ln(x)|<|x|, sqrt-vs-param a Conditional), clase A builder de segmentos (5 usos), 16 P2 capability, upgrade F1 a Conditional sobre sign(a) (falta ConditionPredicate::Negative), y un frontier-audit NUEVO — el del 2026-07-09 está 24/24 CERRADO.
+
+## 2026-07-13 - SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_param`: firma a `Option<Result<…>>` y brazo no-afín → decline honesto) + tests extendidos en `abs_symbolic_param_tests.rs`
+- status: `retained`. Lateral confirmado de la 4ª tanda (pre-existente, stash-bisect) — hermano no-afín de F2.
+- capture:
+  - investment_class: soundness (intervalo basura `(−√(a+1), −√(1−a))`; la ECUACIÓN emitía 4 raíces sin guard — espurias para a<0 Y para a>1 donde √(1−a) es compleja; `abs(ln(x))<a` → "No solution" falso).
+  - cell: `abs(x²−1) {<,>,=} a`, `abs(ln(x)) {<,=} a`, `abs(x³−x)>=a` → decline canónico. Controles: afín guardado (`abs(x)<a` → `(−a,a) if a>0`), umbrales RACIONALES en las mismas formas (`abs(x²−1)<3` → `(−2,2)`, `abs(ln(x))<1` → `(1/e, e)`), abs-vs-abs F15.
+  - causa raíz: mi handler F2 devolvía None para args no-afines → path genérico con endpoints simbólicos (la clase exacta que F2 evitó construyendo directo).
+  - diseño: el MATCH del handler (abs + umbral indecidible) ya reconoce la familia; el brazo no-afín pasa de None a `Some(Err(decline canónico))` vía firma `Option<Result<…>>` — el patrón del guard F1. Un arg no-afín con umbral DECIDIBLE sigue en None (dueños existentes).
+  - validación: workspace exit 0, 0 failed; clippy limpio (gateado); engine-fast + scorecards verdes; huella estructural 0-delta. Tests: +1 test / 8 asserts.
+  - retained learning:
+  - **Cuando un handler ya RECONOCE la familia pero solo resuelve un subconjunto, el complemento no debe caer al genérico**: None significa "no es mi familia", no "es mi familia pero no sé" — esa segunda situación es un decline explícito. La firma Option<Result> distingue las tres salidas (resuelto / mi-familia-declino / no-mi-familia) y es el patrón a reutilizar.
+  - PRÓXIMO PELDAÑO: abs-vs-abs no-polinómico (|ln(x)|<|x| → "No solution" falso — mismo patrón en el handler F15), upgrade de estos declines a Conditional cuando llegue ConditionPredicate::Negative.

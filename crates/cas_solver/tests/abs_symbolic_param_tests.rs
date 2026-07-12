@@ -14,6 +14,45 @@ use cas_solver::api::solve;
 use cas_solver::command_api::solve::display_solution_set;
 use cas_solver::runtime::Simplifier;
 
+fn solve_result(lhs: &str, op: RelOp, rhs: &str) -> Result<String, String> {
+    let mut simplifier = Simplifier::with_default_rules();
+    let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");
+    let rhs = parse(rhs, &mut simplifier.context).expect("parse rhs");
+    let eq = Equation { lhs, rhs, op };
+    match solve(&eq, "x", &mut simplifier) {
+        Ok((set, _)) => Ok(display_solution_set(&simplifier.context, &set)),
+        Err(e) => Err(format!("{e:?}")),
+    }
+}
+
+#[test]
+fn non_affine_abs_arguments_decline_honestly() {
+    // The generic path fabricated symbolic-endpoint garbage for these:
+    // abs(x^2-1) < a gave (-sqrt(a+1), -sqrt(1-a)); the equation emitted four
+    // unguarded roots (spurious for a < 0 AND for a > 1 where sqrt(1-a) is
+    // complex); abs(ln(x)) < a claimed a false "No solution".
+    for (lhs, op) in [
+        ("abs(x^2 - 1)", RelOp::Lt),
+        ("abs(x^2 - 1)", RelOp::Gt),
+        ("abs(x^2 - 1)", RelOp::Eq),
+        ("abs(ln(x))", RelOp::Lt),
+        ("abs(ln(x))", RelOp::Eq),
+        ("abs(x^3 - x)", RelOp::Geq),
+    ] {
+        let err = solve_result(lhs, op, "a").expect_err(lhs);
+        assert!(err.contains("symbolic coefficients"), "{lhs}: {err}");
+    }
+    // Rational thresholds on the same shapes keep their exact owners.
+    assert_eq!(
+        solve_result("abs(x^2 - 1)", RelOp::Lt, "3").unwrap(),
+        "(-2, 2)"
+    );
+    assert_eq!(
+        solve_result("abs(ln(x))", RelOp::Lt, "1").unwrap(),
+        "(1 / e, e)"
+    );
+}
+
 fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");

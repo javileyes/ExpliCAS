@@ -9464,7 +9464,7 @@ fn try_solve_abs_vs_symbolic_param(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<Result<SolutionSet, CasError>> {
     use cas_ast::RelOp;
     use cas_ast::{BoundType, Case, ConditionPredicate, ConditionSet, Constant, Interval};
     use cas_math::numeric_eval::as_rational_const;
@@ -9549,9 +9549,20 @@ fn try_solve_abs_vs_symbolic_param(
     }
     // AFFINE argument with rational slope: endpoints invert in closed form and
     // their ORDER is decided by the (rational) slope, never by symbolic compare.
-    let f_poly = Polynomial::from_expr(&simplifier.context, f, var).ok()?;
+    // A NON-AFFINE argument (`abs(x²−1) < a`, `abs(ln(x)) < a`) cannot: the
+    // generic path fabricated garbage intervals with symbolic surd endpoints
+    // (`(−√(a+1), −√(1−a))`), unguarded four-root equation sets, or a false
+    // "No solution" — DECLINE honestly instead.
+    let non_affine_decline = || {
+        Some(Err(CasError::SolverError(
+            "Inequalities with symbolic coefficients not yet supported".to_string(),
+        )))
+    };
+    let Ok(f_poly) = Polynomial::from_expr(&simplifier.context, f, var) else {
+        return non_affine_decline();
+    };
     if f_poly.degree() != 1 {
-        return None;
+        return non_affine_decline();
     }
     let q = f_poly.coeffs.get(1).cloned()?;
     let r = f_poly
@@ -9623,7 +9634,7 @@ fn try_solve_abs_vs_symbolic_param(
         )]),
         _ => return None,
     };
-    Some(set)
+    Some(Ok(set))
 }
 
 /// Top-level twin of the isolation-dispatch parametric guard, for the routes that
@@ -9814,10 +9825,11 @@ fn solve_local_core_inner(
     // Solver-opaque function aliases (`log2`, `log10`, `csc`, `sec`, `cot`, `cbrt`) rewrite to
     // their canonical invertible forms up front, so every handler below sees solvable atoms
     // instead of erroring `función [...] no definida`.
-    // `|affine| {op} c` with an undecidable-sign parameter: emit the
-    // parameter-space-correct guarded/universal forms (before any strategy).
-    if let Some(set) = try_solve_abs_vs_symbolic_param(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    // `|f(x)| {op} c` with an undecidable-sign parameter: affine arguments emit the
+    // parameter-correct guarded/universal forms; non-affine arguments decline
+    // honestly (the generic path fabricated symbolic-endpoint garbage).
+    if let Some(result) = try_solve_abs_vs_symbolic_param(simplifier, eq, var) {
+        return result.map(|set| (set, Vec::new()));
     }
     // Parametric monotone guard: transform exactly on a proven sign or decline
     // honestly BEFORE any strategy (the factored linear-collect would otherwise
