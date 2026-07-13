@@ -74,6 +74,23 @@ pub(crate) fn extract_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_b
     }
 }
 
+/// Extract an exact rational value (`BigRational`) from an expression.
+///
+/// Accepts any numeric literal — integer or fraction — and unary-negation
+/// wrappers, e.g. `-(1/2)` -> `-1/2`. Returns `None` for non-numeric inputs.
+/// This is the rational superset of [`extract_integer_exact`] (integers are the
+/// denominator-1 case).
+pub(crate) fn extract_rational_exact(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<num_rational::BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(inner) => extract_rational_exact(ctx, *inner).map(|n| -n),
+        _ => None,
+    }
+}
+
 /// Extract a non-negative integer as `u64` from an expression.
 pub(crate) fn extract_u64_integer(ctx: &Context, expr: ExprId) -> Option<u64> {
     if let Expr::Number(n) = ctx.get(expr) {

@@ -1,7 +1,7 @@
 //! Number theory helpers exposed by solver facade.
 
 use cas_ast::{Context, ExprId};
-use cas_math::number_theory_support::{compute_integer_gcd_expr, extract_integer_bigint};
+use cas_math::number_theory_support::{compute_rational_gcd_expr, extract_integer_bigint};
 use cas_math::polynomial::Polynomial;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
@@ -38,7 +38,17 @@ pub(crate) fn explain_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> GcdResult 
         }
 
         return GcdResult {
-            value: compute_integer_gcd_expr(ctx, a, b),
+            value: compute_rational_gcd_expr(ctx, a, b),
+            steps,
+        };
+    }
+
+    // Rational (non-integer) GCD: the integer block above already returned for
+    // pure integers, so this reaches only true fractions.
+    if let Some(value) = compute_rational_gcd_expr(ctx, a, b) {
+        steps.push("GCD racional: gcd(a/b, c/d) = gcd(a, c) / lcm(b, d).".to_string());
+        return GcdResult {
+            value: Some(value),
             steps,
         };
     }

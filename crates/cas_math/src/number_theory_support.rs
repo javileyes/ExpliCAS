@@ -83,7 +83,7 @@ pub(crate) fn try_eval_simple_number_theory_call(
             // first two silently returned wrong answers (gcd(8, 12, 6) → 4 instead of 2).
             let mut result = args[0];
             for &arg in &args[1..] {
-                result = compute_integer_gcd_expr(ctx, result, arg)?;
+                result = compute_rational_gcd_expr(ctx, result, arg)?;
             }
             Some(NumberTheorySimpleRewrite::Binary {
                 name: "gcd",
@@ -1198,23 +1198,44 @@ pub(crate) fn compute_totient_expr(ctx: &mut Context, n: ExprId) -> Option<ExprI
     Some(integer_result(ctx, result))
 }
 
-/// Compute integer GCD expression when both inputs are exact integers.
-pub fn compute_integer_gcd_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
-    let val_a = extract_integer_bigint(ctx, a)?;
-    let val_b = extract_integer_bigint(ctx, b)?;
-    let gcd = val_a.gcd(&val_b);
-    Some(ctx.add(Expr::Number(BigRational::from_integer(gcd))))
+/// GCD of two rational numbers via `gcd(a/b, c/d) = gcd(a, c) / lcm(b, d)` on
+/// fractions in lowest terms (the sympy convention). The result is non-negative
+/// and in lowest terms. Distinct from the factoring-content `numeric::gcd_rational`,
+/// which deliberately collapses non-integers to `1`.
+fn rational_number_gcd(a: &BigRational, b: &BigRational) -> BigRational {
+    let num_gcd = a.numer().gcd(b.numer());
+    let den_lcm = a.denom().lcm(b.denom());
+    BigRational::new(num_gcd, den_lcm)
 }
 
-/// Compute `lcm(a, b)` when both inputs are exact integers.
+/// LCM of two rational numbers via `lcm(a/b, c/d) = lcm(a, c) / gcd(b, d)` on
+/// fractions in lowest terms. `lcm(0, x) = 0`.
+fn rational_number_lcm(a: &BigRational, b: &BigRational) -> BigRational {
+    let num_lcm = a.numer().lcm(b.numer());
+    let den_gcd = a.denom().gcd(b.denom());
+    BigRational::new(num_lcm, den_gcd)
+}
+
+/// Compute the GCD of two exact rational numbers.
+///
+/// Integers are the denominator-1 special case, so this strictly generalizes the
+/// former integer-only behavior (`gcd(6, 4) = 2`) to fractions
+/// (`gcd(1/2, 1/3) = 1/6`), matching the sympy rational-gcd convention. Returns
+/// `None` when either input is not an exact rational.
+pub fn compute_rational_gcd_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
+    let val_a = crate::expr_extract::extract_rational_exact(ctx, a)?;
+    let val_b = crate::expr_extract::extract_rational_exact(ctx, b)?;
+    let gcd = rational_number_gcd(&val_a, &val_b);
+    Some(ctx.add(Expr::Number(gcd)))
+}
+
+/// Compute `lcm(a, b)` for two exact rational numbers (integers are the
+/// denominator-1 case; `lcm(1/2, 1/3) = 1`, `lcm(6, 4) = 12`).
 pub(crate) fn compute_lcm_expr(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
-    let val_a = extract_integer_bigint(ctx, a)?;
-    let val_b = extract_integer_bigint(ctx, b)?;
-    if val_a.is_zero() && val_b.is_zero() {
-        return Some(ctx.num(0));
-    }
-    let lcm = val_a.lcm(&val_b);
-    Some(ctx.add(Expr::Number(BigRational::from_integer(lcm))))
+    let val_a = crate::expr_extract::extract_rational_exact(ctx, a)?;
+    let val_b = crate::expr_extract::extract_rational_exact(ctx, b)?;
+    let lcm = rational_number_lcm(&val_a, &val_b);
+    Some(ctx.add(Expr::Number(lcm)))
 }
 
 /// Compute Euclidean remainder `a mod n` when both inputs are exact integers.
@@ -1398,16 +1419,19 @@ pub(crate) fn compute_perm_expr(ctx: &mut Context, n: ExprId, k: ExprId) -> Opti
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
-/// Compute GCD for integers/polynomials.
+/// Compute GCD for rationals/polynomials.
 ///
 /// Behavior:
-/// - Integer inputs: Euclidean GCD (exact).
+/// - Rational inputs (integers included): exact rational GCD
+///   (`gcd(a/b, c/d) = gcd(a, c) / lcm(b, d)`).
 /// - Univariate polynomial inputs on same variable: polynomial Euclidean GCD.
 /// - Multivariate or unsupported symbolic inputs: conservative fallback to `1`.
 pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
-    // Integer fast path.
-    if extract_integer_bigint(ctx, a).is_some() && extract_integer_bigint(ctx, b).is_some() {
-        return compute_integer_gcd_expr(ctx, a, b);
+    // Numeric (rational) fast path — integers are the denominator-1 case.
+    if crate::expr_extract::extract_rational_exact(ctx, a).is_some()
+        && crate::expr_extract::extract_rational_exact(ctx, b).is_some()
+    {
+        return compute_rational_gcd_expr(ctx, a, b);
     }
 
     // Try univariate polynomial GCD.
@@ -1552,7 +1576,7 @@ mod tests {
         let lcm = compute_lcm_expr(&mut ctx, a, b).expect("lcm");
         assert_eq!(extract_integer_bigint(&ctx, lcm), Some(BigInt::from(36)));
 
-        let gcd = compute_integer_gcd_expr(&mut ctx, a, b).expect("gcd");
+        let gcd = compute_rational_gcd_expr(&mut ctx, a, b).expect("gcd");
         assert_eq!(extract_integer_bigint(&ctx, gcd), Some(BigInt::from(6)));
 
         let modu = compute_mod_expr(&mut ctx, minus_seven, five).expect("mod");
@@ -1566,6 +1590,64 @@ mod tests {
 
         let perm = compute_perm_expr(&mut ctx, five, two).expect("perm");
         assert_eq!(extract_integer_bigint(&ctx, perm), Some(BigInt::from(20)));
+    }
+
+    #[test]
+    fn computes_rational_gcd_and_lcm_matching_sympy() {
+        use crate::expr_extract::extract_rational_exact;
+        let mut ctx = Context::new();
+        let frac = |ctx: &mut Context, n: i64, d: i64| {
+            ctx.add(Expr::Number(BigRational::new(
+                BigInt::from(n),
+                BigInt::from(d),
+            )))
+        };
+        let val = |ctx: &Context, id: ExprId| extract_rational_exact(ctx, id).expect("rational");
+        let rat = |n: i64, d: i64| BigRational::new(BigInt::from(n), BigInt::from(d));
+
+        // gcd(a/b, c/d) = gcd(a, c) / lcm(b, d) — the sympy convention.
+        let (a, b) = (frac(&mut ctx, 1, 2), frac(&mut ctx, 1, 3));
+        let g = compute_rational_gcd_expr(&mut ctx, a, b).expect("gcd");
+        assert_eq!(val(&ctx, g), rat(1, 6)); // gcd(1/2,1/3) = 1/6
+
+        let (a, b) = (frac(&mut ctx, 2, 3), frac(&mut ctx, 4, 9));
+        let g = compute_rational_gcd_expr(&mut ctx, a, b).expect("gcd");
+        assert_eq!(val(&ctx, g), rat(2, 9)); // gcd(2/3,4/9) = 2/9
+
+        // Negative numerator -> non-negative gcd.
+        let (a, b) = (frac(&mut ctx, -1, 2), frac(&mut ctx, 1, 3));
+        let g = compute_rational_gcd_expr(&mut ctx, a, b).expect("gcd");
+        assert_eq!(val(&ctx, g), rat(1, 6));
+
+        // Compound denominators (invisible to atomic probes).
+        let (a, b) = (frac(&mut ctx, 5, 6), frac(&mut ctx, 10, 9));
+        let g = compute_rational_gcd_expr(&mut ctx, a, b).expect("gcd");
+        assert_eq!(val(&ctx, g), rat(5, 18)); // gcd(5/6,10/9) = 5/18
+
+        // Integer inputs are the denominator-1 case — behavior unchanged.
+        let (a, b) = (ctx.num(6), ctx.num(4));
+        let g = compute_rational_gcd_expr(&mut ctx, a, b).expect("gcd");
+        assert_eq!(val(&ctx, g), rat(2, 1)); // gcd(6,4) = 2
+
+        // lcm(a/b, c/d) = lcm(a, c) / gcd(b, d).
+        let (a, b) = (frac(&mut ctx, 1, 2), frac(&mut ctx, 1, 3));
+        let l = compute_lcm_expr(&mut ctx, a, b).expect("lcm");
+        assert_eq!(val(&ctx, l), rat(1, 1)); // lcm(1/2,1/3) = 1
+
+        let (a, b) = (frac(&mut ctx, 2, 3), frac(&mut ctx, 4, 9));
+        let l = compute_lcm_expr(&mut ctx, a, b).expect("lcm");
+        assert_eq!(val(&ctx, l), rat(4, 3)); // lcm(2/3,4/9) = 4/3
+
+        let (a, b) = (ctx.num(6), ctx.num(4));
+        let l = compute_lcm_expr(&mut ctx, a, b).expect("lcm");
+        assert_eq!(val(&ctx, l), rat(12, 1)); // lcm(6,4) = 12
+
+        // Zero edges: gcd(n, 0) = n, lcm(0, n) = 0.
+        let (three, zero) = (ctx.num(3), ctx.num(0));
+        let g = compute_rational_gcd_expr(&mut ctx, three, zero).expect("gcd");
+        assert_eq!(val(&ctx, g), rat(3, 1));
+        let l = compute_lcm_expr(&mut ctx, zero, three).expect("lcm");
+        assert_eq!(val(&ctx, l), rat(0, 1));
     }
 
     #[test]
