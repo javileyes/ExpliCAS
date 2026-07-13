@@ -183,10 +183,52 @@ pub fn try_expand_multinomial_direct(
     // 9. Emit polynomial as Expr
     let expanded = emit_polynomial_from_terms(ctx, &var_ids, terms_vec);
 
+    // 9b. Canonicalize dependent-atom bases. When two base atoms share a variable
+    // (`x^2` and `x` in `x^2 + x + 1` both carry `x`), the atom-basis emit is
+    // value-correct but NON-canonical: `x·x^2` is left unfolded and `x^2 + 2·x^2`
+    // uncombined, because dependent atoms are keyed under independent monomials.
+    // The downstream "N-ary Mul Combine Powers" / "Combine Like Terms" rules would
+    // fix it, but the `__hold` barrier below freezes the tree before they run.
+    // Route the emitted polynomial through the canonical multipoly normalizer FIRST
+    // (the same path that collapses `x·x^2 → x^3`). Variable-DISJOINT bases
+    // (`(x^2+y+1)^2`, `(a+b+c)^2`) already emit canonically and skip this. On any
+    // normalizer error the value-correct emit is preserved unchanged.
+    let expanded = if atoms_share_a_variable(ctx, &terms) {
+        match crate::multipoly::multipoly_from_expr(
+            ctx,
+            expanded,
+            &crate::multipoly::PolyBudget::default(),
+        ) {
+            Ok(poly) => crate::multipoly::multipoly_to_expr(&poly, ctx),
+            Err(_) => expanded,
+        }
+    } else {
+        expanded
+    };
+
     // 10. Wrap in __hold() to prevent slow post-simplification traversal
     // The __hold barrier is unwrapped at eval boundary (engine.rs::unwrap_hold_top)
     let held = cas_ast::hold::wrap_hold(ctx, expanded);
     Some(held)
+}
+
+/// True when two of the base's linear atoms share an underlying variable — e.g.
+/// `x^2` and `x` in `x^2 + x + 1` both carry `x`. Such atoms are keyed as
+/// independent monomials by the atom-basis expander, so the emitted power is
+/// non-canonical and needs the multipoly normalization pass. Variable-disjoint
+/// atoms (`x^2`, `y`, `1`) already emit canonically.
+fn atoms_share_a_variable(ctx: &Context, terms: &[LinearTerm]) -> bool {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for t in terms {
+        if let Some(atom) = t.var {
+            for v in cas_ast::collect_variables(ctx, atom) {
+                if !seen.insert(v) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Collect additive terms into a vector of (summand, sign) pairs.
@@ -517,6 +559,61 @@ mod tests {
         // 4! / (2! * 1! * 1!) = 24 / 2 = 12
         let coeff = multinomial_coeff(&fact, 4, &[2, 1, 1]);
         assert_eq!(coeff, BigInt::from(12));
+    }
+
+    #[test]
+    fn dependent_atom_base_expands_to_a_canonical_tree() {
+        // `(x^2 + x + 1)^2`: the atoms x^2 and x share the variable x, so the
+        // atom-basis emit was non-canonical (6 terms: `x·x^2` unfolded, `x^2` and
+        // `2·x^2` uncombined). The normalization pass collapses it to the canonical
+        // 5-term `x^4 + 2·x^3 + 3·x^2 + 2·x + 1`.
+        let mut ctx = Context::new();
+        let expr = parse("(x^2 + x + 1)^2", &mut ctx).unwrap();
+        let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+            panic!("expected pow");
+        };
+        let held =
+            try_expand_multinomial_direct(&mut ctx, base, exp, &MultinomialExpandBudget::default())
+                .expect("expand");
+        let inner = cas_ast::hold::unwrap_hold(&ctx, held);
+        let terms = crate::expr_nary::add_leaves(&ctx, inner);
+        assert_eq!(
+            terms.len(),
+            5,
+            "canonical expansion has 5 additive terms, the mangled emit had 6"
+        );
+        // Exactly one term is a canonical `x^3` power (the folded `x·x^2` cross
+        // term), and none is an unfolded product of two var-carrying factors.
+        let cubic_terms = terms
+            .iter()
+            .filter(|&&t| {
+                crate::expr_nary::mul_leaves(&ctx, t).iter().any(|&f| {
+                    matches!(ctx.get(f), Expr::Pow(b, e)
+                        if matches!(ctx.get(*b), Expr::Variable(s) if ctx.sym_name(*s) == "x")
+                            && matches!(ctx.get(*e), Expr::Number(n) if *n == BigRational::from_integer(3.into())))
+                })
+            })
+            .count();
+        assert_eq!(cubic_terms, 1, "expected a single folded x^3 term");
+    }
+
+    #[test]
+    fn atom_variable_overlap_gates_the_normalization() {
+        let mut ctx = Context::new();
+        // Disjoint atoms (x^2, y, 1) already emit canonically -> not gated.
+        let disjoint = parse("(x^2 + y + 1)^2", &mut ctx).unwrap();
+        let Expr::Pow(base, _) = ctx.get(disjoint).clone() else {
+            panic!("pow");
+        };
+        let terms = extract_linear_terms(&ctx, base).expect("terms");
+        assert!(!atoms_share_a_variable(&ctx, &terms));
+        // Shared-variable atoms (x^2, x, 1) are detected -> gated.
+        let shared = parse("(x^2 + x + 1)^2", &mut ctx).unwrap();
+        let Expr::Pow(base2, _) = ctx.get(shared).clone() else {
+            panic!("pow");
+        };
+        let terms2 = extract_linear_terms(&ctx, base2).expect("terms");
+        assert!(atoms_share_a_variable(&ctx, &terms2));
     }
 
     #[test]
