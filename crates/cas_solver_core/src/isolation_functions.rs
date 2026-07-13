@@ -180,6 +180,20 @@ where
                     crate::solve_outcome::residual_solution_set(ctx, lhs_call, rhs, op, var);
                 return Ok((residual, existing_steps));
             }
+            // RHS-CONTAINS-VAR gate (F8 2026-07-13b): applying a principal-branch inverse to
+            // isolate `f(x)` when the RHS `g(x)` STILL contains the solve variable fabricates a
+            // self-referential `x = arccos(g(x))` tree that drops periodicity, and for
+            // multiple-angle forms branches until it hangs (`tan(2x)=tan(3x)` ~216s). `cot(x)^2 = c`
+            // folds to `cos(x) = |sin(x)|` and hits exactly this. Mirror the exponential path's
+            // `ensure_pow_exponent_rhs_without_variable` guard: decline to the honest
+            // operator-preserving residual. A concrete / var-free RHS (`sin(x) = c`) is unaffected.
+            if crate::isolation_utils::contains_var(context_ref(state), rhs, var) {
+                let ctx = context_mut(state);
+                let lhs_call = ctx.call(&fn_name, vec![arg]);
+                let residual =
+                    crate::solve_outcome::residual_solution_set(ctx, lhs_call, rhs, op, var);
+                return Ok((residual, existing_steps));
+            }
             execute_unary_function_isolation_with_default_plan_with_state(
                 state,
                 &fn_name,

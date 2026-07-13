@@ -13,7 +13,7 @@ Sigue a [AUDITORIA_FRONTERA_2026-07-13.md](AUDITORIA_FRONTERA_2026-07-13.md) (9/
 - [ ] **F5 [P1]** wrapped-trig-equation-drops-periodic-family (`solve(1/cos(x)^2 = 2, x)`) — multi-cycle
 - [ ] **F6 [P0]** unfolded-constant-arithmetic-tree-overflows-simplifier-depth (`[[1,2],[3,4]]^12`) — multi-cycle
 - [ ] **F7 [P1]** complex-value-domain-not-plumbed-to-root-emission (`solve(x^3 = 1, x)  [--value-domain complex]`) — multi-cycle
-- [ ] **F8 [P1]** unsound-sincos-rewrite-of-tan-cot-quotients (`solve(cot(x)^2 - 1 = 0, x)`) — multi-cycle
+- [~] **F8 [P1]** unsound-sincos-rewrite-of-tan-cot-quotients (`solve(cot(x)^2 - 1 = 0, x)`) — PARCIAL ciclo 5, commit `94c5bad98` (Layer-1: guard RHS-contains-var → árboles arccos self-referenciales de cot² a residual honesto; facets `tan(2x)=tan(3x)` hang y `tan/(1-tan²)` polos + Layer-2 periódico = follow-up)
 
 ## Cobertura (frentes limpios = 0 confirmados)
 
