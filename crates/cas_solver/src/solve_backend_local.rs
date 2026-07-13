@@ -10033,6 +10033,171 @@ fn try_parametric_monotone_guard(
     }
 }
 
+/// A linear inequality with the variable on BOTH sides and a SYMBOLIC-CONSTANT
+/// coefficient (`x < x·ln2`, from log-linearizing `e^x < 2^x`): the equation-only
+/// linear-collect returns the boundary root `{0}` with the operator DROPPED
+/// (family F3 of docs/AUDITORIA_FRONTERA_2026-07-13b.md), and
+/// `try_parametric_monotone_guard` never fires because its orientation check
+/// needs one var-free side. Collect the difference into `c1·x + c0` (both
+/// var-free), decide `sign(c1)` with the same exact tri-state oracle, and
+/// recurse on `x {op'} −c0/c1` (op flipped when `c1 < 0`). Rational `c1` keeps
+/// its existing owners (this handler requires a symbolic constant); an
+/// undecidable sign declines honestly.
+pub(crate) fn try_symbolic_linear_coeff_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
+    use cas_ast::RelOp;
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    // At least one side must carry the variable; the shape gate below (linear diff with a
+    // var-free NON-rational coefficient) is what scopes the handler. One-sided forms with a
+    // symbolic-constant coefficient (`x + x·ln2 < 3`) are the same dropped-operator family.
+    if !contains_var(&simplifier.context, eq.lhs, var)
+        && !contains_var(&simplifier.context, eq.rhs, var)
+    {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+
+    // Coefficient of a single additive term as a linear monomial in `var`:
+    // `x` → 1, `x·k`/`k·x` → k, `x/k` → 1/k, `Neg(t)` → −coeff(t); the var-bearing
+    // factor must be the bare variable. Returns None for any other shape.
+    fn linear_term_coeff(ctx: &mut Context, term: ExprId, var: &str) -> Option<Result<ExprId, ()>> {
+        use cas_solver_core::isolation_utils::contains_var;
+        match ctx.get(term).clone() {
+            Expr::Neg(inner) => match linear_term_coeff(ctx, inner, var)? {
+                Ok(c) => Some(Ok(ctx.add(Expr::Neg(c)))),
+                Err(()) => Some(Err(())),
+            },
+            Expr::Variable(sym) if ctx.sym_name(sym) == var => Some(Ok(ctx.num(1))),
+            Expr::Div(num, den) if !contains_var(ctx, den, var) => {
+                match linear_term_coeff(ctx, num, var)? {
+                    Ok(c) => Some(Ok(ctx.add(Expr::Div(c, den)))),
+                    Err(()) => Some(Err(())),
+                }
+            }
+            Expr::Mul(..) => {
+                let leaves = cas_math::expr_nary::mul_leaves(ctx, term);
+                let mut var_leaf: Option<ExprId> = None;
+                let mut coeff_factors: Vec<ExprId> = Vec::new();
+                for &leaf in leaves.iter() {
+                    if contains_var(ctx, leaf, var) {
+                        if var_leaf.is_some()
+                            || !matches!(ctx.get(leaf), Expr::Variable(s) if ctx.sym_name(*s) == var)
+                        {
+                            return Some(Err(()));
+                        }
+                        var_leaf = Some(leaf);
+                    } else {
+                        coeff_factors.push(leaf);
+                    }
+                }
+                var_leaf?;
+                let mut c = ctx.num(1);
+                for f in coeff_factors {
+                    c = ctx.add(Expr::Mul(c, f));
+                }
+                Some(Ok(c))
+            }
+            _ => {
+                if contains_var(ctx, term, var) {
+                    Some(Err(())) // var in a non-linear position: not our shape
+                } else {
+                    None // constant term
+                }
+            }
+        }
+    }
+
+    let mut coeff_terms: Vec<ExprId> = Vec::new();
+    let mut const_terms: Vec<ExprId> = Vec::new();
+    for term in cas_math::expr_nary::add_leaves(&simplifier.context, diff) {
+        match linear_term_coeff(&mut simplifier.context, term, var) {
+            Some(Ok(c)) => coeff_terms.push(c),
+            Some(Err(())) => return None, // non-linear in var: not our family
+            None => const_terms.push(term),
+        }
+    }
+    if coeff_terms.is_empty() {
+        return None;
+    }
+    let mut c1 = simplifier.context.num(0);
+    for c in coeff_terms {
+        c1 = simplifier.context.add(Expr::Add(c1, c));
+    }
+    let (c1, _) = simplifier.simplify(c1);
+    // A plain rational coefficient has working owners (and pinned fixtures);
+    // this handler exists for the SYMBOLIC-constant coefficient family.
+    if as_rational_const(&simplifier.context, c1).is_some() {
+        return None;
+    }
+    let mut c0 = simplifier.context.num(0);
+    for t in const_terms {
+        c0 = simplifier.context.add(Expr::Add(c0, t));
+    }
+    // Exact tri-state sign, mirroring try_parametric_monotone_guard.
+    let sign_of = |simplifier: &Simplifier, e: ExprId| -> Option<std::cmp::Ordering> {
+        cas_math::root_forms::provable_sign_vs_zero(&simplifier.context, e)
+            .or_else(|| {
+                use cas_math::const_sign::{provable_const_sign, ConstSign};
+                Some(match provable_const_sign(&simplifier.context, e)? {
+                    ConstSign::Negative => std::cmp::Ordering::Less,
+                    ConstSign::Zero => std::cmp::Ordering::Equal,
+                    ConstSign::Positive => std::cmp::Ordering::Greater,
+                })
+            })
+            .or_else(|| {
+                let (lo, hi) = cas_math::const_sign::const_value_bounds(&simplifier.context, e)?;
+                use num_traits::Zero;
+                let zero = num_rational::BigRational::zero();
+                if hi < zero {
+                    Some(std::cmp::Ordering::Less)
+                } else if lo > zero {
+                    Some(std::cmp::Ordering::Greater)
+                } else {
+                    None
+                }
+            })
+    };
+    match sign_of(simplifier, c1) {
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Less) => {
+            let negative = matches!(sign_of(simplifier, c1), Some(std::cmp::Ordering::Less));
+            let neg_c0 = simplifier.context.add(Expr::Neg(c0));
+            let ratio = simplifier.context.add(Expr::Div(neg_c0, c1));
+            let new_rhs = simplifier.simplify(ratio).0;
+            let new_op = if negative {
+                cas_solver_core::isolation_utils::flip_inequality(eq.op.clone())
+            } else {
+                eq.op.clone()
+            };
+            // Build the ray DIRECTLY: the reduced relation is `x {op'} const`, fully
+            // decided here. Recursing into the full solve entrypoint from inside
+            // `solve_inner` would RESET the runtime cycle guards and re-enter the
+            // strategy pipeline (observed as an infinite strategy loop on
+            // `pi^x > 5`); there is nothing left to solve anyway.
+            let set = cas_solver_core::solution_set::isolated_var_solution(
+                &mut simplifier.context,
+                new_rhs,
+                new_op,
+            );
+            Some(Ok((set, Vec::new())))
+        }
+        // Provably-zero coefficient: the difference is the constant `c0`; let the
+        // var-eliminated classifier own it.
+        Some(std::cmp::Ordering::Equal) => None,
+        None => Some(Err(CasError::SolverError(
+            "Inequalities with symbolic coefficients not yet supported".to_string(),
+        ))),
+    }
+}
+
 fn solve_local_core_inner(
     eq: &Equation,
     var: &str,
@@ -10053,6 +10218,11 @@ fn solve_local_core_inner(
     // honestly BEFORE any strategy (the factored linear-collect would otherwise
     // drop the operator for symbolic coefficients).
     if let Some(result) = try_parametric_monotone_guard(simplifier, eq, var) {
+        return result;
+    }
+    // Var-on-BOTH-sides linear inequality with a symbolic-constant coefficient
+    // (`x < x·ln2`): collect to `c1·x + c0`, decide sign(c1) exactly, recurse.
+    if let Some(result) = try_symbolic_linear_coeff_inequality(simplifier, eq, var) {
         return result;
     }
     let nl = normalize_solver_function_aliases(&mut simplifier.context, eq.lhs);

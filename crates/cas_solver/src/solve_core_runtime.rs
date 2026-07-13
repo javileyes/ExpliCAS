@@ -29,6 +29,16 @@ pub(crate) fn solve_inner(
     {
         return Ok((set, Vec::new()));
     }
+    // Same recursive-bypass shape for a linear INEQUALITY with the variable on both sides and a
+    // symbolic-constant coefficient: the log-linearization of `e^x {op} 2^x` recurses here with
+    // `x·ln(e) {op} ln(2^x)` (= `x {op} x·ln2`), and the runtime isolation's equation-only
+    // linear-collect would drop the operator (spurious boundary point `{0}` instead of the ray).
+    // Collect to `c1·x + c0`, decide sign(c1) exactly, and recurse — or decline honestly.
+    if let Some(result) =
+        crate::solve_backend_local::try_symbolic_linear_coeff_inequality(simplifier, eq, var)
+    {
+        return result;
+    }
     cas_solver_core::solve_runtime_recursive_bound_runtime::solve_inner_with_runtime_state_and_default_recursive_routes_and_errors(
         eq,
         var,
