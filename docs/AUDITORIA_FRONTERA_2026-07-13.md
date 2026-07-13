@@ -19,7 +19,7 @@ El frente de regresión encontró wrong-answers en familias ADYACENTES a lo que 
 - [x] **F5 [P0]** rational-gcd-wrong-value (`gcd(1/2,1/3)`) — CERRADA ciclo 5, commit `65141fac6` (gcd/lcm racional en la capa numérica: `gcd(a/b,c/d)=gcd(a,c)/lcm(b,d)`; enteros = caso denom-1; verificado vs sympy)
 - [x] **F6 [P0]** diff-symbolic-order-treated-as-second-variable (`diff(e^x,x,n)`) — CERRADA ciclo 4, commit `88f262022` (gate de ocurrencia-libre en `try_desugar_higher_order_diff` — símbolo trailing no-libre en el target → eco honesto; mixta genuina intacta; huella 0-delta)
 - [x] **F7 [P0]** trig-equal-multiple-orientation-set-collapse (`solve(sin(x)=sin(2*x), x)`) — CERRADA ciclo 2, commit `0028476d9` (canonicalización Neg(0) + solve factor-wise + union periodic-aware en sum-to-product)
-- [ ] **F8 [P1]** cubic-symbolic-coeff-cube-root-self-referential-leak (`solve(x^3+p*x+q=0,x)`) — bounded-single-cycle
+- [x] **F8 [P1]** cubic-symbolic-coeff-cube-root-self-referential-leak (`solve(x^3+p*x+q=0,x)`) — CERRADA ciclo 7, commit `2ad713ce1` (recovery post-leak: poly-en-var simbólico grado≥3 en Residual → eco honesto de la ecuación original; Cardano simbólica diferida)
 - [ ] **F9 [P1]** simplify-power-of-multiterm-poly-cycle-mangle (`(x^2+x+1)^2`) — bounded-single-cycle
 - [ ] **F10 [P2]** symbolic-coeff-linear-inequality-decline (`solve(-(a^2+1)*x>b, x)`) — bounded-single-cycle
 - [ ] **F11 [P2]** piecewise-nonsmooth-definite-integral-no-partition (`integrate(floor(x), x, 0, 3)`) — multi-cycle

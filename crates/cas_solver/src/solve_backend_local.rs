@@ -10461,6 +10461,36 @@ fn solve_local_core_inner(
         set
     };
 
+    // A degree>=3 polynomial equation with SYMBOLIC coefficients (`x³+p·x+q = 0`) has no
+    // closed-form path here (`Polynomial` stores rational coeffs; Cardano is rational-only), so
+    // base-side power isolation takes the n-th root of both sides UNCONDITIONALLY -- unlike the
+    // exponent-side path, it has no "rhs still has the variable" progress guard -- and leaks a
+    // self-referential `solve(x − (−p·x − q)^(1/3) = 0, x)`. That mangled operator is neither the
+    // symbolic Cardano roots nor an honest decline. When the ORIGINAL `lhs − rhs` is a genuine
+    // polynomial in `var` (non-negative integer powers, coefficients possibly symbolic) of degree
+    // >= 3, replace the leak with the honest one-sided echo of the ORIGINAL equation. Gated on
+    // Residual/Conditional so every productive path already ran first: a numeric cubic (Cardano ->
+    // Discrete), a biquadratic (surd substitution -> Discrete), `x²=√x` (-> Discrete), and
+    // `x²=2^x` (not a polynomial in `x` -> degree walker returns None) are all untouched.
+    let set = if eq.op == cas_ast::RelOp::Eq
+        && matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_))
+    {
+        let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+        let (diff, _) = simplifier.simplify(diff);
+        match symbolic_poly_degree_in_var(&simplifier.context, diff, var) {
+            Some(degree) if degree >= 3 => cas_solver_core::solve_outcome::residual_solution_set(
+                &mut simplifier.context,
+                eq.lhs,
+                eq.rhs,
+                eq.op.clone(),
+                var,
+            ),
+            _ => set,
+        }
+    } else {
+        set
+    };
+
     // An IRREDUCIBLE polynomial inequality (`x³+x+1 > 0`, `x³-3x+1 > 0`) is rewritten to `Equal(p,0)`
     // by the normal path, dropping the operator and returning the equation's root SET (so `> 0` and
     // `< 0` give identical output). When the operator is an inequality and the result is a `Discrete`
@@ -10663,6 +10693,61 @@ fn try_polynomial_inequality_sign_analysis(
         1 => SolutionSet::Continuous(intervals.into_iter().next()?),
         _ => SolutionSet::Union(intervals),
     })
+}
+
+/// Degree of a single additive TERM as a polynomial in `var` (`3·p·x²` -> 2), with
+/// coefficients possibly SYMBOLIC. Returns `None` if `var` occurs in any non-polynomial
+/// position (inside a function, a non-integer/negative exponent, a denominator). A leading
+/// `Neg` carries no degree. Mirrors `root_forms::extract_term_degree_in_var` on an immutable
+/// context.
+fn term_degree_in_var(ctx: &cas_ast::Context, term: ExprId, var: &str) -> Option<u32> {
+    if let Expr::Neg(inner) = ctx.get(term) {
+        return term_degree_in_var(ctx, *inner, var);
+    }
+    let mut degree = 0u32;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, term) {
+        match ctx.get(factor) {
+            Expr::Neg(inner) => {
+                degree = degree.checked_add(term_degree_in_var(ctx, *inner, var)?)?;
+            }
+            Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => {
+                degree = degree.checked_add(1)?;
+            }
+            Expr::Pow(base, exp) => match (ctx.get(*base), ctx.get(*exp)) {
+                (Expr::Variable(sym_id), Expr::Number(n))
+                    if ctx.sym_name(*sym_id) == var
+                        && n.is_integer()
+                        && *n >= num_rational::BigRational::from_integer(0.into()) =>
+                {
+                    let power: u32 = n.to_integer().try_into().ok()?;
+                    degree = degree.checked_add(power)?;
+                }
+                _ => {
+                    if cas_ast::collect_variables(ctx, factor).contains(var) {
+                        return None;
+                    }
+                }
+            },
+            _ => {
+                if cas_ast::collect_variables(ctx, factor).contains(var) {
+                    return None;
+                }
+            }
+        }
+    }
+    Some(degree)
+}
+
+/// Degree of `expr` as a polynomial in `var` (max over its additive terms), coefficients
+/// possibly symbolic. `None` if `expr` is not a clean polynomial in `var` (see
+/// [`term_degree_in_var`]). Used to recognise a leaked degree>=3 symbolic-coefficient
+/// polynomial equation and echo it honestly instead of the self-referential radical.
+fn symbolic_poly_degree_in_var(ctx: &cas_ast::Context, expr: ExprId, var: &str) -> Option<u32> {
+    let mut max_degree = 0u32;
+    for term in cas_math::expr_nary::add_leaves(ctx, expr) {
+        max_degree = max_degree.max(term_degree_in_var(ctx, term, var)?);
+    }
+    Some(max_degree)
 }
 
 /// Solve a BIQUADRATIC equation `a·x⁴ + b·x² + c = 0` (no odd-degree terms) by the substitution
@@ -11827,6 +11912,33 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn symbolic_poly_degree_in_var_measures_and_rejects_nonpoly() {
+        use super::symbolic_poly_degree_in_var;
+        use crate::Simplifier;
+        use cas_parser::parse;
+        // Measure on the SIMPLIFIED tree, exactly as the leak-recovery hook does (so
+        // subtraction is already the canonical `Add(Neg(...))` the degree walker expects).
+        let mut s = Simplifier::with_default_rules();
+        let deg = |s: &mut Simplifier, src: &str| {
+            let e = parse(src, &mut s.context).expect("parse");
+            let (e, _) = s.simplify(e);
+            symbolic_poly_degree_in_var(&s.context, e, "x")
+        };
+        // Symbolic-coefficient polynomials: degree is the max power of x.
+        assert_eq!(deg(&mut s, "x^3 + p*x + q"), Some(3));
+        assert_eq!(deg(&mut s, "x^3 + a*x^2 + b*x + c"), Some(3));
+        assert_eq!(deg(&mut s, "x^5 + p*x + q"), Some(5));
+        assert_eq!(deg(&mut s, "x^3 - p*x^2"), Some(3));
+        assert_eq!(deg(&mut s, "x^2 + p*x + q"), Some(2));
+        assert_eq!(deg(&mut s, "p*x + q"), Some(1));
+        // Non-polynomial occurrences of x -> None, so the guard never fires on these.
+        assert_eq!(deg(&mut s, "x^2 - sqrt(x)"), None); // fractional power
+        assert_eq!(deg(&mut s, "x^2 - 2^x"), None); // x in the exponent
+        assert_eq!(deg(&mut s, "x + 1/x"), None); // x in a denominator
+        assert_eq!(deg(&mut s, "x + sin(x)"), None); // x inside a function
+    }
 
     #[test]
     fn trig_unit_rhs_classifies_named_transcendental_constants_via_bounds() {
