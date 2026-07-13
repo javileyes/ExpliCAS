@@ -7,7 +7,7 @@ Sigue a [AUDITORIA_FRONTERA_2026-07-13.md](AUDITORIA_FRONTERA_2026-07-13.md) (9/
 ## Checklist de cierre (vivo)
 
 - [x] **F1 [P0]** radical-product-squaring-skips-domain-filter (`solve(sqrt(x)*sqrt(x-3)=2, x)`) — CERRADA ciclo 1, commit `36c7dcff1` (filtro post-solve de dominio radical en solve_local_core: re-verifica candidatos Discrete contra la eq radical del nivel + condiciones per-radicando; gate has_radical_product)
-- [ ] **F2 [P0]** nested-abs-branch-enumeration-fails (`solve(abs(abs(x)-5)=abs(x),x)`) — bounded-single-cycle
+- [x] **F2 [P0]** nested-abs-branch-enumeration-fails (`solve(abs(abs(x)-5)=abs(x),x)`) — CERRADA ciclo 2, commit `4baf5821b` (relajar gate de reclamo: reclamar cuando ≥2 abs externos llevan la var; el core de segmentación ya era correcto)
 - [ ] **F3 [P0]** transcendental-inequality-collapses-to-boundary-equation (`solve(e^x<2^x,x)`) — bounded-single-cycle
 - [ ] **F4 [P0]** poly-rational-root-drops-residual-factor (`solve(x^5 - x^4 - 4*x^3 + 4*x^2 + x - 1 = 0, x)`) — bounded-single-cycle
 - [ ] **F5 [P1]** wrapped-trig-equation-drops-periodic-family (`solve(1/cos(x)^2 = 2, x)`) — multi-cycle

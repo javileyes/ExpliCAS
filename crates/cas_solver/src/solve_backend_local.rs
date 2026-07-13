@@ -5813,7 +5813,17 @@ fn try_solve_nested_abs_relation(
         remainder = substitute_expr_by_id(&mut simplifier.context, remainder, abs_e, zero_probe);
     }
     let (remainder, _) = simplifier.simplify(remainder);
-    if !contains_var(&simplifier.context, remainder, var) {
+    // Claim the VARIABLE-remainder family (`||x|-2| {op} x`: remainder has the var) AND the
+    // abs-vs-abs / nested-abs-sum family (`||x|-5| = |x|`: two outermost abs carry the var, so
+    // zeroing them leaves a var-free `0` remainder — but both sides genuinely depend on the var).
+    // Decline ONLY when the remainder is var-free AND fewer than two outermost abs carry the var —
+    // that is the nested-vs-CONSTANT case (`||x|-2| = 1`), whose existing owner keeps its pinned
+    // root ordering.
+    let var_outer_abs = outer_abs
+        .iter()
+        .filter(|&&a| contains_var(&simplifier.context, a, var))
+        .count();
+    if var_outer_abs < 2 && !contains_var(&simplifier.context, remainder, var) {
         return None;
     }
     // Every inner abs argument must be AFFINE in the variable (rational breakpoint).
