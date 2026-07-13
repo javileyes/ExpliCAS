@@ -118,6 +118,12 @@ fn higher_order_desugar_rejects_two_argument_and_malformed_calls() {
         "diff(x^4, x, -1)",  // negative order
         "diff(x^2, x, 1/2)", // fractional (non-integer) order
         "sin(x)",            // not a diff call at all
+        // AMBIGUOUS symbolic order: the trailing symbol is not free in the target,
+        // so it is neither a genuine mixed partial nor a supported symbolic order —
+        // decline (honest echo) instead of computing the wrong `∂/∂n ∂/∂x f = 0`.
+        "diff(e^x, x, n)",
+        "diff(sin(x), x, n)",
+        "diff(x^2, x, y)",
     ];
     for src in cases {
         let mut ctx = Context::new();

@@ -114,6 +114,26 @@ pub(crate) fn try_desugar_higher_order_diff(ctx: &mut Context, expr: ExprId) -> 
     let args = args.clone();
     let target = args[0];
 
+    // SYMBOLIC ORDER vs mixed partial: `diff(f, x, n)` is AMBIGUOUS when the trailing
+    // token `n` is a bare symbol NOT occurring free in `f` — it could be a symbolic
+    // differentiation ORDER (unsupported) or a phantom second variable. Treating it as
+    // a variable computes `∂/∂n ∂/∂x f = 0` (`diff(e^x,x,n) → 0`, a concrete wrong
+    // value). Decline (leave untouched → honest echo), exactly as a non-positive
+    // integer count already does. A genuine mixed partial (`diff(x^3·y^2, x, y)`, `y`
+    // free in the target) still desugars. Scoped to the 3-arg shape so multi-variable
+    // and mixed-count desugars are untouched.
+    if args.len() == 3 {
+        if let Expr::Variable(_) = ctx.get(args[2]) {
+            let free = cas_ast::traversal::collect_variables(ctx, target);
+            let Expr::Variable(sym) = ctx.get(args[2]) else {
+                unreachable!()
+            };
+            if !free.contains(ctx.sym_name(*sym)) {
+                return None;
+            }
+        }
+    }
+
     // Flatten the `(variable (count)?)+` tail into an ordered list of single
     // differentiation steps, expanding each integer count on its preceding variable.
     let mut steps: Vec<ExprId> = Vec::new();

@@ -17,7 +17,7 @@ El frente de regresión encontró wrong-answers en familias ADYACENTES a lo que 
 - [x] **F3 [P0]** symbolic-coeff-even-power-poly-spurious-empty (`solve(x^4+q=0, x)`) — CERRADA ciclo 1, commit `3633eb4b8` (is_known_positive espejo + brazos Neg/Mul sound; los factorables → residual honesto)
 - [ ] **F4 [P0]** matrix-equation-solve-path-broken (`solve([[1,2],[3,4]]*X=[[5],[6]], X)`) — bounded-single-cycle
 - [ ] **F5 [P0]** rational-gcd-wrong-value (`gcd(1/2,1/3)`) — bounded-single-cycle
-- [ ] **F6 [P0]** diff-symbolic-order-treated-as-second-variable (`diff(e^x,x,n)`) — bounded-single-cycle
+- [x] **F6 [P0]** diff-symbolic-order-treated-as-second-variable (`diff(e^x,x,n)`) — CERRADA ciclo 4, commit `88f262022` (gate de ocurrencia-libre en `try_desugar_higher_order_diff` — símbolo trailing no-libre en el target → eco honesto; mixta genuina intacta; huella 0-delta)
 - [x] **F7 [P0]** trig-equal-multiple-orientation-set-collapse (`solve(sin(x)=sin(2*x), x)`) — CERRADA ciclo 2, commit `0028476d9` (canonicalización Neg(0) + solve factor-wise + union periodic-aware en sum-to-product)
 - [ ] **F8 [P1]** cubic-symbolic-coeff-cube-root-self-referential-leak (`solve(x^3+p*x+q=0,x)`) — bounded-single-cycle
 - [ ] **F9 [P1]** simplify-power-of-multiterm-poly-cycle-mangle (`(x^2+x+1)^2`) — bounded-single-cycle
