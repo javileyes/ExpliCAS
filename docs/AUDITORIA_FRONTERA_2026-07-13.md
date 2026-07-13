@@ -15,7 +15,7 @@ El frente de regresión encontró wrong-answers en familias ADYACENTES a lo que 
 - [x] **F1 [P0]** parametric-abs-inequality-endpoint-collapse (`solve(abs(x-2)+1<a, x)`) — CERRADA ciclo 3, commit `9d4d12008` (peel aditivo en try_solve_abs_vs_symbolic_param)
 - [x] **F2 [P0]** parametric-abs-equation-guard-drop (`solve(abs(x)+1=a, x)`) — CERRADA ciclo 3, commit `9d4d12008` (mismo peel aditivo; guard restaurado)
 - [x] **F3 [P0]** symbolic-coeff-even-power-poly-spurious-empty (`solve(x^4+q=0, x)`) — CERRADA ciclo 1, commit `3633eb4b8` (is_known_positive espejo + brazos Neg/Mul sound; los factorables → residual honesto)
-- [ ] **F4 [P0]** matrix-equation-solve-path-broken (`solve([[1,2],[3,4]]*X=[[5],[6]], X)`) — bounded-single-cycle
+- [x] **F4 [P0]** matrix-equation-solve-path-broken (`solve([[1,2],[3,4]]*X=[[5],[6]], X)`) — CERRADA ciclo 6, commit `0b4e6cac7` (gate `residual_contains_nonfinite` en `classify_var_free_difference` → sentinel no-finito = contradicción → No solution; capacidad A^{-1}b diferida)
 - [x] **F5 [P0]** rational-gcd-wrong-value (`gcd(1/2,1/3)`) — CERRADA ciclo 5, commit `65141fac6` (gcd/lcm racional en la capa numérica: `gcd(a/b,c/d)=gcd(a,c)/lcm(b,d)`; enteros = caso denom-1; verificado vs sympy)
 - [x] **F6 [P0]** diff-symbolic-order-treated-as-second-variable (`diff(e^x,x,n)`) — CERRADA ciclo 4, commit `88f262022` (gate de ocurrencia-libre en `try_desugar_higher_order_diff` — símbolo trailing no-libre en el target → eco honesto; mixta genuina intacta; huella 0-delta)
 - [x] **F7 [P0]** trig-equal-multiple-orientation-set-collapse (`solve(sin(x)=sin(2*x), x)`) — CERRADA ciclo 2, commit `0028476d9` (canonicalización Neg(0) + solve factor-wise + union periodic-aware en sum-to-product)

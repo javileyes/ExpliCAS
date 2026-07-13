@@ -5843,6 +5843,14 @@ fn test_eval_equation_with_undefined_side_has_no_solution() {
         "solve(ln(x)=undefined, x)",
         "solve(x+1=undefined, x)",
         "solve(x=1/0, x)",
+        // Matrix-equation members: the scalar-broadcast of `A*X` (2x2) minus the
+        // 2x1 column RHS folds to `undefined` AFTER the subtraction, so the
+        // var-eliminated residual — not a bare side — is non-finite. Under the
+        // engine's scalar-X semantics a 2x2 can never equal a 2x1 column, so the
+        // sound answer is "No solution", not "All real numbers if undefined = 0".
+        "solve([[1,2],[3,4]]*X=[[5],[6]], X)",
+        "solve([[1,0],[0,1]]*X=[[2],[3]], X)",
+        "solve(X*[[1,2],[3,4]]=[[5],[6]], X)",
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])

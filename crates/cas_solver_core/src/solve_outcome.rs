@@ -6,8 +6,8 @@ use crate::log_domain::{
 };
 use crate::solution_set::{isolated_var_solution, open_positive_domain};
 use cas_ast::{
-    BoundType, BuiltinFn, Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId,
-    Interval, RelOp, SolutionSet, SolveResult,
+    BoundType, BuiltinFn, Case, ConditionPredicate, ConditionSet, Constant, Context, Equation,
+    Expr, ExprId, Interval, RelOp, SolutionSet, SolveResult,
 };
 
 /// Classification of a variable-free equation residual `diff = lhs - rhs`.
@@ -1909,7 +1909,33 @@ pub(crate) fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFr
         // leave `-ln(2)`, whose only algebraic root `x = 0` lies outside `x > 0`,
         // so the real solution set is empty rather than all reals.
         _ if is_provably_nonzero_constant(ctx, diff) => VarFreeDiffKind::ContradictionNonZero,
+        // A residual that folded to a NON-FINITE sentinel (`Undefined`/`Infinity`)
+        // is not a decidable real constraint: `undefined = 0` / `oo = 0` is
+        // unsatisfiable for every value, so the set is empty, NOT "all reals if
+        // undefined = 0". This catches residuals that BECOME non-finite after the
+        // subtraction `lhs - rhs` -- e.g. a matrix shape-mismatch (`A*X` broadcast
+        // to 2x2 minus a 2x1 column folds to `Undefined`) -- which the bare
+        // undefined-SIDE guards upstream never see.
+        _ if residual_contains_nonfinite(ctx, diff) => VarFreeDiffKind::ContradictionNonZero,
         _ => VarFreeDiffKind::Constraint,
+    }
+}
+
+/// True when `expr` contains a non-finite sentinel constant (`Undefined` or
+/// `Infinity`), including nested inside arithmetic, negation, function
+/// arguments, or a matrix. Mirrors the Matrix-aware `solution_contains_nonfinite`
+/// in `cas_solver`, kept in-crate so the var-eliminated classifier can reject a
+/// folded sentinel before it is mistaken for a symbolic parameter constraint.
+fn residual_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Infinity | Constant::Undefined) => true,
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            residual_contains_nonfinite(ctx, *a) || residual_contains_nonfinite(ctx, *b)
+        }
+        Expr::Neg(a) | Expr::Hold(a) => residual_contains_nonfinite(ctx, *a),
+        Expr::Function(_, args) => args.iter().any(|&c| residual_contains_nonfinite(ctx, c)),
+        Expr::Matrix { data, .. } => data.iter().any(|&c| residual_contains_nonfinite(ctx, c)),
+        _ => false,
     }
 }
 
@@ -6725,6 +6751,56 @@ pub(crate) fn power_equals_base_symbolic_outcome(ctx: &mut Context, base: ExprId
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classify_var_free_difference_rejects_nonfinite_residual() {
+        use cas_parser::parse;
+        // A residual that folds to a non-finite sentinel (a matrix shape-mismatch
+        // folds to `Undefined`; overflow to `Infinity`) is a contradiction, never a
+        // parameter constraint: `undefined = 0` / `oo = 0` is unsatisfiable for
+        // every value, so the set is empty (No solution), not "all reals if
+        // undefined = 0".
+        let mut ctx = Context::new();
+        let undef = ctx.add(Expr::Constant(Constant::Undefined));
+        assert_eq!(
+            classify_var_free_difference(&ctx, undef),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+        let inf = ctx.add(Expr::Constant(Constant::Infinity));
+        assert_eq!(
+            classify_var_free_difference(&ctx, inf),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+        // Nested inside a matrix cell — the actual matrix-equation residual shape.
+        let one = ctx.num(1);
+        let undef_cell = ctx.add(Expr::Constant(Constant::Undefined));
+        let mat = ctx.add(Expr::Matrix {
+            rows: 1,
+            cols: 2,
+            data: vec![one, undef_cell],
+        });
+        assert_eq!(
+            classify_var_free_difference(&ctx, mat),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+        // Sanity: a genuine symbolic-parameter residual stays a Constraint, `0`
+        // stays an identity, a non-zero number stays a contradiction.
+        let a = parse("a", &mut ctx).expect("parse a");
+        assert_eq!(
+            classify_var_free_difference(&ctx, a),
+            VarFreeDiffKind::Constraint
+        );
+        let zero = ctx.num(0);
+        assert_eq!(
+            classify_var_free_difference(&ctx, zero),
+            VarFreeDiffKind::IdentityZero
+        );
+        let five = ctx.num(5);
+        assert_eq!(
+            classify_var_free_difference(&ctx, five),
+            VarFreeDiffKind::ContradictionNonZero
+        );
+    }
 
     #[test]
     fn residual_solution_set_de_self_references_no_progress_isolation() {
