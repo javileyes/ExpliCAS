@@ -9451,6 +9451,30 @@ fn try_solve_reciprocal_trig_equation(
     }
 }
 
+/// True when `expr` is (or its top-level `Mul` contains) at least two square-root factors —
+/// `√A·√B`, whether written `sqrt(_)` or `Pow(_, 1/2)`. This is the shape the simplifier merges to
+/// `√(A·B)`, widening the real domain from `{A≥0 ∧ B≥0}` to `{A·B≥0}` and admitting extraneous roots
+/// after squaring. Single radicals (handled by the existing range-condition machinery) return false.
+fn has_radical_product(ctx: &Context, expr: ExprId) -> bool {
+    let is_even_root = |e: ExprId| -> bool {
+        if cas_math::expr_extract::extract_sqrt_argument_view(ctx, e).is_some() {
+            return true;
+        }
+        if let Expr::Pow(_, exp) = ctx.get(e) {
+            if let Some(n) = cas_math::numeric_eval::as_rational_const(ctx, *exp) {
+                use num_traits::Zero;
+                return !n.is_integer() && (n.denom() % 2i32).is_zero();
+            }
+        }
+        false
+    };
+    cas_math::expr_nary::mul_leaves(ctx, expr)
+        .iter()
+        .filter(|&&f| is_even_root(f))
+        .count()
+        >= 2
+}
+
 fn solve_local_core(
     eq: &Equation,
     var: &str,
@@ -9465,6 +9489,40 @@ fn solve_local_core(
     simplifier.begin_solve_simplify_memo();
     let result = solve_local_core_inner(eq, var, simplifier, opts, ctx);
     simplifier.end_solve_simplify_memo();
+    // RADICAL-PRODUCT DOMAIN FILTER (F1 2026-07-13b): the simplifier merges `√A·√B → √(A·B)` and the
+    // radical handler squares to a polynomial, WIDENING the real domain from `{A≥0 ∧ B≥0}` to
+    // `{A·B≥0}` — so an extraneous root (`x=-1` of `√x·√(x-3)=2`, where `(-1)·(-4)=4≥0`) survives
+    // verification against the squared/merged form. THIS wrapper still holds the ORIGINAL radical
+    // equation for the current solve level, so re-verify the discrete candidates against it:
+    // `check_root` sees `√(-1)` (non-real → extraneous), and the per-radicand domain conditions let
+    // the exact surd-sign prover drop surd roots (`(3-√17)/2 < 2` violates `x≥2`). Sound and narrow:
+    // scoped to real-only radical equations; a genuine root satisfies its own domain and is never
+    // dropped. The inner squared sub-solve (no `√`) and every non-radical solve are untouched.
+    if opts.value_domain.is_real_only() {
+        if let Ok((set, steps)) = result {
+            if matches!(set, SolutionSet::Discrete(_))
+                && (has_radical_product(&simplifier.context, eq.lhs)
+                    || has_radical_product(&simplifier.context, eq.rhs))
+            {
+                let mut conds = ctx.required_conditions();
+                for side in [eq.lhs, eq.rhs] {
+                    let dom = cas_solver_core::domain_inference::infer_implicit_domain(
+                        &simplifier.context,
+                        side,
+                        true,
+                    );
+                    for cond in dom.conditions() {
+                        if !conds.contains(cond) {
+                            conds.push(cond.clone());
+                        }
+                    }
+                }
+                let filtered = filter_real_solutions(&mut simplifier.context, eq, var, set, &conds);
+                return Ok((filtered, steps));
+            }
+            return Ok((set, steps));
+        }
+    }
     result
 }
 
