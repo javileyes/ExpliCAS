@@ -3113,7 +3113,8 @@ fn test_eval_periodic_trig_product_equation_unions_families() {
     // `sin(2x) − sin(x) = sin(x)·(2·cos(x) − 1)` stays on the sum-to-product / product path.
     assert_eq!(
         r("solve(sin(2*x)-sin(x), x)"),
-        "{ k·2·pi, 1/3·pi + k·2·pi, pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+        // Factor-wise family union (post-2026-07-13): same set, `k·2π` base last.
+        "{ 1/3·pi + k·2·pi, pi + k·2·pi, 5/3·pi + k·2·pi, k·2·pi : k ∈ ℤ }"
     );
     assert_eq!(
         r("solve(cos(2*x)+cos(x), x)"),

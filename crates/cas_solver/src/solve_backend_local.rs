@@ -5688,20 +5688,32 @@ fn try_solve_trig_sum_to_product_equation(
         ),
         _ => return None,
     };
-    let product = simplifier.context.add(Expr::Mul(f1, f2));
+    // Solve each factor's zero set DIRECTLY at top level (each factor is a single
+    // bare trig call, so the periodic solver returns its full family) and union the
+    // two families. Solving the whole `Mul(f1, f2)` instead lets `simplify` fold a
+    // negative half-difference (`sin(−x/2)`) into a top-level `Neg(f1·f2)`, whose
+    // recursive re-solve lacks the periodic-product recovery and collapses to a
+    // single factor's `{0}` — the orientation-specific defect. Factor-wise solve
+    // sidesteps the fold entirely.
     let zero = simplifier.context.num(0);
-    let set = solve_relation_set(simplifier, var, product, zero, RelOp::Eq)?;
-    // Only a fully-resolved set is acceptable; a residual/conditional from the
-    // recursive solve must decline to the (honest) previous behavior.
-    match set {
-        SolutionSet::Discrete(_)
-        | SolutionSet::Empty
-        | SolutionSet::AllReals
-        | SolutionSet::Continuous(_)
-        | SolutionSet::Union(_)
-        | SolutionSet::Periodic { .. } => Some(set),
-        _ => None,
+    let s1 = solve_relation_set(simplifier, var, f1, zero, RelOp::Eq)?;
+    let zero2 = simplifier.context.num(0);
+    let s2 = solve_relation_set(simplifier, var, f2, zero2, RelOp::Eq)?;
+    let resolved = |s: &SolutionSet| {
+        matches!(
+            s,
+            SolutionSet::Discrete(_)
+                | SolutionSet::Empty
+                | SolutionSet::AllReals
+                | SolutionSet::Continuous(_)
+                | SolutionSet::Union(_)
+                | SolutionSet::Periodic { .. }
+        )
+    };
+    if !resolved(&s1) || !resolved(&s2) {
+        return None; // a residual/conditional factor declines to the honest residual
     }
+    union_branch_solutions(simplifier, vec![s1, s2])
 }
 
 /// NESTED abs relation — an `abs` whose argument contains another `abs` with an

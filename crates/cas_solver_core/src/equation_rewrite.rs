@@ -37,7 +37,16 @@ pub(crate) fn isolate_negated_lhs(
     rhs: ExprId,
     op: RelOp,
 ) -> Equation {
-    let neg_rhs = ctx.add(Expr::Neg(rhs));
+    // Keep a ZERO RHS canonical: `−0 = 0`, but wrapping it in `Expr::Neg` produces
+    // the non-canonical `Neg(Number(0))` that the zero-product gate `is_numeric_zero`
+    // does not recognize — which defeated the periodic-trig product recovery, so
+    // `−(sin·cos) = 0` (the forward orientation of `sin(x)=sin(2x)`) collapsed to a
+    // single-factor `{0}` instead of the full union of families.
+    let neg_rhs = if is_numeric_zero(ctx, rhs) {
+        rhs
+    } else {
+        ctx.add(Expr::Neg(rhs))
+    };
     Equation {
         lhs: inner,
         rhs: neg_rhs,
