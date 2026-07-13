@@ -7956,6 +7956,82 @@ fn try_solve_periodic_trig_equation_ungated(
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
 
+    // RECIPROCAL-SQUARE (F5 2026-07-13b): `A/trig(g)^2 = c` — sec(x)^2, csc(x)^2, 1/cos(x)^2,
+    // 1/sin(x)^2, optionally shifted by a constant (`sec(x)^2 - 2 = 0`) — all canonicalize to
+    // `Div(A, Pow(cos|sin(g), 2))`. The bare-squared reducer below never matches the `Div`, so the
+    // generic isolation emits only the finite principal-value roots and DROPS the periodic family.
+    // Invert to the equivalent `trig(g)^2 = -A/k` (from `A/trig^2 + k = 0`, k = the folded constant
+    // remainder, k != 0) and recurse, so the existing double-angle reducer yields the full family.
+    {
+        use num_traits::Zero as _;
+        // Match a term `±A/trig(g)^2`; returns `(Pow(trig(g),2), signed A)`.
+        let recip_square = |ctx: &Context, term: ExprId| -> Option<(ExprId, BigRational)> {
+            let (inner, sign) = match ctx.get(term) {
+                Expr::Neg(i) => (*i, -BigRational::one()),
+                _ => (term, BigRational::one()),
+            };
+            let Expr::Div(num, den) = ctx.get(inner) else {
+                return None;
+            };
+            let (num, den) = (*num, *den);
+            let a = cas_math::numeric_eval::as_rational_const(ctx, num)?;
+            let Expr::Pow(base, exp) = ctx.get(den) else {
+                return None;
+            };
+            let (base, exp) = (*base, *exp);
+            if cas_math::numeric_eval::as_rational_const(ctx, exp)
+                != Some(BigRational::from_integer(2.into()))
+            {
+                return None;
+            }
+            let Expr::Function(fn_id, args) = ctx.get(base) else {
+                return None;
+            };
+            if args.len() != 1 || !contains_var(ctx, args[0], var) {
+                return None;
+            }
+            match ctx.builtin_of(*fn_id) {
+                Some(BuiltinFn::Sin | BuiltinFn::Cos) => Some((den, a * sign)),
+                _ => None,
+            }
+        };
+        let diff = simplifier.context.add(Expr::Sub(lhs, rhs));
+        let (diff, _) = simplifier.simplify(diff);
+        let mut sq: Option<(ExprId, BigRational)> = None;
+        let mut k = BigRational::zero();
+        let mut shape_ok = true;
+        for term in cas_math::expr_nary::add_leaves(&simplifier.context, diff) {
+            if let Some((pow, a)) = recip_square(&simplifier.context, term) {
+                if sq.is_some() {
+                    shape_ok = false;
+                    break;
+                }
+                sq = Some((pow, a));
+            } else if let Some(c) =
+                cas_math::numeric_eval::as_rational_const(&simplifier.context, term)
+            {
+                k += c;
+            } else {
+                shape_ok = false;
+                break;
+            }
+        }
+        if shape_ok {
+            if let Some((pow, a)) = sq {
+                if !k.is_zero() {
+                    let target = -a / k; // trig(g)^2 = -A/k
+                    let target_expr = simplifier.context.add(Expr::Number(target));
+                    let reduced = Equation {
+                        lhs: pow,
+                        rhs: target_expr,
+                        op: RelOp::Eq,
+                    };
+                    return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                }
+            }
+        }
+    }
+
     // `sin(arg)^2 = c`  <=>  `cos(2·arg) = 1 - 2c` ;  `cos(arg)^2 = c`  <=>  `cos(2·arg) = 2c - 1`.
     // Reduce a squared bare trig to the double-angle cosine equation and recurse: the cos branch's
     // c ∈ {0, ±1} gate then maps EXACTLY the single-family cases (`sin(x)^2=1 → cos(2x)=-1 →
