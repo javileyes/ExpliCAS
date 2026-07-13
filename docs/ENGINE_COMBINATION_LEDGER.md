@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 551 (newest first)
+Active entries: 552 (newest first)
 
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (abs-vs-abs no-polinómico fabrica "No solution" falso): `solve(abs(ln(x))<abs(x))`
+- 2026-07-13 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`is_known_negative` brazos N... | SOUNDNESS (is_known_negative unsound para operandos simbólicos): `solve(x^4+q=0)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS (afín-en-tan pierde la familia periódica por fold del simplificador): `solve(tan(x)+1=2)`
 - 2026-07-11 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (3 extensiones acopladas del M... | SOUNDNESS/CAPACIDAD (cociente sobre √ mangleado + raíces surd del single-radical): `solve(x/sqrt(1-x^2)=1)`
 - 2026-07-11 | `retained` | `crates/cas_solver_core/src/solve_runtime_isolation_dispatch_bound_runtime.rs... | SOUNDNESS (desigualdad paramétrica monótona asume signo del parámetro): `solve(a*x>b)`
@@ -19254,3 +19255,18 @@ Active entries: 551 (newest first)
   - retained learning:
   - **El patrón Option<Result> de tres salidas generaliza**: dos handlers consecutivos (abs-vs-param, abs-vs-abs) tenían el mismo defecto de expresividad — None colapsaba "reconozco pero no resuelvo" con "no es mío". Barrido futuro barato: grep de handlers cuyo match reconoce una familia amplia pero cuyo gate interno devuelve None (el genérico aguas abajo es casi siempre peor que un decline).
   - PRÓXIMO PELDAÑO: capacidad sobre estos declines (|ln x| vs |x| vía cuadrados + solver transcendental de desigualdades; abs-cuadrático vs param a Conditional con endpoints surd-simbólicos), clase A builder de segmentos, 16 P2 del audit, peldaño F18 (+c·π), y frontier-audit NUEVO (el 2026-07-09 agotado).
+
+## 2026-07-13 - SOUNDNESS (is_known_negative unsound para operandos simbólicos): `solve(x^4+q=0)`
+
+- area: `crates/cas_solver_core/src/isolation_utils.rs` (`is_known_negative` brazos Neg/Mul + `is_known_positive` espejo nuevo)
+- status: `retained`. FAMILIA P0 F3 del informe `docs/AUDITORIA_FRONTERA_2026-07-13.md` (6 miembros). TOP-LEVERAGE del audit nuevo — la capa de signo transversal, con un brazo pendiente.
+- capture:
+  - investment_class: soundness (conjunto vacío falso). Chokepoint: un predicado, dos brazos, dos consumidores.
+  - cell: `x^4+q=0`/`x^6+q=0`/`x^8+q=0`/`x^4=-q` → `{±(-q)^(1/n)}` (era No solution); `x^4+q*x^2=0` → residual honesto (era No solution; el `{0,±√(-q)}` limpio necesita product-split de monomio común, gap declarado). Controles: `x^4+16=0`/`x^4=-16` → No solution (constante concreta negativa, correcto), `x^4-16=0` → `{-2,2}`, `x^2=1-√2` → No solution (surd<0), `x^2=2-√2` → conjunto surd, `-2*x>6` → `(-∞,-3)` (el flip por coef negativo intacto).
+  - causa raíz: `is_known_negative` confundía "no-probablemente-negativo" con "probablemente-no-negativo". `Neg(_) => true` marca toda negación sintáctica como negativa (pero `Neg(q)` con q simbólico tiene signo desconocido); `Mul => XOR` trata un factor indecidible como no-negativo. `x^4=-q` (=`Neg(q)`) → known-negative falso → ruta EvenExponentNegativeRhsImpossible → Empty.
+  - diseño: espejo `is_known_positive` con brazos simétricos, y reescribir los dos brazos malos: `Neg(inner) => is_known_positive(inner)` (negación es negativa ⟺ inner positivo); `Mul(l,r) => (neg(l)&&pos(r)) || (pos(l)&&neg(r))` (producto negativo ⟺ un factor probado-pos y otro probado-neg). El brazo Number y los oráculos de constantes (provable_sign_vs_zero, provable_const_sign) sin tocar → concretos y surds decididos igual.
+  - validación: workspace exit 0, 0 failed; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella estructural 0-delta (grep de contadores state/passed/failed/total vacío; los 2 consumidores — even-power route + Mul-isolation flip — no tenían fixtures pinneando el viejo comportamiento). Test unitario: matriz de casos concretos/surd/simbólicos para AMBOS predicados.
+  - retained learning:
+  - **Un predicado de signo bi-valuado (bool) NO puede ser sound sin su espejo**: `is_known_negative` solo era decidible porque asumía que "no puedo probar negativo" ⇒ "trata como no-negativo" en los brazos recursivos. La forma correcta es el PAR {is_known_negative, is_known_positive} donde cada uno delega en el otro para Neg/Mul, y ambos devuelven false para lo indecidible. Es la 3ª vez que la capa de signo aparece en un audit — cada brazo `=> true`/`=> false` incondicional sobre un operando simbólico es un wrong-answer latente.
+  - **Convención de RHS simbólico**: `x^2=q → {±√q}` incondicional ya era la convención del motor; el fix hace `x^4=-q` CONSISTENTE con ella (no un conditional). El corner `x^4+q^2+1=0` (constante var-bearing provably-positiva) pasa a conjunto surd — consistente con la convención, requeriría el prover ESTRUCTURAL (no el oráculo de constantes) para volver a No solution; anotado, sin fixture que lo pinnee.
+  - PRÓXIMO PELDAÑO: F7 (Neg(0) no-canónico, familias periódicas), F1+F2 (peel aditivo abs paramétrico), F6 (diff orden simbólico). Product-split de monomio común (`x^4+q*x^2=0` → `{0,±√(-q)}`) queda como capacidad aparte.

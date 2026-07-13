@@ -39,15 +39,22 @@ pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     }
 }
 
-/// Check if an expression is known to be negative.
+/// Check if an expression is PROVABLY negative.
 ///
-/// Recursively analyzes Mul products using XOR logic:
-/// `(-a) * b` is negative, `(-a) * (-b)` is positive.
+/// SOUND for symbolic operands: `Neg(e)` is negative only when `e` is provably
+/// POSITIVE (not for every syntactic negation — `Neg(q)` with symbolic `q` has
+/// unknown sign), and a product is negative only when one factor is provably
+/// positive and the other provably negative. Treating an undecidable operand as
+/// non-negative used to make `x^4 = -q` (i.e. `x^4+q=0`) wrongly route to the
+/// "even power = negative ⇒ impossible" arm and return the empty set.
 pub(crate) fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
-        Expr::Neg(_) => true,
-        Expr::Mul(l, r) => is_known_negative(ctx, *l) ^ is_known_negative(ctx, *r),
+        Expr::Neg(inner) => is_known_positive(ctx, *inner),
+        Expr::Mul(l, r) => {
+            (is_known_negative(ctx, *l) && is_known_positive(ctx, *r))
+                || (is_known_positive(ctx, *l) && is_known_negative(ctx, *r))
+        }
         // A constant LINEAR SURD `A + B·√n` (e.g. `1 − √2`): decide its sign exactly, so an even-root
         // isolation `x² = 1 − √2` correctly drops to No solution instead of leaking `±√(1−√2)`.
         // Fallback: the exact value-bounds oracle decides general constants the surd
@@ -56,6 +63,27 @@ pub(crate) fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
             cas_math::root_forms::provable_sign_vs_zero(ctx, expr) == Some(Ordering::Less)
                 || cas_math::const_sign::provable_const_sign(ctx, expr)
                     == Some(cas_math::const_sign::ConstSign::Negative)
+        }
+    }
+}
+
+/// Check if an expression is PROVABLY positive — the exact mirror of
+/// [`is_known_negative`]. Symmetric arms so the two predicates stay consistent:
+/// `Neg(e)` is positive iff `e` is provably negative; a product is positive iff
+/// both factors share a proven sign; and the constant oracles decide surds and
+/// transcendentals. Undecidable operands return `false` (never a guess).
+pub(crate) fn is_known_positive(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(n) => *n > num_rational::BigRational::from_integer(0.into()),
+        Expr::Neg(inner) => is_known_negative(ctx, *inner),
+        Expr::Mul(l, r) => {
+            (is_known_positive(ctx, *l) && is_known_positive(ctx, *r))
+                || (is_known_negative(ctx, *l) && is_known_negative(ctx, *r))
+        }
+        _ => {
+            cas_math::root_forms::provable_sign_vs_zero(ctx, expr) == Some(Ordering::Greater)
+                || cas_math::const_sign::provable_const_sign(ctx, expr)
+                    == Some(cas_math::const_sign::ConstSign::Positive)
         }
     }
 }
@@ -518,6 +546,34 @@ pub(crate) fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
 mod tests {
     use super::*;
     use cas_ast::{BoundType, Expr, Interval};
+
+    #[test]
+    fn is_known_negative_and_positive_are_sound_for_symbolic_operands() {
+        use cas_parser::parse;
+        let mut ctx = Context::new();
+        // Concrete signs still decided (unchanged behavior).
+        for (src, neg, pos) in [
+            ("-3", true, false),
+            ("3", false, true),
+            ("-1*3", true, false),
+            ("1 - sqrt(2)", true, false),
+            ("2 - sqrt(2)", false, true),
+            // Symbolic operands: sign is UNDECIDABLE — both predicates false.
+            ("-q", false, false), // Neg(q): q unknown ⇒ not provably either
+            ("q", false, false),
+            ("-q*x^2", false, false), // Mul with symbolic factor
+            ("q - 1", false, false),
+            // Const-oracle-only: a var-bearing expression like `q^2+1` is NOT decided
+            // here (these predicates use the constant oracles, not the full structural
+            // prover); both stay false — never a guess.
+            ("q^2 + 1", false, false),
+            ("-(q^2 + 1)", false, false),
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert_eq!(is_known_negative(&ctx, e), neg, "is_known_negative({src})");
+            assert_eq!(is_known_positive(&ctx, e), pos, "is_known_positive({src})");
+        }
+    }
 
     #[test]
     fn const_numeric_sign_decides_literals_surds_and_transcendentals() {
