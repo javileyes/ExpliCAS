@@ -12,8 +12,8 @@ El frente de regresión encontró wrong-answers en familias ADYACENTES a lo que 
 
 ## Estado de cierre (vivo)
 
-- [ ] **F1 [P0]** parametric-abs-inequality-endpoint-collapse (`solve(abs(x-2)+1<a, x)`) — bounded-single-cycle
-- [ ] **F2 [P0]** parametric-abs-equation-guard-drop (`solve(abs(x)+1=a, x)`) — bounded-single-cycle
+- [x] **F1 [P0]** parametric-abs-inequality-endpoint-collapse (`solve(abs(x-2)+1<a, x)`) — CERRADA ciclo 3, commit `9d4d12008` (peel aditivo en try_solve_abs_vs_symbolic_param)
+- [x] **F2 [P0]** parametric-abs-equation-guard-drop (`solve(abs(x)+1=a, x)`) — CERRADA ciclo 3, commit `9d4d12008` (mismo peel aditivo; guard restaurado)
 - [x] **F3 [P0]** symbolic-coeff-even-power-poly-spurious-empty (`solve(x^4+q=0, x)`) — CERRADA ciclo 1, commit `3633eb4b8` (is_known_positive espejo + brazos Neg/Mul sound; los factorables → residual honesto)
 - [ ] **F4 [P0]** matrix-equation-solve-path-broken (`solve([[1,2],[3,4]]*X=[[5],[6]], X)`) — bounded-single-cycle
 - [ ] **F5 [P0]** rational-gcd-wrong-value (`gcd(1/2,1/3)`) — bounded-single-cycle

@@ -9510,6 +9510,60 @@ fn try_solve_abs_vs_symbolic_param(
     } else {
         return None;
     };
+    // Peel an ADDITIVE var-free constant off the var side (`|f|+k op a` → `|f| op a−k`):
+    // move every var-free term to the threshold. The var side must reduce to EXACTLY
+    // ONE var-carrying term (the abs, bare or coef-scaled) — `|x|+|x−1| op a` (two abs
+    // terms) and `|x|+x op a` (abs plus a bare polynomial) decline, preserving their
+    // honest residual. Adding a constant across a relation never flips the operator.
+    let (var_side, c) = match simplifier.context.get(var_side).clone() {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            fn collect(ctx: &Context, e: ExprId, positive: bool, out: &mut Vec<(ExprId, bool)>) {
+                match ctx.get(e).clone() {
+                    Expr::Add(l, r) => {
+                        collect(ctx, l, positive, out);
+                        collect(ctx, r, positive, out);
+                    }
+                    Expr::Sub(l, r) => {
+                        collect(ctx, l, positive, out);
+                        collect(ctx, r, !positive, out);
+                    }
+                    _ => out.push((e, positive)),
+                }
+            }
+            let mut terms = Vec::new();
+            collect(&simplifier.context, var_side, true, &mut terms);
+            let mut var_term: Option<ExprId> = None;
+            let mut rest: Option<ExprId> = None; // accumulated var-free terms (with sign)
+            for (t, positive) in terms {
+                if contains_var(&simplifier.context, t, var) {
+                    if var_term.is_some() || !positive {
+                        return None; // >1 var term, or a negated abs term: decline honestly
+                    }
+                    var_term = Some(t);
+                } else {
+                    let signed = if positive {
+                        t
+                    } else {
+                        simplifier.context.add(Expr::Neg(t))
+                    };
+                    rest = Some(match rest {
+                        None => signed,
+                        Some(acc) => simplifier.context.add(Expr::Add(acc, signed)),
+                    });
+                }
+            }
+            let vt = var_term?;
+            let new_c = match rest {
+                None => c,
+                Some(k) => {
+                    let d = simplifier.context.add(Expr::Sub(c, k));
+                    simplifier.simplify(d).0
+                }
+            };
+            (vt, new_c)
+        }
+        _ => (var_side, c),
+    };
     let (abs_call, mut op, c) = match simplifier.context.get(var_side).clone() {
         Expr::Mul(l, r) => {
             let (coef, inner) = if contains_var(&simplifier.context, r, var) {

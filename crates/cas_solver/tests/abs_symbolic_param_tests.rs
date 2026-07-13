@@ -53,6 +53,61 @@ fn non_affine_abs_arguments_decline_honestly() {
     );
 }
 
+#[test]
+fn additive_constant_wrapper_peels_into_the_threshold() {
+    // `|f|+k op a` reduces to `|f| op a-k`; the guard/interval carries the reduced
+    // threshold. Was: `abs(x-2)+1<a` -> "No solution", `abs(x)+1=a` -> unguarded.
+    assert_eq!(
+        solve_display("abs(x - 2) + 1", RelOp::Lt, "a"),
+        "if a - 1 > 0: (3 - a, a + 1)"
+    );
+    assert_eq!(
+        solve_display("abs(x - 2) + 1", RelOp::Leq, "a"),
+        "if a - 1 >= 0: [3 - a, a + 1]"
+    );
+    assert_eq!(
+        solve_display("abs(x - 2) + 1", RelOp::Gt, "a"),
+        "(-infinity, 3 - a) U (a + 1, infinity)"
+    );
+    assert_eq!(
+        solve_display("abs(x) + 1", RelOp::Eq, "a"),
+        "if a - 1 >= 0: { a - 1, 1 - a }"
+    );
+    assert_eq!(
+        solve_display("abs(x - 1) + 1", RelOp::Eq, "a"),
+        "if a - 1 >= 0: { a, 2 - a }"
+    );
+    // Additive-then-coefficient peel order.
+    assert_eq!(
+        solve_display("2*abs(x) + 1", RelOp::Eq, "a"),
+        "if 1/2 * (a - 1) >= 0: { 1/2 * (a - 1), 1/2 * (1 - a) }"
+    );
+    // Parameter on the LHS additively (RHS constant): guard on `1 - a`.
+    assert_eq!(
+        solve_display("abs(x) + a", RelOp::Eq, "1"),
+        "if 1 - a >= 0: { 1 - a, a - 1 }"
+    );
+}
+
+#[test]
+fn additive_wrapper_declines_and_owners_are_unchanged() {
+    // Two var-carrying terms (abs + bare, or two abs) must decline honestly.
+    assert!(
+        solve_result("abs(x) + x", RelOp::Eq, "a").is_err() || {
+            let s = solve_result("abs(x) + x", RelOp::Eq, "a").unwrap();
+            s.contains("Solve") || s.contains("solve")
+        }
+    );
+    // Rational reduced threshold (a-k rational): falls to the working concrete path.
+    assert_eq!(solve_display("abs(x - 2) + 1", RelOp::Lt, "5"), "(-2, 6)");
+    assert_eq!(solve_display("abs(x - 2) + 1", RelOp::Eq, "3"), "{ 4, 0 }");
+    // Provably-positive threshold: unconditional split (no redundant guard).
+    assert_eq!(
+        solve_display("abs(x)", RelOp::Eq, "a^2 + 1"),
+        "{ a^2 + 1, -a^2 - 1 }"
+    );
+}
+
 fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");
