@@ -6087,6 +6087,88 @@ fn try_solve_product_inequality_sign_split(
     Some(union_solution_sets(&simplifier.context, case_a, case_b))
 }
 
+/// Rational coefficient of an additive term that is a RATIONAL multiple of the bare variable
+/// (`x` -> 1, `k·x`/`x·k` -> k, `x/k` -> 1/k, `Neg(t)` -> -coeff). Returns `None` if the term is not
+/// a rational multiple of `x` alone (e.g. `x^2`, `x·y`, `a·x` with symbolic `a`).
+fn rational_coeff_of_bare_var(
+    ctx: &cas_ast::Context,
+    term: ExprId,
+    var: &str,
+) -> Option<num_rational::BigRational> {
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::{One as _, Zero as _};
+    match ctx.get(term) {
+        Expr::Neg(inner) => rational_coeff_of_bare_var(ctx, *inner, var).map(|c| -c),
+        Expr::Variable(sym) if ctx.sym_name(*sym) == var => Some(num_rational::BigRational::one()),
+        Expr::Div(num, den) if !contains_var(ctx, *den, var) => {
+            let d = cas_math::numeric_eval::as_rational_const(ctx, *den)?;
+            if d.is_zero() {
+                return None;
+            }
+            rational_coeff_of_bare_var(ctx, *num, var).map(|c| c / d)
+        }
+        Expr::Mul(l, r) => {
+            let (var_side, coeff_side) = if contains_var(ctx, *l, var) {
+                (*l, *r)
+            } else {
+                (*r, *l)
+            };
+            if contains_var(ctx, coeff_side, var) {
+                return None; // x·x etc.
+            }
+            let coeff = cas_math::numeric_eval::as_rational_const(ctx, coeff_side)?;
+            rational_coeff_of_bare_var(ctx, var_side, var).map(|c| c * coeff)
+        }
+        _ => None,
+    }
+}
+
+/// Accumulate `expr` into an affine form `k·x + Σ const_terms` in `var`, walking `Add`/`Sub`/`Neg`
+/// so signed constant parts and a `Sub`-form variable term (`a - x`) are captured. `sign_positive`
+/// carries the running sign of this subtree. Returns `false` (caller bails) if the variable appears
+/// in a non-rational-linear position. Const terms are recorded with their sign for exact rebuild.
+fn collect_affine_terms_in_var(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var: &str,
+    sign_positive: bool,
+    k: &mut num_rational::BigRational,
+    const_terms: &mut Vec<(ExprId, bool)>,
+) -> bool {
+    use cas_solver_core::isolation_utils::contains_var;
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            collect_affine_terms_in_var(ctx, *l, var, sign_positive, k, const_terms)
+                && collect_affine_terms_in_var(ctx, *r, var, sign_positive, k, const_terms)
+        }
+        Expr::Sub(l, r) => {
+            collect_affine_terms_in_var(ctx, *l, var, sign_positive, k, const_terms)
+                && collect_affine_terms_in_var(ctx, *r, var, !sign_positive, k, const_terms)
+        }
+        Expr::Neg(inner) => {
+            collect_affine_terms_in_var(ctx, *inner, var, !sign_positive, k, const_terms)
+        }
+        _ => {
+            if contains_var(ctx, expr, var) {
+                match rational_coeff_of_bare_var(ctx, expr, var) {
+                    Some(coeff) => {
+                        if sign_positive {
+                            *k += coeff;
+                        } else {
+                            *k -= coeff;
+                        }
+                        true
+                    }
+                    None => false,
+                }
+            } else {
+                const_terms.push((expr, sign_positive));
+                true
+            }
+        }
+    }
+}
+
 fn try_solve_abs_threshold_inequality(
     eq: &Equation,
     var: &str,
@@ -6151,6 +6233,106 @@ fn try_solve_abs_threshold_inequality(
             }
             _ => return None,
         });
+    }
+
+    // SYMBOLIC-CENTER band (F7 2026-07-14): `|k·x + b| {op} c` with a SYMBOLIC constant term `b`
+    // (`|x - a| < 3`) reduces to `k·x+b {op} ±c`, whose endpoints `(±c − b)/k` are symbolic. The
+    // set-algebra intersect/union cannot order two symbolic endpoints, so it collapses `<`/`<=` to
+    // Empty and `>`/`>=` to AllReals. But the endpoint order is KNOWN from sign(k), so build the
+    // band/rays DIRECTLY here. Numeric-center forms fall through to the existing (pinned) reduction.
+    'symbolic_center: {
+        use num_traits::Signed as _;
+        // g = k·x + b with k a nonzero rational and b the (possibly symbolic) constant part. The
+        // additive walk handles `Sub`/`Neg` (e.g. `|a - x|` extracts k = -1, b = a) which the
+        // plain `add_leaves` split would miss.
+        let mut k = num_rational::BigRational::zero();
+        let mut const_terms: Vec<(ExprId, bool)> = Vec::new();
+        if !collect_affine_terms_in_var(&simplifier.context, g, var, true, &mut k, &mut const_terms)
+        {
+            break 'symbolic_center;
+        }
+        if k.is_zero() {
+            break 'symbolic_center;
+        }
+        // b as an expression; only take the DIRECT path when it is genuinely symbolic (the numeric
+        // center keeps its existing owner and pinned fixtures).
+        let mut b_expr = simplifier.context.num(0);
+        for (t, positive) in &const_terms {
+            b_expr = if *positive {
+                simplifier.context.add(Expr::Add(b_expr, *t))
+            } else {
+                simplifier.context.add(Expr::Sub(b_expr, *t))
+            };
+        }
+        let (b_expr, _) = simplifier.simplify(b_expr);
+        if cas_math::numeric_eval::as_rational_const(&simplifier.context, b_expr).is_some() {
+            break 'symbolic_center; // numeric center -> existing path
+        }
+        let k_expr = simplifier.context.add(Expr::Number(k.clone()));
+        let neg_c_expr = simplifier.context.add(Expr::Number(-c_value.clone()));
+        // x where g = +c and g = -c.
+        let at_pos = {
+            let n = simplifier.context.add(Expr::Sub(c_expr, b_expr));
+            let d = simplifier.context.add(Expr::Div(n, k_expr));
+            simplifier.simplify(d).0
+        };
+        let at_neg = {
+            let n = simplifier.context.add(Expr::Sub(neg_c_expr, b_expr));
+            let d = simplifier.context.add(Expr::Div(n, k_expr));
+            simplifier.simplify(d).0
+        };
+        // Order endpoints by the sign of k (g increasing iff k > 0).
+        let (lo, hi) = if k.is_positive() {
+            (at_neg, at_pos)
+        } else {
+            (at_pos, at_neg)
+        };
+        let neg_inf = cas_solver_core::solution_set::neg_inf(&mut simplifier.context);
+        let pos_inf = cas_solver_core::solution_set::pos_inf(&mut simplifier.context);
+        let set = match op {
+            RelOp::Lt => SolutionSet::Continuous(cas_ast::Interval {
+                min: lo,
+                min_type: cas_ast::BoundType::Open,
+                max: hi,
+                max_type: cas_ast::BoundType::Open,
+            }),
+            RelOp::Leq => SolutionSet::Continuous(cas_ast::Interval {
+                min: lo,
+                min_type: cas_ast::BoundType::Closed,
+                max: hi,
+                max_type: cas_ast::BoundType::Closed,
+            }),
+            RelOp::Gt => SolutionSet::Union(vec![
+                cas_ast::Interval {
+                    min: neg_inf,
+                    min_type: cas_ast::BoundType::Open,
+                    max: lo,
+                    max_type: cas_ast::BoundType::Open,
+                },
+                cas_ast::Interval {
+                    min: hi,
+                    min_type: cas_ast::BoundType::Open,
+                    max: pos_inf,
+                    max_type: cas_ast::BoundType::Open,
+                },
+            ]),
+            RelOp::Geq => SolutionSet::Union(vec![
+                cas_ast::Interval {
+                    min: neg_inf,
+                    min_type: cas_ast::BoundType::Open,
+                    max: lo,
+                    max_type: cas_ast::BoundType::Closed,
+                },
+                cas_ast::Interval {
+                    min: hi,
+                    min_type: cas_ast::BoundType::Closed,
+                    max: pos_inf,
+                    max_type: cas_ast::BoundType::Open,
+                },
+            ]),
+            _ => break 'symbolic_center,
+        };
+        return Some(set);
     }
 
     // c > 0: reduce to the two-sided inequality / the outside union.
