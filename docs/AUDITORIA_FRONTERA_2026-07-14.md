@@ -6,7 +6,7 @@ Sigue a [AUDITORIA_FRONTERA_2026-07-13b.md](AUDITORIA_FRONTERA_2026-07-13b.md). 
 
 ## Checklist de cierre (vivo)
 
-- [ ] **F1 [P0]** matrix-power-symbolic-blowup (`[[1,1],[1,0]]^14`) — bounded-single-cycle
+- [x] **F1 [P0]** matrix-power-symbolic-blowup (`[[1,1],[1,0]]^14`) — bounded-single-cycle *(graduado 2026-07-14 `60d7068e57cde267086c7da9e848d5d903de5d3a`: `Matrix::multiply` foldea numéricos eager por término del producto punto (`mul2_fold`/`add2_fold` vía `as_rational_const`) → las entradas enteras no acumulan árboles simbólicos exponenciales; `^14`/`^20`/`^50` instantáneos con Fibonacci exacto; matrices simbólicas pasan por el camino raw sin cambio)*
 - [ ] **F2 [P1]** trig-reciprocal-power-family-drop (`solve(sec(x)^3=8, x)`) — multi-cycle
 - [ ] **F3 [P1]** taylor-removable-singularity-undefined (`taylor(sin(x)/x, x, 0, 4)`) — bounded-single-cycle
 - [ ] **F4 [P0]** transcendental-inequality-periodicity-drop (`solve(sec(x)^2>2, x)`) — multi-cycle

@@ -13,6 +13,35 @@ fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     ctx.add_raw(Expr::Mul(a, b))
 }
 
+/// Multiply, folding two rational constants into a single `Number` node. Falls
+/// back to a raw symbolic product otherwise, so symbolic entries are unchanged.
+/// Eager folding keeps numeric matrix arithmetic from accumulating exponentially
+/// large unsimplified `Mul`/`Add` trees across repeated matrix multiplications
+/// (`[[1,1],[1,0]]^14` otherwise builds a multi-thousand-term dot product).
+#[inline]
+fn mul2_fold(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if let (Some(ra), Some(rb)) = (
+        crate::numeric_eval::as_rational_const(ctx, a),
+        crate::numeric_eval::as_rational_const(ctx, b),
+    ) {
+        return ctx.add(Expr::Number(ra * rb));
+    }
+    mul2_raw(ctx, a, b)
+}
+
+/// Add, folding two rational constants into a single `Number` node; raw
+/// symbolic sum otherwise (symbolic dot products accumulate exactly as before).
+#[inline]
+fn add2_fold(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if let (Some(ra), Some(rb)) = (
+        crate::numeric_eval::as_rational_const(ctx, a),
+        crate::numeric_eval::as_rational_const(ctx, b),
+    ) {
+        return ctx.add(Expr::Number(ra + rb));
+    }
+    ctx.add(Expr::Add(a, b))
+}
+
 impl Matrix {
     /// Create a Matrix from an Expr::Matrix
     pub fn from_expr(ctx: &Context, id: ExprId) -> Option<Self> {
@@ -121,13 +150,16 @@ impl Matrix {
 
         for i in 0..m {
             for j in 0..p {
-                // Compute dot product of row i of self with column j of other
+                // Compute dot product of row i of self with column j of other,
+                // folding numeric terms eagerly so integer/rational matrices do
+                // not accumulate an exponentially growing symbolic tree across
+                // repeated multiplications (matrix powers).
                 let mut sum = ctx.num(0);
                 for k in 0..n {
                     let a_ik = self.data[i * self.cols + k];
                     let b_kj = other.data[k * other.cols + j];
-                    let product = mul2_raw(ctx, a_ik, b_kj);
-                    sum = ctx.add(Expr::Add(sum, product));
+                    let product = mul2_fold(ctx, a_ik, b_kj);
+                    sum = add2_fold(ctx, sum, product);
                 }
                 result_data.push(sum);
             }
@@ -785,6 +817,103 @@ mod tests {
         let result = m1.multiply(&m2, &mut ctx).unwrap();
         assert_eq!(result.rows, 2);
         assert_eq!(result.cols, 2);
+    }
+
+    #[test]
+    fn numeric_multiply_folds_entries_to_numbers() {
+        use crate::numeric_eval::as_rational_const;
+        use num_rational::BigRational;
+        let mut ctx = Context::new();
+        // [[1,2],[3,4]] * [[5,6],[7,8]] = [[19,22],[43,50]]; every entry a bare
+        // Number, not an unsimplified Add/Mul tree.
+        let m1 = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![ctx.num(1), ctx.num(2), ctx.num(3), ctx.num(4)],
+        };
+        let m2 = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![ctx.num(5), ctx.num(6), ctx.num(7), ctx.num(8)],
+        };
+        let result = m1.multiply(&m2, &mut ctx).unwrap();
+        let want = [19, 22, 43, 50];
+        for (entry, w) in result.data.iter().zip(want) {
+            assert!(
+                matches!(ctx.get(*entry), Expr::Number(_)),
+                "entry must fold to a Number, got {:?}",
+                ctx.get(*entry)
+            );
+            assert_eq!(
+                as_rational_const(&ctx, *entry),
+                Some(BigRational::from_integer(w.into()))
+            );
+        }
+    }
+
+    #[test]
+    fn repeated_numeric_multiply_stays_folded() {
+        use crate::numeric_eval::as_rational_const;
+        use num_rational::BigRational;
+        let mut ctx = Context::new();
+        // The Fibonacci matrix squared repeatedly: entries must stay bare Numbers
+        // (F(9)=34, F(8)=21, F(7)=13 for the 8th power path via 2·2·2 doublings).
+        let fib = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![ctx.num(1), ctx.num(1), ctx.num(1), ctx.num(0)],
+        };
+        let mut acc = fib.clone();
+        for _ in 0..3 {
+            acc = acc.multiply(&acc, &mut ctx).unwrap();
+        }
+        // acc = fib^8 = [[F(9),F(8)],[F(8),F(7)]] = [[34,21],[21,13]].
+        for (entry, w) in acc.data.iter().zip([34, 21, 21, 13]) {
+            assert!(
+                matches!(ctx.get(*entry), Expr::Number(_)),
+                "entry stayed symbolic: {:?}",
+                ctx.get(*entry)
+            );
+            assert_eq!(
+                as_rational_const(&ctx, *entry),
+                Some(BigRational::from_integer(w.into()))
+            );
+        }
+    }
+
+    #[test]
+    fn symbolic_multiply_preserves_symbolic_entries() {
+        let mut ctx = Context::new();
+        // [[a,b],[c,d]] * identity keeps the symbolic entries untouched (numeric
+        // 0/1 entries fold; a,b,c,d pass through the raw path unchanged).
+        let var = |ctx: &mut Context, name: &str| {
+            let sym = ctx.intern_symbol(name);
+            ctx.add(Expr::Variable(sym))
+        };
+        let a = var(&mut ctx, "a");
+        let b = var(&mut ctx, "b");
+        let c = var(&mut ctx, "c");
+        let d = var(&mut ctx, "d");
+        let sym = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![a, b, c, d],
+        };
+        let ident = Matrix {
+            rows: 2,
+            cols: 2,
+            data: vec![ctx.num(1), ctx.num(0), ctx.num(0), ctx.num(1)],
+        };
+        let result = sym.multiply(&ident, &mut ctx).unwrap();
+        // Each entry still mentions its variable (no numeric collapse of symbols).
+        assert!(crate::expr_predicates::contains_variable(
+            &ctx,
+            result.data[0]
+        ));
+        assert!(crate::expr_predicates::contains_variable(
+            &ctx,
+            result.data[3]
+        ));
     }
 
     #[test]
