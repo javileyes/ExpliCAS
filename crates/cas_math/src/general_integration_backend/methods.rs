@@ -271,20 +271,32 @@ fn build_multi_quadratic_term_antiderivative(
     let two = BigRational::from_integer(2.into());
     let four = BigRational::from_integer(4.into());
     let gamma = &term.beta - &term.alpha * &term.linear_b / &two;
+    // Δ = b^2 - 4c > 0 ⟺ the quadratic has real (irrational) roots ⟺ the term
+    // integrates to a real-log ratio, not an arctan. Δ < 0 (irreducible) keeps
+    // the existing arctan + ln(q) rendering byte-for-byte.
+    let discriminant = &term.linear_b * &term.linear_b - &four * &term.constant_c;
+    let is_real_root = discriminant.is_positive();
 
     let log_part = if term.alpha.is_zero() {
         ctx.num(0)
     } else {
         let alpha_expr = ctx.add(Expr::Number(term.alpha.clone()));
+        // For a real-root quadratic, q changes sign, so the log-derivative part
+        // needs ln|q|; an irreducible quadratic is strictly positive, ln(q).
+        let log_denominator = if is_real_root {
+            ctx.call_builtin(BuiltinFn::Abs, vec![term.factor_expr])
+        } else {
+            term.factor_expr
+        };
         build_positive_quadratic_log_derivative_antiderivative(
             ctx,
             alpha_expr,
             &BackendAffineSlope::Numeric(BigRational::one()),
-            term.factor_expr,
+            log_denominator,
         )
     };
 
-    let arctan_part = if gamma.is_zero() {
+    let second_part = if gamma.is_zero() {
         ctx.num(0)
     } else {
         let half_b = &term.linear_b / &two;
@@ -300,24 +312,42 @@ fn build_multi_quadratic_term_antiderivative(
             let radius_square = &four * &term.constant_c - &term.linear_b * &term.linear_b;
             (center, two.clone(), radius_square)
         };
-        // q = ((s*x + h)^2 + radius_square)/s^2, so gamma/q contributes
-        // s^2*gamma/((s*x+h)^2 + r^2); the builder then divides once by the
-        // slope and once by the radius: (s^2*gamma/s/r)*arctan(center/r),
-        // which is exactly the integral for both the half (s=1) and the
-        // doubled (s=2) presentation forms.
-        let radius = build_numeric_radius_expr(ctx, &radius_square);
-        let gamma_scale = &gamma * &slope * &slope;
-        let gamma_expr = ctx.add(Expr::Number(gamma_scale));
-        build_positive_quadratic_constant_numerator_antiderivative(
-            ctx,
-            gamma_expr,
-            center,
-            &BackendAffineSlope::Numeric(slope),
-            radius,
-        )
+        if radius_square.is_negative() {
+            // Real-root quadratic: q = ((s*x+h)^2 - |radius_square|)/s^2 factors
+            // over ℝ, so gamma/q integrates to the real-log ratio
+            // (s^2*gamma/s/(2*rho))*ln|(center-rho)/(center+rho)| with
+            // rho = sqrt(|radius_square|) — the same center/slope/gamma_scale as
+            // the arctan form, only the terminal builder differs.
+            let radius = build_numeric_radius_expr(ctx, &(-&radius_square));
+            let gamma_scale = &gamma * &slope * &slope;
+            let gamma_expr = ctx.add(Expr::Number(gamma_scale));
+            build_indefinite_square_denominator_reciprocal_antiderivative(
+                ctx,
+                gamma_expr,
+                center,
+                &BackendAffineSlope::Numeric(slope),
+                radius,
+            )
+        } else {
+            // q = ((s*x + h)^2 + radius_square)/s^2, so gamma/q contributes
+            // s^2*gamma/((s*x+h)^2 + r^2); the builder then divides once by the
+            // slope and once by the radius: (s^2*gamma/s/r)*arctan(center/r),
+            // which is exactly the integral for both the half (s=1) and the
+            // doubled (s=2) presentation forms.
+            let radius = build_numeric_radius_expr(ctx, &radius_square);
+            let gamma_scale = &gamma * &slope * &slope;
+            let gamma_expr = ctx.add(Expr::Number(gamma_scale));
+            build_positive_quadratic_constant_numerator_antiderivative(
+                ctx,
+                gamma_expr,
+                center,
+                &BackendAffineSlope::Numeric(slope),
+                radius,
+            )
+        }
     };
 
-    build_backend_sum(ctx, log_part, arctan_part)
+    build_backend_sum(ctx, log_part, second_part)
 }
 
 /// Degree window for the general rational pipeline: degree <= 2 stays
@@ -377,6 +407,17 @@ pub(super) fn general_rational_partial_fraction_antiderivative(
     // Normalize the denominator monic; fold its leading coefficient into
     // the numerator so every later system works over monic polynomials.
     let leading = denominator.leading_coeff();
+    // A negative leading coefficient (e.g. `4 - x^4`) is normalized monic here,
+    // but the factorization narration is presented against the ORIGINAL
+    // denominator, so it would drop the overall sign (`4 - x^4` shown as
+    // `(x^2-2)(x^2+2)`, which equals `x^4-4`). These reciprocal forms are also
+    // better owned by the u-substitution path (`2*x/(4-x^4) -> atanh`). Decline
+    // so that owner keeps them with correct narration; positive-leading
+    // denominators (`x^4 - 4`) are unaffected. Sign-normalized narration for
+    // negative-leading denominators is a documented next step.
+    if leading.is_negative() {
+        return None;
+    }
     let denominator = denominator.div_scalar(&leading);
     let numerator = numerator.div_scalar(&leading);
 
@@ -472,6 +513,12 @@ pub fn general_rational_partial_fraction_narration_parts(
         return None;
     }
     let leading = denominator.leading_coeff();
+    // Mirror the answer path: a negative leading coefficient would narrate a
+    // sign-dropped factorization, so decline and let the u-substitution owner
+    // narrate it (see general_rational_partial_fraction_antiderivative).
+    if leading.is_negative() {
+        return None;
+    }
     let denominator = denominator.div_scalar(&leading);
     let numerator = numerator.div_scalar(&leading);
 
@@ -1030,7 +1077,13 @@ fn split_even_residual(
                     });
                     factors.push(SquarefreeFactor::Linear { root: -square_root });
                 } else {
-                    return None;
+                    // Positive non-square biquadratic root u0: x^2 - u0 has real
+                    // irrational roots (Δ > 0). Keep it as a rational quadratic
+                    // factor; the assembler renders it as a real-log ratio.
+                    factors.push(SquarefreeFactor::Quadratic {
+                        linear_b: BigRational::zero(),
+                        constant_c: -root,
+                    });
                 }
             }
             2 => {

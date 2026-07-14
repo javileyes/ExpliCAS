@@ -6018,12 +6018,14 @@ fn general_rational_pipeline_emits_pole_conditions_for_linear_factors() {
 fn general_rational_pipeline_rejects_out_of_scope_shapes() {
     let mut ctx = Context::new();
     let rejects = [
-        "1/(x^4+2*x^2+3)",     // even quartic needing irrational coefficients
-        "1/(x^4-x^2+1)",       // cyclotomic Phi_12: irreducible over Q
-        "1/((x^2-2)*(x^2+1))", // irrational real poles
-        "1/(x^2+1)",           // degree window: <= 2 owned by existing routes
-        "1/(x^4+a)",           // symbolic coefficients
+        "1/(x^4+2*x^2+3)", // even quartic needing irrational coefficients (Cap. B)
+        "1/(x^4-x^2+1)",   // cyclotomic Phi_12: irreducible over Q (Cap. B)
+        "1/(x^2+1)",       // degree window: <= 2 owned by existing routes
+        "1/(x^4+a)",       // symbolic coefficients
     ];
+    // Note: `1/((x^2-2)*(x^2+1))` (a real-root quadratic factor with irrational
+    // roots) is NO LONGER rejected — G1 Cap. A renders it as a real-log ratio.
+    // Its support is covered by integrate_contract_real_root_quadratic_factor_*.
     for source in rejects {
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         assert!(

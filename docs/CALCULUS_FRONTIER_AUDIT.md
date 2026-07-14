@@ -1115,6 +1115,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   necesitando LRT/extensión algebraica acoplada): `1/(x⁶+1)` (grado 6, factor x²+1 acoplado
   a dos surd), numerador no constante sobre la cuártica par, y los `1/(x³−x−1)`/Φ5 con
   raíz irracional individual.)*
+  *(G1 Cap. A GRADUADO 300f03ef3 2026-07-14: el factor cuadrático racional con Δ>0 (raíces
+  reales IRRACIONALES, `x²−2` dentro de `x⁴−4`) integra ahora como log-ratio real
+  `ln|(x−√2)/(x+√2)|` en el ensamblador multi-cuadrático (rama `radius_square<0` reusando
+  `build_indefinite_square_denominator_reciprocal_antiderivative`); residue sobre ℚ, surd sólo
+  en el render. `1/(x⁴−4)` (√2), `1/(x⁴−9)`, `1/((x²−2)(x²+1))`, `1/((x²−2)(x²−3))`, `x/(x⁴−4)`.
+  Δ<0 byte-idéntico. Primer sub-ciclo del plan `docs/G1_RATIONAL_INTEGRATION_SCOPING.md`.
+  Quedan Cap.B `1/(x⁶+1)`/`1/(x⁸−1)`, Cap.C `1/(x⁵−1)` Φ5/√5, Cap.D `1/(x³−2)` ∛2.)*
   *(extensión `factor` even-poly 2026-06-21 bfd669727b629bdbba8340e380e493cc773cd3ae: `factor` parte
   también polinomios PARES REDUCIBLES de grado ≥6 vía t=x²:
   `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,

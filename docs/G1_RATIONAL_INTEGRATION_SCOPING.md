@@ -42,8 +42,8 @@ Todo vive en `crates/cas_math/src/general_integration_backend/methods.rs`. El pi
 
 ## Secuencia de sub-ciclos (cada uno = un ciclo /auto-mejora, un commit)
 
-### ☐ Sub-ciclo 1 — Cap. A: cuadrática racional con discriminante positivo → log-ratio real **[S] — PRIMERO**
-- **Gradúa:** `1/(x^4-4)` (y de regalo `1/((x^2-2)(x^2+1))`, `1/((x^2-2)(x^2-3))`).
+### ☑ Sub-ciclo 1 — Cap. A: cuadrática racional con discriminante positivo → log-ratio real **[S] — HECHO** *(2026-07-14 `300f03ef38f4bebf55a26fad077eeeb6eee00fbb`)*
+- **Graduado:** `1/(x^4-4)` (+ `1/(x^4-9)`, `1/((x^2-2)(x^2+1))`, `1/((x^2-2)(x^2-3))`, `x/(x^4-4)`). Verificado por diferenciar-atrás (√2 interno; √3 por finite-diff independiente). Δ<0 byte-idéntico; huella sólo +2 tests. Fix extra: guard `leading.is_negative()→None` (answer+narration) para el bug latente de narración de signo en denominadores leading-negativo (`4-x^4`) que además secuestraba la narración u-sub. Residuales honestos pendientes: leading-negativo (narración con signo), surd-impar self-verify (pliegue `√n·√n`).
 - **Inserción:** `methods.rs:266` (rama `radius_square<0`, i.e. Δ>0) + `methods.rs:1033` (el brazo `u0` positivo-no-cuadrado que hoy hace `return None`).
 - **Reuso:** `polynomial_square_minus_constant_log_antiderivative` (`symbolic_integration_support.rs:17289`), `build_numeric_radius_expr` (`:1362`), `rational_positive_square_root` (`:2514`); `SquarefreeFactor::Quadratic` sin cambios (ya guarda `x²−2` como `{linear_b:0, constant_c:−2}`); verificador diferenciar-atrás.
 - **Net-new:** cuando `Δ=b²−4c>0`, emitir `(α/2)·ln|q| + (β−αb/2)/√Δ · ln|(2x+b−√Δ)/(2x+b+√Δ)|`; reemplazar el `return None` de `:1033` por `factors.push(Quadratic{...})` para el `+u0`.

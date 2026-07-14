@@ -59,9 +59,14 @@ cuando, los tres se cumplen:
   ~8-12 ciclos.** 🔨 **Sub-ciclo 1 ATERRIZADO 2026-06-21**: `1/(x^6-1)`, `1/(x^6-64)` (factorizan
   ENTEROS sobre ℚ) ya integran y verifican — subiendo el budget del multipoly del
   `algebraic_rational_zero_test` (el verifier ya hacía √c↦t, t²=c; solo no cabía el residual de
-  grado 6). Residual GENUINAMENTE net-new (necesita factor-over-ℝ/LRT): `1/(x^5-1)` (Φ5/√5),
-  `1/(x^6+1)`, `1/(x^8-1)`, `1/(x^4-4)` (√2), `1/(x^3-2)` (∛2). Es la promesa definitoria de
-  "universal" en integración y el item remanente declarado de la Phase 4 del backend.
+  grado 6). 🔨 **Sub-ciclo Cap. A ATERRIZADO 2026-07-14** (`300f03ef38f4bebf55a26fad077eeeb6eee00fbb`): `1/(x^4-4)` (√2) y toda
+  cuadrática racional Δ>0 (raíces reales irracionales) ahora integran como log-ratio real —
+  render `build_indefinite_square_denominator_reciprocal_antiderivative` reusado dentro del
+  ensamblador multi-cuadrático; residue sobre ℚ, surd sólo en el render. Plan de sub-ciclos en
+  `docs/G1_RATIONAL_INTEGRATION_SCOPING.md`. Residual GENUINAMENTE net-new restante (necesita
+  factor-over-ℝ/LRT): `1/(x^5-1)` (Φ5/√5, Cap.C), `1/(x^6+1)`, `1/(x^8-1)` (cuártica par
+  irreducible, Cap.B), `1/(x^3-2)` (∛2, Cap.D). Es la promesa definitoria de "universal" en
+  integración y el item remanente declarado de la Phase 4 del backend.
 - **G2 · Narrativa educativa de límites** (L'Hôpital / límite notable / squeeze /
   factor-y-cancela) — **L, ~6-10 ciclos.** Hoy CADA límite colapsa a un paso-cáscara único
   (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo

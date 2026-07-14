@@ -354,6 +354,9 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     "integrate(ln(2*x+1), x)",
     "integrate(1/(2*x + 1), x)",
     "integrate(1/(x^2+1), x)",
+    // G1 Cap. A: real-root quadratic factor (x^2-2) renders a real-log ratio;
+    // the sqrt(2) coefficient folds under the differentiate-back verifier.
+    "integrate(1/(x^4-4), x)",
     "integrate(1/(4*x^2+1)^2, x)",
     "integrate(1/(2*sqrt(x)*(x+1)), x)",
     "integrate(arcsin(2*x+1), x)",
@@ -623,6 +626,71 @@ fn integrate_contract_invalid_real_domain_integrands_return_undefined() {
 fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
     for input in REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES {
         assert_antiderivative_verifies(input);
+    }
+}
+
+/// G1 sub-cycle Cap. A (2026-07-14): a rational denominator whose squarefree
+/// factorization over ℚ leaves a quadratic with a POSITIVE discriminant (real
+/// irrational roots, e.g. `x^2 - 2` inside `x^4 - 4 = (x^2-2)(x^2+2)`) now
+/// integrates to a real-log ratio `ln|(x-√2)/(x+√2)|` instead of declining. The
+/// irreducible (Δ<0) factor still renders as arctan, unchanged.
+/// See docs/G1_RATIONAL_INTEGRATION_SCOPING.md.
+///
+/// The `x^4-4` case is also in REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES,
+/// where its antiderivative is confirmed by differentiate-back. The odd-surd
+/// variants (`x^4-9`, the `(x^2-3)` factor) are equally correct — verified
+/// numerically — but the differentiate-back simplifier does not yet fold
+/// `sqrt(3)*sqrt(3)` inside the rational cancellation, so they are asserted here
+/// by render form + support only (the surd self-verification is a simplifier
+/// residual, not an integration one — no wrong answer is emitted).
+#[test]
+fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
+    for input in [
+        "integrate(1/(x^4-4), x)",
+        "integrate(1/(x^4-9), x)",
+        "integrate(1/((x^2-2)*(x^2+1)), x)",
+        "integrate(1/((x^2-2)*(x^2-3)), x)",
+        "integrate(x/(x^4-4), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should no longer be residual: {input} -> {result}"
+        );
+        // Real-root factor contributes a log ratio (ln of an absolute value).
+        assert!(
+            result.contains("ln(|"),
+            "expected a real-log ratio term for {input} -> {result}"
+        );
+    }
+
+    // The mixed denominator keeps the arctan term for its irreducible factor.
+    let (mixed, _) =
+        evaluated_integral_with_required_conditions("integrate(1/((x^2-2)*(x^2+1)), x)");
+    assert!(
+        mixed.contains("arctan"),
+        "irreducible factor should still render arctan: {mixed}"
+    );
+}
+
+/// Honest-residual contract for the later G1 sub-cycles: denominators needing
+/// factorization over an algebraic extension (√5-quadratics, cube roots,
+/// irreducible even quartics) are NOT yet supported and must stay residual —
+/// declining, never emitting a wrong antiderivative. Cap. A must not have
+/// widened into them.
+#[test]
+fn integrate_contract_algebraic_extension_denominators_stay_residual() {
+    for input in [
+        "integrate(1/(x^5-1), x)", // Φ5 needs √5-quadratics (Cap. C)
+        "integrate(1/(x^3-2), x)", // needs ∛2 (Cap. D)
+        "integrate(1/(x^6+1), x)", // irreducible even quartic, a=√3 (Cap. B)
+        "integrate(1/(x^4-2), x)", // resolvent root √2 is itself irrational
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            result.contains("integrate("),
+            "should stay an honest residual until its sub-cycle lands: {input} -> {result}"
+        );
     }
 }
 
