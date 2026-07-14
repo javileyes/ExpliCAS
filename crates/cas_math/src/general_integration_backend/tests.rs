@@ -211,9 +211,12 @@ fn sextic_rational_factoring_fully_over_q_verifies() {
 
 #[test]
 fn sextic_rational_irreducible_over_q_stays_residual() {
-    // 1/(x^6+1) and 1/(x^8-1) need factoring over R (irreducible-over-Q quartics): they must
-    // NOT be claimed — the budget raise does not turn an unfactorable denominator into a result.
-    for src in ["1/(x^6+1)", "1/(x^8-1)"] {
+    // A raised algebraic zero-test budget must not falsely CLAIM a denominator whose real
+    // factorization is not yet rendered — it only lets an already-correct render VERIFY.
+    // (1/(x^6+1) and 1/(x^8-1) moved into scope via G1 Cap. B and are now legitimate results;
+    // Phi5 = x^5-1 needs sqrt(5)-quadratics and x^8+1 needs a surd resolvent, both still
+    // unrendered, so they must stay residual regardless of the budget.)
+    for src in ["1/(x^5-1)", "1/(x^8+1)"] {
         let mut ctx = Context::new();
         let integrand = cas_parser::parse(src, &mut ctx).expect("integrand");
         let candidate = try_algorithmic_integration_backend(

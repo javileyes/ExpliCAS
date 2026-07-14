@@ -395,6 +395,24 @@ enum SquarefreeFactor {
 /// linear system), and the remaining squarefree integral is decomposed by
 /// mixed linear/quadratic partial fractions. Quartics that only factor
 /// into quadratics with linear terms (x^4+4, x^4+x^2+1) stay residual.
+/// `c*x / (a*x^4 + b)` (bare odd `c*x` numerator over a biquadratic with no
+/// x^3/x^2/x term) integrates far more cleanly under u = x^2 to an arctan/atanh
+/// of x^2, and is owned by the nested-inverse-polynomial substitution route. The
+/// general rational route can now also handle it (the even quartic factors over
+/// ℝ), so it must decline this exact shape to keep that owner's cleaner result
+/// and narration.
+fn is_usub_biquadratic_reciprocal_form(
+    numerator: &crate::polynomial::Polynomial,
+    denominator: &crate::polynomial::Polynomial,
+) -> bool {
+    numerator.degree() == 1
+        && numerator.coeffs[0].is_zero()
+        && denominator.degree() == 4
+        && denominator.coeffs[1].is_zero()
+        && denominator.coeffs[2].is_zero()
+        && denominator.coeffs[3].is_zero()
+}
+
 pub(super) fn general_rational_partial_fraction_antiderivative(
     ctx: &mut Context,
     integrand: ExprId,
@@ -414,6 +432,9 @@ pub(super) fn general_rational_partial_fraction_antiderivative(
     }
     let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
     if numerator.is_zero() || numerator.degree() >= degree {
+        return None;
+    }
+    if is_usub_biquadratic_reciprocal_form(&numerator, &denominator) {
         return None;
     }
 
@@ -543,6 +564,9 @@ pub fn general_rational_partial_fraction_narration_parts(
     }
     let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
     if numerator.is_zero() || numerator.degree() >= degree {
+        return None;
+    }
+    if is_usub_biquadratic_reciprocal_form(&numerator, &denominator) {
         return None;
     }
     let leading = denominator.leading_coeff();

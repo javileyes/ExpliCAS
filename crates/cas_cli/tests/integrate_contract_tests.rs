@@ -740,6 +740,43 @@ fn integrate_contract_irreducible_even_quartic_factor_integrates_via_surd_split(
     );
 }
 
+/// G1 verification-budget lift (2026-07-14): a GENERAL (non-constant) numerator
+/// over an even-quartic factor produces a correct antiderivative whose combined
+/// surd render is larger than the constant-numerator case. The exact algebraic
+/// zero-test (`algebraic_rational_zero_test`) previously exceeded its node/term
+/// budget on that residual and declined; the raised budget lets it verify (still
+/// an EXACT decision procedure — a larger budget only decides bigger inputs, never
+/// a false positive), so these now emit. Numerically confirmed correct.
+#[test]
+fn integrate_contract_general_numerator_even_quartic_now_verifies() {
+    for input in [
+        "integrate((x^3+5)/(x^6+1), x)",
+        "integrate((x^3-x)/(x^6+1), x)",
+        "integrate((3*x^3-2*x+5)/(x^6+1), x)",
+        "integrate((x^2+1)/(x^4-x^2+1), x)",
+        "integrate((2*x^2+3)/(x^8-1), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "raised algebraic zero-test budget should verify and emit: {input} -> {result}"
+        );
+    }
+    // Denominators needing an algebraic extension (Φ5 √5-quadratics, ∛2) are still
+    // out of scope — the budget does not create the missing ℚ(√n) render.
+    for input in [
+        "integrate(1/(x^5-1), x)",
+        "integrate(1/(x^4-5), x)",
+        "integrate(1/(x^3-2), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            result.contains("integrate("),
+            "algebraic-extension render is a later sub-cycle, still residual: {input} -> {result}"
+        );
+    }
+}
+
 #[test]
 fn integrate_contract_positive_half_power_antiderivatives_render_as_sqrt() {
     for (input, expected) in [

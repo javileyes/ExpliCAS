@@ -21,10 +21,10 @@ use cas_ast::{BuiltinFn, ConditionPredicate, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::Signed;
 
-const ALGEBRAIC_ZERO_TEST_MAX_NODES: usize = 160;
+const ALGEBRAIC_ZERO_TEST_MAX_NODES: usize = 500;
 const ALGEBRAIC_ZERO_TEST_MAX_VARS: usize = 6;
 const ALGEBRAIC_ZERO_TEST_MAX_RELATIONS: usize = 2;
-const ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS: usize = 256;
+const ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS: usize = 512;
 
 fn algebraic_zero_test_budget() -> PolyBudget {
     // Sized so a degree-≤8 rational integrand whose squarefree denominator splits into
@@ -32,8 +32,8 @@ fn algebraic_zero_test_budget() -> PolyBudget {
     // denominator reaches ~degree 12 in the variable plus the sqrt atom. Raising this is sound —
     // the zero test stays an exact decision procedure; a larger budget only handles bigger inputs.
     PolyBudget {
-        max_terms: 256,
-        max_total_degree: 32,
+        max_terms: 2048,
+        max_total_degree: 48,
         max_pow_exp: 24,
     }
 }
