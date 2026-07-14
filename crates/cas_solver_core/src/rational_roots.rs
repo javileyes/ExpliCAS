@@ -351,7 +351,15 @@ pub enum NumericPolynomialSolveOutcome {
     /// All coefficients are zero, so equation `0 = 0` holds for every real value.
     AllReals,
     /// Candidate roots found for an in-range polynomial degree.
-    CandidateRoots { degree: usize, roots: Vec<ExprId> },
+    ///
+    /// `complete == false` means a degree>=3 residual factor with real roots was
+    /// dropped: `roots` is an incomplete subset and MUST NOT be emitted as a
+    /// concrete solution set (decline instead).
+    CandidateRoots {
+        degree: usize,
+        roots: Vec<ExprId>,
+        complete: bool,
+    },
 }
 
 /// Didactic step payload for Rational Root strategy activation.
@@ -500,7 +508,15 @@ where
         NumericPolynomialSolveOutcome::AllReals => {
             return Some((SolutionSet::AllReals, vec![]));
         }
-        NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
+        // An INCOMPLETE root set (a degree>=3 residual factor with a provably
+        // positive real-root count was dropped) must decline: emitting it as a
+        // concrete Discrete set silently loses real roots (2026-07-13b F4).
+        NumericPolynomialSolveOutcome::CandidateRoots {
+            complete: false, ..
+        } => {
+            return None;
+        }
+        NumericPolynomialSolveOutcome::CandidateRoots { degree, roots, .. } => (
             degree,
             roots
                 .into_iter()
@@ -767,21 +783,35 @@ pub(crate) fn solve_numeric_coeff_polynomial(
         return Some(NumericPolynomialSolveOutcome::AllReals);
     }
 
-    let roots = extract_candidate_roots(ctx, rat_coeffs, max_candidates);
-    Some(NumericPolynomialSolveOutcome::CandidateRoots { degree, roots })
+    let (roots, complete) = extract_candidate_roots(ctx, rat_coeffs, max_candidates);
+    Some(NumericPolynomialSolveOutcome::CandidateRoots {
+        degree,
+        roots,
+        complete,
+    })
 }
 
 /// Extract all discrete candidate roots for a degree>=3 polynomial with
-/// rational coefficients.
+/// rational coefficients, together with a COMPLETENESS verdict.
 ///
 /// This combines:
-/// - rational-root deflation for high-degree components, and
-/// - residual solving for the remaining degree<=2 polynomial.
+/// - rational-root deflation for high-degree components,
+/// - residual solving for the remaining degree<=2 polynomial,
+/// - residual solving for a BIQUADRATIC degree-4 residual (`a·x⁴+b·x²+c`), and
+/// - an EXACT Sturm real-root count for any other degree>=3 residual.
+///
+/// `complete == true` guarantees `roots` is the FULL real solution set. When the
+/// residual has degree >= 3 and provably-positive real-root count, the found
+/// roots are an INCOMPLETE subset (`solve(x⁵−x⁴−4x³+4x²+x−1=0)` used to return
+/// `{1}`, silently dropping 4 real surd roots — family F4 of the 2026-07-13b
+/// audit); the caller must decline rather than emit them as a concrete set.
+/// A residual with Sturm count 0 keeps completeness (`x⁵−1 → {1}` stays: the
+/// quartic cofactor has no real roots).
 pub(crate) fn extract_candidate_roots(
     ctx: &mut Context,
     coeffs: Vec<BigRational>,
     max_candidates: usize,
-) -> Vec<ExprId> {
+) -> (Vec<ExprId>, bool) {
     let mut roots = Vec::new();
     let (rational_roots, residual_coeffs) = find_rational_roots(coeffs, max_candidates);
 
@@ -789,11 +819,109 @@ pub(crate) fn extract_candidate_roots(
         roots.push(rational_to_expr(ctx, r));
     }
 
-    if residual_coeffs.len() == 3 || residual_coeffs.len() == 2 {
+    let complete = if residual_coeffs.len() <= 1 {
+        // Fully deflated to a constant.
+        true
+    } else if residual_coeffs.len() == 2 || residual_coeffs.len() == 3 {
         roots.extend(solve_residual_degree_leq_two(ctx, &residual_coeffs));
+        true
+    } else if residual_coeffs.len() == 5
+        && residual_coeffs[1].is_zero()
+        && residual_coeffs[3].is_zero()
+        && !residual_coeffs[4].is_zero()
+    {
+        roots.extend(solve_residual_biquadratic(ctx, &residual_coeffs));
+        true
+    } else {
+        // Degree >= 3 residual with no exact solver here: the found roots are the
+        // complete real set IFF the residual provably has NO real roots (exact
+        // Sturm count, never floats).
+        let residual =
+            cas_math::polynomial::Polynomial::new(residual_coeffs.clone(), "x".to_string());
+        residual.count_real_roots() == 0
+    };
+
+    (roots, complete)
+}
+
+/// Solve a BIQUADRATIC residual `a·x⁴ + b·x² + c = 0` (ascending coeffs, no odd
+/// terms) exactly: substitute `z = x²`, solve the rational z-quadratic, decide
+/// each z-root's sign with PURE RATIONAL arithmetic (Vieta: product `c/a`, sum
+/// `−b/a` — no oracle needed), and emit `x = ±√z` for the non-negative z-roots.
+fn solve_residual_biquadratic(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<ExprId> {
+    let a = coeffs[4].clone();
+    let b = coeffs[2].clone();
+    let c = coeffs[0].clone();
+    let delta = discriminant(&a, &b, &c);
+    if delta.is_negative() {
+        return vec![]; // no real z: no real x roots
     }
 
-    roots
+    // Push `x = ±√z` for a z-root given as an expression, using the KNOWN sign.
+    let mut out: Vec<ExprId> = Vec::new();
+    fn push_pm_sqrt(ctx: &mut Context, out: &mut Vec<ExprId>, z: ExprId) {
+        let pos = crate::quadratic_formula::sqrt_expr(ctx, z);
+        let neg = ctx.add(Expr::Neg(pos));
+        out.push(pos);
+        out.push(neg);
+    }
+
+    // Exact rational square root of delta, if it exists (perfect square).
+    let delta_sqrt = rational_sqrt_exact(&delta);
+    if let Some(sd) = delta_sqrt {
+        // Rational z-roots.
+        let two_a = BigRational::from_integer(2.into()) * &a;
+        for z in [(-b.clone() + &sd) / &two_a, (-b.clone() - &sd) / &two_a] {
+            if z.is_zero() {
+                out.push(rational_to_expr(ctx, &BigRational::zero()));
+            } else if z.is_positive() {
+                let z_expr = rational_to_expr(ctx, &z);
+                push_pm_sqrt(ctx, &mut out, z_expr);
+            }
+        }
+        out
+    } else {
+        // Surd z-roots `(−b ± √Δ) / 2a`, Δ > 0 not a perfect square. Signs by
+        // Vieta, all exact: product z₁·z₂ = c/a, sum z₁+z₂ = −b/a. With the
+        // convention (z₁, z₂) = ((−b−√Δ)/2a, (−b+√Δ)/2a) and a > 0 (normalize by
+        // negating all coefficients if needed — same roots), z₂ > z₁.
+        let (a, b, c) = if a.is_positive() {
+            (a, b, c)
+        } else {
+            (-a, -b, -c)
+        };
+        let prod = &c / &a; // z₁·z₂ (c != 0 here: c == 0 makes Δ = b² a perfect square)
+        let sum_pos = (-&b / &a).is_positive(); // z₁+z₂ > 0
+        let a_expr = rational_to_expr(ctx, &a);
+        let b_expr = rational_to_expr(ctx, &b);
+        let delta_expr = rational_to_expr(ctx, &delta);
+        let (z_low, z_high) = roots_from_a_b_delta(ctx, a_expr, b_expr, delta_expr);
+        if prod.is_negative() {
+            // Opposite signs: only the larger root z_high is positive.
+            push_pm_sqrt(ctx, &mut out, z_high);
+        } else if sum_pos {
+            // Both positive.
+            push_pm_sqrt(ctx, &mut out, z_high);
+            push_pm_sqrt(ctx, &mut out, z_low);
+        }
+        // Both negative: no real x roots.
+        out
+    }
+}
+
+/// Exact square root of a non-negative rational, when it is itself rational
+/// (numerator and denominator both perfect squares). `None` otherwise.
+fn rational_sqrt_exact(q: &BigRational) -> Option<BigRational> {
+    if q.is_negative() {
+        return None;
+    }
+    let num = q.numer().sqrt();
+    let den = q.denom().sqrt();
+    if &(&num * &num) == q.numer() && &(&den * &den) == q.denom() {
+        Some(BigRational::new(num, den))
+    } else {
+        None
+    }
 }
 
 /// Solve a residual polynomial of degree <= 2 with rational coefficients.
@@ -1100,8 +1228,36 @@ mod tests {
             BigRational::one(),
         ];
         let mut ctx = Context::new();
-        let roots = extract_candidate_roots(&mut ctx, coeffs, 200);
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
         assert_eq!(roots.len(), 3);
+        assert!(complete);
+    }
+
+    #[test]
+    fn extract_candidate_roots_reports_completeness() {
+        let mut ctx = Context::new();
+        // x^5 - x^4 - 4x^3 + 4x^2 + x - 1 = (x-1)(x^4-4x^2+1): the residual is
+        // BIQUADRATIC, so all 5 real roots are produced exactly (1 + 4 surds).
+        let c = |n: i64| BigRational::from_integer(n.into());
+        let coeffs = vec![c(-1), c(1), c(4), c(-4), c(-1), c(1)];
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        assert!(complete);
+        assert_eq!(roots.len(), 5, "1 rational + 4 biquadratic surd roots");
+
+        // x^5 - 1 = (x-1)(x^4+x^3+x^2+x+1): the quartic residual has NO real
+        // roots (exact Sturm count 0), so {1} IS the complete real set.
+        let coeffs = vec![c(-1), c(0), c(0), c(0), c(0), c(1)];
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        assert!(complete, "residual with Sturm count 0 keeps completeness");
+        assert_eq!(roots.len(), 1);
+
+        // x^5 - 5x^3 + 5x - 1 = (x-1)(x^4+x^3-4x^2-4x+1): the quartic residual
+        // has 4 real roots and no exact solver here -> INCOMPLETE (was silently
+        // returned as {1}, dropping 4 real roots — 2026-07-13b F4).
+        let coeffs = vec![c(-1), c(5), c(0), c(-5), c(0), c(1)];
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        assert!(!complete, "dropped real-rooted residual must be flagged");
+        assert_eq!(roots.len(), 1);
     }
 
     #[test]
@@ -1121,9 +1277,14 @@ mod tests {
         let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200)
             .expect("in-range degree with numeric coeffs should produce outcome");
         match out {
-            NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => {
+            NumericPolynomialSolveOutcome::CandidateRoots {
+                degree,
+                roots,
+                complete,
+            } => {
                 assert_eq!(degree, 3);
                 assert_eq!(roots.len(), 3);
+                assert!(complete);
             }
             NumericPolynomialSolveOutcome::AllReals => {
                 panic!("expected candidate roots for non-zero polynomial")

@@ -421,6 +421,77 @@ impl Polynomial {
         res
     }
 
+    /// Number of DISTINCT real roots, counted EXACTLY via a Sturm chain over
+    /// `BigRational` (never floats — this is a soundness gate input). A zero or
+    /// constant polynomial returns 0.
+    ///
+    /// Sturm's theorem: for the squarefree part `p`, the number of distinct real
+    /// roots is `V(−∞) − V(+∞)`, where `V` counts sign variations along the chain
+    /// `p₀ = p, p₁ = p′, p_{k+1} = −rem(p_{k−1}, p_k)` and the sign of `p_k` at
+    /// `±∞` is the sign of its leading coefficient (negated at `−∞` for odd
+    /// degree). Squarefree-ing through `p / gcd(p, p′)` preserves the distinct
+    /// root set; the gcd's arbitrary rational scale is irrelevant (exact division,
+    /// and a positive rescale never changes a sign variation).
+    pub fn count_real_roots(&self) -> usize {
+        if self.is_zero() || self.degree() == 0 {
+            return 0;
+        }
+        let deriv = self.derivative();
+        let g = self.gcd(&deriv);
+        let squarefree = if g.degree() == 0 {
+            self.clone()
+        } else {
+            match self.div_rem(&g) {
+                Ok((q, _)) => q,
+                Err(_) => self.clone(),
+            }
+        };
+        let squarefree_deriv = squarefree.derivative();
+        let mut chain: Vec<Polynomial> = vec![squarefree, squarefree_deriv];
+        loop {
+            let last = &chain[chain.len() - 1];
+            if last.is_zero() || last.degree() == 0 {
+                break;
+            }
+            let prev = &chain[chain.len() - 2];
+            let rem = match prev.div_rem(last) {
+                Ok((_, r)) => r,
+                Err(_) => break,
+            };
+            if rem.is_zero() {
+                break;
+            }
+            chain.push(rem.neg());
+        }
+        let sign_at_inf = |p: &Polynomial, at_neg_inf: bool| -> i8 {
+            if p.is_zero() {
+                return 0;
+            }
+            let lc = p.leading_coeff();
+            let mut s: i8 = if lc > BigRational::zero() { 1 } else { -1 };
+            if at_neg_inf && p.degree() % 2 == 1 {
+                s = -s;
+            }
+            s
+        };
+        let variations = |at_neg_inf: bool| -> usize {
+            let mut count = 0usize;
+            let mut prev: i8 = 0;
+            for p in &chain {
+                let s = sign_at_inf(p, at_neg_inf);
+                if s == 0 {
+                    continue;
+                }
+                if prev != 0 && s != prev {
+                    count += 1;
+                }
+                prev = s;
+            }
+            count
+        };
+        variations(true).saturating_sub(variations(false))
+    }
+
     // Returns a list of factors. The product of these factors (times content) equals the polynomial.
     // Factors are not necessarily irreducible if they have no rational roots (e.g. x^2 + 1).
     pub fn factor_rational_roots(&self) -> Vec<Polynomial> {
@@ -582,6 +653,37 @@ mod tests {
     use super::*;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn count_real_roots_is_exact_sturm() {
+        let poly = |cs: &[i64]| {
+            Polynomial::new(
+                cs.iter()
+                    .map(|&n| BigRational::from_integer(n.into()))
+                    .collect(),
+                "x".to_string(),
+            )
+        };
+        // x^2 - 2: two real roots (±√2).
+        assert_eq!(poly(&[-2, 0, 1]).count_real_roots(), 2);
+        // x^2 + 1: none.
+        assert_eq!(poly(&[1, 0, 1]).count_real_roots(), 0);
+        // x^4 + x^3 + x^2 + x + 1 (the x^5-1 cofactor): none.
+        assert_eq!(poly(&[1, 1, 1, 1, 1]).count_real_roots(), 0);
+        // x^4 - 4x^2 + 1: four real roots (±√(2±√3)).
+        assert_eq!(poly(&[1, 0, -4, 0, 1]).count_real_roots(), 4);
+        // x^4 + x^3 - 4x^2 - 4x + 1 (the Chebyshev-quintic cofactor): four.
+        assert_eq!(poly(&[1, -4, -4, 1, 1]).count_real_roots(), 4);
+        // Repeated roots count once (squarefree pass): (x-1)^2 = x^2 - 2x + 1.
+        assert_eq!(poly(&[1, -2, 1]).count_real_roots(), 1);
+        // (x-1)^2(x+2) = x^3 - 3x + 2: two DISTINCT real roots.
+        assert_eq!(poly(&[2, -3, 0, 1]).count_real_roots(), 2);
+        // Odd degree always has at least one: x^3 + x + 1.
+        assert_eq!(poly(&[1, 1, 0, 1]).count_real_roots(), 1);
+        // Degenerate: constants and zero have none.
+        assert_eq!(poly(&[7]).count_real_roots(), 0);
+        assert_eq!(Polynomial::zero("x".to_string()).count_real_roots(), 0);
+    }
 
     #[test]
     fn test_poly_ops() {

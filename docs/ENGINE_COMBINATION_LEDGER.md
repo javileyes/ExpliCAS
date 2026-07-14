@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 560 (newest first)
+Active entries: 561 (newest first)
 
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_symbolic_linear_coeff_in... | SOUNDNESS (F3 re-intento RETENIDO: ineq lineal con coef constante-simbólico dropeaba el operador): `solve(e^x<2^x, x)`
+- 2026-07-14 | `retained` | `crates/cas_math/src/polynomial.rs` (`count_real_roots`: cadena de Sturm EXAC... | SOUNDNESS (F4 re-intento RETENIDO: deflación racional dropeaba el factor residual grado≥3 entero): `solve(x^5-x^4-4x^3+4x^2+x-1=0, x)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (abs-vs-abs no-polinómico fabrica "No solution" falso): `solve(abs(ln(x))<abs(x))`
 - 2026-07-13 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`is_known_negative` brazos N... | SOUNDNESS (is_known_negative unsound para operandos simbólicos): `solve(x^4+q=0)`
@@ -19479,3 +19480,20 @@ Active entries: 560 (newest first)
   - **Un handler nuevo de solve necesita DOS hooks: top-level (`solve_local_core_inner`) Y recursivo (`solve_inner`)** — las reducciones internas (log-linearización, zero-product) entran por el segundo. El hook del periodic-trig en solve_inner es el precedente exacto.
   - **El hang de un contract test EN la cadena de validación es una señal, no ruido**: 47 min de workspace test con un binario clavado al 99% = loop introducido por el ciclo. `ps` + `sample` del proceso identificaron el frame exacto (mi handler → full solve → strategy pipeline → mi handler).
   - PRÓXIMO PELDAÑO: F4 (Sturm completeness), re-ciclo C (tan(A)=tan(B)), re-ciclo D (cot² Layer-2).
+
+## 2026-07-14 - SOUNDNESS (F4 re-intento RETENIDO: deflación racional dropeaba el factor residual grado≥3 entero): `solve(x^5-x^4-4x^3+4x^2+x-1=0, x)`
+
+- area: `crates/cas_math/src/polynomial.rs` (`count_real_roots`: cadena de Sturm EXACTA sobre BigRational) + `crates/cas_solver_core/src/rational_roots.rs` (`extract_candidate_roots` → señal de completeness + `solve_residual_biquadratic` con signos por Vieta; `CandidateRoots{complete}`; el pipeline declina si !complete) + tests + 2 contract tests re-pinneados (presentación)
+- status: `retained`. FAMILIA P0 F4 del audit 2026-07-13b (8 miembros), tras el DIFERIMIENTO (el bloqueador era `x^5-1→{1}` correcto + el riesgo con la recovery downstream).
+- capture:
+  - investment_class: soundness (conjunto finito INCOMPLETO presentado como completo: `{1}` para una quíntica con 5 raíces reales).
+  - cell: `x^5-x^4-4x^3+4x^2+x-1=0` → **{1, ±√(2−√3), ±√(2+√3)} — las 5 raíces reales EXACTAS** (residual biquadrático resuelto; verificado numérico + sympy 5/5); quínticas Chebyshev `x^5-5x^3+5x±1` y séptica `x^7-7x^5+14x^3-7x-1` (residual no-biquadrático con raíces reales) → eco honesto operator-preserving (era `{1}` falso-completo); `x^5+2x^4-2x-1` → eco. KEEPERS: `x^5-1`→{1} (residual Sturm-count 0 = completo), `x^3-6x^2+11x-6`→{1,2,3}, biquadrática directa `x^4-8x^2+15`, Cardano `x^3+2x+1`, cuadráticas.
+  - causa raíz: `extract_candidate_roots` deflaciona raíces racionales y sólo resuelve el residual grado≤2 (gate `len == 3 || len == 2`); un residual grado≥3 se DROPEABA sin señal y el pipeline emitía las deflacionadas como Discrete completo.
+  - diseño (lo que desbloqueó el diferimiento): la señal exacta que faltaba es un **contador de raíces reales de Sturm** (`Polynomial::count_real_roots`: squarefree vía p/gcd(p,p'), cadena p_{k+1}=−rem, variaciones de signo en ±∞ por coef líder — todo BigRational, nunca f64, cumple "soundness gates must be exact"). Completeness: residual constante → completo; grado≤2 → resolver, completo; **biquadrático (len 5, sin términos impares) → resolver EXACTO** (z=x², signos de las z-raíces por Vieta — producto c/a, suma −b/a, aritmética racional pura, sin oráculo — y `x=±√z` para z≥0); otro grado≥3 → completo ⟺ Sturm-count==0. `CandidateRoots{complete:false}` → el pipeline declina (return None) → eco honesto.
+  - efecto de contrato (2 tests re-pinneados, NO regresión): el solver biquadrático in-core ahora es dueño de `(x²-3)²(x-1)` etc. (antes: quartic-factor recovery downstream) — CONJUNTO IDÉNTICO con render MÁS LIMPIO (`-(sqrt(3))` en vez del artefacto `-3·3^(-1/2)` que los pins documentaban como fealdad conocida) y reorden `{-2,2}`.
+  - validación: workspace 0 failed; clippy GREEN; scorecards verdes; huella estructural 0-delta. Tests: `count_real_roots_is_exact_sturm` (10 asserts: pares/impares/repetidas/degenerados), `extract_candidate_roots_reports_completeness` (3 regímenes), `poly_residual_completeness_tests.rs` E2E (biquadrático 5 raíces + declines + keepers). Oráculos: sympy + sustitución numérica.
+  - retained learning:
+  - **La señal de completitud que falta suele ser computable EXACTA con maquinaria clásica**: el diferimiento de F4 asumía "completeness = irresoluble sin factorización general"; Sturm (~70 líneas sobre div_rem/gcd/derivative YA existentes) decide "¿el residual tiene raíces reales?" con aritmética racional pura. Antes de diferir por "necesita señal indecidible", buscar el algoritmo exacto clásico (Sturm/Descartes/Vieta).
+  - **Vieta decide los signos de las raíces de una cuadrática sin evaluar radicales**: producto c/a y suma −b/a clasifican (+,+)/(−,−)/(+,−) con racionales puros — evita el oráculo de signos de surds para el `x=±√z` del biquadrático.
+  - **Cuando un fix in-core toma la propiedad de un caso que una recovery downstream ya arreglaba, el efecto es de PRESENTACIÓN**: mismo conjunto, render distinto — juzgar por igualdad de conjuntos y re-pinnear si el render nuevo es igual o mejor (aquí: mejor, mata el artefacto documentado `-3·3^(-1/2)`).
+  - PRÓXIMO PELDAÑO: re-ciclo C (tan(A)=tan(B)), re-ciclo D (cot² Layer-2). Residual: factorización general ℚ[x] de grado≥3 no-biquadrático (los Chebyshev declinan honesto — correcto).
