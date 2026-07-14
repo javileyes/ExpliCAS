@@ -13,7 +13,7 @@ Sigue a [AUDITORIA_FRONTERA_2026-07-13b.md](AUDITORIA_FRONTERA_2026-07-13b.md). 
 - [ ] **F5 [P0]** nested-abs-region-enumeration-drop (`solve(abs(abs(x)-abs(x-2))=1, x)`) — multi-cycle
 - [ ] **F6 [P0]** modular-exponentiation-missing (`mod(123456789^987654321, 1000000007)`) — bounded-single-cycle
 - [x] **F7 [P0]** abs-inequality-symbolic-center (`solve(abs(x-a) <= 3, x)`) — bounded-single-cycle *(graduado 2026-07-14 `f9168f4874d93fb2db03ab58281875ba39a1d6a5`: `try_solve_abs_threshold_inequality` construye la banda/rayos DIRECTAMENTE cuando `g = k·x+b` tiene `b` simbólico — endpoints `(±c−b)/k` ordenados por sign(k) conocido, bypass del set-algebra value-blind; centro numérico y threshold simbólico conservan su dueño)*
-- [ ] **F8 [P0]** leibniz-diff-under-integral (`diff(integrate(x*sin(t^2), t, 0, 1), x)`) — bounded-single-cycle
+- [x] **F8 [P0]** leibniz-diff-under-integral (`diff(integrate(x*sin(t^2), t, 0, 1), x)`) — bounded-single-cycle *(graduado 2026-07-14 `37d25106d92e7518ce6b2f50670e255b6997f6c6`: `definite_integral_leibniz_diff_rewrite` añade el término bajo la integral `+∫∂f/∂x dt` cuando el integrando depende de x — el `0` espurio con bounds constantes se vuelve `∫₀¹sin(t²)dt`; el caso completo `∫₀ˣx·sin(t²)dt` da frontera+bajo-integral; integrando sin-x conserva la FTC pura exacta)*
 - [ ] **F9 [P0]** product-inequality-symbolic-root-ordering (`solve((x-1)*(x-a) > 0, x)`) — multi-cycle
 - [ ] **F10 [P1]** partial-function-domain-constraint-dropped (`solve(sqrt(a-x)=x, x)`) — multi-cycle
 - [ ] **F11 [P0]** simplifier-expand-factor-oscillation-hang (`1/(1+2^(1/3)+4^(1/3))`) — multi-cycle

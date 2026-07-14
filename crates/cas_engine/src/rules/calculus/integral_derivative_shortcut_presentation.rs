@@ -334,10 +334,12 @@ pub(super) fn supported_integral_diff_shortcut_rewrite(
     ))
 }
 
-/// Fundamental theorem of calculus / Leibniz rule for a derivative of a
-/// definite integral with variable bounds:
+/// Fundamental theorem of calculus / general Leibniz integral rule for a
+/// derivative of a definite integral whose bounds and/or integrand depend on
+/// the differentiation variable:
 ///
-/// `d/dx integrate(f(t), t, a(x), b(x)) = f(b(x))*b'(x) - f(a(x))*a'(x)`
+/// `d/dx integrate(f(x,t), t, a(x), b(x))
+///     = f(x,b(x))*b'(x) - f(x,a(x))*a'(x) + integrate(∂f/∂x, t, a(x), b(x))`
 ///
 /// Applies even when the integrand has no closed-form antiderivative
 /// (the inner integral is residual), which is exactly the case the
@@ -345,6 +347,39 @@ pub(super) fn supported_integral_diff_shortcut_rewrite(
 /// integral evaluates away before the derivative runs, so this rule
 /// only sees the opaque/non-elementary integrands. The integration
 /// variable must differ from the differentiation variable.
+///
+/// The under-integral term `+ ∫ ∂f/∂x dt` is essential whenever the integrand
+/// depends on `x`: with constant bounds (`b'=a'=0`) the boundary terms vanish
+/// and the whole derivative would otherwise collapse to a spurious `0`.
+/// Whether `expr` mentions the named variable `var` (iterative walk to avoid
+/// recursion limits on deep trees).
+fn expr_contains_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    use cas_ast::Expr;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Variable(sym) => {
+                if ctx.sym_name(*sym) == var {
+                    return true;
+                }
+            }
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+        }
+    }
+    false
+}
+
 pub(super) fn definite_integral_leibniz_diff_rewrite(
     ctx: &mut Context,
     call: &NamedVarCall,
@@ -363,6 +398,11 @@ pub(super) fn definite_integral_leibniz_diff_rewrite(
     let integrand = definite.target;
     let lower = definite.lower;
     let upper = definite.upper;
+    // Reuse the `integrate` symbol from the original call to rebuild the
+    // under-integral term.
+    let Expr::Function(integrate_fn, _) = ctx.get(target).clone() else {
+        return None;
+    };
 
     let diff = |ctx: &mut Context, expr: ExprId| -> Option<ExprId> {
         cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
@@ -386,7 +426,28 @@ pub(super) fn definite_integral_leibniz_diff_rewrite(
 
     let upper_term = ctx.add(Expr::Mul(f_at_upper, upper_prime));
     let lower_term = ctx.add(Expr::Mul(f_at_lower, lower_prime));
-    let result = ctx.add(Expr::Sub(upper_term, lower_term));
+    let boundary = ctx.add(Expr::Sub(upper_term, lower_term));
+
+    // General Leibniz rule: add `∫_a^b ∂f/∂x dt` when the integrand depends on
+    // the differentiation variable. If `∂f/∂x` is identically zero the term
+    // vanishes and the boundary form is the exact classic FTC. If the partial
+    // cannot be computed while the integrand DOES depend on `x`, the boundary
+    // form would be unsound, so decline rather than emit it.
+    let integrand_depends_on_x = expr_contains_named_var(ctx, integrand, &diff_var);
+    let result = if integrand_depends_on_x {
+        let partial = diff(ctx, integrand)?;
+        if cas_math::expr_predicates::is_zero_expr(ctx, partial) {
+            boundary
+        } else {
+            let under = ctx.add(Expr::Function(
+                integrate_fn,
+                vec![partial, int_var_expr, lower, upper],
+            ));
+            ctx.add(Expr::Add(boundary, under))
+        }
+    } else {
+        boundary
+    };
 
     Some(finalize_diff_rewrite_with_conditions(
         ctx,
@@ -423,6 +484,78 @@ mod tests {
         );
         // f(x)*1 - f(0)*0 before the simplifier folds it.
         assert!(rendered.contains("e^(x^2)"), "got: {rendered}");
+    }
+
+    fn leibniz_render(input: &str) -> String {
+        let mut ctx = Context::new();
+        let diff_expr = parse(input, &mut ctx).unwrap();
+        let call =
+            crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, diff_expr).unwrap();
+        let target = call.target;
+        let rewrite =
+            definite_integral_leibniz_diff_rewrite(&mut ctx, &call, target).expect("leibniz");
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        )
+    }
+
+    #[test]
+    fn leibniz_rule_adds_under_integral_term_for_x_dependent_integrand() {
+        // Constant bounds but the integrand depends on x: the boundary terms
+        // carry a zero derivative factor (they fold away downstream), so the
+        // surviving term is the under-integral `∫_0^1 ∂/∂x[x*sin(t^2)] dt =
+        // ∫_0^1 sin(t^2) dt`. Before the fix this whole rewrite was just the
+        // boundary difference, which the simplifier collapsed to a spurious 0.
+        // The rewrite is the RAW pre-simplification tree, so assert the
+        // under-integral term is present (it was entirely absent before).
+        let rendered = leibniz_render("diff(integrate(x*sin(t^2), t, 0, 1), x)");
+        assert!(
+            rendered.contains("integrate(sin(t^2)"),
+            "under-integral term missing: {rendered}"
+        );
+
+        // The partial keeps a surviving x factor: ∂/∂x[x^2*sin(t^2)] folds to
+        // 2*x*sin(t^2) downstream; on the raw tree it is an under-integral over
+        // a term that still mentions both sin(t^2) and x.
+        let rendered = leibniz_render("diff(integrate(x^2*sin(t^2), t, 0, 1), x)");
+        assert!(
+            rendered.contains("integrate(sin(t^2)") && rendered.contains("x^(2 - 1)"),
+            "scaled under-integral term missing: {rendered}"
+        );
+    }
+
+    #[test]
+    fn leibniz_rule_combines_boundary_and_under_integral_terms() {
+        // Variable upper bound AND x-dependent integrand: the full general
+        // Leibniz rule. d/dx ∫_0^x x*sin(t^2) dt
+        //   = x*sin(x^2) [boundary] + ∫_0^x sin(t^2) dt [under-integral].
+        let rendered = leibniz_render("diff(integrate(x*sin(t^2), t, 0, x), x)");
+        // boundary term f(x,x)*b' = x*sin(x^2).
+        assert!(
+            rendered.contains("sin(x^2)"),
+            "boundary term missing: {rendered}"
+        );
+        // under-integral term ∫_0^x sin(t^2) dt.
+        assert!(
+            rendered.contains("integrate(sin(t^2)"),
+            "under-integral missing: {rendered}"
+        );
+    }
+
+    #[test]
+    fn leibniz_rule_keeps_pure_ftc_when_integrand_independent_of_x() {
+        // Integrand has no x: pure FTC, no under-integral term.
+        // d/dx ∫_0^x e^(t^2) dt = e^(x^2).
+        let rendered = leibniz_render("diff(integrate(e^(t^2), t, 0, x), x)");
+        assert!(rendered.contains("e^(x^2)"), "got: {rendered}");
+        assert!(
+            !rendered.contains("integrate"),
+            "no residual integral: {rendered}"
+        );
     }
 
     #[test]
