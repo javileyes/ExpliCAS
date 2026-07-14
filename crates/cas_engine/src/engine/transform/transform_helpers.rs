@@ -3799,12 +3799,39 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Transform Function expression by simplifying children.
     /// Extracted with #[inline(never)] to reduce stack frame size.
     #[inline(never)]
+    /// Intercept `mod(base^exp, modulus)` on the RAW argument tree and evaluate it
+    /// by modular exponentiation, so the enormous intermediate `base^exp` is never
+    /// built (its bit length is `exp * log2(base)`, tens of millions of digits for
+    /// competition inputs like `mod(123456789^987654321, 1000000007)`). The
+    /// simplifier is strictly bottom-up, so without this the child `Pow` fully
+    /// materializes before the `mod` handler ever runs — the mod handler cannot
+    /// prevent the hang. Fires only for the exact `mod(int^nonneg-int, nonzero-int)`
+    /// shape and yields the numerically identical residue, so no other `mod(...)`
+    /// and no completing computation changes behavior.
+    fn try_fast_modpow(&mut self, fn_id: SymbolId, args: &[ExprId]) -> Option<ExprId> {
+        if self.context.sym_name(fn_id) != "mod" || args.len() != 2 {
+            return None;
+        }
+        let (base, exp) = match self.context.get(args[0]) {
+            Expr::Pow(base, exp) => (*base, *exp),
+            _ => return None,
+        };
+        cas_math::number_theory_support::compute_modpow_expr(self.context, base, exp, args[1])
+    }
+
     pub(super) fn transform_function(
         &mut self,
         id: ExprId,
         fn_id: SymbolId,
         args: Vec<ExprId>,
     ) -> ExprId {
+        // Fast modular exponentiation on the RAW tree, before the child `base^exp`
+        // materializes: `mod(base^exp, m)` is `base^exp mod m` by square-and-multiply,
+        // never building the full (astronomically large) power.
+        if let Some(result) = self.try_fast_modpow(fn_id, &args) {
+            return result;
+        }
+
         let name = self.context.sym_name(fn_id);
         // Check if this function is canonical before recursing into children
         if (name == "sqrt" || name == "abs")

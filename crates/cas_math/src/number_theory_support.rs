@@ -1249,6 +1249,36 @@ pub(crate) fn compute_mod_expr(ctx: &mut Context, a: ExprId, n: ExprId) -> Optio
     Some(ctx.add(Expr::Number(BigRational::from_integer(rem))))
 }
 
+/// Fast modular exponentiation for `mod(base^exp, modulus)` with integer
+/// `base`, `exp >= 0`, and `modulus != 0`. Computes `base^exp mod modulus` by
+/// square-and-multiply (`BigInt::modpow`) WITHOUT materializing the full
+/// `base^exp`, whose bit length is `exp * log2(base)` — astronomically large for
+/// inputs like `mod(123456789^987654321, 1000000007)`. The result is normalized
+/// to the canonical non-negative residue in `[0, |modulus|)`.
+///
+/// Returns `None` (the caller falls through to the ordinary path) when any
+/// operand is not an integer, the exponent is negative (a fraction, not a
+/// residue), or the modulus is zero.
+pub fn compute_modpow_expr(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    modulus: ExprId,
+) -> Option<ExprId> {
+    let base_i = extract_integer_bigint(ctx, base)?;
+    let exp_i = extract_integer_bigint(ctx, exp)?;
+    let mod_i = extract_integer_bigint(ctx, modulus)?;
+    if mod_i.is_zero() || exp_i.is_negative() {
+        return None;
+    }
+    let mod_abs = mod_i.abs();
+    // `modpow` reduces mod `mod_abs`, but a negative base can yield a negative
+    // residue under Rust's `%` sign convention — normalize to `[0, mod_abs)`.
+    let raw = base_i.modpow(&exp_i, &mod_abs);
+    let rem = ((raw % &mod_abs) + &mod_abs) % &mod_abs;
+    Some(ctx.add(Expr::Number(BigRational::from_integer(rem))))
+}
+
 /// Compute prime factorization expression for exact integer input.
 ///
 /// Returns a `factored(...)` expression with optional `factored_pow(base, exp)` nodes.
@@ -1590,6 +1620,52 @@ mod tests {
 
         let perm = compute_perm_expr(&mut ctx, five, two).expect("perm");
         assert_eq!(extract_integer_bigint(&ctx, perm), Some(BigInt::from(20)));
+    }
+
+    #[test]
+    fn fast_modpow_matches_reference_without_materializing() {
+        let mut ctx = Context::new();
+        let bi = |ctx: &mut Context, n: i64| ctx.num(n);
+
+        // Small reference cases.
+        let (b, e, m) = (bi(&mut ctx, 7), bi(&mut ctx, 13), bi(&mut ctx, 100));
+        let r = compute_modpow_expr(&mut ctx, b, e, m).expect("modpow");
+        assert_eq!(extract_integer_bigint(&ctx, r), Some(BigInt::from(7)));
+
+        let (b, e, m) = (bi(&mut ctx, 2), bi(&mut ctx, 10), bi(&mut ctx, 1000));
+        let r = compute_modpow_expr(&mut ctx, b, e, m).expect("modpow");
+        assert_eq!(extract_integer_bigint(&ctx, r), Some(BigInt::from(24)));
+
+        // Negative base normalizes to the non-negative residue: (-3)^3 = -27 ≡ 1 (mod 7).
+        let (b, e, m) = (bi(&mut ctx, -3), bi(&mut ctx, 3), bi(&mut ctx, 7));
+        let r = compute_modpow_expr(&mut ctx, b, e, m).expect("modpow");
+        assert_eq!(extract_integer_bigint(&ctx, r), Some(BigInt::from(1)));
+
+        // exp = 0 -> 1 mod m; m = 1 -> 0.
+        let (b, e, m) = (bi(&mut ctx, 5), bi(&mut ctx, 0), bi(&mut ctx, 7));
+        let r = compute_modpow_expr(&mut ctx, b, e, m).expect("modpow");
+        assert_eq!(extract_integer_bigint(&ctx, r), Some(BigInt::from(1)));
+        let (b, e, m) = (bi(&mut ctx, 10), bi(&mut ctx, 2), bi(&mut ctx, 1));
+        let r = compute_modpow_expr(&mut ctx, b, e, m).expect("modpow");
+        assert_eq!(extract_integer_bigint(&ctx, r), Some(BigInt::from(0)));
+
+        // The competition-scale exponent that would otherwise hang: matches pow(...).
+        let (b, e, m) = (
+            bi(&mut ctx, 123456789),
+            bi(&mut ctx, 987654321),
+            bi(&mut ctx, 1000000007),
+        );
+        let r = compute_modpow_expr(&mut ctx, b, e, m).expect("modpow");
+        assert_eq!(
+            extract_integer_bigint(&ctx, r),
+            Some(BigInt::from(652541198))
+        );
+
+        // Declines (falls through) on a negative exponent and a zero modulus.
+        let (b, e, m) = (bi(&mut ctx, 2), bi(&mut ctx, -2), bi(&mut ctx, 5));
+        assert!(compute_modpow_expr(&mut ctx, b, e, m).is_none());
+        let (b, e, m) = (bi(&mut ctx, 2), bi(&mut ctx, 3), bi(&mut ctx, 0));
+        assert!(compute_modpow_expr(&mut ctx, b, e, m).is_none());
     }
 
     #[test]
