@@ -10,10 +10,10 @@ Sigue a [AUDITORIA_FRONTERA_2026-07-13.md](AUDITORIA_FRONTERA_2026-07-13.md) (9/
 - [x] **F2 [P0]** nested-abs-branch-enumeration-fails (`solve(abs(abs(x)-5)=abs(x),x)`) — CERRADA ciclo 2, commit `4baf5821b` (relajar gate de reclamo: reclamar cuando ≥2 abs externos llevan la var; el core de segmentación ya era correcto)
 - [x] **F3 [P0]** transcendental-inequality-collapses-to-boundary-equation (`solve(e^x<2^x,x)`) — CERRADA re-ciclo A 2026-07-14, commit `26433e7a2` (handler try_symbolic_linear_coeff_inequality: colecta c1·x+c0, oráculo const-sign, rayo directo vía isolated_var_solution; hooks top-level + solve_inner; 2º intento tras el rechazo del decline)
 - [x] **F4 [P0]** poly-rational-root-drops-residual-factor (`solve(x^5 - x^4 - 4*x^3 + 4*x^2 + x - 1 = 0, x)`) — CERRADA re-ciclo B 2026-07-14, commit `71499946d` (Sturm exacto → completeness; residual biquadrático resuelto con signos por Vieta → el representante da las 5 raíces reales; no-resoluble → eco honesto; x^5−1→{1} preservado)
-- [~] **F5 [P1]** wrapped-trig-equation-drops-periodic-family (`solve(1/cos(x)^2 = 2, x)`) — PARCIAL ciclo 6, commit `393050c8e` (sub-familia recíproco-cuadrado sec²/csc²/1/cos²: pre-transform Div(A,trig²)→trig²=−A/k sobre el diff → familia completa; sub-familia multiple-angle tan `tan(2x)=tan(x)` sigue abierta)
+- [x] **F5 [P1]** wrapped-trig-equation-drops-periodic-family (`solve(1/cos(x)^2 = 2, x)`) — CERRADA: recíproco-cuadrado ciclo 6 `393050c8e` + multiple-angle tan re-ciclo C 2026-07-14 `d182fe282` (tan(u)=tan(v) ⟺ u≡v mod π con exclusión exacta de polos por progresiones)
 - [ ] **F6 [P0]** unfolded-constant-arithmetic-tree-overflows-simplifier-depth (`[[1,2],[3,4]]^12`) — multi-cycle
 - [ ] **F7 [P1]** complex-value-domain-not-plumbed-to-root-emission (`solve(x^3 = 1, x)  [--value-domain complex]`) — multi-cycle
-- [~] **F8 [P1]** unsound-sincos-rewrite-of-tan-cot-quotients (`solve(cot(x)^2 - 1 = 0, x)`) — PARCIAL ciclo 5, commit `94c5bad98` (Layer-1: guard RHS-contains-var → árboles arccos self-referenciales de cot² a residual honesto; facets `tan(2x)=tan(3x)` hang y `tan/(1-tan²)` polos + Layer-2 periódico = follow-up)
+- [~] **F8 [P1]** unsound-sincos-rewrite-of-tan-cot-quotients (`solve(cot(x)^2 - 1 = 0, x)`) — PARCIAL ciclo 5 `94c5bad98` (Layer-1 guard RHS-contains-var) + re-ciclo C 2026-07-14 `d182fe282` (miembro HANG `tan(2x)=tan(3x)` CERRADO→{kπ} instantáneo); facets restantes: `tan/(1-tan²)` polos espurios + Layer-2 periódico cot²
 
 ## Cobertura (frentes limpios = 0 confirmados)
 

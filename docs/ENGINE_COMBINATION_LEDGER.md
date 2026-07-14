@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 561 (newest first)
+Active entries: 562 (newest first)
 
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_symbolic_linear_coeff_in... | SOUNDNESS (F3 re-intento RETENIDO: ineq lineal con coef constante-simbólico dropeaba el operador): `solve(e^x<2^x, x)`
 - 2026-07-14 | `retained` | `crates/cas_math/src/polynomial.rs` (`count_real_roots`: cadena de Sturm EXAC... | SOUNDNESS (F4 re-intento RETENIDO: deflación racional dropeaba el factor residual grado≥3 entero): `solve(x^5-x^4-4x^3+4x^2+x-1=0, x)`
+- 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS/CAPACIDAD (tan(u)=tan(v): congruencia mod π con exclusión EXACTA de polos): `solve(tan(2x)=tan(3x), x)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (abs-vs-abs no-polinómico fabrica "No solution" falso): `solve(abs(ln(x))<abs(x))`
 - 2026-07-13 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`is_known_negative` brazos N... | SOUNDNESS (is_known_negative unsound para operandos simbólicos): `solve(x^4+q=0)`
@@ -19497,3 +19498,18 @@ Active entries: 561 (newest first)
   - **Vieta decide los signos de las raíces de una cuadrática sin evaluar radicales**: producto c/a y suma −b/a clasifican (+,+)/(−,−)/(+,−) con racionales puros — evita el oráculo de signos de surds para el `x=±√z` del biquadrático.
   - **Cuando un fix in-core toma la propiedad de un caso que una recovery downstream ya arreglaba, el efecto es de PRESENTACIÓN**: mismo conjunto, render distinto — juzgar por igualdad de conjuntos y re-pinnear si el render nuevo es igual o mejor (aquí: mejor, mata el artefacto documentado `-3·3^(-1/2)`).
   - PRÓXIMO PELDAÑO: re-ciclo C (tan(A)=tan(B)), re-ciclo D (cot² Layer-2). Residual: factorización general ℚ[x] de grado≥3 no-biquadrático (los Chebyshev declinan honesto — correcto).
+
+## 2026-07-14 - SOUNDNESS/CAPACIDAD (tan(u)=tan(v): congruencia mod π con exclusión EXACTA de polos): `solve(tan(2x)=tan(3x), x)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation_ungated`: reductor tan(u)=tan(v) para args afines racionales, directo + diff-form RAW) + `crates/cas_solver/tests/tan_equals_tan_tests.rs`
+- status: `retained`. Cierra la sub-familia multiple-angle-tan de F5 (5 miembros) + el miembro HANG de F8 (`tan(2x)=tan(3x)` ~216s) del audit 2026-07-13b.
+- capture:
+  - investment_class: soundness (garbage residuals `sin(x)−0·2·cos(x)` / `Solve: 2·sin(x)=0` + HANG de 216s) → familias periódicas correctas.
+  - cell: `tan(2x)=tan(x)`→{kπ}, `tan(x)=tan(2x)`→{kπ}, `tan(2x)=tan(3x)`→{kπ} (era HANG), `tan(3x)=tan(x)`→{kπ} (el caso de EXCLUSIÓN real: sin(2x)=0 da {kπ/2} pero los múltiplos IMPARES son polos de ambos tan → excluidos exactamente), `tan(2x)−tan(x)=0`→{kπ} (diff-form via árbol RAW), `tan(x+1)=tan(2x)`→{1+kπ} (offset racional), `tan(x+1/2)=tan(3x)`→{1/4+kπ/2}, `tan(x)=tan(x+1)`→No solution (mismo slope, Δb racional ≠0 ⇒ Δb≢0 mod π por irracionalidad de π). Verificación: sustitución numérica de todas las familias + exclusión verificada (x=π/2 raíz de la reducida pero polo de tan) + sympy. Controles INTACTOS: `tan(x)=c` y `tan(2x)=1` (dueños single-tan), `sin(x)=sin(2x)`/`cos(x)=cos(2x)` (sum-to-product), `tan(x)^2=3`, `tan(x)=x` residual.
+  - causa raíz: ningún handler poseía `tan(u)=tan(v)`; el fold sin/cos genérico fabricaba residuales garbage o ramificaba hasta colgar.
+  - diseño: `tan(u)=tan(v) ⟺ u ≡ v (mod π)` donde ambos definidos. Para u,v afines con coefs RACIONALES (Polynomial::from_expr grado 1): la solución es la progresión `x = kπ/w − Δb/w` (w=a₁−a₂). EXCLUSIÓN de polos 100% exacta con dos palancas: (1) **la irracionalidad de π separa las partes racionales** — la solución golpea un polo sólo si sus partes racionales coinciden (π·q₁=q₂ ⟹ ambas cero); (2) si coinciden, la intersección de progresiones π-racionales se decide con **gcd racional de los pasos** (o∈gcd(s,t)·ℤ) y las clases residuales prohibidas de k se calculan por fuerza-bruta acotada mod L=t/g; M=lcm de los L activos, bases = residuos no prohibidos, período = M·s·π. Emite `SolutionSet::Periodic{bases, period}`. Diff-form `tan(u)−tan(v)=0` casada en el árbol RAW (`eq.lhs` pre-simplify — simplify colapsa la estructura, lección conocida). w=0 ∧ Δb≠0 → Empty (exacto). Indecidible (L no cabe en i64) → cae al comportamiento anterior.
+  - validación: workspace 0 failed; clippy GREEN; scorecards verdes; huella estructural 0-delta. Tests: +3 (congruencia+exclusión / offsets racionales+degenerado / dueños intactos). Oráculos: sustitución + sympy.
+  - retained learning:
+  - **La irracionalidad de π es una palanca de DECIDIBILIDAD, no un obstáculo**: para familias π-racionales + offsets racionales, "¿la progresión solución golpea la progresión de polos?" se decide EXACTO separando parte racional (deben coincidir) y parte π (intersección de progresiones aritméticas vía gcd racional). Sin oráculos de signo, sin floats. El mismo esquema sirve para cualquier trig(u)=trig(v) con dominio perforado.
+  - **El gcd racional implementado para F5-gcd (2026-07-13) se reutilizó aquí como maquinaria de intersección de progresiones** — un fix numérico de convención se volvió infra de decidibilidad trig en dos ciclos.
+  - PRÓXIMO PELDAÑO: re-ciclo D (cot² Layer-2). Residual honesto: tan(u)=tan(v) con offsets π-racionales mixtos (`tan(x+π/3)`) — Polynomial::from_expr los rechaza (coef no racional); extensión = representar offsets como q+r·π.

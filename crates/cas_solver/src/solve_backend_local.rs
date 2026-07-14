@@ -8116,6 +8116,172 @@ fn try_solve_periodic_trig_equation_ungated(
         }
     }
 
+    // TAN(u) = TAN(v) (re-cycle C, 2026-07-14): `tan(u) = tan(v) ⟺ u ≡ v (mod π)`, where both
+    // sides are defined. The generic paths mangled these (`tan(2x)=tan(x)` → a garbage
+    // `sin(x) − 0·2·cos(x)` residual; `tan(2x)=tan(3x)` HUNG ~216s branching through the sin/cos
+    // rewrite). For AFFINE rational-coefficient arguments the equivalence is a pure arithmetic
+    // progression: `w·x = kπ − Δb` (w = a₁−a₂), minus the tan POLE progressions — and every pole
+    // test is EXACTLY decidable: the solution's rational part must match the pole's rational part
+    // (π is irrational, so `π·q₁ = q₂` forces both zero), and the π-parts intersect iff the offset
+    // divides by the rational gcd of the steps. Emits the full `Periodic` family.
+    {
+        use num_integer::Integer as _;
+        use num_traits::{Signed as _, ToPrimitive as _};
+        let bare_tan_affine = |ctx: &Context, e: ExprId| -> Option<(BigRational, BigRational)> {
+            let Expr::Function(fn_id, args) = ctx.get(e) else {
+                return None;
+            };
+            if args.len() != 1
+                || !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan))
+                || !contains_var(ctx, args[0], var)
+            {
+                return None;
+            }
+            let poly = cas_math::polynomial::Polynomial::from_expr(ctx, args[0], var).ok()?;
+            if poly.degree() != 1 {
+                return None;
+            }
+            let a = poly
+                .coeffs
+                .get(1)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            let b = poly
+                .coeffs
+                .first()
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            if a.is_zero() {
+                return None;
+            }
+            Some((a, b))
+        };
+        // Direct `tan(u) = tan(v)`, or the DIFF form `tan(u) − tan(v) = 0` matched on the RAW
+        // tree (simplify collapses the difference into a sin/cos quotient before this handler
+        // runs — the raw-tree rule).
+        let mut pair = match (
+            bare_tan_affine(&simplifier.context, lhs),
+            bare_tan_affine(&simplifier.context, rhs),
+        ) {
+            (Some(p1), Some(p2)) => Some((p1, p2)),
+            _ => None,
+        };
+        if pair.is_none() && cas_math::expr_predicates::is_zero_expr(&simplifier.context, eq.rhs) {
+            let raw = eq.lhs;
+            let (t1, t2) = match simplifier.context.get(raw).clone() {
+                Expr::Sub(l, r) => (Some(l), Some(r)),
+                Expr::Add(l, r) => match simplifier.context.get(r) {
+                    Expr::Neg(inner) => (Some(l), Some(*inner)),
+                    _ => (None, None),
+                },
+                _ => (None, None),
+            };
+            if let (Some(t1), Some(t2)) = (t1, t2) {
+                if let (Some(p1), Some(p2)) = (
+                    bare_tan_affine(&simplifier.context, t1),
+                    bare_tan_affine(&simplifier.context, t2),
+                ) {
+                    pair = Some((p1, p2));
+                }
+            }
+        }
+        if let Some(((a1, b1), (a2, b2))) = pair {
+            let w = &a1 - &a2;
+            if w.is_zero() && !(&b1 - &b2).is_zero() {
+                // Same slope, distinct RATIONAL offsets: `tan(t + Δb) = tan(t)` needs
+                // `Δb ≡ 0 (mod π)`, impossible for rational Δb ≠ 0 (π is irrational).
+                return Some(SolutionSet::Empty);
+            }
+            if !w.is_zero() {
+                // Normalize the solution progression `x = (kπ − Δb)/w` to positive step:
+                // x = k·s·π + r0 with s = 1/|w| and rational offset r0.
+                let db = &b1 - &b2;
+                let (wp, dbp) = if w.is_positive() {
+                    (w.clone(), db.clone())
+                } else {
+                    (-w.clone(), -db)
+                };
+                let s = BigRational::one() / &wp; // π-part step
+                let r0 = -&dbp / &wp; // rational offset of every solution
+                let gcd_q = |a: &BigRational, b: &BigRational| -> BigRational {
+                    BigRational::new(a.numer().gcd(b.numer()), a.denom().lcm(b.denom()))
+                };
+                let lcm_z = |a: i64, b: i64| -> i64 { a / a.gcd(&b) * b };
+                // Banned residue classes of k, one per pole progression that the
+                // solution family can actually reach.
+                let mut banned: Vec<(i64, i64)> = Vec::new(); // (k0, modulus L)
+                let mut modulus: i64 = 1;
+                let mut decidable = true;
+                for (ai, bi) in [(&a1, &b1), (&a2, &b2)] {
+                    // Pole set of tan(aᵢ·x + bᵢ): x = (1/2 + m)π/|aᵢ| − bᵢ/aᵢ.
+                    let rat_pole = -bi / ai;
+                    if rat_pole != r0 {
+                        continue; // rational parts differ: never hits (π irrational)
+                    }
+                    let t = (BigRational::one() / ai).abs(); // pole π-step
+                    let o = &t / BigRational::from_integer(2.into()); // pole π-offset 1/(2|aᵢ|)
+                    let g = gcd_q(&s, &t);
+                    if !(&o / &g).is_integer() {
+                        continue; // offset not reachable: no hits
+                    }
+                    // Solve k·s ≡ o (mod t): period of residues L = t/g (integer).
+                    let l_big = (&t / &g).to_integer();
+                    let Some(l) = l_big.to_i64() else {
+                        decidable = false;
+                        break;
+                    };
+                    let mut found = None;
+                    for k in 0..l {
+                        let lhs_val = BigRational::from_integer(k.into()) * &s - &o;
+                        if (lhs_val / &t).is_integer() {
+                            found = Some(k);
+                            break;
+                        }
+                    }
+                    if let Some(k0) = found {
+                        banned.push((k0, l));
+                        modulus = lcm_z(modulus, l);
+                    }
+                }
+                if decidable {
+                    let mut bases: Vec<ExprId> = Vec::new();
+                    for k in 0..modulus {
+                        if banned.iter().any(|&(k0, l)| (k - k0).rem_euclid(l) == 0) {
+                            continue;
+                        }
+                        let pi_coeff = BigRational::from_integer(k.into()) * &s;
+                        let pi = simplifier
+                            .context
+                            .add(Expr::Constant(cas_ast::Constant::Pi));
+                        let mut base = if pi_coeff.is_zero() {
+                            simplifier.context.num(0)
+                        } else {
+                            let c = simplifier.context.add(Expr::Number(pi_coeff));
+                            simplifier.context.add(Expr::Mul(c, pi))
+                        };
+                        if !r0.is_zero() {
+                            let r = simplifier.context.add(Expr::Number(r0.clone()));
+                            base = simplifier.context.add(Expr::Add(base, r));
+                        }
+                        let (base, _) = simplifier.simplify(base);
+                        bases.push(base);
+                    }
+                    if bases.is_empty() {
+                        return Some(SolutionSet::Empty);
+                    }
+                    let period_coeff = BigRational::from_integer(modulus.into()) * &s;
+                    let pi = simplifier
+                        .context
+                        .add(Expr::Constant(cas_ast::Constant::Pi));
+                    let pc = simplifier.context.add(Expr::Number(period_coeff));
+                    let period = simplifier.context.add(Expr::Mul(pc, pi));
+                    let (period, _) = simplifier.simplify(period);
+                    return Some(SolutionSet::Periodic { bases, period });
+                }
+            }
+        }
+    }
+
     let squared_hit = if let Some((f, arg, a)) = squared(&simplifier.context, lhs) {
         (!contains_var(&simplifier.context, rhs, var)).then_some((f, arg, rhs, a))
     } else if let Some((f, arg, a)) = squared(&simplifier.context, rhs) {
