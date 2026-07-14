@@ -357,6 +357,11 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     // G1 Cap. A: real-root quadratic factor (x^2-2) renders a real-log ratio;
     // the sqrt(2) coefficient folds under the differentiate-back verifier.
     "integrate(1/(x^4-4), x)",
+    // G1 Cap. B: irreducible even quartic as a factor (x^4-x^2+1 in x^6+1, x^4+1
+    // in x^8-1) integrates via the surd symmetric split; the constant-numerator
+    // targets fold under the differentiate-back verifier.
+    "integrate(1/(x^6+1), x)",
+    "integrate(1/(x^8-1), x)",
     "integrate(1/(4*x^2+1)^2, x)",
     "integrate(1/(2*sqrt(x)*(x+1)), x)",
     "integrate(arcsin(2*x+1), x)",
@@ -674,16 +679,15 @@ fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
 }
 
 /// Honest-residual contract for the later G1 sub-cycles: denominators needing
-/// factorization over an algebraic extension (√5-quadratics, cube roots,
-/// irreducible even quartics) are NOT yet supported and must stay residual —
-/// declining, never emitting a wrong antiderivative. Cap. A must not have
-/// widened into them.
+/// factorization over an algebraic extension not yet covered (√5-quadratics,
+/// cube roots, deeper even quartics) must stay residual — declining, never
+/// emitting a wrong antiderivative.
 #[test]
 fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
         "integrate(1/(x^5-1), x)", // Φ5 needs √5-quadratics (Cap. C)
         "integrate(1/(x^3-2), x)", // needs ∛2 (Cap. D)
-        "integrate(1/(x^6+1), x)", // irreducible even quartic, a=√3 (Cap. B)
+        "integrate(1/(x^8+1), x)", // resolvent u^4+1 needs a surd factorization
         "integrate(1/(x^4-2), x)", // resolvent root √2 is itself irrational
     ] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
@@ -692,6 +696,48 @@ fn integrate_contract_algebraic_extension_denominators_stay_residual() {
             "should stay an honest residual until its sub-cycle lands: {input} -> {result}"
         );
     }
+}
+
+/// G1 sub-cycle Cap. B (2026-07-14): an irreducible-over-ℝ even quartic
+/// `x^4 + p*x^2 + r` appearing as a FACTOR (e.g. `x^4-x^2+1` in `x^6+1`,
+/// `x^4+1` in `x^8-1`) is kept whole so the partial-fraction residue solve stays
+/// over ℚ; the surd split `(x^2+a*x+s)(x^2-a*x+s)` appears only in the render.
+/// See docs/G1_RATIONAL_INTEGRATION_SCOPING.md. The named constant-numerator
+/// targets are confirmed by differentiate-back (they are also in
+/// REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES); odd/even numerator variants
+/// are verified numerically here by support + render form (the combined-surd
+/// differentiate-back is verifier-limited, a documented residual, never a wrong
+/// answer).
+#[test]
+fn integrate_contract_irreducible_even_quartic_factor_integrates_via_surd_split() {
+    // Named G1 exit probes plus odd-numerator variants routed through the surd
+    // even-quartic render (x^2/(x^6+1) takes the cleaner u=x^3 substitution and
+    // is covered elsewhere).
+    for input in [
+        "integrate(1/(x^6+1), x)",
+        "integrate(1/(x^8-1), x)",
+        "integrate(x^3/(x^4-x^2+1), x)",
+        "integrate(x/(x^6+1), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should integrate via the even-quartic surd split: {input} -> {result}"
+        );
+        assert!(
+            result.contains("sqrt(3)") || result.contains("sqrt(2)"),
+            "expected a surd coefficient in the even-quartic render: {input} -> {result}"
+        );
+    }
+
+    // The standalone constant-numerator even quartic stays owned by the earlier
+    // symmetric-surd closed form (byte-identical), not the general route.
+    let (standalone, _) =
+        evaluated_integral_with_required_conditions("integrate(1/(x^4-x^2+1), x)");
+    assert!(
+        standalone.contains("arctan(sqrt(3) + 2") || standalone.contains("arctan(sqrt(3)+2"),
+        "standalone even quartic keeps its symmetric-surd render: {standalone}"
+    );
 }
 
 #[test]

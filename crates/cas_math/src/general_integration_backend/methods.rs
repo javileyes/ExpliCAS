@@ -122,6 +122,10 @@ pub(super) struct MultiQuadraticFactorTerm {
     pub(super) constant_c: BigRational,
     pub(super) alpha: BigRational,
     pub(super) beta: BigRational,
+    /// For an `EvenQuartic` factor `x^4 + p*x^2 + r`, the partial-fraction
+    /// numerator is a cubic `a3*x^3 + a2*x^2 + a1*x + a0`; this carries
+    /// `(p, r, [a0, a1, a2, a3])`. `None` for linear/quadratic factors.
+    pub(super) even_quartic: Option<(BigRational, BigRational, [BigRational; 4])>,
 }
 
 /// Partial fractions over a product of 2..=3 DISTINCT monic irreducible
@@ -229,6 +233,7 @@ pub(super) fn multi_quadratic_partial_fraction_terms(
             constant_c: poly.coeffs[0].clone(),
             alpha: solution[2 * index].clone(),
             beta: solution[2 * index + 1].clone(),
+            even_quartic: None,
         });
     }
     Some(terms)
@@ -373,6 +378,14 @@ enum SquarefreeFactor {
         linear_b: BigRational,
         constant_c: BigRational,
     },
+    /// An irreducible-over-ℝ even quartic `x^4 + p*x^2 + r` kept WHOLE (with
+    /// rational `p`, `r`) so the partial-fraction residue solve stays over ℚ; the
+    /// algebraic split `(x^2 + a*x + s)(x^2 - a*x + s)` with `s = sqrt(r)`,
+    /// `a = sqrt(2s - p)` surd appears only in the render (G1 Cap. B).
+    EvenQuartic {
+        p: BigRational,
+        r: BigRational,
+    },
 }
 
 /// General rational integration for numeric-coefficient integrands whose
@@ -430,6 +443,16 @@ pub(super) fn general_rational_partial_fraction_antiderivative(
     };
 
     let factors = split_squarefree_factors(&squarefree_part)?;
+    // A standalone even quartic with a CONSTANT numerator is owned by the later
+    // closed-form probe `symmetric_surd_even_quartic_antiderivative`; decline so
+    // its byte-identical rendering is preserved. A non-constant numerator, or the
+    // even quartic as one factor among several, is ours.
+    if rational_part.is_none()
+        && squarefree_numerator.degree() == 0
+        && matches!(factors.as_slice(), [SquarefreeFactor::EvenQuartic { .. }])
+    {
+        return None;
+    }
     let terms = mixed_partial_fraction_terms(ctx, &squarefree_numerator, &factors, variable)?;
 
     let mut antiderivative = match &rational_part {
@@ -469,6 +492,16 @@ pub(super) fn general_rational_partial_fraction_antiderivative(
             }
             SquarefreeFactor::Quadratic { .. } => {
                 let piece = build_multi_quadratic_term_antiderivative(ctx, &term, variable);
+                antiderivative = build_backend_sum(ctx, antiderivative, piece);
+            }
+            SquarefreeFactor::EvenQuartic { p, r } => {
+                // Irreducible over ℝ (two Δ<0 sub-quadratics), so no real poles ⇒
+                // no pole condition, mirroring the irreducible-quadratic arm.
+                let (_, _, cubic) = term
+                    .even_quartic
+                    .as_ref()
+                    .expect("EvenQuartic factor carries its cubic numerator");
+                let piece = even_quartic_factor_antiderivative(ctx, variable, p, r, cubic)?;
                 antiderivative = build_backend_sum(ctx, antiderivative, piece);
             }
         }
@@ -537,6 +570,14 @@ pub fn general_rational_partial_fraction_narration_parts(
     };
 
     let factors = split_squarefree_factors(&squarefree_part)?;
+    // Mirror the answer path: a standalone constant-numerator even quartic is
+    // owned by symmetric_surd, so decline its narration too.
+    if rational_part.is_none()
+        && squarefree_numerator.degree() == 0
+        && matches!(factors.as_slice(), [SquarefreeFactor::EvenQuartic { .. }])
+    {
+        return None;
+    }
     let terms = mixed_partial_fraction_terms(ctx, &squarefree_numerator, &factors, variable)?;
 
     let variable_expr = ctx.var(variable);
@@ -551,6 +592,15 @@ pub fn general_rational_partial_fraction_narration_parts(
                 let linear = build_backend_product(ctx, alpha_expr, variable_expr);
                 let beta_expr = ctx.add(Expr::Number(term.beta.clone()));
                 build_backend_sum(ctx, linear, beta_expr)
+            }
+            SquarefreeFactor::EvenQuartic { .. } => {
+                // Cubic numerator a3*x^3 + a2*x^2 + a1*x + a0.
+                let (_, _, cubic) = term
+                    .even_quartic
+                    .as_ref()
+                    .expect("EvenQuartic factor carries its cubic numerator");
+                crate::polynomial::Polynomial::new(cubic.to_vec(), variable.to_string())
+                    .to_expr(ctx)
             }
         };
         let piece = ctx.add(Expr::Div(piece_numerator, term.factor_expr));
@@ -728,6 +778,10 @@ fn apart_classical_ladder_decomposition(
                     basis.push(cofactor.mul(&x_poly));
                     basis.push(cofactor);
                 }
+                // A repeated even quartic is out of Cap. B scope: decline so it
+                // stays an honest residual (the squarefree-only targets never
+                // reach the ladder).
+                SquarefreeFactor::EvenQuartic { .. } => return None,
             }
         }
         factor_polys.push(poly);
@@ -794,6 +848,9 @@ fn apart_classical_ladder_decomposition(
                         }
                     }
                 }
+                // Unreachable: the basis loop above already declined any
+                // even-quartic factor, but the match must stay exhaustive.
+                SquarefreeFactor::EvenQuartic { .. } => return None,
             };
             let denom_expr = if power == 1 {
                 factor_expr
@@ -828,6 +885,16 @@ fn squarefree_factor_poly(
             constant_c,
         } => crate::polynomial::Polynomial::new(
             vec![constant_c.clone(), linear_b.clone(), BigRational::one()],
+            variable.to_string(),
+        ),
+        SquarefreeFactor::EvenQuartic { p, r } => crate::polynomial::Polynomial::new(
+            vec![
+                r.clone(),
+                BigRational::zero(),
+                p.clone(),
+                BigRational::zero(),
+                BigRational::one(),
+            ],
             variable.to_string(),
         ),
     }
@@ -1117,21 +1184,29 @@ fn even_quartic_descent(
         if !a_square.is_positive() {
             continue;
         }
-        let Some(a) = rational_positive_square_root(&a_square) else {
-            continue;
-        };
         // Each factor x^2 +- a*x + b must be irreducible: a^2 - 4b < 0.
         if &a_square - &four * &b >= BigRational::zero() {
             continue;
         }
-        factors.push(SquarefreeFactor::Quadratic {
-            linear_b: a.clone(),
-            constant_c: b.clone(),
-        });
-        factors.push(SquarefreeFactor::Quadratic {
-            linear_b: -a,
-            constant_c: b,
-        });
+        if let Some(a) = rational_positive_square_root(&a_square) {
+            // Rational split: two rational-coefficient irreducible quadratics.
+            factors.push(SquarefreeFactor::Quadratic {
+                linear_b: a.clone(),
+                constant_c: b.clone(),
+            });
+            factors.push(SquarefreeFactor::Quadratic {
+                linear_b: -a,
+                constant_c: b,
+            });
+        } else {
+            // Surd split (a = sqrt(2b - p) irrational): keep the even quartic
+            // x^4 + p*x^2 + r whole so the residue solve stays over ℚ; the surd
+            // appears only in the render (G1 Cap. B).
+            factors.push(SquarefreeFactor::EvenQuartic {
+                p: p.clone(),
+                r: r.clone(),
+            });
+        }
         return Some(());
     }
     None
@@ -1259,6 +1334,140 @@ pub(super) fn symmetric_surd_even_quartic_antiderivative(
     Some(build_backend_sum(ctx, log_piece, arctan_piece))
 }
 
+/// Integrate `(a3*x^3 + a2*x^2 + a1*x + a0) / (x^4 + p*x^2 + r)` when the even
+/// quartic is irreducible over ℝ and splits into the symmetric surd pair
+/// `(x^2 + a*x + s)(x^2 - a*x + s)`, `s = sqrt(r)` rational, `a = sqrt(2s - p)`
+/// irrational (the `EvenQuartic` factor of G1 Cap. B). The cubic numerator has
+/// RATIONAL coefficients (the outer partial-fraction residue is over ℚ); the
+/// surds `a`, `D = sqrt(2s + p)`, `W = sqrt(4r - p^2) = a*D` appear only here.
+///
+/// Split by parity. The ODD part `a3*x^3 + a1*x` reduces under `u = x^2` to the
+/// rational-in-`u` integral `(1/2)∫(a3*u + a1)/(u^2 + p*u + r) du` (discriminant
+/// `p^2 - 4r = -W^2 < 0`), giving
+///   `(a3/4)*ln(x^4+p*x^2+r) + ((2*a1 - a3*p)/(2W))*arctan((2*x^2 + p)/W)`.
+/// The EVEN part `a2*x^2 + a0` uses the symmetric partial fraction
+/// `(A*x+B)/(x^2+a*x+s) + (-A*x+B)/(x^2-a*x+s)` with `A = (a0 - a2*s)/(2*s*a)`,
+/// `B = a0/(2*s)`, integrating to
+///   `((a0 - a2*s)/(4*s*a))*ln((x^2+a*x+s)/(x^2-a*x+s))
+///     + ((a0 + a2*s)/(2*s*D))*(arctan((2x+a)/D) + arctan((2x-a)/D))`.
+/// Both sub-quadratics are strictly positive (irreducible, Δ<0), and the even
+/// quartic is positive-definite, so no `|.|` is needed. Verified downstream by
+/// differentiation (a bad surd match degrades to an honest residual).
+fn even_quartic_factor_antiderivative(
+    ctx: &mut Context,
+    variable: &str,
+    p: &BigRational,
+    r: &BigRational,
+    cubic: &[BigRational; 4],
+) -> Option<ExprId> {
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    let (a0, a1, a2, a3) = (&cubic[0], &cubic[1], &cubic[2], &cubic[3]);
+
+    let s = rational_positive_square_root(r)?;
+    let a_square = &two * &s - p;
+    let d_square = &two * &s + p;
+    let w_square = &four * r - p * p;
+    if !a_square.is_positive() || !d_square.is_positive() || !w_square.is_positive() {
+        return None;
+    }
+
+    let a = build_numeric_radius_expr(ctx, &a_square);
+    let d = build_numeric_radius_expr(ctx, &d_square);
+    let w = build_numeric_radius_expr(ctx, &w_square);
+    let variable_expr = ctx.var(variable);
+    let two_expr = ctx.add(Expr::Number(two.clone()));
+    let x_square = ctx.add(Expr::Pow(variable_expr, two_expr));
+    let s_expr = ctx.add(Expr::Number(s.clone()));
+
+    let divide_by_radius = |ctx: &mut Context, body: ExprId, radius: ExprId| -> ExprId {
+        if is_one(ctx, radius) {
+            body
+        } else {
+            ctx.add(Expr::Div(body, radius))
+        }
+    };
+    let scaled = |ctx: &mut Context, coeff: BigRational, body: ExprId| -> ExprId {
+        if coeff.is_one() {
+            body
+        } else {
+            let coeff_expr = ctx.add(Expr::Number(coeff));
+            build_backend_product(ctx, coeff_expr, body)
+        }
+    };
+
+    let mut pieces: Vec<ExprId> = Vec::new();
+
+    // ODD part.
+    if !a3.is_zero() {
+        let quartic = crate::polynomial::Polynomial::new(
+            vec![
+                r.clone(),
+                BigRational::zero(),
+                p.clone(),
+                BigRational::zero(),
+                BigRational::one(),
+            ],
+            variable.to_string(),
+        )
+        .to_expr(ctx);
+        let ln_q = ctx.call_builtin(BuiltinFn::Ln, vec![quartic]);
+        let piece = scaled(ctx, a3 / &four, ln_q);
+        pieces.push(piece);
+    }
+    let arctan_num = &two * a1 - a3 * p;
+    if !arctan_num.is_zero() {
+        // arctan((2*x^2 + p)/W), scaled by (2*a1 - a3*p)/(2*W).
+        let p_expr = ctx.add(Expr::Number(p.clone()));
+        let two_x2 = build_backend_product(ctx, two_expr, x_square);
+        let center = build_backend_sum(ctx, two_x2, p_expr);
+        let arg = divide_by_radius(ctx, center, w);
+        let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arg]);
+        let scaled_arctan = scaled(ctx, arctan_num / &two, arctan);
+        pieces.push(divide_by_radius(ctx, scaled_arctan, w));
+    }
+
+    // EVEN part: q_plus = x^2 + a*x + s, q_minus = x^2 - a*x + s.
+    let ax = build_backend_product(ctx, a, variable_expr);
+    let q_plus = {
+        let head = build_backend_sum(ctx, x_square, ax);
+        build_backend_sum(ctx, head, s_expr)
+    };
+    let q_minus = {
+        let head = build_backend_difference(ctx, x_square, ax);
+        build_backend_sum(ctx, head, s_expr)
+    };
+    let log_num = a0 - a2 * &s;
+    if !log_num.is_zero() {
+        // (a0 - a2*s)/(4*s) * (ln(q_plus) - ln(q_minus)) / a.
+        let ln_plus = ctx.call_builtin(BuiltinFn::Ln, vec![q_plus]);
+        let ln_minus = ctx.call_builtin(BuiltinFn::Ln, vec![q_minus]);
+        let log_diff = build_backend_difference(ctx, ln_plus, ln_minus);
+        let scaled_log = scaled(ctx, &log_num / (&four * &s), log_diff);
+        pieces.push(divide_by_radius(ctx, scaled_log, a));
+    }
+    let arctan2_num = a0 + a2 * &s;
+    if !arctan2_num.is_zero() {
+        // (a0 + a2*s)/(2*s) * (arctan((2x+a)/D) + arctan((2x-a)/D)) / D.
+        let two_x = build_backend_product(ctx, two_expr, variable_expr);
+        let center_plus = build_backend_sum(ctx, two_x, a);
+        let center_minus = build_backend_difference(ctx, two_x, a);
+        let arg_plus = divide_by_radius(ctx, center_plus, d);
+        let arg_minus = divide_by_radius(ctx, center_minus, d);
+        let arctan_plus = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_plus]);
+        let arctan_minus = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_minus]);
+        let arctan_sum = build_backend_sum(ctx, arctan_plus, arctan_minus);
+        let scaled_arctan = scaled(ctx, &arctan2_num / (&two * &s), arctan_sum);
+        pieces.push(divide_by_radius(ctx, scaled_arctan, d));
+    }
+
+    let mut result = ctx.num(0);
+    for piece in pieces {
+        result = build_backend_sum(ctx, result, piece);
+    }
+    Some(result)
+}
+
 fn push_quadratic_or_bail(
     monic: &crate::polynomial::Polynomial,
     factors: &mut Vec<SquarefreeFactor>,
@@ -1297,23 +1506,7 @@ fn mixed_partial_fraction_terms(
 ) -> Option<Vec<MultiQuadraticFactorTerm>> {
     let mut factor_polys: Vec<crate::polynomial::Polynomial> = Vec::with_capacity(factors.len());
     for factor in factors {
-        match factor {
-            SquarefreeFactor::Linear { root } => {
-                factor_polys.push(crate::polynomial::Polynomial::new(
-                    vec![-root.clone(), BigRational::one()],
-                    variable.to_string(),
-                ));
-            }
-            SquarefreeFactor::Quadratic {
-                linear_b,
-                constant_c,
-            } => {
-                factor_polys.push(crate::polynomial::Polynomial::new(
-                    vec![constant_c.clone(), linear_b.clone(), BigRational::one()],
-                    variable.to_string(),
-                ));
-            }
-        }
+        factor_polys.push(squarefree_factor_poly(factor, variable));
     }
     let mut denominator = crate::polynomial::Polynomial::one(variable.to_string());
     for poly in &factor_polys {
@@ -1337,6 +1530,16 @@ fn mixed_partial_fraction_terms(
         match factor {
             SquarefreeFactor::Linear { .. } => columns.push(cofactor),
             SquarefreeFactor::Quadratic { .. } => {
+                columns.push(cofactor.mul(&x_poly));
+                columns.push(cofactor);
+            }
+            SquarefreeFactor::EvenQuartic { .. } => {
+                // Cubic numerator a3*x^3 + a2*x^2 + a1*x + a0: one column per power,
+                // highest first (matching the read-back order below).
+                let x2 = x_poly.mul(&x_poly);
+                let x3 = x2.mul(&x_poly);
+                columns.push(cofactor.mul(&x3));
+                columns.push(cofactor.mul(&x2));
                 columns.push(cofactor.mul(&x_poly));
                 columns.push(cofactor);
             }
@@ -1375,6 +1578,7 @@ fn mixed_partial_fraction_terms(
                     constant_c: BigRational::zero(),
                     alpha: solution[cursor].clone(),
                     beta: BigRational::zero(),
+                    even_quartic: None,
                 });
                 cursor += 1;
             }
@@ -1388,8 +1592,28 @@ fn mixed_partial_fraction_terms(
                     constant_c: constant_c.clone(),
                     alpha: solution[cursor].clone(),
                     beta: solution[cursor + 1].clone(),
+                    even_quartic: None,
                 });
                 cursor += 2;
+            }
+            SquarefreeFactor::EvenQuartic { p, r } => {
+                // Columns pushed x^3, x^2, x, 1: read back highest-first into the
+                // low-to-high coeff array [a0, a1, a2, a3].
+                let cubic = [
+                    solution[cursor + 3].clone(),
+                    solution[cursor + 2].clone(),
+                    solution[cursor + 1].clone(),
+                    solution[cursor].clone(),
+                ];
+                terms.push(MultiQuadraticFactorTerm {
+                    factor_expr: poly.to_expr(ctx),
+                    linear_b: BigRational::zero(),
+                    constant_c: BigRational::zero(),
+                    alpha: BigRational::zero(),
+                    beta: BigRational::zero(),
+                    even_quartic: Some((p.clone(), r.clone(), cubic)),
+                });
+                cursor += 4;
             }
         }
     }

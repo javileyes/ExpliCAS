@@ -5286,10 +5286,13 @@ fn test_eval_symmetric_surd_even_quartic_integral_verifies() {
     // x^4-3x^2+4 uses √7; the scaled numerator stays a closed form too.
     assert!(!r("integrate(1/(x^4-3*x^2+4), x)").starts_with("integrate("));
     assert!(!r("integrate(2/(x^4-x^2+1), x)").starts_with("integrate("));
-    // Controls: routes owned elsewhere stay byte-identical, and the degree-6 / irrational-constant
-    // cases stay honest residuals (out of this cycle's scope).
+    // Controls: routes owned elsewhere stay byte-identical.
     assert_eq!(r("integrate(1/(x^2+1), x)"), "arctan(x)");
-    assert!(r("integrate(1/(x^6+1), x)").starts_with("integrate("));
+    // `1/(x^6+1)` = 1/((x^2+1)(x^4-x^2+1)): the even quartic now integrates as a
+    // FACTOR via G1 Cap. B (previously out of the symmetric-surd cycle's scope).
+    assert!(!r("integrate(1/(x^6+1), x)").starts_with("integrate("));
+    // `x^4+3x^2+1` factors into two irreducible quadratics with IRRATIONAL
+    // constants (u-roots (-3±√5)/2), not the symmetric-surd form — still residual.
     assert!(r("integrate(1/(x^4+3*x^2+1), x)").starts_with("integrate("));
 }
 

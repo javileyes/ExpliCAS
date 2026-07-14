@@ -1122,6 +1122,14 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   en el render. `1/(x⁴−4)` (√2), `1/(x⁴−9)`, `1/((x²−2)(x²+1))`, `1/((x²−2)(x²−3))`, `x/(x⁴−4)`.
   Δ<0 byte-idéntico. Primer sub-ciclo del plan `docs/G1_RATIONAL_INTEGRATION_SCOPING.md`.
   Quedan Cap.B `1/(x⁶+1)`/`1/(x⁸−1)`, Cap.C `1/(x⁵−1)` Φ5/√5, Cap.D `1/(x³−2)` ∛2.)*
+  *(G1 Cap. B GRADUADO `5892e7660b2db09183557349ae1751ffdd91e0a0` 2026-07-14: la cuártica par IRREDUCIBLE como FACTOR de un
+  producto (`x⁴−x²+1` en `x⁶+1` con √3; `x⁴+1` en `x⁸−1` con √2) integra ahora — nuevo
+  `SquarefreeFactor::EvenQuartic{p,r}` que mantiene la cuártica ENTERA sobre ℚ (residue sobre ℚ,
+  4 columnas) y `even_quartic_factor_antiderivative` que renderiza por descenso de PARIDAD (ODD
+  via u=x² racional; EVEN via split surd simétrico). `1/(x⁶+1)`, `1/(x⁸−1)` + numeradores no-constantes
+  (`x³/(x⁴−x²+1)`, `x/(x⁶+1)`). Standalone constante lo conserva `symmetric_surd`. Quedan Cap.C
+  `1/(x⁵−1)` Φ5/√5, Cap.D `1/(x³−2)` ∛2, y `1/(x⁸+1)` (resolvente surd). Residual de simplificador:
+  numeradores generales que el verificador √n·√n-débil no pliega declinan honesto.)*
   *(extensión `factor` even-poly 2026-06-21 bfd669727b629bdbba8340e380e493cc773cd3ae: `factor` parte
   también polinomios PARES REDUCIBLES de grado ≥6 vía t=x²:
   `factor(x⁶+1)→(x²+1)(x⁴-x²+1)`, `factor(x⁶+x⁴+x²+1)→(x²+1)(x⁴+1)`,
