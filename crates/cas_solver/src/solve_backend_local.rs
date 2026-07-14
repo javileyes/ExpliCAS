@@ -7953,6 +7953,75 @@ fn try_solve_periodic_trig_equation_ungated(
     if !matches!(eq.op, RelOp::Eq) {
         return None;
     }
+    // COT-SQUARE (re-cycle D, 2026-07-14 — F8 Layer-2): `cot(g)² = c` folds to a `cos = |sin|·√c`
+    // shape whose principal-branch inversion fabricated a self-referential arccos tree (Layer-1
+    // now declines it honestly, but the CORRECT answer is a periodic family). Reduce on the RAW
+    // tree (simplify destroys the cot before this handler runs):
+    //   cot(g)² = c  ⟺  cos²(g) = c·sin²(g), sin(g) ≠ 0  ⟺  sin²(g) = 1/(1+c)
+    // — unconditionally sound for rational c ≥ 0 (1/(1+c) > 0 forces sin ≠ 0 at every solution,
+    // so the cot-pole exclusion is automatic; c < 0 is Empty, a square cannot be negative). The
+    // existing sin²-reducer below then emits the full family (`cot²=1 → sin²=1/2 → {π/4+kπ/2}`).
+    {
+        let bare_cot_square = |ctx: &Context, e: ExprId| -> Option<ExprId> {
+            let Expr::Pow(base, exp) = ctx.get(e) else {
+                return None;
+            };
+            let (base, exp) = (*base, *exp);
+            if cas_math::numeric_eval::as_rational_const(ctx, exp)
+                != Some(BigRational::from_integer(2.into()))
+            {
+                return None;
+            }
+            let Expr::Function(fn_id, args) = ctx.get(base) else {
+                return None;
+            };
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cot))
+                && contains_var(ctx, args[0], var)
+            {
+                Some(args[0])
+            } else {
+                None
+            }
+        };
+        // Direct `cot(g)² = c` or the shifted diff form `cot(g)² − c = 0`.
+        let hit: Option<(ExprId, BigRational)> = if let Some(g) =
+            bare_cot_square(&simplifier.context, eq.lhs)
+        {
+            cas_math::numeric_eval::as_rational_const(&simplifier.context, eq.rhs).map(|c| (g, c))
+        } else if cas_math::expr_predicates::is_zero_expr(&simplifier.context, eq.rhs) {
+            match simplifier.context.get(eq.lhs).clone() {
+                Expr::Sub(l, r) => bare_cot_square(&simplifier.context, l).and_then(|g| {
+                    cas_math::numeric_eval::as_rational_const(&simplifier.context, r)
+                        .map(|c| (g, c))
+                }),
+                Expr::Add(l, r) => bare_cot_square(&simplifier.context, l).and_then(|g| {
+                    cas_math::numeric_eval::as_rational_const(&simplifier.context, r)
+                        .map(|c| (g, -c))
+                }),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some((g, c)) = hit {
+            use num_traits::Signed as _;
+            if c.is_negative() {
+                return Some(SolutionSet::Empty);
+            }
+            let target = BigRational::one() / (BigRational::one() + &c);
+            let sin_g = simplifier.context.call("sin", vec![g]);
+            let two = simplifier.context.num(2);
+            let sin_sq = simplifier.context.add(Expr::Pow(sin_g, two));
+            let target_expr = simplifier.context.add(Expr::Number(target));
+            let reduced = Equation {
+                lhs: sin_sq,
+                rhs: target_expr,
+                op: RelOp::Eq,
+            };
+            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+        }
+    }
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
 

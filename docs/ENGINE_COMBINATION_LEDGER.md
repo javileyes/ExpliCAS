@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 562 (newest first)
+Active entries: 563 (newest first)
 
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_symbolic_linear_coeff_in... | SOUNDNESS (F3 re-intento RETENIDO: ineq lineal con coef constante-simbólico dropeaba el operador): `solve(e^x<2^x, x)`
 - 2026-07-14 | `retained` | `crates/cas_math/src/polynomial.rs` (`count_real_roots`: cadena de Sturm EXAC... | SOUNDNESS (F4 re-intento RETENIDO: deflación racional dropeaba el factor residual grado≥3 entero): `solve(x^5-x^4-4x^3+4x^2+x-1=0, x)`
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS/CAPACIDAD (tan(u)=tan(v): congruencia mod π con exclusión EXACTA de polos): `solve(tan(2x)=tan(3x), x)`
+- 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | CAPACIDAD/SOUNDNESS (F8 Layer-2: cot²=c → familia periódica correcta): `solve(cot(x)^2-1=0, x)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_symbolic_pa... | SOUNDNESS (abs NO-afín vs parámetro fabrica basura de endpoints simbólicos): `solve(abs(x^2-1)<a)`
 - 2026-07-13 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_abs_vs_abs_polynom... | SOUNDNESS (abs-vs-abs no-polinómico fabrica "No solution" falso): `solve(abs(ln(x))<abs(x))`
 - 2026-07-13 | `retained` | `crates/cas_solver_core/src/isolation_utils.rs` (`is_known_negative` brazos N... | SOUNDNESS (is_known_negative unsound para operandos simbólicos): `solve(x^4+q=0)`
@@ -19513,3 +19514,18 @@ Active entries: 562 (newest first)
   - **La irracionalidad de π es una palanca de DECIDIBILIDAD, no un obstáculo**: para familias π-racionales + offsets racionales, "¿la progresión solución golpea la progresión de polos?" se decide EXACTO separando parte racional (deben coincidir) y parte π (intersección de progresiones aritméticas vía gcd racional). Sin oráculos de signo, sin floats. El mismo esquema sirve para cualquier trig(u)=trig(v) con dominio perforado.
   - **El gcd racional implementado para F5-gcd (2026-07-13) se reutilizó aquí como maquinaria de intersección de progresiones** — un fix numérico de convención se volvió infra de decidibilidad trig en dos ciclos.
   - PRÓXIMO PELDAÑO: re-ciclo D (cot² Layer-2). Residual honesto: tan(u)=tan(v) con offsets π-racionales mixtos (`tan(x+π/3)`) — Polynomial::from_expr los rechaza (coef no racional); extensión = representar offsets como q+r·π.
+
+## 2026-07-14 - CAPACIDAD/SOUNDNESS (F8 Layer-2: cot²=c → familia periódica correcta): `solve(cot(x)^2-1=0, x)`
+
+- area: `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equation_ungated`: reductor cot-square RAW-tree) + `crates/cas_solver/tests/cot_square_equation_tests.rs`
+- status: `retained`. COMPLETA la familia F8 del audit 2026-07-13b (Layer-1 `94c5bad98` había convertido el árbol arccos garbage en residual honesto; este Layer-2 da la RESPUESTA).
+- capture:
+  - investment_class: capacidad sobre soundness previa (residual honesto → familia periódica correcta).
+  - cell: `cot(x)^2-1=0`→{π/4+kπ/2} (la respuesta exacta que el audit pedía), `cot(x)^2=1`→ídem, `cot(x)^2=3`→{π/6+kπ, 5π/6+kπ}, `cot(x)^2=0`→{π/2+kπ} (borde c=0: cos=0∧sin≠0), `cot(x)^2=-1`→No solution (cuadrado real), `cot(2x)^2=1`→{π/8+kπ/4} (arg afín). TODOS verificados vs sympy + sustitución. Controles INTACTOS: `cot(x)=1` (power-1), `sin(x)^2=1/2`, `sec(x)^2=4` (recíproco-cuadrado F5), `tan(x)^2=3`, `cot(x)=x` residual.
+  - causa raíz: el fold sin/cos de cot² produce `cos=|sin|·√c` cuya inversión principal fabricaba el árbol arccos self-referencial; Layer-1 lo declinaba pero la familia correcta quedaba sin dueño.
+  - diseño: reducción en el árbol RAW (simplify destruye el cot antes del handler): **`cot²(g)=c ⟺ sin²(g)=1/(1+c)`, incondicionalmente sound para c≥0 racional** — la clave es que `1/(1+c)>0` fuerza sin≠0 en toda solución, así que la exclusión del polo del cot es AUTOMÁTICA (sin maquinaria de exclusión); c<0 → Empty exacto. La reducida alimenta el reductor sin²-doble-ángulo existente que emite la familia completa. Formas directa `cot²=c` y shifted `cot²−c=0`/`cot²+c=0`.
+  - validación: workspace 0 failed; clippy GREEN; scorecards verdes; huella estructural 0-delta. Tests: +2 (6 miembros con bordes c∈{0,−1} y arg afín + dueños intactos). Oráculos: sympy + sustitución.
+  - retained learning:
+  - **Elegir la reducción cuyo dominio se auto-satisface elimina la exclusión de polos**: `cot²=c → sin²=1/(1+c)` es superior a `cot=±√c → tan=±1/√c` porque el target `1/(1+c)>0` garantiza sin≠0 — la condición de definición del cot viene GRATIS con la forma reducida. Al reducir formas con dominio perforado, buscar la variante cuyo RHS excluye el polo por construcción.
+  - **Layer-1 (decline honesto) y Layer-2 (respuesta correcta) son ciclos separados y secuenciables**: el guard de soundness aterrizó primero (mata el garbage familia-wide), la capacidad después (da la familia para el caso constante); el residual honesto del Layer-1 sigue cubriendo los casos que el Layer-2 no reclama (RHS no-constante).
+  - RESIDUAL honesto restante de F8: `tan(x)/(1-tan(x)^2)=0`→{kπ/2} con polos espurios (el fold `→½tan(2x)` dropea el dominio del polo; necesita intersección dominio-del-árbol-RAW, facet separado, anotado).

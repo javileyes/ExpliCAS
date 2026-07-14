@@ -13,7 +13,7 @@ Sigue a [AUDITORIA_FRONTERA_2026-07-13.md](AUDITORIA_FRONTERA_2026-07-13.md) (9/
 - [x] **F5 [P1]** wrapped-trig-equation-drops-periodic-family (`solve(1/cos(x)^2 = 2, x)`) — CERRADA: recíproco-cuadrado ciclo 6 `393050c8e` + multiple-angle tan re-ciclo C 2026-07-14 `d182fe282` (tan(u)=tan(v) ⟺ u≡v mod π con exclusión exacta de polos por progresiones)
 - [ ] **F6 [P0]** unfolded-constant-arithmetic-tree-overflows-simplifier-depth (`[[1,2],[3,4]]^12`) — multi-cycle
 - [ ] **F7 [P1]** complex-value-domain-not-plumbed-to-root-emission (`solve(x^3 = 1, x)  [--value-domain complex]`) — multi-cycle
-- [~] **F8 [P1]** unsound-sincos-rewrite-of-tan-cot-quotients (`solve(cot(x)^2 - 1 = 0, x)`) — PARCIAL ciclo 5 `94c5bad98` (Layer-1 guard RHS-contains-var) + re-ciclo C 2026-07-14 `d182fe282` (miembro HANG `tan(2x)=tan(3x)` CERRADO→{kπ} instantáneo); facets restantes: `tan/(1-tan²)` polos espurios + Layer-2 periódico cot²
+- [x] **F8 [P1]** unsound-sincos-rewrite-of-tan-cot-quotients (`solve(cot(x)^2 - 1 = 0, x)`) — CERRADA: Layer-1 ciclo 5 `94c5bad98` + hang re-ciclo C `d182fe282` + Layer-2 re-ciclo D 2026-07-14 `5f6596c96` (cot²=c ⟺ sin²=1/(1+c), polo auto-excluido → {π/4+kπ/2}); facet residual anotado: `tan/(1-tan²)=0` polos espurios (fold dropea dominio)
 
 ## Cobertura (frentes limpios = 0 confirmados)
 
