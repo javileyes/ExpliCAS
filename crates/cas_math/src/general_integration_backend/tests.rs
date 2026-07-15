@@ -213,11 +213,11 @@ fn sextic_rational_factoring_fully_over_q_verifies() {
 fn sextic_rational_irreducible_over_q_stays_residual() {
     // A raised algebraic zero-test budget must not falsely CLAIM a denominator whose real
     // factorization is not yet rendered — it only lets an already-correct render VERIFY.
-    // (1/(x^6+1) and 1/(x^8-1) moved into scope via G1 Cap. B, 1/(x^5-1) via Cap. C, and are
-    // now legitimate results; an irreducible quintic like x^5-2 has no quartic factor at all
-    // and x^8+1 needs a surd resolvent, both unrendered, so they must stay residual
-    // regardless of the budget.)
-    for src in ["1/(x^5-2)", "1/(x^8+1)"] {
+    // (1/(x^6+1) and 1/(x^8-1) moved into scope via G1 Cap. B, 1/(x^5-1) via Cap. C, and
+    // 1/(x^8+1) via the R3 doubly-even octic probe — all now legitimate results; an
+    // irreducible quintic like x^5-2 has no quartic factor at all, and a septic like x^7-2
+    // is outside every rendered family, so they must stay residual regardless of budget.)
+    for src in ["1/(x^5-2)", "1/(x^7-2)"] {
         let mut ctx = Context::new();
         let integrand = cas_parser::parse(src, &mut ctx).expect("integrand");
         let candidate = try_algorithmic_integration_backend(
@@ -6240,6 +6240,64 @@ fn even_quartic_real_resolvent_verifies_x4_minus_5_family() {
     // Honest declines: Δ < 0 keeps the complex-resolvent quartics out of this
     // render's scope (they stay with their existing owners or residual).
     for source in ["1/(x^4+5)", "1/(x^4+2*x^2+3)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            !matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must stay an honest residual (got {:?})",
+            candidate.verification_status
+        );
+    }
+}
+
+#[test]
+fn doubly_even_octic_verifies_x8_plus_1_family() {
+    // G1 residual R3: `c/(x^8 + P·x^4 + R)` with S=√R, s=√S rational and
+    // A=√(2S−P) irrational splits over ℝ as two conjugate quartics in ℚ(A),
+    // each splitting further into a symmetric surd pair with NESTED radii
+    // √(2s∓A). The closed two-level render carries one radius factor per
+    // coefficient, so the differentiate-back residual is even in each radius
+    // atom and the nested relation tower (t²=2S−P, u²=2s−t, v²=2s+t)
+    // confirms it under the raised reduction budget.
+    let mut ctx = Context::new();
+    for source in [
+        "1/(x^8+1)",
+        "2/(x^8+1)",
+        "1/(x^8+16)",
+        "1/(x^8-x^4+1)",
+        "1/(x^8+5*x^4+16)",
+    ] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must verify through the doubly-even octic split (got {:?}, blocker: {:?})",
+            candidate.verification_status,
+            candidate.verification_blocker
+        );
+    }
+
+    // Honest declines: A^2 <= 0 (x^8+3x^4+1), s irrational (x^8+4), and
+    // non-constant numerators stay with their owners or residual.
+    for source in ["1/(x^8+3*x^4+1)", "1/(x^8+4)", "x^2/(x^8+1)"] {
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,

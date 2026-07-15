@@ -72,6 +72,23 @@ fn try_rational_reciprocal_affine_probe(
                 verify_antiderivative_by_differentiation(ctx, &mut candidate);
                 return AlgorithmicIntegrationProbeResult::Candidate(candidate);
             }
+            if let Some(antiderivative) = doubly_even_octic_antiderivative(ctx, integrand, variable)
+            {
+                // All four emitted quadratics are strictly positive
+                // (irreducible), so the antiderivative is unconditional.
+                let mut candidate = AlgorithmicIntegrationCandidate::unverified(
+                    integrand,
+                    variable,
+                    antiderivative,
+                    AlgorithmicIntegrationMethod::Rational,
+                );
+                if !probe_runner.try_verification_check() {
+                    candidate.mark_budget_exceeded();
+                    return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+                }
+                verify_antiderivative_by_differentiation(ctx, &mut candidate);
+                return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+            }
             return AlgorithmicIntegrationProbeResult::NoMatch(reason);
         }
     };
@@ -1626,6 +1643,185 @@ pub(super) fn symmetric_surd_even_quartic_antiderivative(
     };
 
     Some(build_backend_sum(ctx, log_piece, arctan_piece))
+}
+
+/// Integrate `c / (x^8 + P*x^4 + R)` when the doubly-even octic splits over
+/// ℝ as `(x^4 + A*x^2 + S)(x^4 - A*x^2 + S)` with `S = sqrt(R)` and
+/// `s = sqrt(S)` RATIONAL but `A = sqrt(2S - P)` irrational (G1 residual R3;
+/// the iconic member is `1/(x^8+1)`). Because the general-rational degree cap
+/// is 8, this shape can only appear ALONE in a squarefree part, so a
+/// standalone constant-numerator probe (the Cap. B `symmetric_surd` pattern)
+/// covers the whole family — no `SquarefreeFactor` variant needed.
+///
+/// Level 1 is a CLOSED partial fraction (the quartics are conjugate in
+/// ℚ(A)): `c/(Q₊Q₋) = (γx² + δ)/Q₊ + (−γx² + δ)/Q₋` with `δ = c/(2S)`,
+/// `γ = c/(2SA) = cA/(2S·A²)` — rational arithmetic plus one `A` factor, no
+/// field division. Level 2 reuses the symmetric-surd EVEN-part formulas with
+/// QuadSurd coefficients: family `x^4 ± Ax^2 + S` splits as
+/// `(x² + ax + s)(x² − ax + s)` with radius `a = sqrt(2s ∓ A)` (NESTED — the
+/// arctan radius `D = sqrt(2s ± A)` is the OTHER family's radius), and for
+/// numerator `n₂x² + n₀`:
+///   log:    `(n₀ − n₂s)/(4s) · (ln(x²+ax+s) − ln(x²−ax+s)) / a`
+///   arctan: `(n₀ + n₂s)/(2s) · (arctan((2x+a)/D) + arctan((2x−a)/D)) / D`
+/// The reciprocal radii rationalize inside ℚ(A): `1/a = a/(2s∓A)` and
+/// `1/(2s∓A) = conj/(4s²−A²)` with the norm RATIONAL and positive (the gate
+/// `2s > A` makes both radicands positive and all four quadratics
+/// irreducible, so every `ln` argument is positive-definite — no `|.|`, no
+/// pole conditions, the antiderivative is unconditional). Every coefficient
+/// carries exactly ONE factor of its radius, so the differentiate-back
+/// residual is EVEN in each radius atom and the nested relation tower
+/// (`t² = 2S−P`, `u² = 2s−t`, `v² = 2s+t` — MAX_RELATIONS exactly) confirms
+/// it; emission stays gated on that verifier. The level-1 identities are
+/// re-checked exactly in QuadSurd (defense in depth: broken algebra
+/// degrades to an honest residual, never a wrong answer).
+fn doubly_even_octic_antiderivative(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<ExprId> {
+    use crate::quad_surd::QuadSurd;
+    let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let denominator =
+        crate::polynomial::Polynomial::from_expr(ctx, denominator_expr, variable).ok()?;
+    if denominator.degree() != 8 {
+        return None;
+    }
+    let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
+    if numerator.is_zero() || numerator.degree() != 0 {
+        return None;
+    }
+    let leading = denominator.leading_coeff();
+    let denominator = denominator.div_scalar(&leading);
+    if (1..8).any(|k| k != 4 && !denominator.coeffs[k].is_zero()) {
+        return None;
+    }
+    let big_p = denominator.coeffs[4].clone();
+    let big_r = denominator.coeffs[0].clone();
+    let c = &numerator.coeffs[0] / &leading;
+    if c.is_zero() {
+        return None;
+    }
+
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    // S = sqrt(R) and s = sqrt(S) must be rational (R = s^4).
+    let big_s = rational_positive_square_root(&big_r)?;
+    let s = rational_positive_square_root(&big_s)?;
+    // A^2 = 2S - P must be a positive NON-square (zero => the non-squarefree
+    // `(x^4+S)^2`; a perfect square => the rational level-1 split owns it).
+    let a_square = &two * &big_s - &big_p;
+    if !a_square.is_positive() || rational_positive_square_root(&a_square).is_some() {
+        return None;
+    }
+    // 2s > A: both nested radicands 2s -/+ A positive and all four quadratics
+    // irreducible (a^2 - 4s = -/+A - 2s < 0 for both families).
+    if crate::root_forms::sign_of_linear_surd(&(&two * &s), &-BigRational::one(), &a_square)
+        != std::cmp::Ordering::Greater
+    {
+        return None;
+    }
+
+    // Level-1 closed partial fraction in Q(A).
+    let delta = QuadSurd::from_rational(&c / (&two * &big_s));
+    let gamma = QuadSurd::new(
+        BigRational::zero(),
+        &c / (&two * &big_s * &a_square),
+        a_square.clone(),
+    )?;
+    let a_surd = QuadSurd::new(BigRational::zero(), BigRational::one(), a_square.clone())?;
+    // Defense in depth: gamma * A must equal delta and 2*delta*S must equal c.
+    let gamma_a = gamma.mul(&a_surd)?;
+    if !gamma_a.is_rational()
+        || gamma_a.rational_part() != delta.rational_part()
+        || (&two * delta.rational_part() * &big_s) != c
+    {
+        return None;
+    }
+
+    let variable_expr = ctx.var(variable);
+    let two_expr = ctx.num(2);
+    let x_square = ctx.add(Expr::Pow(variable_expr, two_expr));
+    let s_rat = QuadSurd::from_rational(s.clone());
+    let norm = &four * &s * &s - &a_square; // (2s-A)(2s+A) > 0, rational.
+    let mut result = ctx.num(0);
+
+    // Families: (sign, numerator n2 = sign*gamma, n0 = delta) for x^4 + sign*A*x^2 + S.
+    for positive_family in [true, false] {
+        let n2 = if positive_family {
+            gamma.clone()
+        } else {
+            gamma.neg()
+        };
+        let n0 = delta.clone();
+        // This family's split radius a = sqrt(2s - sign*A); arctan radius
+        // D = sqrt(2s + sign*A) (the other family's a).
+        let a_inner = if positive_family {
+            QuadSurd::new(&two * &s, -BigRational::one(), a_square.clone())?
+        } else {
+            QuadSurd::new(&two * &s, BigRational::one(), a_square.clone())?
+        };
+        let d_inner = a_inner.conj();
+        let a_inner_expr = a_inner.to_expr(ctx);
+        let d_inner_expr = d_inner.to_expr(ctx);
+        let radius_a = ctx.call_builtin(BuiltinFn::Sqrt, vec![a_inner_expr]);
+        let radius_d = ctx.call_builtin(BuiltinFn::Sqrt, vec![d_inner_expr]);
+
+        // q_plus = x^2 + a*x + s, q_minus = x^2 - a*x + s (positive-definite).
+        let s_expr = ctx.add(Expr::Number(s.clone()));
+        let ax = build_backend_product(ctx, radius_a, variable_expr);
+        let q_plus = {
+            let head = build_backend_sum(ctx, x_square, ax);
+            build_backend_sum(ctx, head, s_expr)
+        };
+        let q_minus = {
+            let head = build_backend_difference(ctx, x_square, ax);
+            build_backend_sum(ctx, head, s_expr)
+        };
+
+        // Log piece: [(n0 - n2*s)/(4s)] * (ln q_plus - ln q_minus) / a, with
+        // 1/a = a * conj(2s -/+ A) / norm carried into the Q(A) coefficient.
+        let log_num = n0.sub(&n2.mul(&s_rat)?)?;
+        if !log_num.is_zero() {
+            let coeff = log_num.mul(&a_inner.conj())?.mul(&QuadSurd::from_rational(
+                BigRational::one() / (&four * &s * &norm),
+            ))?;
+            let ln_plus = ctx.call_builtin(BuiltinFn::Ln, vec![q_plus]);
+            let ln_minus = ctx.call_builtin(BuiltinFn::Ln, vec![q_minus]);
+            let log_diff = build_backend_difference(ctx, ln_plus, ln_minus);
+            let coeff_expr = coeff.to_expr(ctx);
+            let scaled = build_backend_product(ctx, coeff_expr, log_diff);
+            let piece = build_backend_product(ctx, scaled, radius_a);
+            result = build_backend_sum(ctx, result, piece);
+        }
+
+        // Arctan piece: [(n0 + n2*s)/(2s)] * (arctan((2x+a)/D) + arctan((2x-a)/D)) / D,
+        // with 1/D = D * conj(2s +/- A) / norm carried into the Q(A) coefficient.
+        let atan_num = n0.add(&n2.mul(&s_rat)?)?;
+        if !atan_num.is_zero() {
+            let coeff = atan_num
+                .mul(&d_inner.conj())?
+                .mul(&QuadSurd::from_rational(
+                    BigRational::one() / (&two * &s * &norm),
+                ))?;
+            let two_x = build_backend_product(ctx, two_expr, variable_expr);
+            let center_plus = build_backend_sum(ctx, two_x, radius_a);
+            let center_minus = build_backend_difference(ctx, two_x, radius_a);
+            let arg_plus = ctx.add(Expr::Div(center_plus, radius_d));
+            let arg_minus = ctx.add(Expr::Div(center_minus, radius_d));
+            let arctan_plus = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_plus]);
+            let arctan_minus = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_minus]);
+            let arctan_sum = build_backend_sum(ctx, arctan_plus, arctan_minus);
+            let coeff_expr = coeff.to_expr(ctx);
+            let scaled = build_backend_product(ctx, coeff_expr, arctan_sum);
+            let piece = build_backend_product(ctx, scaled, radius_d);
+            result = build_backend_sum(ctx, result, piece);
+        }
+    }
+
+    Some(result)
 }
 
 /// Integrate `(a3*x^3 + a2*x^2 + a1*x + a0) / (x^4 + p*x^2 + r)` when the even

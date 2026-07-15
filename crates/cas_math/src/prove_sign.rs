@@ -45,13 +45,157 @@ fn univariate_quadratic_shape(ctx: &Context, expr: ExprId) -> Option<(BigRationa
 }
 
 fn is_strictly_positive_univariate_quadratic(ctx: &Context, expr: ExprId) -> bool {
-    univariate_quadratic_shape(ctx, expr)
+    if univariate_quadratic_shape(ctx, expr)
         .is_some_and(|(a, discriminant)| a.is_positive() && discriminant.is_negative())
+    {
+        return true;
+    }
+    constant_coeff_quadratic_discriminant_bounds(ctx, expr)
+        .is_some_and(|(a_lo, disc_hi)| a_lo.is_positive() && disc_hi.is_negative())
 }
 
 fn is_nonnegative_univariate_quadratic(ctx: &Context, expr: ExprId) -> bool {
-    univariate_quadratic_shape(ctx, expr)
+    if univariate_quadratic_shape(ctx, expr)
         .is_some_and(|(a, discriminant)| a.is_positive() && !discriminant.is_positive())
+    {
+        return true;
+    }
+    constant_coeff_quadratic_discriminant_bounds(ctx, expr)
+        .is_some_and(|(a_lo, disc_hi)| a_lo.is_positive() && !disc_hi.is_positive())
+}
+
+/// Exact interval bounds `(a_lo, disc_hi)` — a lower bound on the leading
+/// coefficient and an upper bound on the discriminant `b² − 4ac` — for a
+/// univariate quadratic whose coefficients are CONSTANT (variable-free)
+/// expressions decidable by the interval oracle, e.g. the nested surd
+/// `x² + √(2−√2)·x + 1` that `Polynomial::from_expr` cannot represent (its
+/// coefficients are not rational). All arithmetic is outward-safe exact
+/// BigRational interval arithmetic over `const_value_bounds`, so
+/// `a_lo > 0 ∧ disc_hi < 0` is a PROOF of strict positivity for every real
+/// value of the variable — never a numeric estimate.
+fn constant_coeff_quadratic_discriminant_bounds(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BigRational)> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?.clone();
+
+    // Interval accumulators for the degree-0/1/2 coefficients.
+    let mut coeff_bounds: [(BigRational, BigRational); 3] = [
+        (BigRational::zero(), BigRational::zero()),
+        (BigRational::zero(), BigRational::zero()),
+        (BigRational::zero(), BigRational::zero()),
+    ];
+
+    // Walk the additive spine; classify each term as coeff * var^degree with
+    // a variable-free coefficient. Anything else is out of scope.
+    let mut stack: Vec<(ExprId, bool)> = vec![(expr, false)];
+    while let Some((term, negated)) = stack.pop() {
+        match ctx.get(term) {
+            Expr::Add(a, b) => {
+                stack.push((*a, negated));
+                stack.push((*b, negated));
+                continue;
+            }
+            Expr::Sub(a, b) => {
+                stack.push((*a, negated));
+                stack.push((*b, !negated));
+                continue;
+            }
+            Expr::Neg(inner) => {
+                stack.push((*inner, !negated));
+                continue;
+            }
+            _ => {}
+        }
+        let (degree, coeff) = classify_constant_coeff_monomial(ctx, term, &var)?;
+        let (mut lo, mut hi) = coeff;
+        if negated {
+            std::mem::swap(&mut lo, &mut hi);
+            lo = -lo;
+            hi = -hi;
+        }
+        coeff_bounds[degree].0 += lo;
+        coeff_bounds[degree].1 += hi;
+    }
+
+    let [(c_lo, c_hi), (b_lo, b_hi), (a_lo, a_hi)] = coeff_bounds;
+    // b² upper/lower bounds from the b interval.
+    let b_lo_sq = &b_lo * &b_lo;
+    let b_hi_sq = &b_hi * &b_hi;
+    let b_square_hi = b_lo_sq.clone().max(b_hi_sq.clone());
+    // 4ac lower bound: minimum over the four interval products.
+    let four = BigRational::from_integer(4.into());
+    let ac_lo = [&a_lo * &c_lo, &a_lo * &c_hi, &a_hi * &c_lo, &a_hi * &c_hi]
+        .into_iter()
+        .min()?;
+    let disc_hi = b_square_hi - four * ac_lo;
+    Some((a_lo, disc_hi))
+}
+
+/// `(degree, (lo, hi))` of a monomial `coeff * var^degree` (degree ≤ 2) whose
+/// coefficient is variable-free with decidable exact bounds.
+fn classify_constant_coeff_monomial(
+    ctx: &Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(usize, (BigRational, BigRational))> {
+    let one = || (BigRational::one(), BigRational::one());
+    match ctx.get(term) {
+        Expr::Variable(name) if ctx.sym_name(*name) == var => Some((1, one())),
+        Expr::Pow(base, exp) => {
+            if !matches!(ctx.get(*base), Expr::Variable(n) if ctx.sym_name(*n) == var) {
+                return constant_term_bounds(ctx, term).map(|b| (0, b));
+            }
+            match crate::numeric_eval::as_rational_const(ctx, *exp) {
+                Some(e) if e == BigRational::from_integer(2.into()) => Some((2, one())),
+                Some(e) if e.is_one() => Some((1, one())),
+                _ => None,
+            }
+        }
+        Expr::Mul(a, b) => {
+            let (var_side, const_side) = if contains_named_var_local(ctx, *a, var) {
+                (*a, *b)
+            } else {
+                (*b, *a)
+            };
+            let (degree, inner) = classify_constant_coeff_monomial(ctx, var_side, var)?;
+            if degree == 0 {
+                // Both sides variable-free: treat the whole product as a constant.
+                return constant_term_bounds(ctx, term).map(|b| (0, b));
+            }
+            // Interval product: the var side may itself carry a coefficient
+            // (`(2·x)·√c` has total coefficient `2·√c`).
+            let outer = constant_term_bounds(ctx, const_side)?;
+            let products = [
+                &inner.0 * &outer.0,
+                &inner.0 * &outer.1,
+                &inner.1 * &outer.0,
+                &inner.1 * &outer.1,
+            ];
+            let lo = products.iter().min()?.clone();
+            let hi = products.iter().max()?.clone();
+            Some((degree, (lo, hi)))
+        }
+        _ => constant_term_bounds(ctx, term).map(|b| (0, b)),
+    }
+}
+
+fn constant_term_bounds(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
+    if !crate::expr_predicates::contains_variable(ctx, expr) {
+        if let Expr::Number(n) = ctx.get(expr) {
+            return Some((n.clone(), n.clone()));
+        }
+        return crate::const_sign::const_value_bounds(ctx, expr);
+    }
+    None
+}
+
+fn contains_named_var_local(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    crate::expr_predicates::contains_named_var(ctx, expr, var)
 }
 
 fn square_coeff(coeffs: &[BigRational], degree: usize) -> BigRational {
@@ -952,5 +1096,42 @@ mod tests {
         assert_eq!(positive_two, TriProof::Proven);
         assert_eq!(positive_half, TriProof::Disproven);
         assert_eq!(nonnegative_one, TriProof::Proven);
+    }
+
+    #[test]
+    fn proves_positive_quadratic_with_constant_surd_coefficients() {
+        // The rational extractor cannot represent surd coefficients; the exact
+        // interval path decides the discriminant sign instead (G1 R3: the
+        // doubly-even octic render's `ln` arguments carry NESTED surd linear
+        // coefficients like `√(2−√2)`).
+        let mut ctx = cas_ast::Context::new();
+        let unknown =
+            |_ctx: &cas_ast::Context, _expr: cas_ast::ExprId, _depth: usize| TriProof::Unknown;
+        for src in [
+            "x^2 + sqrt(2 - sqrt(2))*x + 1", // R3 family +: disc = (2−√2) − 4 < 0
+            "x^2 - sqrt(2 - sqrt(2))*x + 1", // negated linear term
+            "x^2 + sqrt(sqrt(2) + 2)*x + 1", // R3 family −: disc = (2+√2) − 4 < 0
+            "x^2 - sqrt(3)*x + 1",           // flat surd: disc = 3 − 4 < 0
+            "x^2 + sqrt(2 - sqrt(2))*x + 2", // scaled constant term
+        ] {
+            let expr = parse(src, &mut ctx).expect(src);
+            let proof = prove_positive_depth_with(&ctx, expr, 20, true, unknown);
+            assert_eq!(proof, TriProof::Proven, "{src} is positive-definite");
+        }
+
+        // Honest declines: a genuinely sign-changing quadratic must NOT prove
+        // (disc > 0: real roots), and a zero-discriminant one must not prove
+        // STRICT positivity (the interval cannot certify equality either —
+        // conservative Unknown, never a false Proven).
+        for src in [
+            "x^2 + sqrt(5)*x + 1",           // disc = 5 − 4 > 0: has real roots
+            "x^2 + sqrt(2)*x + 1/2",         // disc = 0: touches zero
+            "x^2 + sqrt(2 - sqrt(2))*x - 1", // negative constant term
+            "-x^2 + sqrt(3)*x - 1",          // negative leading coefficient
+        ] {
+            let expr = parse(src, &mut ctx).expect(src);
+            let proof = prove_positive_depth_with(&ctx, expr, 20, true, unknown);
+            assert_ne!(proof, TriProof::Proven, "{src} must not prove positive");
+        }
     }
 }

@@ -684,7 +684,6 @@ fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
 fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
         "integrate(1/(x^3-x-1), x)", // cubic with an irrational non-∛ root
-        "integrate(1/(x^8+1), x)",   // resolvent u^4+1 needs a surd factorization
         "integrate(1/(x^4+x+1), x)", // resolvent cubic has no rational root
         "integrate(1/(x^5-2), x)",   // irreducible quintic: no quartic factor at all
     ] {
@@ -910,6 +909,58 @@ fn integrate_contract_even_quartic_real_resolvent_integrates_x4_minus_5_family()
         assert!(
             result.contains("integrate("),
             "negative-discriminant resolvent is out of scope for R2: {input} -> {result}"
+        );
+    }
+}
+
+/// G1 residual R3 (2026-07-15): the doubly-even octic `c/(x^8 + P·x^4 + R)`
+/// with `S = √R`, `s = √S` rational and `A = √(2S − P)` irrational splits over
+/// ℝ as two conjugate quartics in ℚ(A), each splitting into a symmetric surd
+/// pair with NESTED radii `√(2s ∓ A)` — the closed two-level render whose
+/// level-1 partial fraction is exact in ℚ(A) (γ = c/(2SA), δ = c/(2S)) and
+/// whose four quadratics are positive-definite (no abs, no conditions). The
+/// differentiate-back residual is even in each radius atom, so the nested
+/// relation tower (`t² = 2S−P`, `u² = 2s−t`, `v² = 2s+t`) confirms it under
+/// the raised reduction budget. All emissions verified numerically against
+/// mpmath/sympy at 30 digits — notably, sympy 1.14's own `integrate` returns
+/// literally `0` for `1/(x^8+1)` and `1/(x^8+16)` (a live wrong answer), so
+/// this render strictly beats it on the family.
+#[test]
+fn integrate_contract_doubly_even_octic_integrates_x8_plus_1_family() {
+    for input in [
+        "integrate(1/(x^8+1), x)",
+        "integrate(2/(x^8+1), x)",
+        "integrate(1/(x^8+16), x)",
+        "integrate(1/(x^8-x^4+1), x)",
+        "integrate(1/(x^8+5*x^4+16), x)",
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should integrate via the doubly-even octic split: {input} -> {result}"
+        );
+        assert!(
+            result.contains("arctan") && result.contains("ln("),
+            "expected the arctan+log closed form: {input} -> {result}"
+        );
+        assert!(
+            required.is_empty(),
+            "positive-definite quadratics need no conditions for {input}: {required:?}"
+        );
+    }
+
+    // Honest declines: A² ≤ 0 (x^8+3x^4+1), s irrational (x^8+4), and
+    // non-constant numerators outside the u-substitution owners.
+    for input in [
+        "integrate(1/(x^8+3*x^4+1), x)",
+        "integrate(1/(x^8+4), x)",
+        "integrate(x^2/(x^8+1), x)",
+        "integrate(x/(x^8+1), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            result.contains("integrate("),
+            "out of the R3 gate, must stay residual: {input} -> {result}"
         );
     }
 }

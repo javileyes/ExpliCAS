@@ -27,11 +27,20 @@ use cas_ast::{BuiltinFn, ConditionPredicate, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::Signed;
 
-const ALGEBRAIC_ZERO_TEST_MAX_NODES: usize = 500;
+// Sized for the doubly-even octic residual (G1 R3, `1/(x^8+1)`): its
+// differentiate-back residual reaches ~370 monomials over 4 poly vars and the
+// single-monomial reduction takes up to 8916 measured steps (x^8+5x^4+16, the
+// widest family member; 16384 gives ~1.8x headroom). Raising both is sound:
+// the node cap only gates INPUT size and the step cap only bounds work before
+// an honest `None` — neither can turn a non-zero residual into `Some(true)`;
+// termination is guaranteed by the tower's lexicographic descent, the cap is
+// a safety valve.
+const ALGEBRAIC_ZERO_TEST_MAX_NODES: usize = 1024;
 const ALGEBRAIC_ZERO_TEST_MAX_VARS: usize = 6;
-// 3 relations cover the G1 Cap. C tower `s = √5, t₁ = √((5−s)/2), t₂ = √((5+s)/2)`.
+// 3 relations cover the G1 Cap. C tower `s = √5, t₁ = √((5−s)/2), t₂ = √((5+s)/2)`
+// and the R3 octic tower `t = √(2S−P), u = √(2s−t), v = √(2s+t)`.
 const ALGEBRAIC_ZERO_TEST_MAX_RELATIONS: usize = 3;
-const ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS: usize = 512;
+const ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS: usize = 16384;
 
 fn algebraic_zero_test_budget() -> PolyBudget {
     // Sized so a degree-≤8 rational integrand whose squarefree denominator splits into
