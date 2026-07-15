@@ -685,7 +685,6 @@ fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
         "integrate(1/(x^3-x-1), x)", // cubic with an irrational non-∛ root
         "integrate(1/(x^8+1), x)",   // resolvent u^4+1 needs a surd factorization
-        "integrate(1/(x^4-2), x)",   // resolvent root √2 is itself irrational
         "integrate(1/(x^4+x+1), x)", // resolvent cubic has no rational root
         "integrate(1/(x^5-2), x)",   // irreducible quintic: no quartic factor at all
     ] {
@@ -860,15 +859,57 @@ fn integrate_contract_general_numerator_even_quartic_now_verifies() {
             "raised algebraic zero-test budget should verify and emit: {input} -> {result}"
         );
     }
-    // Denominators needing an algebraic extension the render does not cover are
-    // still out of scope (Φ5 graduated via Cap. C and ∛2 via Cap. D; the √5
-    // REAL-pole quartic remains).
-    {
-        let input = "integrate(1/(x^4-5), x)";
+}
+
+/// G1 residual R2 (2026-07-15): an even quartic `x^4 + p·x^2 + r` whose
+/// resolvent `u^2 + pu + r` has IRRATIONAL REAL roots (Δ = p² − 4r > 0
+/// non-square) is now kept WHOLE over ℚ (`EvenQuarticRealResolvent`) and
+/// rendered through the closed conjugate split `(x² − u₁)(x² − u₂)` with
+/// `u_i ∈ ℚ(√Δ)`: the inner partial fraction is CLOSED FORM in QuadSurd (no
+/// field division — `1/√Δ = √Δ/Δ`, `1/u = conj(u)/r`), a positive `u` yields
+/// the real-log ratio around the NESTED radius `√u` (two real poles → NonZero
+/// conditions), a negative `u` the arctan around `√(−u)`. Coefficients carry
+/// exactly one factor of their radius, so the differentiate-back residual is
+/// even in each radius atom and the C-ii nested tower verifies it. All
+/// emissions below were also confirmed numerically against an independent
+/// oracle (sympy, 30 digits).
+#[test]
+fn integrate_contract_even_quartic_real_resolvent_integrates_x4_minus_5_family() {
+    for input in [
+        "integrate(1/(x^4-5), x)",
+        "integrate(1/(x^4-2), x)",
+        "integrate((x^2+1)/(x^4-5), x)",
+        "integrate((x^3+x)/(x^4-5), x)",
+        // Both resolvent roots negative: pure arctan pair, no real poles.
+        "integrate(1/(x^4+6*x^2+4), x)",
+        // Composite squarefree part: rational quadratic × real-resolvent quartic.
+        "integrate(1/(x^6-2*x^4-5*x^2+10), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should integrate via the real-resolvent conjugate split: {input} -> {result}"
+        );
+    }
+
+    // The iconic member: both nested radii present (log ratio + arctan).
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(1/(x^4-5), x)");
+    assert!(
+        result.contains("arctan") && result.contains("ln(|"),
+        "expected arctan + real-log ratio: {result}"
+    );
+    assert!(
+        !required.is_empty(),
+        "the real poles ±5^(1/4) must surface as conditions: {required:?}"
+    );
+
+    // Δ < 0 (complex resolvent roots outside the even/general quartic owners)
+    // stays an honest residual: this render only claims Δ > 0 non-square.
+    for input in ["integrate(1/(x^4+5), x)", "integrate(1/(x^4+2*x^2+3), x)"] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
             result.contains("integrate("),
-            "algebraic-extension render is a later sub-cycle, still residual: {input} -> {result}"
+            "negative-discriminant resolvent is out of scope for R2: {input} -> {result}"
         );
     }
 }

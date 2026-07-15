@@ -5309,8 +5309,19 @@ fn test_eval_symmetric_surd_even_quartic_integral_verifies() {
     // FACTOR via G1 Cap. B (previously out of the symmetric-surd cycle's scope).
     assert!(!r("integrate(1/(x^6+1), x)").starts_with("integrate("));
     // `x^4+3x^2+1` factors into two irreducible quadratics with IRRATIONAL
-    // constants (u-roots (-3±√5)/2), not the symmetric-surd form — still residual.
-    assert!(r("integrate(1/(x^4+3*x^2+1), x)").starts_with("integrate("));
+    // constants (u-roots (-3±√5)/2), not the symmetric-surd form. It graduated
+    // via G1 R2 (`EvenQuarticRealResolvent`, 2026-07-15): the conjugate split
+    // over ℚ(√5) renders the arctan pair (both u-roots negative, no real
+    // poles). Numerically confirmed against sympy at 30 digits.
+    let real_resolvent = r("integrate(1/(x^4+3*x^2+1), x)");
+    assert!(
+        !real_resolvent.starts_with("integrate("),
+        "x^4+3x^2+1 must integrate via the real-resolvent split: {real_resolvent}"
+    );
+    assert!(
+        real_resolvent.contains("arctan") && real_resolvent.contains("sqrt(5)"),
+        "expected the arctan pair over Q(sqrt(5)): {real_resolvent}"
+    );
 }
 
 #[test]

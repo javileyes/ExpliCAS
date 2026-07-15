@@ -69,10 +69,10 @@ cuando, los tres se cumplen:
   ~8-12 ciclos.** 🔨 **Sub-ciclo 1 ATERRIZADO 2026-06-21**: `1/(x^6-1)`, `1/(x^6-64)` (factorizan
   ENTEROS sobre ℚ) ya integran y verifican — subiendo el budget del multipoly del
   `algebraic_rational_zero_test` (el verifier ya hacía √c↦t, t²=c; solo no cabía el residual de
-  grado 6). 🔨 **Sub-ciclo Cap. A ATERRIZADO 2026-07-14** (`300f03ef38f4bebf55a26fad077eeeb6eee00fbb`): `1/(x^4-4)` (√2) y toda
+  grado 6). 🔨 **Sub-ciclo Cap. A ATERRIZADO 2026-07-14** (`d557556ea`): `1/(x^4-4)` (√2) y toda
   cuadrática racional Δ>0 (raíces reales irracionales) ahora integran como log-ratio real —
   render `build_indefinite_square_denominator_reciprocal_antiderivative` reusado dentro del
-  ensamblador multi-cuadrático; residue sobre ℚ, surd sólo en el render. 🔨 **Sub-ciclo Cap. B ATERRIZADO 2026-07-14** (`5892e7660b2db09183557349ae1751ffdd91e0a0`): `1/(x^6+1)` (√3) y `1/(x^8-1)` (√2) —
+  ensamblador multi-cuadrático; residue sobre ℚ, surd sólo en el render. 🔨 **Sub-ciclo Cap. B ATERRIZADO 2026-07-14** (`6c4d59afc`): `1/(x^6+1)` (√3) y `1/(x^8-1)` (√2) —
   la cuártica par IRREDUCIBLE como FACTOR (`SquarefreeFactor::EvenQuartic` entero sobre ℚ, render por
   descenso de paridad). Plan de sub-ciclos en `docs/G1_RATIONAL_INTEGRATION_SCOPING.md`.
   🔨 **Nivel-2 COMPLETO 2026-07-15** (C-i QuadSurd `c25148522` → C-ii torre de radicales anidados

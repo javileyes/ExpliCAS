@@ -6198,6 +6198,68 @@ fn cbrt_cubic_factor_verifies_x3_minus_k_family() {
 }
 
 #[test]
+fn even_quartic_real_resolvent_verifies_x4_minus_5_family() {
+    // G1 residual R2: an even quartic whose resolvent u² + pu + r has
+    // IRRATIONAL REAL roots (Δ = p² − 4r > 0 non-square) is kept WHOLE over ℚ
+    // (`EvenQuarticRealResolvent`) and rendered through the conjugate split
+    // (x² − u₁)(x² − u₂) with u_i ∈ ℚ(√Δ): closed-form inner partial fraction
+    // in QuadSurd (no field division), real-log ratio around the NESTED radius
+    // √u for u > 0, arctan around √(−u) for u < 0. Each coefficient carries
+    // exactly one factor of its radius, so the differentiate-back residual is
+    // even in every radius atom and the nested relation tower confirms it.
+    let mut ctx = Context::new();
+    for source in [
+        "1/(x^4-5)",
+        "1/(x^4-2)",
+        "(x^2+1)/(x^4-5)",
+        "(x^3+x)/(x^4-5)",
+        // Both resolvent roots negative: pure arctan pair, no real poles.
+        "1/(x^4+6*x^2+4)",
+        // Composite squarefree part: rational quadratic × real-resolvent quartic.
+        "1/(x^6-2*x^4-5*x^2+10)",
+    ] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must verify through the real-resolvent conjugate split (got {:?}, blocker: {:?})",
+            candidate.verification_status,
+            candidate.verification_blocker
+        );
+    }
+
+    // Honest declines: Δ < 0 keeps the complex-resolvent quartics out of this
+    // render's scope (they stay with their existing owners or residual).
+    for source in ["1/(x^4+5)", "1/(x^4+2*x^2+3)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            !matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must stay an honest residual (got {:?})",
+            candidate.verification_status
+        );
+    }
+}
+
+#[test]
 fn general_rational_pipeline_rejects_out_of_scope_shapes() {
     let mut ctx = Context::new();
     let rejects = [

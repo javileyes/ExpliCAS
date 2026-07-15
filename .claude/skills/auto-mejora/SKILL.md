@@ -313,6 +313,13 @@ repitas en bucle).
   marcar por adelantado. Las verificaciones de honestidad del audit
   (residuales no-elementales) cuentan como contratos: si un ciclo las
   rompe, es soundness, no capacidad.
+- **Disciplina de hash-stamps: nunca estampes el hash del PROPIO commit
+  vía amend** — el amend crea un commit nuevo y el hash estampado queda
+  COLGANTE (resuelve con `git cat-file` pero no es ancestro de main;
+  así se acumularon 6 stamps rotos hasta el audit 2026-07-15). El hash
+  de un ciclo se estampa en el commit del ciclo SIGUIENTE, o el doc
+  cita "hash en el ledger". Auditar stamps existentes con
+  `git merge-base --is-ancestor <hash> HEAD`, no con "el hash resuelve".
 
 ### 8. Commit e informe
 - Un commit por ciclo: título imperativo describiendo la capacidad o el
