@@ -1815,11 +1815,12 @@ fn general_quartic_factor_antiderivative(
 }
 
 /// Route a monic squarefree cubic to the Cap. D cube-root split: only the pure
-/// `x^3 - k` shape with rational `k > 0` whose cube root is IRRATIONAL is in
+/// `x^3 - k` shape with rational `k ≠ 0` whose cube root is IRRATIONAL is in
 /// scope (a rational cube root means a rational root, which
-/// `factor_rational_roots` already peels — the check here is a backstop).
-/// Everything else (general cubics with irrational non-∛ roots, `k < 0`)
-/// declines to an honest residual.
+/// `factor_rational_roots` already peels — the check here is a backstop; and
+/// `k = 0` is not squarefree). Negative `k` is fine: the real cube root
+/// `c = ∛k < 0` exists and the whole render algebra is sign-invariant.
+/// General cubics with irrational non-∛ roots decline to an honest residual.
 fn split_cubic_cbrt(
     cubic: &crate::polynomial::Polynomial,
     factors: &mut Vec<SquarefreeFactor>,
@@ -1828,7 +1829,7 @@ fn split_cubic_cbrt(
         return None;
     }
     let k = -cubic.coeffs[0].clone();
-    if !k.is_positive() || crate::root_forms::rational_cbrt_exact(&k).is_some() {
+    if k.is_zero() || crate::root_forms::rational_cbrt_exact(&k).is_some() {
         return None;
     }
     factors.push(SquarefreeFactor::CbrtCubic { k });
@@ -1847,15 +1848,19 @@ fn split_cubic_cbrt(
 ///   `A*ln|x - c| + (B/2)*ln(x^2 + cx + c^2) + G*sqrt(3)*arctan((2x + c)/(sqrt(3)*c))`
 /// where `G = (D - Bc/2)*2c^2/(3k)` — the radius `sqrt(3)*c` keeps every
 /// radical FLAT (`t^3 = k` and `s^2 = 3`; no nested radicals), so the C-ii/D
-/// relation tower verifies the differentiate-back exactly. Returns the piece
-/// and the real pole `x - c` (its NonZero condition mirrors the linear arm).
+/// relation tower verifies the differentiate-back exactly. The whole formula
+/// is SIGN-INVARIANT in the radius (`(2/w)*arctan(u/w)` is even in `w`), so a
+/// NEGATIVE `k` (`c = ∛k < 0`, e.g. `x^3 + 2`) works unchanged: the signed
+/// `k` flows through the triple algebra and `sqrt(3)*c` is simply negative.
+/// Returns the piece and the real pole `x - c` (its NonZero condition mirrors
+/// the linear arm).
 fn cbrt_cubic_factor_antiderivative(
     ctx: &mut Context,
     variable: &str,
     k: &BigRational,
     quadratic: &[BigRational; 3],
 ) -> Option<(ExprId, ExprId)> {
-    if !k.is_positive() || crate::root_forms::rational_cbrt_exact(k).is_some() {
+    if k.is_zero() || crate::root_forms::rational_cbrt_exact(k).is_some() {
         return None;
     }
     let three_k = BigRational::from_integer(3.into()) * k;

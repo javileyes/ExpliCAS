@@ -683,7 +683,6 @@ fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
 #[test]
 fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
-        "integrate(1/(x^3+2), x)",   // negative k: the ∛ render is gated to k > 0
         "integrate(1/(x^3-x-1), x)", // cubic with an irrational non-∛ root
         "integrate(1/(x^8+1), x)",   // resolvent u^4+1 needs a surd factorization
         "integrate(1/(x^4-2), x)",   // resolvent root √2 is itself irrational
@@ -715,6 +714,9 @@ fn integrate_contract_cbrt_cubic_integrates_x3_minus_2_family() {
         "integrate((x^2+1)/(x^3-2), x)",
         "integrate(1/(x^3-5), x)",
         "integrate(1/((x-1)*(x^3-2)), x)",
+        // Negative k (the sign-invariant branch): c = cbrt(-2) < 0.
+        "integrate(1/(x^3+2), x)",
+        "integrate(x/(x^3+2), x)",
     ] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(

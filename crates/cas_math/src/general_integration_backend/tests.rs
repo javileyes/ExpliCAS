@@ -6148,7 +6148,14 @@ fn cbrt_cubic_factor_verifies_x3_minus_k_family() {
     // confirms the differentiate-back end-to-end. The composite case
     // exercises the 3-column block against a rational cofactor.
     let mut ctx = Context::new();
-    for source in ["1/(x^3-2)", "x/(x^3-2)", "1/((x-1)*(x^3-2))"] {
+    for source in [
+        "1/(x^3-2)",
+        "x/(x^3-2)",
+        "1/((x-1)*(x^3-2))",
+        // Negative k: the real cube root c = ∛(-2) < 0 — the render algebra is
+        // sign-invariant, so x^3 + 2 verifies through the same tower.
+        "1/(x^3+2)",
+    ] {
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,
@@ -6168,9 +6175,9 @@ fn cbrt_cubic_factor_verifies_x3_minus_k_family() {
         );
     }
 
-    // Honest declines: `x^3 + 2` (negative k is a documented later step),
-    // `x^3 - x - 1` (a cubic with an irrational non-∛ root is out of scope).
-    for source in ["1/(x^3+2)", "1/(x^3-x-1)"] {
+    // Honest decline: a cubic with an irrational non-∛ root is out of scope.
+    {
+        let source = "1/(x^3-x-1)";
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,
