@@ -140,7 +140,8 @@ Scopeado 2026-07-15 vía workflow READ-ONLY (4 mappers convergentes; el sintetiz
 
 ### Secuencia de nivel-2 (cada uno = un /auto-mejora, un commit)
 
-#### ☐ C-i — Elemento ℚ(√n) ligero (`quad_surd.rs`) **[S]**
+#### ☑ C-i — Elemento ℚ(√n) ligero (`quad_surd.rs`) **[S] — HECHO** *(2026-07-15 `1f89e1b74`)*
+- **Graduado:** módulo `crates/cas_math/src/quad_surd.rs` (standalone, wired-to-nothing, 7 tests). Tipo canónico con invariantes en construcción (`n≥0`; `surd==0⟹n==0`; radicando cuadrado-perfecto se pliega vía `perfect_square_support::rational_sqrt`); ops `add/sub/mul/neg/conj` + `from_expr` bridge + `to_expr` round-trip; mismatch de radicandos → `None` honesto. Tests: φ²=φ+1, φψ=−1, **coeficientes de Φ₅ = (1,1,1,1,1) vía aritmética QuadSurd** (la operación exacta de C-iii), fronteras adversariales. Huella byte-idéntica (cero callers). Workspace verde, clippy limpio.
 - **Gradúa:** nada visible aún (unidad autocontenida, wired-to-nothing). Módulo nuevo `crates/cas_math/src/quad_surd.rs`.
 - **Diseño:** tipo `{rat, surd, n: BigRational}` = struct-ificación del triple que `as_linear_surd` ya devuelve. Ops: represent, add, sub, mul `(ac+n·bd)+(ad+bc)√n`, neg, conj, is_rational, is_zero, split (parte-racional/parte-surd), to_expr; `from_expr` puenteando `as_linear_surd` (`root_forms.rs:1739`) — una sola ruta de parseo. **SIN división** (mapper #4: los coeficientes no la necesitan; añadirla sería código muerto que clippy `-D warnings` caza).
 - **Tests:** axiomas de campo-ligero, `φ²=φ+1`, `φψ=−1`, `(x²+φx+1)(x²+ψx+1)=Φ₅` vía mul. Todo método ejercido por un test (evita el dead-code detector en crate de dominio — ver la lección `dead-code-detector-domain-vs-plumbing`).

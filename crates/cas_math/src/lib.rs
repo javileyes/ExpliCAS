@@ -142,6 +142,7 @@ pub mod power_product_support;
 pub mod prove_nonzero;
 pub mod prove_sign;
 pub mod pull_constant_from_fraction_support;
+pub mod quad_surd;
 pub mod quotient_of_powers_support;
 pub mod rational_canonicalization_support;
 pub mod rationalize;
