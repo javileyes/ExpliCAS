@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 573 (newest first)
+Active entries: 574 (newest first)
 
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
 - 2026-07-15 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (arm de 2 args + `DEFAULT_TA... | CAPACIDAD P1 (taylor()/series() forma 2-args con orden por defecto): `taylor(e^x, x)`
+- 2026-07-15 | `retained` | `crates/cas_parser/src/parser.rs` (`canonical_command_alias` + un call-site) ... | CAPACIDAD P1 (aliases sympy/textbook de sum/product/taylor/series): `Sum(k,k,1,n)`, `summation`, `prod`, `Taylor`, `Series`
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_symbolic_linear_coeff_in... | SOUNDNESS (F3 re-intento RETENIDO: ineq lineal con coef constante-simbólico dropeaba el operador): `solve(e^x<2^x, x)`
 - 2026-07-14 | `retained` | `crates/cas_math/src/polynomial.rs` (`count_real_roots`: cadena de Sturm EXAC... | SOUNDNESS (F4 re-intento RETENIDO: deflación racional dropeaba el factor residual grado≥3 entero): `solve(x^5-x^4-4x^3+4x^2+x-1=0, x)`
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS/CAPACIDAD (tan(u)=tan(v): congruencia mod π con exclusión EXACTA de polos): `solve(tan(2x)=tan(3x), x)`
@@ -19700,3 +19701,18 @@ Active entries: 573 (newest first)
   - **Un comando "nuevo" con arity nueva necesita DOS wiring points, no uno** (`new-engine-function-wiring-gotchas` re-confirmada por 3ª vez): la regla que lo reescribe Y el gate `is_known_eval_engine_function` (arity). El segundo falla en silencio con "función no definida" ANTES de la regla; síntoma engañoso (parece función desconocida, es arity no-listada). Al ampliar la arity de un comando, tocar AMBOS.
   - **Sondear antes de "implementar un P1" evita re-hacer lo hecho**: el doc listaba "taylor()/series() + linealidad de sumatorios" como P1 pendiente, pero el sondeo mostró que 3/4-args de taylor Y la linealidad de `sum` YA funcionaban; el ciclo real era sólo la forma 2-args. (Mismo patrón meta que el saneamiento de docs: la capacidad envejece en los docs.)
   - PRÓXIMO PELDAÑO (residuales menores de taylor/series, NO en este ciclo): presentación en forma suma-estándar `1 + x + x²/2 + …` con término `O(xⁿ)` (hoy factoriza `1/720·(…)`); alias `summation` para `sum`; y el WARN `depth_overflow` de `simplify` en órdenes altos de radicales (`sqrt(1+x)`), que es perf de simplify, no del comando.
+
+## 2026-07-15 - CAPACIDAD P1 (aliases sympy/textbook de sum/product/taylor/series): `Sum(k,k,1,n)`, `summation`, `prod`, `Taylor`, `Series`
+
+- area: `crates/cas_parser/src/parser.rs` (`canonical_command_alias` + un call-site) + tests (parser + `cli_contract_tests.rs`)
+- status: `retained`. Win P1 barato de universalidad de sintaxis. Sigue al ciclo taylor 2-args.
+- capture:
+  - investment_class: capacidad P1 (sintaxis/UX — acepta más grafías de entrada).
+  - cell: `summation(...)`, `Sum(...)`, `prod(...)`, `Product(...)`, `Taylor(...)`, `Series(...)` erraban `función [X] no definida`; ahora resuelven idéntico a `sum`/`product`/`taylor`/`series` (verificado por igualdad de resultado). `Series(sin(x),x)` además usa el default-order del ciclo previo.
+  - causa raíz: el nombre del comando se chequea por igualdad EXACTA de string en **30+ sitios** (`try_extract_finite_aggregate_call`, `is_known_eval_engine_function`, detectores de perfil, la lista `env.rs`, las reglas). Threadear aliases por todos sería frágil y NO barato.
+  - diseño: canonicalizar en el **PARSER** (`parser.rs`, en el lowering de `ParseNode::Function` justo antes de `ctx.call`), UN solo punto — espejo exacto del patrón de aliases builtin `sen→sin`/`arcsinh→asinh`. `summation|Sum→sum`, `Product|prod→product`, `Taylor→taylor`, `Series→series`; no-aliases pasan sin tocar. Como el árbol se interna YA con el nombre canónico, TODOS los 30+ sitios downstream funcionan gratis. Cero soundness risk (pura canonicalización de nombre; typos como `Summ` y funciones desconocidas siguen "no definida").
+  - validación: `cargo test --workspace` 0 failed; parser test nuevo (`Sum`==`sum`, etc. por igualdad de ExprId + no-mapea `Summ`); cli_contract taylor test extendido (end-to-end aliases); clippy `--workspace --all-targets` CLEAN; rustfmt; engine-fast todas las lanes pass; pressure pass. **Huella 0-delta** (solo `.git.commit` + `integrate filtered_out +2` de baseline stale).
+  - retained learning:
+  - **Alias de un COMANDO (no-builtin) = un solo punto en el parser, NO 30 sitios**: cuando el nombre se compara por string exacto en muchos lugares, canonicalizar en el lowering de `ParseNode::Function` (antes de `ctx.call`) hace que todo downstream vea el nombre canónico. Espejo del `BuiltinFn::from_name` (que sólo cubre builtins). Convierte un cambio "de 30 sitios" en uno barato de verdad. (Los builtins van por `from_name`; los comandos `sum`/`taylor`/… por esta capa nueva.)
+  - **Sondear agota el backlog P1 barato antes que la paciencia**: este ciclo confirmó que u-sub transcendental, taylor/series (3/4-args + 2-args), linealidad de sumatorios y diff-syntax YA estaban; el hueco real era sólo grafías de entrada. Los residuales de taylor/series que quedan (presentación suma-estándar `1+x+x²/2+…`+`O(xⁿ)`, narración de la DERIVACIÓN) son MEDIOS, no baratos (pelean con el simplificador / faltan símbolos).
+  - PRÓXIMO PELDAÑO: el P1-barato está esencialmente agotado. Mayor leverage restante = G1 (gatekeeper vivo) o la presentación/narración educativa de taylor (media).

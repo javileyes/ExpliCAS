@@ -102,6 +102,23 @@ enum ParseNode {
     SessionRef(u64),             // Reference to session history #id
 }
 
+/// Canonicalize the textbook / SymPy / Mathematica spellings of the aggregate and series
+/// commands to the engine's canonical name, so `summation(...)`, `Sum(...)`, `prod(...)`,
+/// `Product(...)`, `Taylor(...)` and `Series(...)` reach the same rules as `sum`/`product`/
+/// `taylor`/`series` instead of erroring "función no definida". Mirrors the builtin trig
+/// aliases (`sen`→`sin`); applied once at the parser boundary so every downstream site (rules,
+/// the known-function gate, profiling) sees the canonical name without threading the alias.
+/// Non-aliases pass through unchanged.
+fn canonical_command_alias(name: &str) -> &str {
+    match name {
+        "summation" | "Sum" => "sum",
+        "Product" | "prod" => "product",
+        "Taylor" => "taylor",
+        "Series" => "series",
+        other => other,
+    }
+}
+
 impl ParseNode {
     fn lower(self, ctx: &mut Context) -> std::result::Result<ExprId, ParseError> {
         match self {
@@ -169,7 +186,7 @@ impl ParseNode {
                         _ => {}
                     }
                 }
-                Ok(ctx.call(name.as_str(), arg_ids))
+                Ok(ctx.call(canonical_command_alias(name.as_str()), arg_ids))
             }
             ParseNode::Matrix(rows) => {
                 // Flatten 2D structure to 1D for storage
@@ -1512,6 +1529,29 @@ mod tests {
         } else {
             panic!("Expected SessionRef(0)");
         }
+    }
+
+    #[test]
+    fn test_command_aliases_canonicalize_to_the_engine_name() {
+        // `summation`/`Sum`, `prod`/`Product`, `Taylor`, `Series` are the textbook / SymPy /
+        // Mathematica spellings; they must parse to the same interned tree as the canonical
+        // `sum`/`product`/`taylor`/`series` command so the downstream rules see them.
+        let mut ctx = Context::new();
+        for (alias, canonical) in [
+            ("summation(k, k, 1, n)", "sum(k, k, 1, n)"),
+            ("Sum(k, k, 1, n)", "sum(k, k, 1, n)"),
+            ("prod(k, k, 1, 5)", "product(k, k, 1, 5)"),
+            ("Product(k, k, 1, 5)", "product(k, k, 1, 5)"),
+            ("Taylor(exp(x), x, 4)", "taylor(exp(x), x, 4)"),
+            ("Series(sin(x), x, 5)", "series(sin(x), x, 5)"),
+        ] {
+            let a = parse(alias, &mut ctx).unwrap();
+            let c = parse(canonical, &mut ctx).unwrap();
+            assert_eq!(a, c, "`{alias}` should parse identically to `{canonical}`");
+        }
+        // A near-miss stays its own (unknown) symbol — only the exact aliases are mapped.
+        assert_ne!(canonical_command_alias("Summ"), "sum");
+        assert_eq!(canonical_command_alias("integrate"), "integrate");
     }
 
     #[test]

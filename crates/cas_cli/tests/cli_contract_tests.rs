@@ -4429,6 +4429,12 @@ fn test_eval_fractional_binomial_taylor_at_zero() {
         r("series(1/(1-x),x)"),
         "x^6 + x^5 + x^4 + x^3 + x^2 + x + 1"
     );
+    // Textbook / SymPy / Mathematica command aliases parse to the canonical command.
+    assert_eq!(r("Taylor(exp(x),x,4)"), r("taylor(exp(x),x,4)"));
+    assert_eq!(r("Series(sin(x),x)"), r("series(sin(x),x)"));
+    assert_eq!(r("Sum(k,k,1,n)"), r("sum(k,k,1,n)"));
+    assert_eq!(r("summation(k^2,k,1,n)"), r("sum(k^2,k,1,n)"));
+    assert_eq!(r("prod(k,k,1,5)"), r("product(k,k,1,5)"));
 }
 
 #[test]
