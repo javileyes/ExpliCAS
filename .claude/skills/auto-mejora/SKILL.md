@@ -42,6 +42,17 @@ contexto — son tu memoria externa):
    backlog restante. Si existe uno reciente, su cola P0 manda sobre la
    fuente 6 para soundness.
 
+> ⚠️ **Las fuentes de verdad se pudren.** Sus afirmaciones de CAPACIDAD (porcentajes,
+> "X a ~0%", "X inalcanzable", "no implementado", items `[ ]`) reflejan lo que era
+> verdad cuando se escribieron y ENVEJECEN sin avisar. Antes de dejar que una afirmación
+> de estado dirija la selección de candidato, **verifícala contra el CLI vivo**
+> (`target/release/cas_cli eval "..." --steps on --format json`), imprimiendo el ÁRBOL de
+> substeps (`steps[].substeps[].title`), no solo el `rule` de nivel-1 — un audit de
+> nivel-1 pierde la riqueza real (2026-07-15: una fila stale "límites ~45-50%, `e`
+> inalcanzable" causó una recomendación equivocada; el sondeo la falsificó). Los LOGS
+> históricos (ledger, `AUDITORIA_*_<fecha>`, notas `*(graduado …)*`) son INMUTABLES — no
+> los "corrijas"; registran lo que era verdad en un commit. Ver "Meta-mantenimiento" al final.
+
 ## Fases del north star (a qué apuntar)
 
 El north star tiene un ORDEN de fases deliberado (detalle en la fuente 7). La
@@ -365,3 +376,33 @@ repitas en bucle).
   `is_call_named` o interna el símbolo una vez y compara por SymbolId).
   Tras tocar cas_engine, corre `cargo fmt -p cas_engine` y, si añadiste
   comparaciones de nombres de función, verifica con `make ci`.
+
+## Meta-mantenimiento: revisiones periódicas (docs y esta skill)
+
+El bucle mejora el ENGINE; estas dos revisiones mantienen honesto el bucle mismo. Ninguna
+es un ciclo de capacidad — no llevan huella; son higiene de las fuentes de verdad. Hazlas
+**de vez en cuando** (buen disparador: cada ~8-12 ciclos, tras una tanda de graduaciones, o
+en cuanto una afirmación de doc choque con lo que ves en el CLI). No son opcionales-para-
+siempre: una fuente de verdad podrida dirige mal la selección de candidato y desperdicia
+ciclos (lección viva del 2026-07-15).
+
+### A. Auditoría de veracidad de la documentación
+Las afirmaciones de capacidad de los docs (fuentes 3-8) se pudren. Barre las que puedan
+DIRIGIR la selección de candidato (porcentajes, "~0%"/"inalcanzable"/"no implementado",
+items `[ ]` que podrían estar secretamente graduados) y verifícalas contra el CLI vivo
+(imprime el árbol de substeps, no el `rule` de nivel-1). Corrige el estado-ACTUAL; deja
+intactos los LOGS históricos (ledger, `AUDITORIA_*_<fecha>`, notas `*(graduado …)*`). Un
+workflow READ-ONLY de 2-3 auditores (uno por doc/sección, cada uno probando el CLI) lo hace
+exhaustivo. Commit docs-only, sin huella. *(Patrón validado 2026-07-15: `91b42728e`.)*
+
+### B. Auto-revisión de esta skill
+La estrategia de auto-mejora también aprende. Con el conocimiento nuevo de las últimas
+tandas, relee ESTA skill y pregunta: ¿la priorización sigue apuntando al norte real
+(**universal Y educativo** en dominio real)? ¿algún gatekeeper/fase ya cerrado se sigue
+tratando como abierto — o al revés? ¿alguna "lección operativa" quedó obsoleta, o hay una
+nueva recurrente que merece entrar? ¿los criterios de retención/rechazo y la cadencia
+siguen sirviendo? Actualiza la skill para que la ESTRATEGIA refleje el estado real y las
+lecciones acumuladas — el objetivo es acercar el engine a lo **más universal posible SIN
+perder lo más educativo posible**, y esta skill es la palanca que lo dirige. Registra el
+porqué del cambio en el commit. *(2026-07-15: G2 —límites educativos— se marcó cerrado aquí
+tras confirmarse maduro; `7812f4109`.)*
