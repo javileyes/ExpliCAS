@@ -156,6 +156,7 @@ pub mod root_forms;
 pub mod root_power_canonical_support;
 pub mod semantic_equality;
 pub mod sqrt_square_support;
+pub mod subresultant_prs;
 pub mod substitute;
 pub mod summation_support;
 pub mod symbolic_differentiation_support;

@@ -132,9 +132,19 @@ Phase status (2026-06-10):
   (conjugate surd), plus non-constant numerators over the surd quartic
   (`x^3/(x^4-x^2+1)`, `(x^3+5)/(x^6+1)`) 2026-07-14 (`d557556ea`, `6c4d59afc`,
   `9c48574c4`), differentiation-verified;
-  remaining: irreducible denominators needing a COUPLED algebraic extension /
-  Lazard-Rioboo-Trager (Phi_5 with sqrt(5) `1/(x^5-1)`, single irrational poles
-  like `1/(x^3-x-1)`, cube-root extensions `1/(x^3-2)`))
+  then Cap.C/D + residuals R1-R3 closed the remaining named G1 probes:
+  Phi_5 with sqrt(5) `1/(x^5-1)` (C-iii `69a215bf6`), cube-root extensions
+  `1/(x^3-2)` (Cap.D `816ab8c1a`), the irrational-real-resolvent quartic
+  `1/(x^4-5)` (R2 `4fd29a4ca`) and the doubly-even octic `1/(x^8+1)` (R3
+  `046aa0cd7`, beating a live SymPy wrong answer) — all differentiation-verified;
+  remaining: the UNIVERSAL closure Cap.E (Lazard-Rioboo-Trager) for denominators
+  whose irreducible Q-factors are not one of the hand-coded shapes (single
+  irrational poles `1/(x^3-x-1)`, general quartic `1/(x^4+x+1)`, `1/(x^7-1)`).
+  Cap.E scoped 2026-07-16 (`ee9f6fcf0`) into sub-cycles; E-i landed the
+  standalone subresultant-PRS + Rothstein-Trager resultant primitive over Q[t]
+  (`subresultant_prs.rs`), pinned against SymPy; E-ii (driver + Rioboo real
+  render) and E-iii (wiring/gating) remain, with non-solvable factors (S_5)
+  gated to honest residual)
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: started 2026-06-11 (didactic elevation; first candidate Hermite positive
   quadratic)
