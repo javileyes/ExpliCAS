@@ -60,7 +60,8 @@ Todo vive en `crates/cas_math/src/general_integration_backend/methods.rs`. El pi
 - **Depende:** nada.
 - **Retención:** workspace verde; diferenciar-atrás confirma ambas antiderivadas; contadores previos iguales; si el split surd o la verificación falla → todo el factor devuelve `None` (residual honesto), nunca surd parcial/sin verificar.
 
-### ☐ Sub-ciclo 3 — Cap. C: cuártica general (impar), raíz de resolvente irracional → par de cuadráticas algebraicas **[M]**
+### ⛔ Sub-ciclo 3 — Cap. C: cuártica general (impar), raíz de resolvente irracional → par de cuadráticas algebraicas **[M→L, BLOQUEADO]**
+> **BLOQUEADO (scoping 2026-07-15).** Φ₅ es un par cuadrático ASIMÉTRICO con coeficientes en ℚ(√5) y radios arctan ANIDADOS `√((5∓√5)/2)`. Requiere dos capacidades ausentes de *nivel-2* (elemento ℚ(√n) ligero + torre de radicales anidados en el verificador). Plan de nivel-2 desglosado abajo en **"Nivel-2: el prerequisito ℚ(√n) + radical-anidado"**. Este sub-ciclo se convierte en el **C-iii** (cableado) de esa secuencia.
 - **Gradúa:** `1/(x^5-1)` (Φ₅ = `x⁴+x³+x²+x+1` → dos cuadráticas conjugadas con `√5`).
 - **Inserción:** `methods.rs:338` (`SquarefreeFactor::GeneralQuartic{c3,c2,c1,c0}` racional); `split_general_quartic` (`:932‑1003`, levantar el requisito de cuadrado-perfecto en `:974` para que `a=√(raíz resolvente)` pueda ser irracional, y rutear irreducibles a `GeneralQuartic`); bloque de 4 columnas de `mixed_partial_fraction_terms` (reusa el del ciclo 2); builder para `(cúbica)/(cuártica irreducible general)`.
 - **Reuso:** admisión de 4 columnas del ciclo 2; depresión/recuperación de la cúbica resolvente ya en `split_general_quartic`; kernels de signo surd de `root_forms.rs` (`provable_sign_vs_zero`, `sign_of_linear_surd`) para keep/drop e irreducibilidad; `build_numeric_radius_expr`; builder arctan.
@@ -111,3 +112,58 @@ Todo vive en `crates/cas_math/src/general_integration_backend/methods.rs`. El pi
 ## Cómo ejecutar
 
 Cada sub-ciclo es un `/auto-mejora 1` (o encadenar `/auto-mejora N`). Marca aquí `☑` con el hash del commit al graduar. Los 5 probes nombrados son el criterio de salida #1 de la Fase 1; cuando `1/(x^5-1)`, `1/(x^6+1)`, `1/(x^8-1)`, `1/(x^4-4)`, `1/(x^3-2)` estén todos verdes (ciclos 1‑4) + verificados por diferenciar-atrás, G1 gradúa y la Fase 2 queda desbloqueada.
+
+---
+
+## Nivel-2: el prerequisito ℚ(√n) + radical-anidado (desbloquea Cap. C)
+
+Scopeado 2026-07-15 vía workflow READ-ONLY (4 mappers convergentes; el sintetizador falló al schema → síntesis a mano). Anclajes verificados. Cap. C `1/(x^5-1)` está BLOQUEADO por dos capacidades ausentes que este nivel-2 provee. **Cap. D `1/(x^3-2)` NO se desbloquea aquí** (es ℚ(∛2), extensión grado-3, relación `t³=k`; QuadSurd no ayuda — sigue independiente y al final, como ya ordena el sub-ciclo 4).
+
+### La matemática exacta de `1/(x^5-1)` (verificada)
+
+- **PF externa sobre ℚ (reusa el bloque 4-columnas de Cap. B):** `1/(x^5-1) = 1/(5(x-1)) − (x³+2x²+3x+4)/(5·Φ₅)`, `Φ₅=x⁴+x³+x²+x+1`. Enteramente dentro de la maquinaria Cap. B ya verde.
+- **PF interna sobre el par asimétrico** `Φ₅=(x²+φx+1)(x²+ψx+1)`, `φ=(1+√5)/2`, `ψ=(1−√5)/2`: `N/Φ₅ = (P₁x+Q₁)/(x²+φx+1) + (P₂x+Q₂)/(x²+ψx+1)` con **solo las pendientes en ℚ(√5)**: `P₁=−1/10−√5/10`, `P₂=conj(P₁)=−1/10+√5/10`, y **`Q₁=Q₂=−2/5` RACIONALES**.
+- **Hallazgo clave que abarata (mapper #4):** calcular P₁,Q₁ necesita **SOLO álgebra lineal RACIONAL** vía el ansatz-conjugado (represent + mul + separación parte-racional/parte-√5 → 8 ecuaciones racionales, eliminación gaussiana sobre ℚ). **La división general en ℚ(√5) NO se necesita** para los coeficientes → el tipo de número surd es LIGERO (represent/add/sub/mul/neg/conj/split), no un QuadSurd completo con `/`.
+- **Radios arctan ANIDADOS e irreducibles:** `√(4−φ²)=√((5−√5)/2)`, `√(4−ψ²)=√((5+√5)/2)` — no denestan a ningún `a+b√5` (ni el engine ni `sqrtdenest` de sympy). Se renderizan tal cual. Handles estructurales que el engine YA maneja: `(√((5−√5)/2))²→(5−√5)/2` (fold plano) y `d₁·d₂=√5` (el producto de radios conjugados es un surd PLANO).
+
+### Los dos bloqueadores (por qué un render CORRECTO hoy DECLINA)
+
+**B1 — El verificador no certifica el radical anidado.** `algebraic_rational_zero_test` (`verification_algebraic.rs:53`) YA es un reductor multi-relación: `reduce_by_relations` (`:385`) reduce módulo CADA `tᵢ²=radicandᵢ` — el motor de reducción YA soporta una TORRE. Lo que bloquea:
+- `relation_polys` (`:264`, guard `:278‑283`) construye `multipoly_from_expr` sobre el radicando CRUDO `(5−√5)/2`, que contiene `sqrt(5)` → `BadExponent` → `None`; **y prohíbe activamente** radicandos con otro átomo (`degree_in(other_index) != 0 → None`).
+- Phase A (`:76‑106`) sustituye `√r→t` solo en el residual, NO dentro de los exprs de radicando guardados en `relations`.
+- `ALGEBRAIC_ZERO_TEST_MAX_RELATIONS = 2` (`:26`); Cap. C necesita ≥3 (s=√5, t₁, t₂).
+- Sign-anchoring: {s²−5, t₁²−(5−s)/2, t₂²−(5+s)/2} solo fija `(t₁t₂)²=5`, dejando el signo de `t₁t₂=+√5` ambiguo — hay que anclarlo (radios conjugados ambos positivos, vía los kernels de signo surd existentes).
+
+**B2 — El colapso del átomo φ (mapper #4).** `(1+√5)/2` auto-colapsa a un átomo golden-ratio `phi` (con `φ²→φ+1`), que NO reconcilia con la forma √5: `√(3−φ)−√((5−√5)/2)` no simplifica a 0 → el render DEBE construir todo coeficiente algebraico en forma explícita `√5/2+1/2`, NUNCA `(1+√5)/2`. Es un hazard sintáctico evitable (`1/2+√5/2` NO colapsa).
+
+### Secuencia de nivel-2 (cada uno = un /auto-mejora, un commit)
+
+#### ☐ C-i — Elemento ℚ(√n) ligero (`quad_surd.rs`) **[S]**
+- **Gradúa:** nada visible aún (unidad autocontenida, wired-to-nothing). Módulo nuevo `crates/cas_math/src/quad_surd.rs`.
+- **Diseño:** tipo `{rat, surd, n: BigRational}` = struct-ificación del triple que `as_linear_surd` ya devuelve. Ops: represent, add, sub, mul `(ac+n·bd)+(ad+bc)√n`, neg, conj, is_rational, is_zero, split (parte-racional/parte-surd), to_expr; `from_expr` puenteando `as_linear_surd` (`root_forms.rs:1739`) — una sola ruta de parseo. **SIN división** (mapper #4: los coeficientes no la necesitan; añadirla sería código muerto que clippy `-D warnings` caza).
+- **Tests:** axiomas de campo-ligero, `φ²=φ+1`, `φψ=−1`, `(x²+φx+1)(x²+ψx+1)=Φ₅` vía mul. Todo método ejercido por un test (evita el dead-code detector en crate de dominio — ver la lección `dead-code-detector-domain-vs-plumbing`).
+- **Blast:** CERO (sin caller → huella byte-idéntica). Reusable más allá de Cap. C (cualquier familia con coeficientes-surd; consolida los kernels `(rat,surd,n)` dispersos de `root_forms.rs`).
+- **Depende:** nada. **PRIMER CICLO si se continúa G1.**
+
+#### ☐ C-ii — Torre de radicales anidados en el verificador **[M]**
+- **Gradúa:** capacidad de CONFIRMAR una antiderivada con radical anidado (probada por fixture, sin render aún).
+- **Inserción:** `verification_algebraic.rs` — (a) ordenar radicandos inner-first por CONTENCIÓN ESTRUCTURAL (no heurística float — lección `soundness-gates-must-be-exact`); (b) sustituir cada átomo interno `√rⱼ→tⱼ` dentro de los exprs de radicando externos ANTES de `multipoly_from_expr` (así el externo se vuelve `(5−t₂)/2`, un multipoly genuino, y `sqrt(5)` nunca llega a la capa poly); (c) relajar el guard `:278‑283` de "libre de TODO átomo" a "triangular" (permite átomos estrictamente más profundos, prohíbe self/forward-reference → preserva terminación); (d) `MAX_RELATIONS` 2→3; (e) anclar el signo `t₁t₂=+√5` vía `sign_of_sum_two_surds`/`provable_sign_vs_zero` (`root_forms.rs:1919`/`:1876`); (f) nonnegatividad del radicando externo `(5−√5)/2≥0` vía sign-eval surd o condición emitida por el render.
+- **Reuso:** `reduce_by_relations` (`:385`) NO cambia (ya maneja la torre); kernels de signo surd existentes.
+- **Blast:** toca una decisión-procedure COMPARTIDA (superficie de soundness) → **regresión explícita de TODOS los probes √ de Cap. A/B byte-idéntica antes de commit**. `None`-en-lo-indecidible se preserva (nunca refutación falsa). `multipoly/conversion.rs:131‑150` (`BadExponent` en `Pow(_,1/2)`) queda intacto: es correctamente estricto; el fix quita el √ interno del radicando ANTES de esa capa, no la afloja.
+- **Depende:** nada duro (independiente de C-i), pero su valor se realiza en C-iii.
+
+#### ☐ C-iii — Cablear Cap. C (`1/(x^5-1)`) **[M]** *(= el antiguo Sub-ciclo 3)*
+- **Gradúa:** `1/(x^5-1)` + la familia general del par cuadrático asimétrico.
+- **Inserción:** `split_general_quartic` (`methods.rs:~932‑1003`, levantar la precondición de cuadrado-perfecto en `:974`) + bloque 4-columnas en `mixed_partial_fraction_terms` + `SquarefreeFactor::GeneralQuartic` (`methods.rs:338`).
+- **Diseño:** PF externa por Cap. B; PF interna resolviendo P₁,Q₁ por eliminación gaussiana RACIONAL con ansatz-conjugado (usa C-i para el setup del producto); render φ-libre (`√5/2+1/2`, nunca `(1+√5)/2`) con radios `√((5∓√5)/2)`; **gateado tras el verificador C-ii** → si no confirma, DECLINA honesto (contrato residual).
+- **Reuso:** builders arctan/log existentes; C-i (elemento surd); C-ii (verificador torre).
+- **Depende:** **C-i + C-ii.**
+- **Retención:** `1/(x^5-1)` verifica por diferenciar-atrás; workspace verde; huella +tests.
+
+### Veredicto honesto (¿vale el prerequisito vs. diferir la cola G1?)
+
+- **Coste:** 3 sub-ciclos acotados (C-i ~S zero-blast, C-ii ~M soundness-sensible, C-iii ~M) para graduar UN probe nombrado (`1/(x^5-1)`) + la familia par-asimétrico. Cap. D (`1/(x^3-2)`, ∛2) es un prerequisito SEPARADO (~2 ciclos más: verificador `t³=k` + ℚ(∛2)), no cubierto aquí. Cap. E (LRT) terminal.
+- **Leverage:** C-i y C-ii son ampliamente REUSABLES (elemento ℚ(√n) general; confirmación de CUALQUIER antiderivada nested-radical) — no son gadgets de un solo probe. Pero `1/(x^5-1)` en sí es una cola estrecha: el par cuadrático asimétrico con coeficientes algebraicos es raro en un currículo real-univariable-elemental.
+- **Contexto north-star:** G1 ya consumió 3 ciclos seguidos (Cap.A + Cap.B + budget-lift). La Fase 1 tiene DOS gatekeepers y G1 es solo uno; **el otro — narrativa educativa de límites (L'Hôpital / límite notable / squeeze) — está a ~0% y pesa IGUAL**, y es más barato por capacidad graduada. Además hay wins P1 baratos (`diff(x,n)`/`diff(x,y)`, u-sub transcendente general, `taylor()`/`series()` + linealidad de sumatorios).
+- **Recomendación:** el prerequisito es REAL y ACOTADO (3 ciclos limpios) y C-i/C-ii son reusables — NO es trabajo tirable. PERO por el propio guardrail de la skill ("a igualdad de coste prioriza los DOS gatekeepers… y luego wins P1 baratos"; "alterna frentes cuando uno acumula varios ciclos seguidos") y dado que G1 ya lleva 3 ciclos consecutivos, la jugada de mayor ROI para el north-star es **alternar** al gatekeeper de límites educativos o a un win P1 barato, y volver a C-i→C-ii→C-iii después. Si se continúa G1 ahora, **C-i es el primer incremento correcto**: el más pequeño, zero-blast, reusable, y de-risquea el álgebra de coeficientes antes de tocar el verificador compartido o el pipeline de integración.
+- **Primer ciclo si se continúa G1:** **C-i** (`quad_surd.rs` ligero, standalone, unit-tested, cero blast).
