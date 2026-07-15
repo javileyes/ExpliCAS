@@ -683,7 +683,8 @@ fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
 #[test]
 fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
-        "integrate(1/(x^3-2), x)",   // needs ∛2 (Cap. D)
+        "integrate(1/(x^3+2), x)",   // negative k: the ∛ render is gated to k > 0
+        "integrate(1/(x^3-x-1), x)", // cubic with an irrational non-∛ root
         "integrate(1/(x^8+1), x)",   // resolvent u^4+1 needs a surd factorization
         "integrate(1/(x^4-2), x)",   // resolvent root √2 is itself irrational
         "integrate(1/(x^4+x+1), x)", // resolvent cubic has no rational root
@@ -695,6 +696,50 @@ fn integrate_contract_algebraic_extension_denominators_stay_residual() {
             "should stay an honest residual until its sub-cycle lands: {input} -> {result}"
         );
     }
+}
+
+/// G1 sub-cycle Cap. D (2026-07-15): the pure cube-root cubic `x^3 - k`
+/// (rational `k > 0`, `∛k` irrational) is kept WHOLE so the residue solve stays
+/// over ℚ; the real split `(x - c)(x^2 + cx + c^2)` with `c = ∛k` and residues
+/// in ℚ(c) (exact `[1, c, c²]` triples) appears only in the render. Every
+/// radical in the result is FLAT (`∛k` and `√3` — the arctan radius is written
+/// `√3·c`), so the degree-aware relation tower (`t³ = k`, `s² = 3`) confirms
+/// the differentiate-back and gates emission. All emissions below were also
+/// verified numerically against an independent oracle (sympy, 30 digits).
+/// This graduates the LAST named probe of Phase-1 exit criterion #1.
+#[test]
+fn integrate_contract_cbrt_cubic_integrates_x3_minus_2_family() {
+    for input in [
+        "integrate(1/(x^3-2), x)",
+        "integrate(x/(x^3-2), x)",
+        "integrate((x^2+1)/(x^3-2), x)",
+        "integrate(1/(x^3-5), x)",
+        "integrate(1/((x-1)*(x^3-2)), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should integrate via the cube-root split: {input} -> {result}"
+        );
+        assert!(
+            result.contains("cbrt("),
+            "expected the cube-root surd in the render: {input} -> {result}"
+        );
+    }
+    // The named G1 exit probe carries the real pole and the √3·∛2 arctan radius.
+    let (probe, required) = evaluated_integral_with_required_conditions("integrate(1/(x^3-2), x)");
+    assert!(
+        probe.contains("ln(|x - cbrt(2)|)"),
+        "expected the real-pole log term: {probe}"
+    );
+    assert!(
+        probe.contains("sqrt(3)"),
+        "expected the √3 arctan radius factor: {probe}"
+    );
+    assert!(
+        required.iter().any(|c| c.contains("cbrt(2)")),
+        "the irrational real pole x ≠ ∛2 must surface as a required condition: {required:?}"
+    );
 }
 
 /// G1 sub-cycle Cap. C (2026-07-15): an irreducible-over-ℚ quartic whose
@@ -814,8 +859,10 @@ fn integrate_contract_general_numerator_even_quartic_now_verifies() {
         );
     }
     // Denominators needing an algebraic extension the render does not cover are
-    // still out of scope (Φ5 graduated via G1 Cap. C; √5 real poles and ∛2 remain).
-    for input in ["integrate(1/(x^4-5), x)", "integrate(1/(x^3-2), x)"] {
+    // still out of scope (Φ5 graduated via Cap. C and ∛2 via Cap. D; the √5
+    // REAL-pole quartic remains).
+    {
+        let input = "integrate(1/(x^4-5), x)";
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
             result.contains("integrate("),

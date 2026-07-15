@@ -72,7 +72,8 @@ Todo vive en `crates/cas_math/src/general_integration_backend/methods.rs`. El pi
 - **Depende:** **ciclo 2** (la admisión de 4 columnas en `mixed_partial_fraction_terms`).
 - **Retención:** workspace verde; diferenciar-atrás confirma `d/dx=1/(x⁵−1)` con el átomo `√5`; contadores previos iguales; factorización reducible/fallida → residual.
 
-### ☐ Sub-ciclo 4 — Cap. D: factor lineal con raíz cúbica (`x^3-2`) **[L]**
+### ☑ Sub-ciclo 4 — Cap. D: factor lineal con raíz cúbica (`x^3-2`) **[L] — HECHO** *(2026-07-15 `bc5046ec4`)*
+- **Graduado:** `1/(x^3-2)` (+ `x/(x^3-2)`, `(x^2+1)/(x^3-2)`, `1/(x^3-5)`, compuesto `1/((x-1)(x^3-2))`) — EMITEN con condición de polo real `x≠∛k`, verificados por la torre degree-aware (`t³=k`, `s²=3` — radios PLANOS por construcción: `√3·c`, nunca `√(3c²)`) + numéricamente vs sympy (30 dígitos). Verificador: `radical_like_radicand` √/∛, reducer `t^e≥d→t^(e−d)·r`, nonneg SOLO grado-2 (raíz impar = sound incondicional). Render: triples exactos ℚ(c) `[1,c,c²]` con identidad de cierre chequeada; `Cbrt(k)` como nodo builtin (estanco a la canonicalización de Pow). Residuales honestos: `1/(x^3+2)` (k<0, peldaño), `1/(x^3-x-1)`. **CON ESTO LOS 5 PROBES DEL CRITERIO DE SALIDA #1 ESTÁN VERDES → G1 GRADÚA; y con los criterios #2 y #3 ya cumplidos, el umbral de la FASE 1 queda CRUZADO.**
 - **Gradúa:** `1/(x^3-2)` (→ `(x−∛2)` + cuadrática irreducible `x²+∛2·x+∛4`).
 - **Inserción:** `methods.rs:338` (representación lineal-∛ + cuadrática-∛); `split_squarefree_factors` (`:911‑918`, el brazo grado-3 `return None`, gate a `x³−k` con `rational_cbrt_exact`); `verification_algebraic.rs` `collect_variable_free_radicands` (extender de solo-√ a átomos ∛ con relación `t³=k` para `algebraic_rational_zero_test`).
 - **Reuso:** `rational_cbrt_exact` (`root_forms.rs:2847`); builder log para el lineal real y arctan para la cuadrática; `reduce_by_relations` en `algebraic_rational_zero_test` (ya general una vez colectado el átomo/radicando ∛).

@@ -48,6 +48,11 @@ proceso maestro; cuando la cola P0 de soundness y la restricción de fase chocan
 cuando, los tres se cumplen:
 1. **Integración racional sin residual** sobre los probes nombrados: `1/(x^5-1)`,
    `1/(x^6±1)`, `1/(x^8-1)`, `1/(x^4-4)`, `1/(x^3-2)` (todos integran y verifican).
+   **✅ CUMPLIDO 2026-07-15** — los CINCO probes integran y verifican (Cap.A `1/(x^4-4)`,
+   Cap.B `1/(x^6+1)`/`1/(x^8-1)`, Cap.C `1/(x^5-1)`, Cap.D `1/(x^3-2)`).
+   **⚑ LOS TRES CRITERIOS DEL CHECKLIST ESTÁN CUMPLIDOS (2026-07-15): el umbral de
+   apertura de la Fase 2 queda formalmente CRUZADO.** La decisión de arrancar la Fase 2
+   es del siguiente ciclo (los guardrails inter-fase la dejaron ≈M, no L).
 2. **Límites con cadena didáctica no-cáscara** en `cas_didactic` (límites-educativo deja de
    ser ~0%: existe al menos L'Hôpital / límite notable / squeeze / factor-cancela narrados).
    **✅ CUMPLIDO 2026-07-15** — los cuatro narran, más jerarquía ∞/∞, `e` vía `(1+1/x)^x`, y ∞−∞
@@ -71,10 +76,11 @@ cuando, los tres se cumplen:
   la cuártica par IRREDUCIBLE como FACTOR (`SquarefreeFactor::EvenQuartic` entero sobre ℚ, render por
   descenso de paridad). Plan de sub-ciclos en `docs/G1_RATIONAL_INTEGRATION_SCOPING.md`.
   🔨 **Nivel-2 COMPLETO 2026-07-15** (C-i QuadSurd `c25148522` → C-ii torre de radicales anidados
-  `e54372c2a` → C-iii par conjugado ℚ(√t₀)): **`1/(x^5-1)` GRADÚA** (+Φ₁₀, numeradores generales,
-  Φ₅ standalone; verificados por la torre + sympy). Residual net-new restante: `1/(x^3-2)` (∛2,
-  Cap.D — el ÚNICO probe del criterio #1 aún abierto), `1/(x^8+1)`. Es la promesa definitoria de
-  "universal" en integración y el item remanente declarado de la Phase 4 del backend.
+  `e54372c2a` → C-iii par conjugado ℚ(√t₀)): **`1/(x^5-1)` GRADÚA**. 🔨 **Cap. D ATERRIZADO
+  2026-07-15**: **`1/(x^3-2)` GRADÚA** (extensión ℚ(∛k): torre degree-aware `t³=k`, triples exactos
+  `[1,c,c²]`, radios planos `√3·c`). **G1 COMPLETO sobre los 5 probes del criterio #1.** Residuales
+  menores (no bloquean): `1/(x^3+2)` (k<0), `1/(x^8+1)` (resolvente u⁴+1 surd), `1/(x^4-5)`
+  (√5 polos reales); Cap. E (LRT universal) queda como terminal opcional.
 - **G2 · Narrativa educativa de límites** (L'Hôpital / límite notable / squeeze /
   factor-y-cancela) — **L, ~6-10 ciclos — NÚCLEO MADURO (sub-ciclos 1-8 + ∞−∞ ATERRIZADOS; criterio
   de salida #2 CUMPLIDO 2026-07-15).** El baseline en que CADA límite colapsaba a un paso-cáscara

@@ -3,9 +3,12 @@
 //! structural normalization to a multipoly decision procedure).
 //!
 //! Decides `derivative == integrand` exactly for expressions that are
-//! rational in the integration variable, free symbols, and square roots of
-//! variable-free radicands. Square roots are mapped to fresh atoms `t` and
-//! the comparison is reduced by the quotient relation `t^2 = radicand`, so
+//! rational in the integration variable, free symbols, and square/cube roots
+//! of variable-free radicands. Radicals are mapped to fresh atoms `t` and
+//! the comparison is reduced by the quotient relation `t^d = radicand`
+//! (`d = 2` for square roots, `d = 3` for cube roots — the G1 Cap. D
+//! extension; an odd-degree relation needs NO sign condition, since the real
+//! cube root exists for every real radicand), so
 //! identities such as `1/(sqrt(a)*sqrt(a)*(1+u^2/a)) == 1/(a+u^2)` are
 //! decided without bespoke normalization cases. NESTED radicals form a
 //! relation TOWER: an outer radicand like `(5 − √5)/2` is rewritten in terms
@@ -73,8 +76,13 @@ pub(super) fn algebraic_rational_zero_test(
     if radicands.len() > ALGEBRAIC_ZERO_TEST_MAX_RELATIONS {
         return None;
     }
-    for radicand in &radicands {
-        if !radicand_nonnegativity_is_represented(&mut tmp, *radicand, required_conditions) {
+    for (radicand, degree) in &radicands {
+        // `t² = radicand` presupposes a non-negative radicand; an ODD-degree
+        // relation (`t³ = radicand`) is sound unconditionally — the real cube
+        // root exists for every real radicand.
+        if *degree == 2
+            && !radicand_nonnegativity_is_represented(&mut tmp, *radicand, required_conditions)
+        {
             return None;
         }
     }
@@ -84,33 +92,39 @@ pub(super) fn algebraic_rational_zero_test(
     // implies strictly more nodes, so a descending node count is a valid
     // topological order of the containment partial order (exact, no heuristics;
     // the order between unrelated radicands is irrelevant).
-    radicands.sort_by_key(|radicand| std::cmp::Reverse(expr_node_count(&tmp, *radicand)));
+    radicands.sort_by_key(|(radicand, _)| std::cmp::Reverse(expr_node_count(&tmp, *radicand)));
 
-    // Phase A: map each sqrt-like occurrence to a fresh atom variable.
+    // Phase A: map each radical occurrence to a fresh atom variable.
     let mut expr = residual;
-    let mut atoms: Vec<(String, ExprId)> = Vec::new();
-    for (index, radicand) in radicands.iter().enumerate() {
+    let mut atoms: Vec<(String, ExprId, u32)> = Vec::new();
+    for (index, (radicand, degree)) in radicands.iter().enumerate() {
         let name = fresh_atom_name(&tmp, residual, index);
         let atom = tmp.var(&name);
-        expr = substitute_radical_atom(&mut tmp, expr, *radicand, atom);
-        atoms.push((name, *radicand));
+        expr = substitute_radical_atom(&mut tmp, expr, *radicand, atom, *degree);
+        atoms.push((name, *radicand, *degree));
     }
     // Each relation's radicand gets every OTHER radical replaced by its atom
     // (outermost-first again), so a NESTED radicand like `(5 − √5)/2` becomes
     // the genuine polynomial `(5 − t₂)/2` and no sqrt node ever reaches the
     // multipoly layer. Containment is strict and acyclic, so the references
     // between atoms are triangular by construction.
-    let mut relations: Vec<(String, ExprId)> = Vec::new();
-    for (index, (name, radicand)) in atoms.iter().enumerate() {
+    let mut relations: Vec<(String, ExprId, u32)> = Vec::new();
+    for (index, (name, radicand, degree)) in atoms.iter().enumerate() {
         let mut substituted = *radicand;
-        for (other_index, (other_name, other_radicand)) in atoms.iter().enumerate() {
+        for (other_index, (other_name, other_radicand, other_degree)) in atoms.iter().enumerate() {
             if other_index == index {
                 continue;
             }
             let atom = tmp.var(other_name);
-            substituted = substitute_radical_atom(&mut tmp, substituted, *other_radicand, atom);
+            substituted = substitute_radical_atom(
+                &mut tmp,
+                substituted,
+                *other_radicand,
+                atom,
+                *other_degree,
+            );
         }
-        relations.push((name.clone(), substituted));
+        relations.push((name.clone(), substituted, *degree));
     }
 
     // Phase B: build the residual as a single rational function over the
@@ -120,7 +134,7 @@ pub(super) fn algebraic_rational_zero_test(
     // silently projects missing variables out, which would degenerate the
     // relation t^2 = radicand into t^2 = 1.
     let mut universe_set = crate::multipoly::collect_poly_vars(&tmp, expr);
-    for (_, radicand) in &relations {
+    for (_, radicand, _) in &relations {
         universe_set.extend(crate::multipoly::collect_poly_vars(&tmp, *radicand));
     }
     let universe: Vec<String> = universe_set.into_iter().collect();
@@ -177,27 +191,27 @@ fn expr_node_count(ctx: &Context, root: ExprId) -> usize {
     count
 }
 
-/// Collect the distinct variable-free radicands of every sqrt-like
-/// subexpression (`sqrt(r)` or `r^(1/2)`). Returns `None` when a radicand
-/// depends on the integration variable (out of scope for the quotient
-/// reduction) so the caller bails instead of mis-translating.
+/// Collect the distinct variable-free `(radicand, degree)` pairs of every
+/// radical subexpression (`sqrt(r)`/`r^(1/2)` → degree 2, `cbrt(r)`/`r^(1/3)`
+/// → degree 3). Returns `None` when a radicand depends on the integration
+/// variable (out of scope for the quotient reduction) so the caller bails
+/// instead of mis-translating.
 fn collect_variable_free_radicands(
     ctx: &Context,
     root: ExprId,
     variable: &str,
-) -> Option<Vec<ExprId>> {
+) -> Option<Vec<(ExprId, u32)>> {
     let mut stack = vec![root];
-    let mut radicands: Vec<ExprId> = Vec::new();
+    let mut radicands: Vec<(ExprId, u32)> = Vec::new();
     while let Some(expr) = stack.pop() {
-        if let Some(radicand) = sqrt_like_radicand(ctx, expr) {
+        if let Some((radicand, degree)) = radical_like_radicand(ctx, expr) {
             if contains_named_var(ctx, radicand, variable) {
                 return None;
             }
-            if !radicands
-                .iter()
-                .any(|known| exprs_match_structurally(ctx, *known, radicand))
-            {
-                radicands.push(radicand);
+            if !radicands.iter().any(|(known, known_degree)| {
+                *known_degree == degree && exprs_match_structurally(ctx, *known, radicand)
+            }) {
+                radicands.push((radicand, degree));
             }
             stack.push(radicand);
             continue;
@@ -219,16 +233,28 @@ fn collect_variable_free_radicands(
     Some(radicands)
 }
 
-fn sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+/// The `(radicand, degree)` of a radical node: `sqrt(r)`/`r^(1/2)` (degree 2)
+/// or `cbrt(r)`/`r^(1/3)` (degree 3). `None` for anything else.
+fn radical_like_radicand(ctx: &Context, expr: ExprId) -> Option<(ExprId, u32)> {
     match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
-        {
-            Some(args[0])
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) {
+                Some((args[0], 2))
+            } else if ctx.is_builtin(*fn_id, BuiltinFn::Cbrt) {
+                Some((args[0], 3))
+            } else {
+                None
+            }
         }
         Expr::Pow(base, exponent) => {
             let value = crate::numeric_eval::as_rational_const(ctx, *exponent)?;
-            (value == BigRational::new(1.into(), 2.into())).then_some(*base)
+            if value == BigRational::new(1.into(), 2.into()) {
+                Some((*base, 2))
+            } else if value == BigRational::new(1.into(), 3.into()) {
+                Some((*base, 3))
+            } else {
+                None
+            }
         }
         _ => None,
     }
@@ -238,15 +264,20 @@ fn exprs_match_structurally(ctx: &Context, left: ExprId, right: ExprId) -> bool 
     left == right || SemanticEqualityChecker::new(ctx).are_equal(left, right)
 }
 
-/// Replace both spellings of the radical over `radicand` (`radicand^(1/2)` and
-/// `sqrt(radicand)`) by `atom` throughout `expr`.
+/// Replace both spellings of the degree-`degree` radical over `radicand`
+/// (`radicand^(1/degree)` and the `sqrt`/`cbrt` call form) by `atom`
+/// throughout `expr`.
 fn substitute_radical_atom(
     tmp: &mut Context,
     expr: ExprId,
     radicand: ExprId,
     atom: ExprId,
+    degree: u32,
 ) -> ExprId {
-    let half = tmp.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let half = tmp.add(Expr::Number(BigRational::new(
+        1.into(),
+        i64::from(degree).into(),
+    )));
     let pow_form = tmp.add(Expr::Pow(radicand, half));
     let expr = substitute_power_aware(
         tmp,
@@ -258,7 +289,12 @@ fn substitute_radical_atom(
             ..Default::default()
         },
     );
-    let call_form = tmp.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let builtin = if degree == 3 {
+        BuiltinFn::Cbrt
+    } else {
+        BuiltinFn::Sqrt
+    };
+    let call_form = tmp.call_builtin(builtin, vec![radicand]);
     substitute_power_aware(
         tmp,
         expr,
@@ -310,12 +346,12 @@ fn fresh_atom_name(ctx: &Context, root: ExprId, index: usize) -> String {
 
 fn relation_polys(
     ctx: &Context,
-    relations: &[(String, ExprId)],
+    relations: &[(String, ExprId, u32)],
     universe: &[String],
     budget: &PolyBudget,
-) -> Option<Vec<(usize, MultiPoly)>> {
+) -> Option<Vec<(usize, u32, MultiPoly)>> {
     let mut polys = Vec::with_capacity(relations.len());
-    for (name, radicand) in relations {
+    for (name, radicand, degree) in relations {
         let atom_index = universe.iter().position(|var| var == name)?;
         let radicand_poly = multipoly_from_expr(ctx, *radicand, budget)
             .ok()?
@@ -331,7 +367,7 @@ fn relation_polys(
         if radicand_poly.degree_in(atom_index) != 0 {
             return None;
         }
-        polys.push((atom_index, radicand_poly));
+        polys.push((atom_index, *degree, radicand_poly));
     }
     Some(polys)
 }
@@ -428,22 +464,25 @@ fn poly_pow(poly: &MultiPoly, exponent: u32, budget: &PolyBudget) -> Option<Mult
     Some(result)
 }
 
-/// Reduce `poly` modulo every relation `t^2 = radicand`: while any term
-/// carries `t^e` with `e >= 2`, replace `t^e` by `t^(e-2) * radicand`. Each
-/// step strictly lowers the total atom degree, so the loop terminates; the
-/// step cap guards budget blowups from large radicands.
+/// Reduce `poly` modulo every relation `t^d = radicand` (`d = 2` for square
+/// roots, `d = 3` for cube roots): while any term carries `t^e` with `e >= d`,
+/// replace `t^e` by `t^(e-d) * radicand`. Each step strictly lowers the atom
+/// degree at that atom's nesting height, so the loop terminates; the step cap
+/// guards budget blowups from large radicands.
 fn reduce_by_relations(
     mut poly: MultiPoly,
-    relations: &[(usize, MultiPoly)],
+    relations: &[(usize, u32, MultiPoly)],
     budget: &PolyBudget,
 ) -> Option<MultiPoly> {
     for _ in 0..ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS {
-        let Some((coeff, mono, atom_index, radicand)) =
-            relations.iter().find_map(|(atom_index, radicand)| {
+        let Some((coeff, mono, atom_index, degree, radicand)) =
+            relations.iter().find_map(|(atom_index, degree, radicand)| {
                 poly.terms
                     .iter()
-                    .find(|(_, mono)| mono[*atom_index] >= 2)
-                    .map(|(coeff, mono)| (coeff.clone(), mono.clone(), *atom_index, radicand))
+                    .find(|(_, mono)| mono[*atom_index] >= *degree)
+                    .map(|(coeff, mono)| {
+                        (coeff.clone(), mono.clone(), *atom_index, *degree, radicand)
+                    })
             })
         else {
             return Some(poly);
@@ -454,7 +493,7 @@ fn reduce_by_relations(
         let single = MultiPoly::from_map(poly.vars.clone(), single_terms);
 
         let mut reduced_mono = mono;
-        reduced_mono[atom_index] -= 2;
+        reduced_mono[atom_index] -= degree;
         let replacement = radicand
             .mul_scalar(&coeff)
             .mul_monomial(&reduced_mono)

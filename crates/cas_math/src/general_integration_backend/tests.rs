@@ -6141,6 +6141,56 @@ fn general_quartic_conjugate_pair_verifies_phi5_family() {
 }
 
 #[test]
+fn cbrt_cubic_factor_verifies_x3_minus_k_family() {
+    // G1 Cap. D: `x^3 - k` (k > 0, ∛k irrational) splits over ℝ as
+    // `(x - c)(x^2 + cx + c^2)` with residues in ℚ(c) — rendered with FLAT
+    // radicals only (`t³ = k`, `s² = 3`), so the degree-aware relation tower
+    // confirms the differentiate-back end-to-end. The composite case
+    // exercises the 3-column block against a rational cofactor.
+    let mut ctx = Context::new();
+    for source in ["1/(x^3-2)", "x/(x^3-2)", "1/((x-1)*(x^3-2))"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must verify through the cube-root relation tower (got {:?}, blocker: {:?})",
+            candidate.verification_status,
+            candidate.verification_blocker
+        );
+    }
+
+    // Honest declines: `x^3 + 2` (negative k is a documented later step),
+    // `x^3 - x - 1` (a cubic with an irrational non-∛ root is out of scope).
+    for source in ["1/(x^3+2)", "1/(x^3-x-1)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            !matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must stay an honest residual (got {:?})",
+            candidate.verification_status
+        );
+    }
+}
+
+#[test]
 fn general_rational_pipeline_rejects_out_of_scope_shapes() {
     let mut ctx = Context::new();
     let rejects = [
