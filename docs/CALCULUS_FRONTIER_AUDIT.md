@@ -19,7 +19,7 @@ leyendo el modelo de madurez, roadmap y velocidad del ledger.
 |---|---|---|---|
 | Diferenciación | ~80% | ~45-50% | mecánica sólida (cadena profunda, x^x, parciales, condiciones); bloqueada por estabilidad del simplificador |
 | Integral indefinida | ~60-65% (58/92 sondas) | ~35-40% | racionales/por-partes/potencias trig casi completos; 6/6 no-elementales correctamente residuales |
-| Límites | ~70-80% *(re-sondeado 2026-07-15)* | ~65-75% narrado | motor maduro: factor-cancela, notables (sin/x, (1−cos)/x², **`e` vía `(1+1/x)^x`** ✅), L'Hôpital ITERADO, squeeze/sándwich, jerarquía ∞/∞ (ln≪pot≪exp) — todos narrados es/en. Residuales: VALOR 0·∞ (`x·ln x`)/0^0 (`x^x`) declinan por política segura, `oo` no parsea como dirección (usar `infinity`); NARRACIÓN ∞−∞ común-denom de punto finito (`1/x−1/sin x`) pendiente. *(Nota: la fila previa "~45-50%, allowlist, `e` inalcanzable" era STALE — falsificada al imprimir los SUBSTEPS, no solo el `rule` de nivel-1.)* |
+| Límites | ~70-80% *(re-sondeado 2026-07-15)* | ~65-75% narrado | motor maduro: factor-cancela, notables (sin/x, (1−cos)/x², **`e` vía `(1+1/x)^x`** ✅), L'Hôpital ITERADO, squeeze/sándwich, jerarquía ∞/∞ (ln≪pot≪exp) — todos narrados es/en. Narra también el ∞−∞ (conjugado al ∞ y común-denom en punto finito, `1/x−1/sin x`/`1/tan²x−1/x²`). Residuales: VALOR 0·∞ (`x·ln x`)/0^0 (`x^x`) declinan por política segura, `oo` no parsea como dirección (usar `infinity`); NARRACIÓN ∞−∞ común-denom con denominador `log/exp` (`1/(x−1)−1/log x`) pendiente. *(Nota: la fila previa "~45-50%, allowlist, `e` inalcanzable" era STALE — falsificada al imprimir los SUBSTEPS, no solo el `rule` de nivel-1.)* |
 | Definidas/impropias | ~70-75% | ~35-40% | FTC/touches/impropias elementales sólidos; pre-simplificador sabotea casos |
 | Calidad educativa | ~58% bien narrado | ~35-40% | condiciones de dominio sistemáticas (punto fuerte); por partes narrada en las TRES asignaciones u/dv: polinomio·ln, polinomio(lineal)·{eˣ,sin,cos,sinh}, y u=función/dv=dx (inverse-trig/hiperbólicas + ln(x) solo) (quedan repetida grado≥2 y cíclico eˣ·sin) |
 
@@ -96,6 +96,18 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   finito (oráculo); auto-chequeo `simplify(before·conjugate)==numerador` → declina a la línea de
   técnica si el álgebra no pliega. Narración pura, sin gate ValueDomain. Huella 0-delta en las lanes
   `calculus_limit_*`. Peldaño: el ∞−∞ de común-denominador en punto finito (`1/x−1/sin x`).)*
+- [x] **(G2 educativo) Narración del ∞−∞ de común-denominador en punto finito**: `1/x−1/sin x`(→0),
+  `1/sin²x−1/x²`(→1/3), `1/x²−1/sin²x`(→−1/3), **`1/tan²x−1/x²`(→−2/3, cierra la narración del
+  peldaño de tan de arriba)**, `1/x−1/tan x`(→0) daban el VALOR correcto con CERO substeps.
+  *(graduado 2026-07-15 `1cbf77b5e`: reconocedor `limit_reciprocal_difference_common_denom` +
+  builder `generate_limit_common_denom_substeps` en `focused_rule_substeps.rs` — 3 substeps es/en:
+  indeterminación ∞−∞ → combina sobre común denominador (fracción única) → el 0/0 resultante
+  (recursa la maquinaria L'Hôpital/Taylor; cierra con la línea genérica cuando el denominador-producto
+  transcendental no permite iteración). Gateado a `Sub` de dos `k/f` con `f→0` en el punto y `after`
+  finito (oráculo); el cross-multiply es identidad por construcción (SIN auto-chequeo, que rompería
+  las identidades de tan). Narración pura, sin gate ValueDomain. Huella 0-delta en las lanes
+  `calculus_limit_*`. Peldaño: denominadores `log/exp` (`1/(x−1)−1/log x`) y recíprocos `Pow(f,−k)`/
+  `cot`/`tan` — declinan honesto por ahora.)*
 - [x] **(F) gcd de polinomios devolvía un NO-divisor**: `gcd(x²+x, x²-x)` devolvía `x²+x` (que no
   divide a `x²-x`) en vez de `x`, y `gcd(x²+x+1, x²-x+1)` devolvía `x²+x+1` en vez de `1` (coprimos).
   La clave AC del gcd estructural ignoraba el signo de los términos aditivos, colisionando `x²+x`

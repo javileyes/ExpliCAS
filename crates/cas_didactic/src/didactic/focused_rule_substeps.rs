@@ -19938,6 +19938,11 @@ const LIMIT_DOMINANCE_PREFIX: &str = "Dominancia:";
 const LIMIT_CONJUGATE_TITLE: &str =
     "Racionaliza multiplicando y dividiendo por el conjugado (indeterminación ∞−∞)";
 
+/// Title of the common-denominator technique for a reciprocal-difference `c/f − d/g`
+/// `∞−∞` limit at a finite point, shared between the recognizer and the builder.
+const LIMIT_COMMON_DENOM_TITLE: &str =
+    "Combina las fracciones sobre un común denominador (indeterminación ∞−∞)";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19985,6 +19990,13 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     if description == LIMIT_CONJUGATE_TITLE {
         if let Some(substeps) = generate_limit_conjugate_substeps(ctx, step) {
             return substeps;
+        }
+    }
+    if description == LIMIT_COMMON_DENOM_TITLE {
+        if let Some(p) = point {
+            if let Some(substeps) = generate_limit_common_denom_substeps(ctx, step, p) {
+                return substeps;
+            }
         }
     }
     vec![SubStep::new(
@@ -20477,6 +20489,109 @@ fn generate_limit_conjugate_substeps(ctx: &Context, step: &Step) -> Option<Vec<S
     ])
 }
 
+/// Recognize a reciprocal-difference `∞−∞` limit at a FINITE point: `c/f − d/g`
+/// where `c,d` are nonzero rational constants and both `f,g → 0` at the point (so
+/// each term blows up), with a finite `after` (the value oracle). Resolved by
+/// combining over a common denominator. Gated to the finite branch (the caller is
+/// past `if at_infinity`), so the at-infinity conjugate form never reaches here.
+fn limit_reciprocal_difference_common_denom(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+    point: Option<ExprId>,
+) -> Option<String> {
+    let point = point?;
+    as_rational_const(ctx, after, 8)?; // finite result is the oracle
+    let (a, b, is_subtraction) = extract_fraction_add_sub_operands(ctx, before)?;
+    if !is_subtraction {
+        return None; // ∞−∞ needs a subtraction (∞+∞ is not indeterminate)
+    }
+    for term in [a, b] {
+        let (num, den) = as_div(ctx, term)?;
+        let k = as_rational_const(ctx, num, 8)?;
+        if k.is_zero() {
+            return None;
+        }
+        if !limit_denominator_vanishes_at(ctx, den, point) {
+            return None; // this term does not blow up → not ∞−∞
+        }
+    }
+    Some(LIMIT_COMMON_DENOM_TITLE.to_string())
+}
+
+/// Deepen the reciprocal-difference `∞−∞` limit into substeps: show the
+/// indeterminate `∞−∞`, combine over a common denominator to reach a single
+/// fraction, then resolve the resulting `0/0` — recursing the limit-substep
+/// machinery on the combined fraction (rational cases get factor-cancel / a full
+/// L'Hôpital iteration) and, when that declines (transcendental product
+/// denominators such as `x·sin(x)`), closing with the honest `0/0 → L'Hôpital /
+/// Taylor` one-liner.
+///
+/// SOUNDNESS: the common denominator is `f·g`, and the recognizer already certified
+/// both `f→0` and `g→0` at the point, so the denominator vanishes; a finite `after`
+/// then forces the numerator to vanish too, making the `0/0` claim honest. The
+/// combiner `(c₁/f₁) − (c₂/f₂) = (c₁·f₂ − c₂·f₁)/(f₁·f₂)` is an algebraic IDENTITY
+/// for the `c/f` terms the recognizer certified, so its output always equals
+/// `before` by construction — no simplifier-proof self-check is possible or needed
+/// (the simplifier cannot fold the tangent identities to literal 0 anyway).
+fn generate_limit_common_denom_substeps(
+    ctx: &Context,
+    step: &Step,
+    point: ExprId,
+) -> Option<Vec<SubStep>> {
+    let before = step.before;
+    let var = limit_single_var_name(ctx, before)?;
+
+    let mut scratch = ctx.clone();
+    // Combine `A − B` over a common denominator via the shared cross-multiply combiner.
+    let combined_raw = build_two_fraction_common_denominator_intermediate(&mut scratch, before)?;
+    // Clean the `1·…` factors into a single readable fraction for display + recursion.
+    let combined = simplify_expr_in_context(&mut scratch, combined_raw);
+    let combined_disp = display_expr(&scratch, combined);
+    let combined_latex = latex_expr(&scratch, combined);
+    let after_disp = display_expr(ctx, step.after);
+
+    let mut substeps = vec![
+        SubStep::keyed(
+            "limit.inf_minus_inf_indeterminate",
+            vec![],
+            display_expr(ctx, before),
+            "∞ − ∞",
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(r"\infty - \infty"),
+        SubStep::keyed(
+            "limit.combine_over_common_denominator",
+            vec![],
+            display_expr(ctx, before),
+            combined_disp.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(combined_latex.clone()),
+    ];
+
+    // Resolve the resulting 0/0. Recurse on the combined fraction; the combined form
+    // is a `Div`, never a `Sub`-of-reciprocals, so this recognizer cannot re-fire.
+    let mut synthetic = Step::new_compact("desc", "Evaluar límite finito", combined, step.after);
+    synthetic.meta_mut().limit_point = Some(point);
+    let tail = generate_limit_substeps(&scratch, &synthetic);
+    if tail.is_empty() {
+        substeps.push(
+            SubStep::keyed(
+                "limit.generic_0_0_lhopital_or_taylor",
+                vec![var, display_expr(ctx, point)],
+                combined_disp,
+                after_disp,
+            )
+            .with_before_latex(combined_latex)
+            .with_after_latex(latex_expr(ctx, step.after)),
+        );
+    } else {
+        substeps.extend(tail);
+    }
+    Some(substeps)
+}
+
 /// Deepen a `1^∞` notable (`(1+1/x)^x → e`, `(1+u)^(1/u) → e`) into two substeps:
 /// show that the base tends to 1 and the exponent to ±∞ (the indeterminate form
 /// `1^∞`, so you cannot just take `1^∞ = 1`), then cite the definition of `e`.
@@ -20527,6 +20642,13 @@ fn notable_limit_name(
     let prefix = LIMIT_NOTABLE_PREFIX;
     let after_value = as_rational_const(ctx, after, 8);
     let after_is = |target: BigRational| after_value.as_ref() == Some(&target);
+
+    // Reciprocal-difference `∞−∞` at a finite point: `c/f − d/g` where both f,g → 0
+    // (each term blows up) and the result is finite → combine over a common
+    // denominator. `before` is a `Sub`, disjoint from the `Div` forms below.
+    if let Some(desc) = limit_reciprocal_difference_common_denom(ctx, before, after, point) {
+        return Some(desc);
+    }
 
     if let Some((num, den)) = as_div(ctx, before) {
         // den is the bare variable u.
@@ -22855,6 +22977,55 @@ mod limit_notable_tests {
         assert_eq!(zero.len(), 3, "{zero:?}");
         assert_eq!(zero[1].after_expr, "1 / (sqrt(x^2 + 1) + x)");
         assert_eq!(zero[2].after_expr, "0");
+    }
+
+    #[test]
+    fn inf_minus_inf_common_denominator_at_finite_point_deepens() {
+        // `1/x − 1/sin(x) → 0` (∞−∞ at 0) SHOWS the work: indeterminate ∞−∞ →
+        // combine over a common denominator → the resulting 0/0 (L'Hôpital/Taylor).
+        let subs = substeps_finite_at_point("1/x - 1/sin(x)", "0", "0");
+        let titles: Vec<&str> = subs.iter().map(|s| s.description.as_str()).collect();
+        assert_eq!(titles.len(), 3, "{titles:?}");
+        assert!(titles[0].contains("∞−∞"), "{titles:?}");
+        assert!(titles[1].contains("común denominador"), "{titles:?}");
+        assert!(
+            titles[2].contains("0/0") && titles[2].contains("Hôpital"),
+            "{titles:?}"
+        );
+        // The combined single fraction is visible.
+        assert_eq!(subs[1].after_expr, "(sin(x) - x) / (x * sin(x))");
+        assert_eq!(subs[2].after_expr, "0");
+
+        // The audit's OPEN peldaño `1/tan²x − 1/x² → −2/3` now narrates (three
+        // substeps, the combine step reaching a single fraction).
+        let tan2 = substeps_finite_at_point("1/tan(x)^2 - 1/x^2", "-2/3", "0");
+        assert_eq!(tan2.len(), 3, "{:?}", tan2[0].description);
+        assert!(tan2[1].description.contains("común denominador"));
+        assert_eq!(tan2[2].after_expr, "-2 / 3");
+    }
+
+    #[test]
+    fn inf_minus_inf_common_denominator_declines_out_of_scope() {
+        // Divergent same-sign ∞−∞ (result ±∞, not a finite rational): the
+        // after-oracle (P3) rejects it, so no common-denominator narration.
+        let divergent = substep_titles_finite_at_point("1/x - 1/x^2", "infinity", "0");
+        assert!(
+            divergent.iter().all(|t| !t.contains("común denominador")),
+            "{divergent:?}"
+        );
+        // A term that does not blow up at the point (`sin(x)` bounded): P5 rejects.
+        let bounded = substep_titles_finite_at_point("1/x - sin(x)", "0", "0");
+        assert!(
+            bounded.iter().all(|t| !t.contains("común denominador")),
+            "{bounded:?}"
+        );
+        // A single quotient (`Div`, not a `Sub` of two reciprocals) never reaches
+        // this recognizer — it stays a notable/L'Hôpital narration.
+        let quotient = substep_titles_finite_at_point("sin(x)/x", "1", "0");
+        assert!(
+            quotient.iter().all(|t| !t.contains("común denominador")),
+            "{quotient:?}"
+        );
     }
 
     #[test]
