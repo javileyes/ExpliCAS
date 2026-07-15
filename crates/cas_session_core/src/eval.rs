@@ -80,8 +80,8 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "diff" => arity >= 2,
         "integrate" => matches!(arity, 1 | 2 | 4),
         "sum" | "product" => arity == 4,
-        // taylor(f, x, n) / taylor(f, x, point, n) (point must be 0) and the `series` alias.
-        "taylor" | "series" => matches!(arity, 3 | 4),
+        // taylor(f, x) (default order) / taylor(f, x, n) / taylor(f, x, point, n) and `series`.
+        "taylor" | "series" => matches!(arity, 2..=4),
         // Number-theory calls dispatched by engine/math support.
         "fact" | "factorial" | "prime_factors" | "factors" => arity == 1,
         "isprime" | "is_prime" | "nextprime" | "prevprime" | "totient" | "phi" | "eulerphi"

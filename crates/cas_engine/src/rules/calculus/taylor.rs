@@ -7,10 +7,15 @@ use cas_ast::{Context, Expr, ExprId};
 use crate::define_rule;
 use crate::rule::Rewrite;
 
-/// Parse `taylor(f, x, n)` and `taylor(f, x, point, n)` (and the `series` alias).
-/// Returns `(target, var_name, point_expr, order)`. `point_expr` is the expansion point
-/// (the literal `0` node when the 3-argument form omits it); a non-negative integer `order`
-/// is required (negative/non-integer orders are declined as honest residuals).
+/// Order used for the 2-argument form `taylor(f, x)` / `series(f, x)`, where the caller omits
+/// the truncation order. Matches the common textbook default (a Maclaurin expansion up to `x^6`).
+const DEFAULT_TAYLOR_ORDER: usize = 6;
+
+/// Parse `taylor(f, x)`, `taylor(f, x, n)` and `taylor(f, x, point, n)` (and the `series` alias).
+/// Returns `(target, var_name, point_expr, order)`. `point_expr` is the expansion point (the
+/// literal `0` node when the 2/3-argument forms omit it); the order defaults to
+/// [`DEFAULT_TAYLOR_ORDER`] in the 2-argument form. A negative/non-integer explicit order is
+/// declined as an honest residual.
 fn try_extract_taylor_call(
     ctx: &mut Context,
     expr: ExprId,
@@ -22,9 +27,13 @@ fn try_extract_taylor_call(
         return None;
     };
     let args = args.clone();
+    // 2 args: `taylor(f, x)` (Maclaurin, default order); 3 args: `taylor(f, x, n)` (order n at 0);
+    // 4 args: `taylor(f, x, a, n)` (order n around a). The 2-argument form makes the most natural
+    // invocation return a series instead of erroring on an unrecognized arity.
     let (target, var_expr, point_expr, order_expr) = match args.len() {
-        3 => (args[0], args[1], None, args[2]),
-        4 => (args[0], args[1], Some(args[2]), args[3]),
+        2 => (args[0], args[1], None, None),
+        3 => (args[0], args[1], None, Some(args[2])),
+        4 => (args[0], args[1], Some(args[2]), Some(args[3])),
         _ => return None,
     };
 
@@ -34,11 +43,17 @@ fn try_extract_taylor_call(
     let var_name = ctx.sym_name(*var_sym).to_string();
 
     let point = point_expr.unwrap_or_else(|| ctx.num(0));
-    let order = cas_math::numeric::as_i64(ctx, order_expr)?;
-    if order < 0 {
-        return None;
-    }
-    Some((target, var_name, point, order as usize))
+    let order = match order_expr {
+        Some(order_expr) => {
+            let order = cas_math::numeric::as_i64(ctx, order_expr)?;
+            if order < 0 {
+                return None;
+            }
+            order as usize
+        }
+        None => DEFAULT_TAYLOR_ORDER,
+    };
+    Some((target, var_name, point, order))
 }
 
 define_rule!(TaylorRule, "Taylor Series", |ctx, expr| {
@@ -88,8 +103,21 @@ mod tests {
             Some(("x".to_string(), 4))
         ); // point a = 1
         assert_eq!(extract("taylor(exp(x), x, -1)"), None); // negative order
-        assert_eq!(extract("taylor(exp(x), x)"), None); // too few args
         assert_eq!(extract("diff(exp(x), x)"), None); // not a taylor/series call
+        assert_eq!(extract("taylor(exp(x))"), None); // too few args (no variable)
+    }
+
+    #[test]
+    fn two_argument_form_defaults_the_order() {
+        // `taylor(f, x)` / `series(f, x)` (no order) is a Maclaurin expansion to the default order.
+        assert_eq!(
+            extract("taylor(exp(x), x)"),
+            Some(("x".to_string(), DEFAULT_TAYLOR_ORDER))
+        );
+        assert_eq!(
+            extract("series(sin(t), t)"),
+            Some(("t".to_string(), DEFAULT_TAYLOR_ORDER))
+        );
     }
 
     #[test]

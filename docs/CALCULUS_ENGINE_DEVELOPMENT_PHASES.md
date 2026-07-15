@@ -124,7 +124,12 @@ cuando, los tres se cumplen:
   2026-06-21** (`taylor_at_zero_with_rational`, recíproco de series, aislado del path de
   límites): `1/(1-x)`, `1/(1+x^2)`, `1/(1-x)^2`, `exp(x)/(1-x)`. Residuales honestos: punto ≠ 0,
   polos en 0 (`1/x`), orden negativo. **El motor de series univariable que esto crea también
-  desbloquea el Taylor de la Fase 3.** ✅ **Aritmético-geométrica grado 2 AÑADIDA 2026-06-21**:
+  desbloquea el Taylor de la Fase 3.** ✅ **Forma 2-args `taylor(f,x)`/`series(f,x)` con orden
+  por defecto (Maclaurin, orden 6) AÑADIDA 2026-07-15 (`2122ae94a`)** — la invocación más
+  natural (antes error de arity "función no definida"); requirió ampliar el gate
+  `is_known_eval_engine_function` a arity `2..=4` además del arm de la regla. Con esto el win
+  P1 del criterio de salida #3 (taylor/series + linealidad de sumatorios) queda CERRADO.
+  ✅ **Aritmético-geométrica grado 2 AÑADIDA 2026-06-21**:
   `try_build_arithmetic_geometric_sum` generalizado a cofactor polinómico ≤2 (`Σ(αk²+βk+γ)·r^k =
   α·S₂+β·S₁+γ·S₀`) — `sum(k²·2^k)`, `sum((2k²−3k+1)·2^k)`, `sum((k²+2k)·2^k)`. Residuales honestos
   (peldaños, NO regresión, net-cero): (a) cofactores prónicos `k(k±1)=k²±k` por una oscilación

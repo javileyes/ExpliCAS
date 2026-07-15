@@ -4418,6 +4418,17 @@ fn test_eval_fractional_binomial_taylor_at_zero() {
         r("taylor(log(1+x),x,0,4)"),
         "1/12·(4·x^3 + 12·x - 3·x^4 - 6·x^2)"
     );
+    // The 2-argument form `taylor(f, x)` / `series(f, x)` defaults to a Maclaurin expansion of
+    // the default order (6) — the most natural invocation, previously an "undefined" arity error.
+    assert_eq!(
+        r("taylor(exp(x),x)"),
+        "1/720·(x^6 + 6·x^5 + 30·x^4 + 120·x^3 + 360·x^2 + 720·x + 720)"
+    );
+    assert_eq!(r("taylor(exp(x),x)"), r("taylor(exp(x),x,6)"));
+    assert_eq!(
+        r("series(1/(1-x),x)"),
+        "x^6 + x^5 + x^4 + x^3 + x^2 + x + 1"
+    );
 }
 
 #[test]

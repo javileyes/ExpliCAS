@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 572 (newest first)
+Active entries: 573 (newest first)
 
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
+- 2026-07-15 | `retained` | `crates/cas_engine/src/rules/calculus/taylor.rs` (arm de 2 args + `DEFAULT_TA... | CAPACIDAD P1 (taylor()/series() forma 2-args con orden por defecto): `taylor(e^x, x)`
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_symbolic_linear_coeff_in... | SOUNDNESS (F3 re-intento RETENIDO: ineq lineal con coef constante-simbólico dropeaba el operador): `solve(e^x<2^x, x)`
 - 2026-07-14 | `retained` | `crates/cas_math/src/polynomial.rs` (`count_real_roots`: cadena de Sturm EXAC... | SOUNDNESS (F4 re-intento RETENIDO: deflación racional dropeaba el factor residual grado≥3 entero): `solve(x^5-x^4-4x^3+4x^2+x-1=0, x)`
 - 2026-07-14 | `retained` | `crates/cas_solver/src/solve_backend_local.rs` (`try_solve_periodic_trig_equa... | SOUNDNESS/CAPACIDAD (tan(u)=tan(v): congruencia mod π con exclusión EXACTA de polos): `solve(tan(2x)=tan(3x), x)`
@@ -19684,3 +19685,18 @@ Active entries: 572 (newest first)
   - **Combinar para DISPLAY: usa el cross-multiply crudo + simplify, NO `simplify(before)`**: `simplify(1/tan²x−1/x²)` mantiene la resta (`cos²/sin² − 1/x²`), pero `simplify(cross_multiply)` da la fracción única `(x²cos²x−sin²x)/(x²sin²x)` que la narración "combina sobre común denominador" necesita mostrar.
   - **Recursar el dispatcher de substeps sobre la forma reducida reusa TODA la maquinaria 0/0 sin duplicarla**: un Step sintético (`new_compact`+`meta_mut().limit_point`) re-entra `generate_limit_substeps`; termina porque la forma combinada es un `Div` (no re-dispara el reconocedor de `Sub`). Fallback a una línea de cierre cuando la recursión declina (denominador-producto transcendental).
   - PRÓXIMO PELDAÑO: extender a denominadores `log/exp` (`1/(x−1)−1/log x`, `1/(eˣ−1)−1/x`) enseñando a `limit_denominator_vanishes_at` esos ceros; y recíprocos escritos como `Pow(f,−k)`/`cot`/`tan`. O alternar a un win P1 barato.
+
+## 2026-07-15 - CAPACIDAD P1 (taylor()/series() forma 2-args con orden por defecto): `taylor(e^x, x)`
+
+- area: `crates/cas_engine/src/rules/calculus/taylor.rs` (arm de 2 args + `DEFAULT_TAYLOR_ORDER`) + `crates/cas_session_core/src/eval.rs` (`is_known_eval_engine_function`: arity `2..=4`) + test en `cli_contract_tests.rs`
+- status: `retained`. Win P1 barato (criterio de salida #3 de Fase 1). Cierra el último hueco UX de un comando que YA funcionaba.
+- capture:
+  - investment_class: capacidad P1 (sintaxis/UX de un comando existente).
+  - cell: `taylor(f, x)` y `series(f, x)` (2 args, sin orden) devolvían **`función [taylor] no definida`**; ahora expanden Maclaurin al orden por defecto 6, IDÉNTICO a `taylor(f, x, 6)` (`e^x`, `sin`, `cos`, `1/(1-x)` verificados). SONDEO PREVIO clave: `taylor`/`series` YA funcionaban en 3-args `taylor(f,x,n)` (n=ORDEN, centro 0) y 4-args `taylor(f,x,a,n)` (centro a); y `sum(...)` YA aplica linealidad (`sum(2k+3,k,1,n)=n²+4n`). Sólo faltaba la forma 2-args → esta era la parte real del "P1 taylor/series + linealidad de sumatorios", el resto ya estaba hecho.
+  - causa raíz: DOS gates rechazaban arity 2 (lección `new-engine-function-wiring-gotchas` RE-CONFIRMADA): (1) `try_extract_taylor_call` sólo casaba `match args.len() { 3|4 => ..., _ => None }`; (2) `is_known_eval_engine_function("taylor"|"series", arity)` = `matches!(arity, 3|4)`, que dispara el error "función no definida" ANTES de que la regla corra. Arreglar solo (1) NO basta — el gate (2) mata la llamada antes.
+  - diseño: 2-args → `(target, var, point=None→0, order=None→DEFAULT_TAYLOR_ORDER)`; `order_expr` pasa a `Option` (default 6 = Maclaurin hasta x^6, convención de libro de texto). Gate de arity ampliado a `2..=4`. El motor de serie es el YA existente (`taylor_series_at_zero_expr`) — reuso puro, cero maquinaria de valor nueva. 3/4-args byte-idénticos; orden negativo sigue declinando; funciones desconocidas siguen "no definida".
+  - validación: `cargo test --workspace` 0 failed; taylor crate tests 6/6 (+1 nuevo `two_argument_form_defaults_the_order`); clippy `--workspace --all-targets` CLEAN (fix: `matches!(arity, 2|3|4)` → `2..=4` por lint de rango); rustfmt; engine-fast TODAS las lanes pass; pressure pass. **Huella 0-delta** (sólo `.git.commit` + `integrate filtered_out +2` de baseline stale, no mío). Test de contrato nuevo pinnea `taylor(e^x,x)==taylor(e^x,x,6)` y la geométrica.
+  - retained learning:
+  - **Un comando "nuevo" con arity nueva necesita DOS wiring points, no uno** (`new-engine-function-wiring-gotchas` re-confirmada por 3ª vez): la regla que lo reescribe Y el gate `is_known_eval_engine_function` (arity). El segundo falla en silencio con "función no definida" ANTES de la regla; síntoma engañoso (parece función desconocida, es arity no-listada). Al ampliar la arity de un comando, tocar AMBOS.
+  - **Sondear antes de "implementar un P1" evita re-hacer lo hecho**: el doc listaba "taylor()/series() + linealidad de sumatorios" como P1 pendiente, pero el sondeo mostró que 3/4-args de taylor Y la linealidad de `sum` YA funcionaban; el ciclo real era sólo la forma 2-args. (Mismo patrón meta que el saneamiento de docs: la capacidad envejece en los docs.)
+  - PRÓXIMO PELDAÑO (residuales menores de taylor/series, NO en este ciclo): presentación en forma suma-estándar `1 + x + x²/2 + …` con término `O(xⁿ)` (hoy factoriza `1/720·(…)`); alias `summation` para `sum`; y el WARN `depth_overflow` de `simplify` en órdenes altos de radicales (`sqrt(1+x)`), que es perf de simplify, no del comando.
