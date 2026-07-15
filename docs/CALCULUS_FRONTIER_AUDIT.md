@@ -19,7 +19,7 @@ leyendo el modelo de madurez, roadmap y velocidad del ledger.
 |---|---|---|---|
 | Diferenciación | ~80% | ~45-50% | mecánica sólida (cadena profunda, x^x, parciales, condiciones); bloqueada por estabilidad del simplificador |
 | Integral indefinida | ~60-65% (58/92 sondas) | ~35-40% | racionales/por-partes/potencias trig casi completos; 6/6 no-elementales correctamente residuales |
-| Límites | ~45-50% | ~20-25% | allowlist de patrones, no algoritmo; `e` inalcanzable por límite |
+| Límites | ~70-80% *(re-sondeado 2026-07-15)* | ~65-75% narrado | motor maduro: factor-cancela, notables (sin/x, (1−cos)/x², **`e` vía `(1+1/x)^x`** ✅), L'Hôpital ITERADO, squeeze/sándwich, jerarquía ∞/∞ (ln≪pot≪exp) — todos narrados es/en. Residuales: VALOR 0·∞ (`x·ln x`)/0^0 (`x^x`) declinan por política segura, `oo` no parsea como dirección (usar `infinity`); NARRACIÓN ∞−∞ común-denom de punto finito (`1/x−1/sin x`) pendiente. *(Nota: la fila previa "~45-50%, allowlist, `e` inalcanzable" era STALE — falsificada al imprimir los SUBSTEPS, no solo el `rule` de nivel-1.)* |
 | Definidas/impropias | ~70-75% | ~35-40% | FTC/touches/impropias elementales sólidos; pre-simplificador sabotea casos |
 | Calidad educativa | ~58% bien narrado | ~35-40% | condiciones de dominio sistemáticas (punto fuerte); por partes narrada en las TRES asignaciones u/dv: polinomio·ln, polinomio(lineal)·{eˣ,sin,cos,sinh}, y u=función/dv=dx (inverse-trig/hiperbólicas + ln(x) solo) (quedan repetida grado≥2 y cíclico eˣ·sin) |
 
@@ -86,6 +86,16 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   Las grafías de recíproco-trig se cierran después (2026-06-22, `as_fraction` extendido a
   csc/sec/cot y `(a/b)^k`: `csc²x−1/x²=1/3`, `cot²x−1/x²=-2/3`). Peldaño restante: `1/tan²x−1/x²` y
   otras con tan crudo cuyo sub-límite no resuelve (las reglas de polo no cubren tan).)*
+- [x] **(G2 educativo) Narración del ∞−∞ conjugado al infinito**: `limit(√(x²+x)−x, x, ∞)` daba el
+  VALOR correcto (1/2) pero con CERO substeps (caja negra); igual `√(x²+3x)−x`, `√(x²+1)−x` (b=0),
+  `x−√(x²−x)` (orden inverso).
+  *(graduado 2026-07-15 `4bad41d9d`: reconocedor `limit_infinity_conjugate_radical` + builder
+  `generate_limit_conjugate_substeps` en `focused_rule_substeps.rs` — 3 substeps es/en:
+  indeterminación ∞−∞ → multiplica/divide por el conjugado `(P−L²)/(√P+L)` → divide entre la
+  potencia dominante y evalúa. Gateado a `√(grado-2)−lineal` con líderes que cancelan y `after`
+  finito (oráculo); auto-chequeo `simplify(before·conjugate)==numerador` → declina a la línea de
+  técnica si el álgebra no pliega. Narración pura, sin gate ValueDomain. Huella 0-delta en las lanes
+  `calculus_limit_*`. Peldaño: el ∞−∞ de común-denominador en punto finito (`1/x−1/sin x`).)*
 - [x] **(F) gcd de polinomios devolvía un NO-divisor**: `gcd(x²+x, x²-x)` devolvía `x²+x` (que no
   divide a `x²-x`) en vez de `x`, y `gcd(x²+x+1, x²-x+1)` devolvía `x²+x+1` en vez de `1` (coprimos).
   La clave AC del gcd estructural ignoraba el signo de los términos aditivos, colisionando `x²+x`

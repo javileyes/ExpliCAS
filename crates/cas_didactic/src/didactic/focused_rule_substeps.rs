@@ -19932,6 +19932,12 @@ const LIMIT_SQUEEZE_TITLE: &str =
 /// ∞/∞ deepening.
 const LIMIT_DOMINANCE_PREFIX: &str = "Dominancia:";
 
+/// Title of the conjugate-rationalization technique for an `√(quadratic) − linear`
+/// (or `linear − √(quadratic)`) `∞−∞` limit at infinity, shared between the
+/// recognizer and the deepened builder.
+const LIMIT_CONJUGATE_TITLE: &str =
+    "Racionaliza multiplicando y dividiendo por el conjugado (indeterminación ∞−∞)";
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let at_infinity = step.rule_name.contains("infinito");
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
@@ -19973,6 +19979,11 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     }
     if description.starts_with(LIMIT_DOMINANCE_PREFIX) {
         if let Some(substeps) = generate_limit_dominance_substeps(ctx, step, &description) {
+            return substeps;
+        }
+    }
+    if description == LIMIT_CONJUGATE_TITLE {
+        if let Some(substeps) = generate_limit_conjugate_substeps(ctx, step) {
             return substeps;
         }
     }
@@ -20337,6 +20348,135 @@ fn generate_limit_dominance_substeps(
     ])
 }
 
+/// Extract the radicand `P` of a square root written either as the `sqrt(P)`
+/// builtin or as `P^(1/2)`. Returns `None` for any other shape.
+fn as_sqrt_radicand(ctx: &Context, e: ExprId) -> Option<ExprId> {
+    if let Expr::Function(fn_id, args) = ctx.get(e) {
+        if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) {
+            return Some(args[0]);
+        }
+    }
+    let (base, exp) = as_pow(ctx, e)?;
+    match ctx.get(exp) {
+        Expr::Number(n) if *n.numer() == 1.into() && *n.denom() == 2.into() => Some(base),
+        _ => None,
+    }
+}
+
+/// Split an `∞−∞` difference into `(√P, linear, surd_is_first)`: `√P − L` gives
+/// `surd_is_first = true`, `L − √P` gives `false`. `P` must be degree 2 and `L`
+/// degree 1 with `leading(P) = leading(L)²`, so the leading `±∞` terms cancel and
+/// the difference is the genuine `∞−∞` that conjugate rationalization resolves.
+fn limit_conjugate_parts(ctx: &Context, before: ExprId) -> Option<(ExprId, ExprId, bool)> {
+    let Expr::Sub(l, r) = ctx.get(before) else {
+        return None;
+    };
+    let (l, r) = (*l, *r);
+    let (surd, linear, surd_first) = if as_sqrt_radicand(ctx, l).is_some() {
+        (l, r, true)
+    } else if as_sqrt_radicand(ctx, r).is_some() {
+        (r, l, false)
+    } else {
+        return None;
+    };
+    let radicand = as_sqrt_radicand(ctx, surd)?;
+    let var = limit_single_var_name(ctx, before)?;
+    let p = Polynomial::from_expr(ctx, radicand, &var).ok()?;
+    let q = Polynomial::from_expr(ctx, linear, &var).ok()?;
+    if p.degree() != 2 || q.degree() != 1 {
+        return None;
+    }
+    let d = q.leading_coeff();
+    if p.leading_coeff() != &d * &d {
+        return None;
+    }
+    Some((surd, linear, surd_first))
+}
+
+/// Recognize an `∞−∞` limit at infinity of the form `√(a·x²+b·x+c) − d·x` (or the
+/// reverse) with `a = d²`, resolved by multiplying and dividing by the conjugate.
+/// `after` (the true limit, required finite) is the soundness oracle.
+fn limit_infinity_conjugate_radical(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<String> {
+    as_rational_const(ctx, after, 8)?;
+    limit_conjugate_parts(ctx, before)?;
+    Some(LIMIT_CONJUGATE_TITLE.to_string())
+}
+
+/// Deepen the conjugate-rationalization `∞−∞` limit into three substeps: show the
+/// indeterminate `∞−∞`, multiply/divide by the conjugate to reach the rational
+/// form `(P − L²)/(√P + L)`, then divide by the dominant power and evaluate.
+///
+/// SOUNDNESS: the rationalized numerator is `P − L²`, which — since `(√P)² = P` —
+/// equals `(√P − L)(√P + L)`. A self-check re-multiplies `before · conjugate` and
+/// requires it to fold to that (signed) numerator, so any construction error
+/// DECLINES to the one-line technique name rather than narrating false algebra.
+fn generate_limit_conjugate_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+    let before = step.before;
+    let (surd, linear, surd_first) = limit_conjugate_parts(ctx, before)?;
+    let radicand = as_sqrt_radicand(ctx, surd)?;
+    let var = limit_single_var_name(ctx, before)?;
+
+    let mut scratch = ctx.clone();
+    // Conjugate `√P + L`.
+    let conjugate = scratch.add(Expr::Add(surd, linear));
+    // Rationalized numerator `P − L²`, simplified (folds to `b·x + c` when `a = d²`).
+    let two = scratch.add(Expr::Number(BigRational::from_integer(2.into())));
+    let linear_sq = scratch.add(Expr::Pow(linear, two));
+    let num_raw = scratch.add(Expr::Sub(radicand, linear_sq));
+    let num = simplify_expr_in_context(&mut scratch, num_raw);
+    // `√P − L` equals `num/conjugate`; `L − √P` equals `−num/conjugate`. Pick the
+    // signed numerator so the quotient equals `before`.
+    let signed_num = if surd_first {
+        num
+    } else {
+        let neg = scratch.add(Expr::Neg(num));
+        simplify_expr_in_context(&mut scratch, neg)
+    };
+    // Self-check: `before · conjugate` must fold to `signed_num` ((√P)² = P).
+    let check_raw = scratch.add(Expr::Mul(before, conjugate));
+    let check = simplify_expr_in_context(&mut scratch, check_raw);
+    if check != signed_num {
+        return None;
+    }
+    let rationalized = scratch.add(Expr::Div(signed_num, conjugate));
+
+    let conj_disp = display_expr(&scratch, conjugate);
+    let surd_disp = display_expr(ctx, surd);
+    let after_disp = display_expr(ctx, step.after);
+    let rationalized_disp = display_expr(&scratch, rationalized);
+
+    Some(vec![
+        SubStep::keyed(
+            "limit.inf_minus_inf_indeterminate",
+            vec![],
+            display_expr(ctx, before),
+            "∞ − ∞",
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(r"\infty - \infty"),
+        SubStep::keyed(
+            "limit.multiply_divide_by_conjugate",
+            vec![conj_disp],
+            display_expr(ctx, before),
+            rationalized_disp.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(latex_expr(&scratch, rationalized)),
+        SubStep::keyed(
+            "limit.divide_by_dominant_power_evaluate",
+            vec![surd_disp, var, after_disp.clone()],
+            rationalized_disp,
+            after_disp,
+        )
+        .with_before_latex(latex_expr(&scratch, rationalized))
+        .with_after_latex(latex_expr(ctx, step.after)),
+    ])
+}
+
 /// Deepen a `1^∞` notable (`(1+1/x)^x → e`, `(1+u)^(1/u) → e`) into two substeps:
 /// show that the base tends to 1 and the exponent to ±∞ (the indeterminate form
 /// `1^∞`, so you cannot just take `1^∞ = 1`), then cite the definition of `e`.
@@ -20377,6 +20517,9 @@ fn notable_limit_name(
             && limit_is_one_plus_reciprocal_power(ctx, before)
         {
             return Some("Aplicar el límite notable: lím(x→∞) (1 + 1/x)^x = e".to_string());
+        }
+        if let Some(desc) = limit_infinity_conjugate_radical(ctx, before, after) {
+            return Some(desc);
         }
         return limit_infinity_dominance(ctx, before, after);
     }
@@ -22580,6 +22723,14 @@ mod limit_notable_tests {
         substep_titles_for_rule("Evaluar límite en infinito", before_src, after_src)
     }
 
+    fn substeps_at_infinity(before_src: &str, after_src: &str) -> Vec<super::SubStep> {
+        let mut ctx = Context::new();
+        let before = parse(before_src, &mut ctx).expect("parse before");
+        let after = parse(after_src, &mut ctx).expect("parse after");
+        let step = Step::new_compact("desc", "Evaluar límite en infinito", before, after);
+        generate_limit_substeps(&ctx, &step)
+    }
+
     fn substep_titles_for_rule(rule: &str, before_src: &str, after_src: &str) -> Vec<String> {
         let mut ctx = Context::new();
         let before = parse(before_src, &mut ctx).expect("parse before");
@@ -22665,6 +22816,60 @@ mod limit_notable_tests {
         let flat = substep_titles_for_rule("Evaluar límite finito", "(x^2-1)/(x-1)", "2");
         assert_eq!(flat.len(), 1);
         assert!(flat[0].contains("cancelar el factor común"));
+    }
+
+    #[test]
+    fn inf_minus_inf_conjugate_at_infinity_deepens_into_three_substeps() {
+        // √(x²+x) − x → 1/2 by conjugate rationalization SHOWS the work:
+        // indeterminate ∞−∞ → multiply/divide by conjugate → divide by the
+        // dominant power and evaluate.
+        let subs = substeps_at_infinity("sqrt(x^2+x)-x", "1/2");
+        let titles: Vec<&str> = subs.iter().map(|s| s.description.as_str()).collect();
+        assert_eq!(
+            titles.len(),
+            3,
+            "conjugate should show three substeps: {titles:?}"
+        );
+        assert!(titles[0].contains("∞−∞"), "{titles:?}");
+        assert!(
+            titles[1].contains("conjugado") && titles[1].contains("sqrt(x^2 + x) + x"),
+            "names the conjugate: {titles:?}"
+        );
+        assert!(titles[2].contains("límite es 1 / 2"), "{titles:?}");
+        // The rationalized quotient is visible: √(x²+x) − x = x/(√(x²+x) + x).
+        assert_eq!(subs[1].after_expr, "x / (sqrt(x^2 + x) + x)");
+        assert_eq!(subs[2].after_expr, "1 / 2");
+
+        // The reverse order `x − √(x²−x)` (surd second) rationalizes the same way.
+        let rev = substeps_at_infinity("x-sqrt(x^2-x)", "1/2");
+        assert_eq!(rev.len(), 3, "{rev:?}");
+        assert!(
+            rev[1].description.contains("conjugado"),
+            "{:?}",
+            rev[1].description
+        );
+        assert_eq!(rev[1].after_expr, "x / (sqrt(x^2 - x) + x)");
+
+        // A radicand with no linear term (b = 0) rationalizes to 1/(√(x²+1)+x) → 0.
+        let zero = substeps_at_infinity("sqrt(x^2+1)-x", "0");
+        assert_eq!(zero.len(), 3, "{zero:?}");
+        assert_eq!(zero[1].after_expr, "1 / (sqrt(x^2 + 1) + x)");
+        assert_eq!(zero[2].after_expr, "0");
+    }
+
+    #[test]
+    fn inf_minus_inf_conjugate_declines_out_of_scope() {
+        // Radicand not degree 2 (√(x⁴+x) − x²): the recognizer declines, so no
+        // conjugate substeps are emitted (honest empty, not false narration).
+        assert!(substep_titles_at_infinity("sqrt(x^4+x)-x^2", "0").is_empty());
+        // Leading terms do NOT cancel (√(x²+x) − 2x: leading 1 ≠ 2²): declines.
+        assert!(substep_titles_at_infinity("sqrt(x^2+x)-2*x", "0").is_empty());
+        // A genuine ∞/∞ quotient still routes to dominance, never to conjugate.
+        let dom = substep_titles_at_infinity("(3*x^2+1)/(x^2-5)", "3");
+        assert!(
+            dom.iter().any(|t| t.contains("Dominancia")),
+            "quotient stays dominance: {dom:?}"
+        );
     }
 
     #[test]
