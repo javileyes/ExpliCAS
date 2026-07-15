@@ -70,12 +70,15 @@ de la fuente 7 chocan, **gana P0/soundness**.
 - **Fase 1 (ACTIVA) — serio y universal: real, univariable, elemental + educativo
   básico.** Todo candidato de **capacidad nueva** debe estar aquí (los de soundness/
   arquitectura quedan exentos, ver arriba). A igualdad de coste, prioriza:
-  1. Los dos *gatekeepers* del umbral: **integración racional universal**
-     (factor-over-ℝ / LRT) y **narrativa educativa de límites** (L'Hôpital /
-     límite notable / squeeze / factor-cancela). Desbloquean la promesa
-     "universal" en integración y la mitad EDUCATIVA del north star (límites a
-     ~0% educativo — pesa lo mismo que la universal; va por delante de varios P2
-     de cobertura, porque "serio Y educativo" no se cruza mientras no narren).
+  1. Los *gatekeepers* del umbral: **integración racional universal**
+     (factor-over-ℝ / LRT, gatekeeper G1) y **narrativa educativa de límites**
+     (L'Hôpital / límite notable / squeeze / factor-cancela, gatekeeper G2).
+     **NOTA 2026-07-15: G2 quedó sustancialmente CERRADO** — la narrativa de
+     límites es MADURA (factor-cancela, notables, L'Hôpital ITERADO, squeeze,
+     jerarquía ∞/∞, `e` vía `(1+1/x)^x`, y ∞−∞ en sus dos formas); el criterio de
+     salida #2 está CUMPLIDO. El gatekeeper VIVO de Fase 1 es **G1**; de los
+     límites solo quedan residuales ESTRECHOS (narración ∞−∞ con denom log/exp, y
+     el algoritmo de VALOR general tipo Gruntz). Prioriza G1 y los wins P1 baratos.
   2. Wins P1 baratos: sintaxis `diff(x,n)`/`diff(x,y)`, sustitución-u general
      transcendente, comando `taylor()`/`series()` + linealidad de sumatorios.
   3. P2/P3 de cobertura y pulido educativo.
@@ -216,8 +219,9 @@ posterior de mayor riesgo (necesitan `pub(crate)` en la maquinaria compartida).
   extracción behavior-preserving); reutiliza maquinaria existente antes
   de inventar.
 - Alterna frentes cuando uno acumula varios ciclos seguidos: la mitad
-  educativa (steps, Phase 6 — hoy límites a ~0%) cuenta lo mismo que la
-  universal, y el educativo de límites es un gatekeeper de Fase 1.
+  educativa (steps, Phase 6) cuenta lo mismo que la universal. *(El educativo de
+  límites, gatekeeper G2, ya está sustancialmente cerrado 2026-07-15 — ya NO a
+  ~0%; ver la nota en "Fases del north star".)*
 
 ### 2. Sondeo antes de implementar
 - Sonda la frontera real con probes del CLI (`target/release/cas_cli
