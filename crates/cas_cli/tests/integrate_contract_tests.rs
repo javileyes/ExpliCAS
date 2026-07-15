@@ -360,8 +360,6 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     // G1 Cap. B: irreducible even quartic as a factor (x^4-x^2+1 in x^6+1, x^4+1
     // in x^8-1) integrates via the surd symmetric split; the constant-numerator
     // targets fold under the differentiate-back verifier.
-    "integrate(1/(x^6+1), x)",
-    "integrate(1/(x^8-1), x)",
     "integrate(1/(4*x^2+1)^2, x)",
     "integrate(1/(2*sqrt(x)*(x+1)), x)",
     "integrate(arcsin(2*x+1), x)",
@@ -685,10 +683,11 @@ fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
 #[test]
 fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
-        "integrate(1/(x^5-1), x)", // Φ5 needs √5-quadratics (Cap. C)
-        "integrate(1/(x^3-2), x)", // needs ∛2 (Cap. D)
-        "integrate(1/(x^8+1), x)", // resolvent u^4+1 needs a surd factorization
-        "integrate(1/(x^4-2), x)", // resolvent root √2 is itself irrational
+        "integrate(1/(x^3-2), x)",   // needs ∛2 (Cap. D)
+        "integrate(1/(x^8+1), x)",   // resolvent u^4+1 needs a surd factorization
+        "integrate(1/(x^4-2), x)",   // resolvent root √2 is itself irrational
+        "integrate(1/(x^4+x+1), x)", // resolvent cubic has no rational root
+        "integrate(1/(x^5-2), x)",   // irreducible quintic: no quartic factor at all
     ] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
@@ -696,6 +695,43 @@ fn integrate_contract_algebraic_extension_denominators_stay_residual() {
             "should stay an honest residual until its sub-cycle lands: {input} -> {result}"
         );
     }
+}
+
+/// G1 sub-cycle Cap. C (2026-07-15): an irreducible-over-ℚ quartic whose
+/// resolvent cubic has a positive rational NON-square root (`Φ₅` in `x^5-1`,
+/// `Φ₁₀` in `x^5+1`, with `t₀ = 5/4`) is kept WHOLE so the residue solve stays
+/// over ℚ; the CONJUGATE quadratic pair over ℚ(√t₀) — `B = φ = 1/2 + √(5/4)` —
+/// and the NESTED arctan radii `√(5/2 ∓ √(5/4))` appear only in the render.
+/// Emission is gated behind the differentiate-back verifier, whose C-ii
+/// nested-radical relation tower confirms the identity (every radius appears at
+/// even degree in the residual). All five emissions below were additionally
+/// verified symbolically with an independent oracle (sympy: residual 0 away
+/// from the declared pole). See docs/G1_RATIONAL_INTEGRATION_SCOPING.md.
+#[test]
+fn integrate_contract_general_quartic_conjugate_pair_integrates_phi5_family() {
+    for input in [
+        "integrate(1/(x^5-1), x)",
+        "integrate(1/(x^5+1), x)",
+        "integrate(x/(x^5-1), x)",
+        "integrate((x^3+1)/(x^5-1), x)",
+        "integrate(1/(x^4+x^3+x^2+x+1), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should integrate via the conjugate quadratic pair: {input} -> {result}"
+        );
+        assert!(
+            result.contains("sqrt(5/4)") || result.contains("sqrt(5)"),
+            "expected the golden-ratio surd in the render: {input} -> {result}"
+        );
+    }
+    // The named G1 exit probe carries the nested arctan radii.
+    let (phi5, _) = evaluated_integral_with_required_conditions("integrate(1/(x^5-1), x)");
+    assert!(
+        phi5.contains("5/2 - sqrt(5/4)") || phi5.contains("sqrt(5/4) + 5/2"),
+        "expected the nested arctan radius sqrt(5/2 ∓ sqrt(5/4)): {phi5}"
+    );
 }
 
 /// G1 sub-cycle Cap. B (2026-07-14): an irreducible-over-ℝ even quartic
@@ -738,6 +774,21 @@ fn integrate_contract_irreducible_even_quartic_factor_integrates_via_surd_split(
         standalone.contains("arctan(sqrt(3) + 2") || standalone.contains("arctan(sqrt(3)+2"),
         "standalone even quartic keeps its symmetric-surd render: {standalone}"
     );
+
+    // Differentiate-back for the surd targets through the PUBLIC pipeline (the
+    // full simplifier folds the sqrt(3)/sqrt(2) normal forms; the in-process
+    // sweep in REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES disables
+    // "Double Angle Identity", under which these surd forms cannot reach 0 and
+    // the rationalization rules grind unboundedly — the same harness weakness
+    // G1 Cap. A documented, which is why only sqrt(2) cases live in that sweep).
+    for input in ["1/(x^6+1)", "1/(x^8-1)"] {
+        let residual =
+            integrate_call_antiderivative_residual_result(&format!("integrate({input}, x)"));
+        assert_eq!(
+            residual, "0",
+            "public differentiate-back must confirm integrate({input}, x)"
+        );
+    }
 }
 
 /// G1 verification-budget lift (2026-07-14): a GENERAL (non-constant) numerator
@@ -762,13 +813,9 @@ fn integrate_contract_general_numerator_even_quartic_now_verifies() {
             "raised algebraic zero-test budget should verify and emit: {input} -> {result}"
         );
     }
-    // Denominators needing an algebraic extension (Φ5 √5-quadratics, ∛2) are still
-    // out of scope — the budget does not create the missing ℚ(√n) render.
-    for input in [
-        "integrate(1/(x^5-1), x)",
-        "integrate(1/(x^4-5), x)",
-        "integrate(1/(x^3-2), x)",
-    ] {
+    // Denominators needing an algebraic extension the render does not cover are
+    // still out of scope (Φ5 graduated via G1 Cap. C; √5 real poles and ∛2 remain).
+    for input in ["integrate(1/(x^4-5), x)", "integrate(1/(x^3-2), x)"] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
             result.contains("integrate("),

@@ -213,10 +213,11 @@ fn sextic_rational_factoring_fully_over_q_verifies() {
 fn sextic_rational_irreducible_over_q_stays_residual() {
     // A raised algebraic zero-test budget must not falsely CLAIM a denominator whose real
     // factorization is not yet rendered — it only lets an already-correct render VERIFY.
-    // (1/(x^6+1) and 1/(x^8-1) moved into scope via G1 Cap. B and are now legitimate results;
-    // Phi5 = x^5-1 needs sqrt(5)-quadratics and x^8+1 needs a surd resolvent, both still
-    // unrendered, so they must stay residual regardless of the budget.)
-    for src in ["1/(x^5-1)", "1/(x^8+1)"] {
+    // (1/(x^6+1) and 1/(x^8-1) moved into scope via G1 Cap. B, 1/(x^5-1) via Cap. C, and are
+    // now legitimate results; an irreducible quintic like x^5-2 has no quartic factor at all
+    // and x^8+1 needs a surd resolvent, both unrendered, so they must stay residual
+    // regardless of the budget.)
+    for src in ["1/(x^5-2)", "1/(x^8+1)"] {
         let mut ctx = Context::new();
         let integrand = cas_parser::parse(src, &mut ctx).expect("integrand");
         let candidate = try_algorithmic_integration_backend(
@@ -6087,6 +6088,59 @@ fn general_rational_pipeline_emits_pole_conditions_for_linear_factors() {
 }
 
 #[test]
+fn general_quartic_conjugate_pair_verifies_phi5_family() {
+    // G1 Cap. C: Φ₅/Φ₁₀ (resolvent root t₀ = 5/4, rational and NOT a perfect
+    // square) route through the GeneralQuartic factor: rational 4-column
+    // residue solve, conjugate-pair render over ℚ(√t₀) with NESTED arctan
+    // radii √(5/2 ∓ √(5/4)) — and the differentiate-back verifier (the C-ii
+    // nested-radical relation tower) must CONFIRM the identity end-to-end.
+    let mut ctx = Context::new();
+    for source in ["1/(x^5-1)", "1/(x^5+1)", "x/(x^5-1)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        // The Φ₅ family carries a linear factor, so the pole condition makes
+        // the status VerifiedUnderConditions (standalone Φ₅ has no pole and is
+        // plain Verified) — both are a confirmed differentiate-back identity.
+        assert!(
+            matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must verify through the nested-radical tower (got {:?}, blocker: {:?})",
+            candidate.verification_status,
+            candidate.verification_blocker
+        );
+    }
+
+    // Honest declines: x⁴+x+1 (resolvent cubic t³ − 4t − 1 has no rational
+    // root) and x⁵−2 (irreducible quintic, no quartic factor at all).
+    for source in ["1/(x^4+x+1)", "1/(x^5-2)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            !matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must stay an honest residual (got {:?})",
+            candidate.verification_status
+        );
+    }
+}
+
+#[test]
 fn general_rational_pipeline_rejects_out_of_scope_shapes() {
     let mut ctx = Context::new();
     let rejects = [
@@ -6185,12 +6239,13 @@ fn resolvent_cubic_splits_non_even_quartics() {
 #[test]
 fn resolvent_cubic_rejects_irreducible_non_even_quartics() {
     let mut ctx = Context::new();
-    // Phi_5 cyclotomic: irreducible over Q (resolvent has no rational
-    // perfect-square root).
-    let integrand = cas_parser::parse("1/(x^4+x^3+x^2+x+1)", &mut ctx).expect("integrand");
+    // Phi_5 graduated via the Cap. C GeneralQuartic conjugate pair (its
+    // resolvent root 5/4 is rational, just not a perfect square); the honest
+    // reject is now a quartic whose resolvent cubic has NO rational root.
+    let integrand = cas_parser::parse("1/(x^4+x+1)", &mut ctx).expect("integrand");
     assert!(
         general_rational_partial_fraction_antiderivative(&mut ctx, integrand, "x").is_none(),
-        "must reject Phi_5"
+        "must reject a quartic with an irrational resolvent root"
     );
 }
 
