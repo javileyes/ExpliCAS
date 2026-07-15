@@ -5898,6 +5898,75 @@ fn algebraic_zero_test_keeps_radicand_only_parameters_in_the_universe() {
 }
 
 #[test]
+fn algebraic_zero_test_reduces_nested_radical_tower() {
+    // G1 level-2 C-ii: a NESTED radicand like the Cap. C arctan radius
+    // `√((5−√5)/2)` forms a relation TOWER — `t₁² = (5 − t₂)/2, t₂² = 5` —
+    // instead of bailing on the sqrt inside the radicand. Non-negativity of
+    // `(5−√5)/2` is proved exactly by the surd-sign kernel (no condition).
+    let mut ctx = Context::new();
+    let flat_fold = cas_parser::parse("sqrt((5-sqrt(5))/2)^2", &mut ctx).expect("nested square");
+    let folded = cas_parser::parse("(5-sqrt(5))/2", &mut ctx).expect("radicand");
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, flat_fold, folded, "x", &[]),
+        Some(true),
+        "the tower must fold the nested square t₁² → (5−t₂)/2"
+    );
+
+    // The real Cap. C term shape: d/dx[(1/d)·arctan(x/d)] with d = √((5−√5)/2)
+    // equals 1/(x² + (5−√5)/2) — the same identity the flat quotient relation
+    // already decides for `sqrt(a)`, now with a nested radius.
+    let derivative = cas_parser::parse(
+        "1/(sqrt((5-sqrt(5))/2)*sqrt((5-sqrt(5))/2)*(1+x^2/((5-sqrt(5))/2)))",
+        &mut ctx,
+    )
+    .expect("derivative");
+    let integrand = cas_parser::parse("1/(x^2+(5-sqrt(5))/2)", &mut ctx).expect("integrand");
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, derivative, integrand, "x", &[]),
+        Some(true),
+        "the nested arctan-radius identity must verify through the tower"
+    );
+}
+
+#[test]
+fn algebraic_zero_test_nested_tower_stays_honest() {
+    let mut ctx = Context::new();
+    // A NEGATIVE nested radicand ((√5−5)/2 < 0) is not a real surd: the
+    // non-negativity gate must decline, never assume.
+    let negative = cas_parser::parse("sqrt((sqrt(5)-5)/2)^2", &mut ctx).expect("negative radicand");
+    let target = cas_parser::parse("(sqrt(5)-5)/2", &mut ctx).expect("target");
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, negative, target, "x", &[]),
+        None,
+        "a provably negative radicand must decline the quotient relation"
+    );
+
+    // The conjugate-radius product √((5−√5)/2)·√((5+√5)/2) = √5 is TRUE, but
+    // its residual carries the irreducible cross monomial t₁·t₂ (degree 1 in
+    // each atom): without a cross-product relation the test must stay honest —
+    // indecision (None), never a false refutation. Also exercises the new
+    // 3-relation cap (radicands: both nested radii plus the inner 5).
+    let cross = cas_parser::parse("sqrt((5-sqrt(5))/2)*sqrt((5+sqrt(5))/2)", &mut ctx)
+        .expect("conjugate product");
+    let sqrt5 = cas_parser::parse("sqrt(5)", &mut ctx).expect("sqrt(5)");
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, cross, sqrt5, "x", &[]),
+        None,
+        "the cross-product identity is out of scope for the square tower — honest None"
+    );
+
+    // A genuine nested MISMATCH must also stay None (atoms present ⇒ a nonzero
+    // reduced numerator is not a refutation), never Some(false).
+    let mismatch = cas_parser::parse("(5+sqrt(5))/2", &mut ctx).expect("mismatch");
+    let nested_square =
+        cas_parser::parse("sqrt((5-sqrt(5))/2)^2", &mut ctx).expect("nested square");
+    assert_eq!(
+        algebraic_rational_zero_test(&ctx, nested_square, mismatch, "x", &[]),
+        None
+    );
+}
+
+#[test]
 fn multi_quadratic_partial_fraction_decomposes_distinct_irreducible_quadratics() {
     let mut ctx = Context::new();
     let integrand = cas_parser::parse("(x^3+x+1)/((x^2+1)*(x^2+4))", &mut ctx).expect("integrand");

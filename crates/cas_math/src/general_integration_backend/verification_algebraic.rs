@@ -7,9 +7,12 @@
 //! variable-free radicands. Square roots are mapped to fresh atoms `t` and
 //! the comparison is reduced by the quotient relation `t^2 = radicand`, so
 //! identities such as `1/(sqrt(a)*sqrt(a)*(1+u^2/a)) == 1/(a+u^2)` are
-//! decided without bespoke normalization cases. Returns `None` when the
-//! shapes are out of scope or a budget is exceeded, so callers keep today's
-//! conservative behavior.
+//! decided without bespoke normalization cases. NESTED radicals form a
+//! relation TOWER: an outer radicand like `(5 − √5)/2` is rewritten in terms
+//! of the inner radical's atom (`(5 − t₂)/2`), so its relation is a genuine
+//! polynomial and the reduction descends the tower (`t₁² → (5 − t₂)/2`, then
+//! `t₂² → 5`). Returns `None` when the shapes are out of scope or a budget is
+//! exceeded, so callers keep today's conservative behavior.
 
 use super::methods::*;
 
@@ -23,7 +26,8 @@ use num_traits::Signed;
 
 const ALGEBRAIC_ZERO_TEST_MAX_NODES: usize = 500;
 const ALGEBRAIC_ZERO_TEST_MAX_VARS: usize = 6;
-const ALGEBRAIC_ZERO_TEST_MAX_RELATIONS: usize = 2;
+// 3 relations cover the G1 Cap. C tower `s = √5, t₁ = √((5−s)/2), t₂ = √((5+s)/2)`.
+const ALGEBRAIC_ZERO_TEST_MAX_RELATIONS: usize = 3;
 const ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS: usize = 512;
 
 fn algebraic_zero_test_budget() -> PolyBudget {
@@ -46,7 +50,9 @@ fn algebraic_zero_test_budget() -> PolyBudget {
 /// by this procedure.
 ///
 /// The quotient relation `t^2 = radicand` presupposes the radicand is
-/// non-negative, so every radicand must be covered by an explicit
+/// non-negative, so every radicand must either have an exactly decidable
+/// non-negative sign (a numeric constant, or a constant surd like the nested
+/// `(5 − √5)/2` proved by the surd-sign kernel) or be covered by an explicit
 /// `Positive`/`NonNegative` required condition — no implicit domain
 /// assumptions (this mirrors the structural verifier's contract pinned by
 /// `verification_report_requires_positive_condition_for_symbolic_radius_square`).
@@ -63,7 +69,7 @@ pub(super) fn algebraic_rational_zero_test(
         return None;
     }
 
-    let radicands = collect_variable_free_radicands(&tmp, residual, variable)?;
+    let mut radicands = collect_variable_free_radicands(&tmp, residual, variable)?;
     if radicands.len() > ALGEBRAIC_ZERO_TEST_MAX_RELATIONS {
         return None;
     }
@@ -72,37 +78,39 @@ pub(super) fn algebraic_rational_zero_test(
             return None;
         }
     }
+    // Substitute OUTERMOST radicals first: replacing an inner `√5` first would
+    // rewrite the tree UNDER an outer `√((5−√5)/2)` node, and the outer radical's
+    // original form would no longer occur to be substituted. Strict containment
+    // implies strictly more nodes, so a descending node count is a valid
+    // topological order of the containment partial order (exact, no heuristics;
+    // the order between unrelated radicands is irrelevant).
+    radicands.sort_by_key(|radicand| std::cmp::Reverse(expr_node_count(&tmp, *radicand)));
 
     // Phase A: map each sqrt-like occurrence to a fresh atom variable.
     let mut expr = residual;
-    let mut relations: Vec<(String, ExprId)> = Vec::new();
+    let mut atoms: Vec<(String, ExprId)> = Vec::new();
     for (index, radicand) in radicands.iter().enumerate() {
         let name = fresh_atom_name(&tmp, residual, index);
         let atom = tmp.var(&name);
-        let half = tmp.add(Expr::Number(BigRational::new(1.into(), 2.into())));
-        let pow_form = tmp.add(Expr::Pow(*radicand, half));
-        expr = substitute_power_aware(
-            &mut tmp,
-            expr,
-            pow_form,
-            atom,
-            SubstituteOptions {
-                power_aware: true,
-                ..Default::default()
-            },
-        );
-        let call_form = tmp.call_builtin(BuiltinFn::Sqrt, vec![*radicand]);
-        expr = substitute_power_aware(
-            &mut tmp,
-            expr,
-            call_form,
-            atom,
-            SubstituteOptions {
-                power_aware: true,
-                ..Default::default()
-            },
-        );
-        relations.push((name, *radicand));
+        expr = substitute_radical_atom(&mut tmp, expr, *radicand, atom);
+        atoms.push((name, *radicand));
+    }
+    // Each relation's radicand gets every OTHER radical replaced by its atom
+    // (outermost-first again), so a NESTED radicand like `(5 − √5)/2` becomes
+    // the genuine polynomial `(5 − t₂)/2` and no sqrt node ever reaches the
+    // multipoly layer. Containment is strict and acyclic, so the references
+    // between atoms are triangular by construction.
+    let mut relations: Vec<(String, ExprId)> = Vec::new();
+    for (index, (name, radicand)) in atoms.iter().enumerate() {
+        let mut substituted = *radicand;
+        for (other_index, (other_name, other_radicand)) in atoms.iter().enumerate() {
+            if other_index == index {
+                continue;
+            }
+            let atom = tmp.var(other_name);
+            substituted = substitute_radical_atom(&mut tmp, substituted, *other_radicand, atom);
+        }
+        relations.push((name.clone(), substituted));
     }
 
     // Phase B: build the residual as a single rational function over the
@@ -230,6 +238,39 @@ fn exprs_match_structurally(ctx: &Context, left: ExprId, right: ExprId) -> bool 
     left == right || SemanticEqualityChecker::new(ctx).are_equal(left, right)
 }
 
+/// Replace both spellings of the radical over `radicand` (`radicand^(1/2)` and
+/// `sqrt(radicand)`) by `atom` throughout `expr`.
+fn substitute_radical_atom(
+    tmp: &mut Context,
+    expr: ExprId,
+    radicand: ExprId,
+    atom: ExprId,
+) -> ExprId {
+    let half = tmp.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let pow_form = tmp.add(Expr::Pow(radicand, half));
+    let expr = substitute_power_aware(
+        tmp,
+        expr,
+        pow_form,
+        atom,
+        SubstituteOptions {
+            power_aware: true,
+            ..Default::default()
+        },
+    );
+    let call_form = tmp.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    substitute_power_aware(
+        tmp,
+        expr,
+        call_form,
+        atom,
+        SubstituteOptions {
+            power_aware: true,
+            ..Default::default()
+        },
+    )
+}
+
 /// The `t^2 = radicand` relation is only sound when the radicand is known
 /// non-negative; require that knowledge to be represented in the candidate's
 /// conditions (or be a positive numeric constant).
@@ -240,6 +281,12 @@ fn radicand_nonnegativity_is_represented(
 ) -> bool {
     if let Some(value) = numeric_value(ctx, radicand) {
         return !value.is_negative();
+    }
+    // A variable-free surd radicand — e.g. the nested `(5 − √5)/2` — has an
+    // exactly decidable sign: the surd-sign kernel is a PROOF over the reals,
+    // never a float estimate (soundness gates must be exact).
+    if let Some(sign) = crate::root_forms::provable_sign_vs_zero(ctx, radicand) {
+        return sign != std::cmp::Ordering::Less;
     }
     required_conditions.iter().any(|condition| match condition {
         ConditionPredicate::Positive(expr) | ConditionPredicate::NonNegative(expr) => {
@@ -273,13 +320,16 @@ fn relation_polys(
         let radicand_poly = multipoly_from_expr(ctx, *radicand, budget)
             .ok()?
             .align_vars(universe);
-        // The quotient reduction requires the radicand to be free of every
-        // atom variable, otherwise it would not terminate.
-        for (other_name, _) in relations {
-            let other_index = universe.iter().position(|var| var == other_name)?;
-            if radicand_poly.degree_in(other_index) != 0 {
-                return None;
-            }
+        // TRIANGULAR tower: a radicand may reference OTHER atoms (only radicals
+        // strictly contained in it, by construction of the substitution), but
+        // never its own — rewriting `t²` then lowers the degree at that atom's
+        // nesting height and can only raise degrees of strictly-inner atoms, a
+        // lexicographic descent that terminates. Self-reference is structurally
+        // impossible (a finite tree cannot contain its own sqrt); this check is
+        // a soundness backstop, and the step cap in `reduce_by_relations`
+        // bounds any pathological residue to an honest `None`.
+        if radicand_poly.degree_in(atom_index) != 0 {
+            return None;
         }
         polys.push((atom_index, radicand_poly));
     }
