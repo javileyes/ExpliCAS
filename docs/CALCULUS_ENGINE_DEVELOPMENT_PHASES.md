@@ -31,8 +31,10 @@ proceso maestro; cuando la cola P0 de soundness y la restricción de fase chocan
 - **Soundness/honestidad: ~88%** (piso más alto; 0 wrong-answers en sondas adversariales;
   los P0 de wrong-answer confirmados arreglados). El engine es de fiar HOY.
 - Diferenciación ~72%, integral indefinida elemental ~72% (racional/algebraico ~66%),
-  definida/impropia ~62-75%, límites ~68%, **series ~28%**, **educativo bimodal** (diff/integrate
-  narran; **límites ~0% educativo**).
+  definida/impropia ~62-75%, límites ~68%, **series ~28%**, **educativo bimodal EN ESE BASELINE**
+  (diff/integrate narran; **límites ~0% educativo** — *SUPERADO 2026-07-15: la narrativa de límites
+  es MADURA (ver el gatekeeper G2 y el criterio de salida #2); esta línea es el snapshot del
+  2026-06-21, no el estado actual*).
 - Infra ya presente para horizontes futuros: `ValueDomain` enhebrado (76 archivos, 18 de
   `rules/` lo gatean), `GaussianRational`, política principal-branch binding; `MultiPoly`
   n-variable, `Matrix` nodo AST, sistemas lineales, **derivadas parciales e integrales
@@ -48,6 +50,9 @@ cuando, los tres se cumplen:
    `1/(x^6±1)`, `1/(x^8-1)`, `1/(x^4-4)`, `1/(x^3-2)` (todos integran y verifican).
 2. **Límites con cadena didáctica no-cáscara** en `cas_didactic` (límites-educativo deja de
    ser ~0%: existe al menos L'Hôpital / límite notable / squeeze / factor-cancela narrados).
+   **✅ CUMPLIDO 2026-07-15** — los cuatro narran, más jerarquía ∞/∞, `e` vía `(1+1/x)^x`, y ∞−∞
+   (conjugado en ∞ + común-denom en punto finito). La Fase 1 queda bloqueada SOLO por el criterio #1
+   (racional: `1/(x^5-1)`, `1/(x^3-2)` aún residual) y el #3.
 3. **Los wins P1 baratos aterrizados** (`diff(x,n)`/`diff(x,y)`, `taylor()`/`series()` +
    linealidad de sumatorios, sustitución-u general transcendente).
 
@@ -68,10 +73,10 @@ cuando, los tres se cumplen:
   net-new restante: `1/(x^5-1)` (Φ5/√5, Cap.C), `1/(x^3-2)` (∛2, Cap.D), `1/(x^8+1)`. Es la promesa definitoria de "universal" en
   integración y el item remanente declarado de la Phase 4 del backend.
 - **G2 · Narrativa educativa de límites** (L'Hôpital / límite notable / squeeze /
-  factor-y-cancela) — **L, ~6-10 ciclos.** Hoy CADA límite colapsa a un paso-cáscara único
-  (salto mágico que los docs prohíben). Es la mitad EDUCATIVA del north star — **pesa lo mismo
-  que la universal**. *Prioridad sobre varios P2 de cobertura: mientras los límites no narren, el
-  umbral "serio Y educativo" no se cruza.*
+  factor-y-cancela) — **L, ~6-10 ciclos — NÚCLEO MADURO (sub-ciclos 1-8 + ∞−∞ ATERRIZADOS; criterio
+  de salida #2 CUMPLIDO 2026-07-15).** El baseline en que CADA límite colapsaba a un paso-cáscara
+  único quedó SUPERADO — hoy narran cadenas multi-paso (ver la lista de métodos abajo). Es la mitad
+  EDUCATIVA del north star — **pesa lo mismo que la universal**.
   🔨 **Sub-ciclos 1-8 ATERRIZADOS 2026-06-21**: infraestructura de narración de límites en el
   pipeline de enriquecimiento de `cas_didactic` (`generate_limit_substeps`) + **métodos nombrados**
   — notables `sin/tan/arcsin/arctan/sinh/tanh(u)/u→1`, `(eᵘ−1)/u→1`, `(aᵘ−1)/u→ln(a)`, `ln(1+u)/u→1`,
@@ -83,9 +88,13 @@ cuando, los tres se cumplen:
   removible); y **dominancia en infinito** (cociente de coeficientes líderes / grado mayor → 0/±∞).
   **dominancia logarítmica/exponencial** `ln(x)/x→0`, `x²/eˣ→0`, `eˣ/x³→∞`, `√x/ln(x)→∞` (sub-ciclo 8:
   jerarquía `ln≪potencia≪exp` vía `enum LimitGrowthClass`, sound por confirmación del resultado).
-  Todo sound por chequeo de resultado/grado, huella NONE. Siguiente sub-ciclo: raíz `(√(1+u)−1)/u→1/2`;
-  bases `b^x`; y (arquitectónico) cablear el PUNTO del
-  límite al paso para mostrar la sustitución concreta, narrar L'Hôpital/Taylor paso a paso.
+  Todo sound por chequeo de resultado/grado, huella NONE. **Además ATERRIZADOS 2026-07-14/15**: raíz
+  `(√(1+u)−1)/u→1/2`; el PUNTO del límite cableado al paso (sustitución concreta); **L'Hôpital
+  ITERADO** (`(tan x−x)/x³` narra la regla N veces + sustitución final); y **∞−∞ en sus dos formas**
+  (conjugado en ∞ `√(x²+x)−x` `bd64bfa3a`; común-denominador en punto finito `1/x−1/sin x`,
+  `1/tan²x−1/x²→−2/3` `d600876e6`). Residual estrecho: imprimir las EXPRESIONES derivadas intermedias
+  dentro de cada paso de L'Hôpital / el Taylor término-a-término, y la narración ∞−∞ de casos log/exp
+  (el valor ya sale — `1/(x−1)−1/ln x→−1/2` — pero sin traza). `b^x` como base sigue pendiente.
 
 ### Wins P1 baratos y de alto ROI (intercalar con los gatekeepers)
 - **Sintaxis `diff(expr, x, n)` (orden superior) y `diff(expr, x, y)` (parcial-mixta)** —
@@ -93,7 +102,9 @@ cuando, los tres se cumplen:
   (y la sintaxis de conteos mixtos SymPy `diff(f, x, 2, y, 2)`) a `diff` anidados de dos
   argumentos, reusando toda la cascada de diferenciación existente. Órdenes 0/negativo,
   fraccionario y conteo-lidera-lista quedan como residuales honestos (sin evaluar). Peldaño:
-  narración paso-a-paso de las derivadas sucesivas (hoy solo se muestra la forma final).
+  la narración de derivadas sucesivas YA aterrizó (cada orden emite su sub-árbol "Calcular la
+  derivada"); resta pulir la presentación intermedia (mostrar la expresión resultante de cada orden,
+  no solo la regla aplicada).
 - **Sustitución-u general para `g` transcendente** —
   ✅ **ATERRIZADO 2026-06-21.** `transcendental_chain_substitution_antiderivative` integra
   `g'(x)·f(g(x))` con f ∈ {exp,sin,cos,sinh,cosh} por **guess-and-verify**: adivina `F(g)` y la

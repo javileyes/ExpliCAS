@@ -126,11 +126,15 @@ Phase status (2026-06-10):
   for non-even products is an observe-only candidate); the symmetric-surd
   even-quartic probe closed the Phi_12 family `c/(x^4+px^2+r)` with one
   quadratic surd (s=sqrt(r) rational, a=sqrt(2s-p) irrational:
-  `1/(x^4-x^2+1)`, `1/(x^4-3x^2+4)`) 2026-06-26, differentiation-verified;
-  remaining: irreducible denominators needing a coupled algebraic extension /
-  Lazard-Rioboo-Trager (Phi_5 with sqrt(5), single irrational poles like
-  `1/(x^3-x-1)`, degree-6 `1/(x^6+1)`, non-constant numerators over the surd
-  quartic))
+  `1/(x^4-x^2+1)`, `1/(x^4-3x^2+4)`) 2026-06-26, differentiation-verified; the
+  G1 Cap.A/B surd-split cycles then closed the composite even-quartic
+  denominators `1/(x^4-4)` (real-log ratio), `1/(x^6+1)` and `1/(x^8-1)`
+  (conjugate surd), plus non-constant numerators over the surd quartic
+  (`x^3/(x^4-x^2+1)`, `(x^3+5)/(x^6+1)`) 2026-07-14 (`d557556ea`, `6c4d59afc`,
+  `9c48574c4`), differentiation-verified;
+  remaining: irreducible denominators needing a COUPLED algebraic extension /
+  Lazard-Rioboo-Trager (Phi_5 with sqrt(5) `1/(x^5-1)`, single irrational poles
+  like `1/(x^3-x-1)`, cube-root extensions `1/(x^3-2)`))
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: started 2026-06-11 (didactic elevation; first candidate Hermite positive
   quadratic)
@@ -353,8 +357,11 @@ Before retaining a backend change, answer:
 9. [done — verification_algebraic.rs, 2026-06-10] Graduate rational-candidate
    verification to the multipoly algebraic zero test (see the Phase 4 named
    workstream).
-10. [pending] Elevate the first backend family (Hermite positive quadratic)
-    to `educational_full` steps (Phase 6).
+10. [done — Phase 6 status, 2026-06-11] Elevate the first backend family
+    (Hermite positive quadratic) to `educational_full` steps: the canonical
+    reciprocal emits the arctan derivation (inner-derivative rule, affine
+    argument, constant factor), pinned by the six Hermite matrix rows'
+    `expected_step_substrings`.
 
 ## Stop Conditions
 

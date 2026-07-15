@@ -15,7 +15,7 @@ El engine **sí** tiene funcionalidad que sympy no hace o hace peor, pero en un 
 1. En su carril, el engine produce resultados que sympy **no produce o produce menos completos**: familias periódicas completas *incluso en desigualdades* (sympy 1.14 las trunca a un periodo), desigualdades con valor absoluto y **parámetro simbólico** (sympy lanza `NotImplementedError`), condiciones de dominio rastreadas, derivaciones narradas paso a paso, y un contrato de honestidad que declina resultados no-elementales en vez de inventar.
 2. Frente a la amplitud total de sympy la distancia es **enorme y por diseño**: sin EDOs, sin funciones especiales como salida, sin álgebra lineal simbólica / Gröbner / teoría de números amplia / combinatoria / suposiciones, sin dominio complejo, y con límites basados en *lista de patrones* en vez de un algoritmo general (Gruntz).
 
-Para "universal en su carril" (real-univariable-elemental) le falta esencialmente **1 pieza L bloqueante (integración racional G1) + 1 pieza L blanda (límites algorítmicos)**, más pulido. Para "universal como sympy" (amplitud) — no es la meta y no lo será.
+Para "universal en su carril" (real-univariable-elemental) le falta esencialmente **1 pieza L bloqueante (integración racional G1) + 1 pieza más pequeña de límites** (solo el algoritmo de VALOR general tipo Gruntz; la narración didáctica G2 ya está MADURA), más pulido. Para "universal como sympy" (amplitud) — no es la meta y no lo será.
 
 ---
 
@@ -29,14 +29,14 @@ Para "universal en su carril" (real-univariable-elemental) le falta esencialment
 | Derivada orden-n | `diff(x^5, x, 3)` | `60·x^2` | `60*x**2` | empate |
 | Integral racional fácil | `integrate(1/(x^2-1), x)` | `½·ln\|(x−1)/(x+1)\|` | `log(x−1)/2 − log(x+1)/2` | **engine más real-honesto** (con `\|·\|`, real en todo el dominio; sympy es complejo si x<1) |
 | Integral racional dura | `integrate(1/(x^5-1), x)` | **residual** | resuelve (Φ₅, √5) | **sympy gana (G1)** |
-| Integral racional dura | `integrate(1/(x^6+1), x)` | **residual** | resuelve (√3, atan) | **sympy gana (G1)** |
+| Integral racional dura | `integrate(1/(x^5-1), x)` | **residual** (Φ₅/√5) | resuelve | **sympy gana (G1)** — `1/(x^6+1)`, `1/(x^8-1)`, `1/(x^4-4)` YA EMPATAN tras G1 Cap.A/B |
 | Por partes | `integrate(x*e^x, x)` | `(x−1)·e^x` | `(x−1)*exp(x)` | empate |
 | No-elemental (Gauss) | `integrate(e^(-x^2), x)` | residual (por diseño) | `√π·erf(x)/2` | filosofía: sympy usa función especial |
 | No-elemental (Fresnel) | `integrate(sin(x^2), x)` | residual (por diseño) | `fresnels(...)` | filosofía |
 | No-elemental (li) | `integrate(1/ln(x), x)` | residual (por diseño) | `li(x)` | filosofía |
 | Límite notable | `limit(sin(x)/x, x, 0)` | `1` | `1` | empate |
 | Límite L'Hôpital | `limit((e^x-1-x)/x^2, x, 0)` | `1/2` | `1/2` | empate |
-| Límite lateral | `limit(1/x, x, 0)` | `undefined` (bilátero no existe) | `oo` (asume lateral derecho) | **engine más honesto**, pero aún no da el ±∞ lateral (residual de capacidad) |
+| Límite lateral | `limit(1/x, x, 0)` | `undefined` (bilátero DNE); con dirección `limit(1/x,x,0,+)`→`+∞`, `…,-)`→`−∞` | `oo` (asume lateral derecho) | **engine más honesto**: el bilátero DNE es `undefined` y los laterales ±∞ ya se obtienen dando la dirección |
 | Taylor | `taylor(sin(x), x, 0, 6)` | `x − x³/6 + x⁵/120` | `… + O(x**6)` | empate |
 | Serie geométrica | `sum(1/2^n, n, 1, infinity)` | `1` | `1` | empate |
 
@@ -77,7 +77,7 @@ Para "universal en su carril" (real-univariable-elemental) le falta esencialment
 
 4. **Representación periódica más compacta.** `cos²(x)=1/2` → engine 1 familia con periodo π/2; sympy 2 familias con periodo 2π. Equivalentes, pero el engine reconoce el periodo real menor.
 
-5. **Límite bilátero honesto.** `limit(1/x, x, 0)` → engine `undefined` (el límite bilátero no existe); sympy `oo` (por su convención toma el lateral derecho). *Matiz:* el engine todavía no sabe dar el `+∞` lateral (residual de capacidad), así que es honesto pero incompleto.
+5. **Límite bilátero honesto.** `limit(1/x, x, 0)` → engine `undefined` (el límite bilátero no existe); sympy `oo` (por su convención toma el lateral derecho). *Matiz:* el engine SÍ da el lateral cuando se especifica la dirección (`limit(1/x,x,0,+)`→`+∞`, `…,-)`→`−∞`); reserva `undefined` para el bilátero genuinamente DNE.
 
 **Diferenciadores por diseño (soundness / pedagogía) — sympy no tiene equivalente:**
 
@@ -95,7 +95,7 @@ Para "universal en su carril" (real-univariable-elemental) le falta esencialment
 
 **Verificado por probe:**
 
-- **Integración racional universal.** `∫1/(x⁵−1)`, `∫1/(x⁶+1)` — sympy las resuelve completas; el engine deja residual. Es el gatekeeper **G1 ABIERTO** del propio engine.
+- **Integración racional universal.** `∫1/(x⁵−1)` (Φ₅/√5), `∫1/(x³−2)` (∛2) — sympy las resuelve completas; el engine deja residual (las cuárticas pares `∫1/(x⁶+1)`, `∫1/(x⁸−1)`, `∫1/(x⁴−4)` YA las resuelve tras G1 Cap.A/B). Es el gatekeeper **G1 ABIERTO** del propio engine.
 - **Funciones especiales como salida.** `erf`, `fresnels`, `li` — sympy las devuelve; el engine deja residual (por diseño).
 - **Dominio complejo.** `x²+1=0` en complejo → sympy `{−i, i}`; el engine sigue diciendo `No solution` incluso con `--value-domain complex` (Fase 2 gated).
 
@@ -109,10 +109,10 @@ Hay que separar dos preguntas distintas.
 
 ### 4.1 Sobre su propia meta acotada (Fase 1: real-univariable-elemental + educativo)
 
-Está **cerca pero no terminado**. Estimaciones internas de las auditorías del propio proyecto (direccionales, no benchmark externo): derivadas ~80% de un curso universitario, integral indefinida ~60‑65%, límites ~45‑50%. Faltan **dos piezas grandes**:
+Está **cerca pero no terminado**. Estimaciones internas de las auditorías del propio proyecto (direccionales, no benchmark externo): derivadas ~80% de un curso universitario, integral indefinida ~65‑70% (tras G1 Cap.A/B), límites ~70‑75% *(re-sondeado 2026-07-15; la cifra previa ~45‑50% era stale)*. Faltan **dos piezas grandes**:
 
-- **G1 — integración racional universal** (factor-sobre-ℝ / Lazard‑Rioboo‑Trager). Tamaño **L**. Es *el* bloqueador: hoy resuelve casos que factorizan sobre ℚ (`1/(x⁶−1)`) pero no los que requieren extensión algebraica: `1/(x⁵−1)` (Φ₅/√5), `1/(x⁶+1)`, `1/(x⁸−1)`, `1/(x⁴−4)` (√2), `1/(x³−2)` (∛2). Son exactamente los probes del criterio de salida #1 de la Fase 1, así que **G1 es lo que bloquea abrir la Fase 2**. Es también la única capacidad donde sympy gana *dentro del propio carril* del engine.
-- **Límites como algoritmo** (no lista de patrones). Tamaño **L**. La narración didáctica (gatekeeper G2) está sustancialmente cerrada, pero el procedimiento de decisión subyacente es un allowlist. Falta un L'Hôpital/Taylor-driven o Gruntz general + laterales finitos (DNE vs ±∞).
+- **G1 — integración racional universal** (factor-sobre-ℝ / Lazard‑Rioboo‑Trager). Tamaño **L**. Es *el* bloqueador: hoy resuelve los casos que factorizan sobre ℚ (`1/(x⁶−1)`) y — tras G1 Cap.A/B (`d557556ea`, `6c4d59afc`) — también las cuárticas pares con un solo surd cuadrático incluidos numeradores no-constantes (`1/(x⁴−4)` con √2, `1/(x⁶+1)`/`1/(x⁸−1)` con √3/√2); falta lo que exige una extensión algebraica ACOPLADA: `1/(x⁵−1)` (Φ₅/√5, par cuadrático asimétrico) y `1/(x³−2)` (∛2). Siguen siendo probes del criterio de salida #1 (3 de 5 ya verdes), así que **G1 es lo que bloquea abrir la Fase 2**. Es también la única capacidad donde sympy gana *dentro del propio carril* del engine.
+- **Límites como algoritmo** (no lista de patrones). Tamaño **L (más pequeño de lo que parecía)**. La narración didáctica (gatekeeper G2) está **MADURA** — factor-cancela, notables, L'Hôpital ITERADO, sándwich, jerarquía ∞/∞, `e` vía (1+1/x)^x, y ∞−∞ en sus dos formas. Lo que queda es de **VALOR**, no de narración: el procedimiento de decisión sigue siendo un allowlist de patrones (no un Gruntz general) y declina el bilátero de 0·∞/0^0 por dominio (las unilaterales resuelven); los laterales finitos ±∞ YA funcionan.
 
 Piezas menores ya casi hechas (criterio #3, largamente aterrizado): `diff(x,n)`/`diff(x,y)`, u-sustitución transcendente general, `taylor()`/`series()` + linealidad de sumatorios.
 
@@ -126,7 +126,7 @@ Distancia **enorme y deliberada**. Fase 2 (complejo principal-branch + vectorial
 
 No es "un sympy más pequeño" — es **un artefacto distinto y más estrecho**: un motor de cálculo *soundness-first, real-domain-first y autoexplicativo* que en su carril produce cosas que sympy no produce o produce peor (familias periódicas completas incluso en desigualdades, condiciones de dominio, derivaciones narradas, residuales honestos), y que a la vez está órdenes de magnitud por detrás de sympy en cobertura matemática total. Ambas cosas son ciertas simultáneamente.
 
-Medir el engine contra la superficie total de sympy lo juzgaría mal, porque esa amplitud no es su meta. Su norte es más estrecho y, en un aspecto, más exigente: universal **Y** autoexplicativo dentro de un dominio acotado. En ese objetivo está "cerca pero no terminado", con **un bloqueador grande (G1) y un área blanda grande (límites algorítmicos)** entre él y poder declarar completo el dominio real-univariable-elemental.
+Medir el engine contra la superficie total de sympy lo juzgaría mal, porque esa amplitud no es su meta. Su norte es más estrecho y, en un aspecto, más exigente: universal **Y** autoexplicativo dentro de un dominio acotado. En ese objetivo está "cerca pero no terminado", con **un bloqueador grande (G1) y un residuo estrecho de límites (algoritmo de valor tipo Gruntz; la narración didáctica ya está madura)** entre él y poder declarar completo el dominio real-univariable-elemental.
 
 **Siguiente paso de mayor palanca:** atacar **G1** (integración racional universal / factor-sobre-ℝ / LRT). Es clase L → se entra como *scoping workflow que produce una secuencia de sub-ciclos acotados*, nunca como un solo ciclo. Desbloquea formalmente la Fase 2.
 
