@@ -4030,14 +4030,23 @@ impl SolveBackend for LocalSolveBackend {
         opts: CoreSolverOptions,
         ctx: &SolveCtx,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        let (set, steps) = solve_local_core(eq, var, simplifier, opts, ctx)?;
-        // For a NON-STRICT inequality (`f ≤ 0` / `f ≥ 0`) EVERY real root of `f = lhs − rhs` is a
-        // solution (`0` satisfies `≤ 0` and `≥ 0`), but the interval sign-analysis drops isolated
-        // roots of even-multiplicity factors (`(x−2)²(x+1) ≤ 0` keeps `(−∞,−1]` but loses `{2}`;
-        // `x²/(x−1) ≥ 0` keeps `(1,∞)` but loses `{0}`). Union those roots back in — they exclude
-        // poles by construction (a pole is not a root of `f = 0`) and are domain-filtered.
-        let set = union_non_strict_inequality_roots(eq, var, simplifier, opts, ctx, set);
-        Ok((set, steps))
+        // Thread the solve value domain into the simplifier's sticky state so
+        // solver-internal plain `simplify()` calls fold complex forms
+        // (`√(-3) → i·√3`) under ComplexEnabled. Save/restore: the sticky
+        // domain must not leak past this solve invocation.
+        let previous_domain = simplifier.set_sticky_value_domain(opts.value_domain);
+        let result = solve_local_core(eq, var, simplifier, opts, ctx).map(|(set, steps)| {
+            // For a NON-STRICT inequality (`f ≤ 0` / `f ≥ 0`) EVERY real root of `f = lhs − rhs` is
+            // a solution (`0` satisfies `≤ 0` and `≥ 0`), but the interval sign-analysis drops
+            // isolated roots of even-multiplicity factors (`(x−2)²(x+1) ≤ 0` keeps `(−∞,−1]` but
+            // loses `{2}`; `x²/(x−1) ≥ 0` keeps `(1,∞)` but loses `{0}`). Union those roots back in
+            // — they exclude poles by construction (a pole is not a root of `f = 0`) and are
+            // domain-filtered.
+            let set = union_non_strict_inequality_roots(eq, var, simplifier, opts, ctx, set);
+            (set, steps)
+        });
+        simplifier.set_sticky_value_domain(previous_domain);
+        result
     }
 }
 

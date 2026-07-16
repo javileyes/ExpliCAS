@@ -53,6 +53,13 @@ pub struct Simplifier {
     /// to a fresh call. Active only while `solve_memo_depth > 0`.
     pub(super) solve_memo: HashMap<(ExprId, Option<ExprId>), SolveMemoEntry>,
     pub(super) solve_memo_depth: u32,
+    /// Sticky value domain consumed by plain `simplify()` (which otherwise runs
+    /// with `SimplifyOptions::default()` = RealOnly). The solve backend sets it
+    /// from its options on entry (save/restore) so solver-internal
+    /// simplification folds complex forms (`√(-3) → i·√3`) under
+    /// `--value-domain complex`. Default `RealOnly` keeps every other caller
+    /// byte-identical.
+    pub(super) sticky_value_domain: crate::semantics::ValueDomain,
 }
 
 /// Cached result of one plain `simplify()` call (P16 solve-scope memo).
@@ -99,6 +106,7 @@ impl Simplifier {
             step_listener: None,
             solve_memo: HashMap::new(),
             solve_memo_depth: 0,
+            sticky_value_domain: crate::semantics::ValueDomain::RealOnly,
         }
     }
 
@@ -149,6 +157,7 @@ impl Simplifier {
             step_listener: None,
             solve_memo: HashMap::new(),
             solve_memo_depth: 0,
+            sticky_value_domain: crate::semantics::ValueDomain::RealOnly,
         };
         s.register_default_rules();
         s
@@ -232,6 +241,7 @@ impl Simplifier {
             step_listener: None,
             solve_memo: HashMap::new(),
             solve_memo_depth: 0,
+            sticky_value_domain: crate::semantics::ValueDomain::RealOnly,
         }
     }
 
@@ -389,6 +399,22 @@ impl Simplifier {
         self.sticky_root_expr = None;
         self.sticky_implicit_domain = None;
         self.solve_memo.clear();
+    }
+
+    /// Set the sticky value domain consumed by plain `simplify()` calls and
+    /// return the previous value (save/restore discipline for scoped callers
+    /// like the solve backend). Sticky state changes simplify semantics, so a
+    /// domain change drops the solve-scope memo.
+    pub fn set_sticky_value_domain(
+        &mut self,
+        value_domain: crate::semantics::ValueDomain,
+    ) -> crate::semantics::ValueDomain {
+        let previous = self.sticky_value_domain;
+        if previous != value_domain {
+            self.sticky_value_domain = value_domain;
+            self.solve_memo.clear();
+        }
+        previous
     }
 
     /// P16: enter a solve-scoped simplify memo region (re-entrant).

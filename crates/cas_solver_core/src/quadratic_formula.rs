@@ -201,6 +201,7 @@ pub(crate) fn execute_quadratic_coefficient_solve_plan_with_default_numeric_solu
     a: ExprId,
     b: ExprId,
     c: ExprId,
+    value_domain: crate::value_domain::ValueDomain,
     context_mut: FContextMut,
     mut expand_expr: FExpand,
     mut simplify_expr: FSimplify,
@@ -222,14 +223,20 @@ where
     // transcendental radicand does not syntactically expose its sign. `provable_const_sign` decides it
     // exactly (surds AND e/π), and returns `None` for anything with a free variable, so a genuinely
     // symbolic quadratic (`a·x²+b·x+c=0`) is untouched.
-    if let QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } = &plan {
-        let delta_expr = *delta_expr;
-        let expanded = expand_expr(state, delta_expr);
-        let sim_delta = simplify_expr(state, expanded);
-        if cas_math::const_sign::provable_const_sign(context_mut(state), sim_delta)
-            == Some(cas_math::const_sign::ConstSign::Negative)
-        {
-            return Ok(SolutionSet::Empty);
+    //
+    // Complex domain: the same provably-negative discriminant is exactly the case where the
+    // symbolic root builder's `±√(negative)/(2a)` IS the (complex) answer — skip the real-only
+    // early-out and let the builder emit; the simplifier folds `√(-n) → i·√n` downstream.
+    if value_domain.is_real_only() {
+        if let QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } = &plan {
+            let delta_expr = *delta_expr;
+            let expanded = expand_expr(state, delta_expr);
+            let sim_delta = simplify_expr(state, expanded);
+            if cas_math::const_sign::provable_const_sign(context_mut(state), sim_delta)
+                == Some(cas_math::const_sign::ConstSign::Negative)
+            {
+                return Ok(SolutionSet::Empty);
+            }
         }
     }
 
@@ -244,7 +251,15 @@ where
         |state, eq_op, delta, (sol1, sol2), opens_up| {
             let ctx = context_mut(state);
             let (r1, r2) = crate::solution_set::order_pair_by_value(ctx, sol1, sol2);
-            crate::solution_set::quadratic_numeric_solution(ctx, eq_op, &delta, opens_up, r1, r2)
+            crate::solution_set::quadratic_numeric_solution(
+                ctx,
+                eq_op,
+                &delta,
+                opens_up,
+                r1,
+                r2,
+                value_domain,
+            )
         },
         |state, solve_a, solve_b, sim_delta| {
             roots_from_a_b_and_simplified_delta(context_mut(state), solve_a, solve_b, sim_delta)
@@ -422,6 +437,7 @@ mod tests {
                 a,
                 b,
                 c,
+                crate::value_domain::ValueDomain::RealOnly,
                 |ctx| ctx,
                 |_ctx, id| id,
                 |_ctx, id| id,
@@ -430,6 +446,67 @@ mod tests {
             .expect("numeric plan should solve");
 
         assert!(matches!(solved, SolutionSet::Discrete(_)));
+    }
+
+    #[test]
+    fn execute_quadratic_solve_plan_negative_delta_eq_by_domain() {
+        // x^2 + 1 = 0: RealOnly -> Empty; ComplexEnabled -> the conjugate pair.
+        for (domain, expect_pair) in [
+            (crate::value_domain::ValueDomain::RealOnly, false),
+            (crate::value_domain::ValueDomain::ComplexEnabled, true),
+        ] {
+            let mut ctx = Context::new();
+            let a = ctx.num(1);
+            let b = ctx.num(0);
+            let c = ctx.num(1);
+            let solved =
+                execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state(
+                    &mut ctx,
+                    RelOp::Eq,
+                    a,
+                    b,
+                    c,
+                    domain,
+                    |ctx| ctx,
+                    |_ctx, id| id,
+                    |_ctx, id| id,
+                    |_err| "plan error".to_string(),
+                )
+                .expect("numeric plan should solve");
+            if expect_pair {
+                match solved {
+                    SolutionSet::Discrete(roots) => assert_eq!(roots.len(), 2),
+                    other => panic!("expected Discrete pair in complex mode, got {:?}", other),
+                }
+            } else {
+                assert!(matches!(solved, SolutionSet::Empty));
+            }
+        }
+    }
+
+    #[test]
+    fn execute_quadratic_solve_plan_negative_delta_inequality_untouched_in_complex() {
+        // SCOPE-OUT guard: Δ<0 inequalities keep real semantics even in complex
+        // mode (ℂ has no order): x^2 + 1 > 0 -> AllReals.
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(0);
+        let c = ctx.num(1);
+        let solved =
+            execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state(
+                &mut ctx,
+                RelOp::Gt,
+                a,
+                b,
+                c,
+                crate::value_domain::ValueDomain::ComplexEnabled,
+                |ctx| ctx,
+                |_ctx, id| id,
+                |_ctx, id| id,
+                |_err| "plan error".to_string(),
+            )
+            .expect("numeric plan should solve");
+        assert!(matches!(solved, SolutionSet::AllReals));
     }
 
     #[test]
@@ -447,6 +524,7 @@ mod tests {
                 a,
                 b,
                 c,
+                crate::value_domain::ValueDomain::RealOnly,
                 |ctx| ctx,
                 |_ctx, id| id,
                 |_ctx, id| id,

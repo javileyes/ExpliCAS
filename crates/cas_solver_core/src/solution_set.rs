@@ -446,6 +446,11 @@ fn outside_roots(
 /// Build solution sets for numeric quadratic relations `a*x^2 + b*x + c <op> 0`.
 ///
 /// Assumes `r1 <= r2` when `delta > 0`. For `delta == 0`, `r1` is the repeated root.
+///
+/// `value_domain` decides the `delta < 0` equality arm: under `ComplexEnabled`
+/// the conjugate root pair `r1`/`r2` (already built by the quadratic formula as
+/// `(-b ∓ √Δ)/2a`) IS the solution set; under `RealOnly` it stays `Empty`.
+/// Inequalities keep real semantics in both domains (ℂ has no order).
 pub(crate) fn quadratic_numeric_solution(
     ctx: &mut Context,
     op: RelOp,
@@ -453,6 +458,7 @@ pub(crate) fn quadratic_numeric_solution(
     opens_up: bool,
     r1: ExprId,
     r2: ExprId,
+    value_domain: crate::value_domain::ValueDomain,
 ) -> SolutionSet {
     if delta > &BigRational::zero() {
         match op {
@@ -526,7 +532,15 @@ pub(crate) fn quadratic_numeric_solution(
         }
     } else {
         match op {
-            RelOp::Eq => SolutionSet::Empty,
+            // Δ < 0: no real roots. In complex mode the conjugate pair (already
+            // constructed — `√Δ` folds to `i·√|Δ|` downstream) is the answer.
+            RelOp::Eq => {
+                if value_domain.is_complex_enabled() {
+                    SolutionSet::Discrete(vec![r1, r2])
+                } else {
+                    SolutionSet::Empty
+                }
+            }
             RelOp::Neq => SolutionSet::AllReals,
             RelOp::Lt | RelOp::Leq => {
                 if opens_up {
@@ -1562,7 +1576,15 @@ mod tests {
         let r1 = ctx.num(1);
         let r2 = ctx.num(3);
         let delta = BigRational::from_integer(4.into());
-        let set = quadratic_numeric_solution(&mut ctx, RelOp::Eq, &delta, true, r1, r2);
+        let set = quadratic_numeric_solution(
+            &mut ctx,
+            RelOp::Eq,
+            &delta,
+            true,
+            r1,
+            r2,
+            crate::value_domain::ValueDomain::RealOnly,
+        );
         assert!(matches!(set, SolutionSet::Discrete(v) if v == vec![r1, r2]));
     }
 
@@ -1572,7 +1594,15 @@ mod tests {
         let r1 = ctx.num(1);
         let r2 = ctx.num(3);
         let delta = BigRational::from_integer(4.into());
-        let set = quadratic_numeric_solution(&mut ctx, RelOp::Lt, &delta, true, r1, r2);
+        let set = quadratic_numeric_solution(
+            &mut ctx,
+            RelOp::Lt,
+            &delta,
+            true,
+            r1,
+            r2,
+            crate::value_domain::ValueDomain::RealOnly,
+        );
         match set {
             SolutionSet::Continuous(i) => {
                 assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 1.into());
@@ -1589,7 +1619,15 @@ mod tests {
         let mut ctx = Context::new();
         let r = ctx.num(2);
         let delta = BigRational::zero();
-        let set = quadratic_numeric_solution(&mut ctx, RelOp::Geq, &delta, false, r, r);
+        let set = quadratic_numeric_solution(
+            &mut ctx,
+            RelOp::Geq,
+            &delta,
+            false,
+            r,
+            r,
+            crate::value_domain::ValueDomain::RealOnly,
+        );
         assert!(matches!(set, SolutionSet::Discrete(v) if v == vec![r]));
     }
 
@@ -1598,7 +1636,46 @@ mod tests {
         let mut ctx = Context::new();
         let r = ctx.num(0);
         let delta = -BigRational::from_integer(1.into());
-        let set = quadratic_numeric_solution(&mut ctx, RelOp::Gt, &delta, false, r, r);
+        let set = quadratic_numeric_solution(
+            &mut ctx,
+            RelOp::Gt,
+            &delta,
+            false,
+            r,
+            r,
+            crate::value_domain::ValueDomain::RealOnly,
+        );
         assert!(matches!(set, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn test_quadratic_numeric_solution_delta_negative_eq_by_domain() {
+        // The Δ<0 ∧ Eq arm is the ONLY domain-sensitive cell: RealOnly stays
+        // Empty (pinned above via Gt; here explicitly for Eq), ComplexEnabled
+        // returns the conjugate pair the quadratic formula already built.
+        let mut ctx = Context::new();
+        let r1 = ctx.var("r1");
+        let r2 = ctx.var("r2");
+        let delta = -BigRational::from_integer(4.into());
+        let real = quadratic_numeric_solution(
+            &mut ctx,
+            RelOp::Eq,
+            &delta,
+            true,
+            r1,
+            r2,
+            crate::value_domain::ValueDomain::RealOnly,
+        );
+        assert!(matches!(real, SolutionSet::Empty));
+        let complex = quadratic_numeric_solution(
+            &mut ctx,
+            RelOp::Eq,
+            &delta,
+            true,
+            r1,
+            r2,
+            crate::value_domain::ValueDomain::ComplexEnabled,
+        );
+        assert!(matches!(complex, SolutionSet::Discrete(v) if v == vec![r1, r2]));
     }
 }

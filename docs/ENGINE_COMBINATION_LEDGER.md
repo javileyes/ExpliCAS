@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 591 (newest first)
+Active entries: 592 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
+- 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -19978,3 +19979,17 @@ Active entries: 591 (newest first)
   - validación: workspace 12367/0 (exit real); clippy limpio; engine-fast verde; huella pressure 0-delta, guardrail solo ruido de ranking por timing documentado. Ningún fixture pinneaba el latex buggy.
   - NO-reproducido (documentado): el reporte citaba input `(1+i)^5000`, pero con la invocación EXACTA de la web (`server.py` → `--steps on --lang es --domain generic --inv-trig strict --time-budget-ms 1700 --value-domain complex`) declina honesto en binario nuevo Y viejo; `67108864·(-1-i)` es EXACTAMENTE `(1+i)^53`. Hipótesis: sesión web con reescritura de input o card de otro probe. Si reaparece tras reiniciar el server: capturar el JSON de `/api/eval`.
   - retained learning: **los formatters de display vienen en GEMELOS (texto/LaTeX, normal/path-highlighted) y las políticas de elisión deben vivir en TODOS** — un smell visible en un canal y no en otro localiza el bug en la capa de render, no en el AST (el diagnóstico diferencial `result` vs `result_latex` lo aisló en 2 probes). El barrido de smells por regex sobre corpus es barato (~30s) y responde "¿está generalizado?" con evidencia en vez de opinión.
+
+## 2026-07-17 - CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
+
+- area: `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_formula.rs` firma/guard + `quadratic_strategy.rs` conexión) + `cas_engine/engine/{simplifier,orchestration}.rs` (sticky value_domain) + `cas_solver/solve_backend_local.rs` (save/restore en el entry)
+- status: `retained`. Segundo ciclo del frente complejo (orden A1→A4→A2→A5). **Cierra F12** — la fila emblemática del assessment vs sympy (`solve(x^2+1=0)` complex devolvía `No solution`).
+- capture:
+  - investment_class: capacidad Fase-2 (solve complejo cuadrático completo).
+  - cell: `x^2+1→{i,-i}`, `x^2+4→{±2i}`, `x^2+x+1→{(-1±i√3)/2}`, `x^2-2x+5→{1±2i}`, `2x^2+3→{±3i/√6}` (valores verificados a mano). Bordes: `x^2=0→{0}`; `x^2=1-√2` complex→`±(1-√2)^(1/2)` (valor correcto; surd no-literal no pliega a forma-i — presentación) y real→`No solution` (guard R1 de discriminante surd INTACTO — ahora gateado a is_real_only, mismo predicado); coefs Gaussianos `x^2+2i=0` emiten sin plegar (√ de complejo = bloque B); `≠` e inecuaciones conservan semántica real (SCOPE-OUT declarado: `SolutionSet` no representa ℂ∖{±i}; solo cambió el brazo `Eq`). Modo real byte-idéntico (gate + sticky default RealOnly).
+  - diseño: el fix scopeado (rama `Δ<0∧Eq→Discrete[r1,r2]` bajo ComplexEnabled — las raíces YA se construían y se tiraban) resultó ser LA MITAD del trabajo. **Chokepoint NO scopeado descubierto en ciclo**: el `simplify()` plano del solver corre SIEMPRE con `SimplifyOptions::default()` = RealOnly → las raíces emitían sin plegar (`(-3)^(1/2)`, `(-1)^(-1/2)` en vez de `i√3`, `±i`). Cierre por chokepoint: campo `sticky_value_domain` en el Simplifier (calca el patrón `set_sticky_implicit_domain`: "sticky state changes simplify semantics → drop solve-memo"), consumido por `simplify()`, seteado con SAVE/RESTORE en `solve_with_ctx_and_options` (no filtra fuera de la invocación). Enhebrado `is_real_only→ValueDomain` en la estrategia (guardrail #3: condición estructurada, no bool).
+  - validación: workspace 12370/0 (exit real de cargo); clippy --all-targets limpio; engine-fast verde; huella pressure 0-delta, guardrail solo slot[4] de ruido por timing. 3 tests nuevos (contrato Δ<0∧Eq por dominio ×2 + scope-out de inecuación en complejo).
+  - retained learning:
+  - **El scoping READ-ONLY ve los puntos de decline pero puede no ver los defaults del PIPELINE**: la rama `Eq→Empty` era visible; que el simplify interno del solver fuera RealOnly-siempre solo emergió al probar end-to-end (raíces sin plegar). Presupuestar el "segundo fix" al ejecutar sub-ciclos de solve: gate de dominio + canal de semántica son DOS capas.
+  - **El patrón sticky-con-drop-de-memo es el canal correcto para semántica per-invocación en el Simplifier** (tercera instancia: steps_mode, sticky_implicit_domain, ahora value_domain); save/restore en el entry del backend, jamás estado global.
+  - PRÓXIMO PELDAÑO: **A2** (módulo+builtins — con la red sticky ya puesta, `abs(3+4i)` dentro de solve también se beneficiará); A5 (grado≥3, reutiliza el kernel A4); presentación: plegar `√(const-surd-negativa)` a forma-i (hoy `(1-√2)^(1/2)`); prosa didáctica "Δ<0→par conjugado" (C2).

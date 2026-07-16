@@ -123,6 +123,13 @@ where
         map_substep_item_to_step,
     );
 
+    // The strategy receives the domain as `is_real_only`; the solve-plan layer
+    // takes the structured enum (guardrail: conditions as data, not bools).
+    let value_domain = if is_real_only {
+        crate::value_domain::ValueDomain::RealOnly
+    } else {
+        crate::value_domain::ValueDomain::ComplexEnabled
+    };
     let solution_set =
         execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state(
             state,
@@ -130,6 +137,7 @@ where
             a,
             b,
             c,
+            value_domain,
             |state| context_mut(state),
             |state, expr| expand_expr(state, expr),
             |state, expr| simplify_expr(state, expr),

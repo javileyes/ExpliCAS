@@ -165,8 +165,12 @@ impl Simplifier {
                 return (entry.out, entry.steps.clone());
             }
         }
-        let (out, steps) =
-            self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::default());
+        // Plain simplify() honors the sticky value domain (set by the solve
+        // backend under --value-domain complex; RealOnly default elsewhere, so
+        // every non-solve caller keeps byte-identical behavior).
+        let mut options = crate::phase::SimplifyOptions::default();
+        options.shared.semantics.value_domain = self.sticky_value_domain;
+        let (out, steps) = self.simplify_with_options(expr_id, options);
         if memo_active {
             self.solve_memo.insert(
                 (expr_id, self.sticky_root_expr),
