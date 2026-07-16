@@ -1,6 +1,8 @@
-# ExpliCAS - Educational Computer Algebra System in Rust
+# ExpliCAS — a step-by-step Computer Algebra System in Rust
 
-ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to provide **step-by-step mathematical explanations**. It is built with portability and educational utility in mind.
+**ExpliCAS** is a Computer Algebra System written in Rust with a sharp north star: be **serious and universal on the real, single-variable, elementary domain — and educational at every step.** It does not merely return an answer; it shows the rules that produced it, keeps every decision **exact** (`BigRational`, never floating point), and — by design — **never returns a silent wrong answer.** When a result is genuinely out of reach, it says so honestly rather than guessing.
+
+That combination is unusual. On its home turf ExpliCAS reaches results that trip up mainstream systems: it integrates **every** rational function (returning an exact parameterized form even for the cases where no closed radical form exists), keeps the **complete** periodic family of a trigonometric equation instead of truncating it, and refuses to hand back a finite number for a divergent integral.
 
 ## Live Demo
 
@@ -8,13 +10,75 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
 
 ![ExpliCAS Web Demo](docs/explicas_web_demo.png)
 
+## Highlights
+
+Every example below is real output from the current build (`target/release/cas_cli eval "…"`).
+
+### 🏆 Universal rational integration
+
+**Any** rational function `N(x)/D(x)` integrates. When the denominator factors over ℚ it stays there; when it needs an algebraic extension the surds appear only in the render; and when the coefficients live in a Galois-obstructed field with **no closed radical form at all**, the answer is emitted as an exact parameterized sum over the roots of a resolvent — the only elementary form that exists.
+
+```text
+integrate(1/(x^8+1), x)     →  the exact arctan+log closed form over √(2±√2)
+                               (some mainstream CAS return a wrong "0" here)
+integrate(1/(x^5-1), x)     →  conjugate quadratic pair over ℚ(√5)
+integrate(1/(x^3-2), x)     →  real split over ℚ(∛2): log + arctan
+integrate(1/(x^5-x-1), x)   →  root_sum(-2869·t^5 - …, t, t·ln(x - w(t)))
+                               the Galois S₅ case: no radical form exists,
+                               so the clean RootSum IS the answer
+```
+
+Definite integrals evaluate to the **exact** bound-substituted difference, certified pole-free by exact interval arithmetic — and honestly diverge otherwise:
+
+```text
+integrate(1/(x^3-2), x, 2, 3)         →  exact ∛2/arctan/log difference
+approx(integrate(1/(x^5-x-1),x,2,3))  →  0.0132656737263   (decimal on demand)
+integrate(1/(x^4-5), x, 1, 2)         →  undefined   (pole 5^(1/4) ≈ 1.495 inside)
+```
+
+### ✅ Honest by construction
+
+Soundness is not a feature, it is the contract. A bad factorization degrades to an **honest residual**, never a wrong answer; a non-elementary integrand is left as itself; a divergent integral returns `undefined`.
+
+```text
+integrate(e^(x^2), x)   →  integrate(e^(x^2), x)   (no elementary antiderivative — kept)
+diff(integrate(1/(x^3-2), x), x) - 1/(x^3-2)   →  0   (round-trip verified)
+```
+
+### 📐 Real breadth, one line each
+
+| Domain | Example | Result |
+|---|---|---|
+| Limits | `limit((1+1/n)^n, n, infinity)` | `e` |
+| Limits (∞−∞) | `limit(1/tan(x)^2 - 1/x^2, x, 0)` | `-2/3` |
+| Trig equations | `solve(2*cos(x)-sqrt(3)=0, x)` | `{ π/6 + 2kπ, 11π/6 + 2kπ : k ∈ ℤ }` |
+| Inequalities | `solve(sin(x) > 1/2, x)` | `{ (π/6+2kπ, 5π/6+2kπ) : k ∈ ℤ }` |
+| Nested radicals | `sqrt(5 + 2*sqrt(6))` | `sqrt(2) + sqrt(3)` |
+| Hyperbolic ID | `simplify((e^x-e^(-x))/(e^x+e^(-x)))` | `tanh(x)` |
+| Series | `sum(1/n^2, n, 1, oo)` | `π²/6` |
+| Closed forms | `sum(k^3, k, 1, n)` | `(n(n+1)/2)²` |
+| Matrices | `[[1,1],[0,1]]^5` | `[[1, 5], [0, 1]]` |
+| Number theory | `isprime(561)` | `0` (Carmichael, composite) |
+| Equivalence | `equiv(cos(2*x), 1-2*sin(x)^2)` | `true` |
+
+### 🎓 Educational at the core
+
+Every transformation can be shown as an ordered chain of named rules, so the *why* is as available as the *what* — the reason the project exists.
+
+> Backed by a **11,000+ test suite** (unit, integration, contract, and metamorphic property tests) plus differentiate-back verification on integration results — so the soundness contract above is enforced, not aspirational.
+
 ## Features
 
 -   **Step-by-Step Simplification**: Shows every rule applied to transform an expression.
--   **Basic Arithmetic**: Addition, subtraction, multiplication, division, exponentiation.
+-   **Basic Arithmetic**: Addition, subtraction, multiplication, division, exponentiation. All exact (`BigRational`), never floating point.
 -   **Calculus**:
-    -   Symbolic Integration (`integrate(x^2, x) -> x^3/3`).
-    -   Symbolic Differentiation (`diff(sin(x), x) -> cos(x)`).
+    -   **Universal rational integration** — every `N(x)/D(x)` integrates: over ℚ, over algebraic extensions (`√`, `∛`, nested radicals), or as an exact `root_sum(...)` parameterized form for the Galois-obstructed cases with no closed radical form.
+    -   Symbolic Integration with substitution, by-parts, partial fractions, and honest residuals for non-elementary integrands (`integrate(e^(x^2), x)` stays itself, never a wrong answer).
+    -   **Definite integrals** by the Fundamental Theorem with **exact pole certification** — a pole inside the interval returns `undefined` (divergent), never a false finite value.
+    -   Symbolic Differentiation (`diff(sin(x), x) -> cos(x)`), higher-order and mixed partials (`diff(f, x, y)`).
+    -   **Limits** with a full educational toolkit: notable limits (`e` via `(1+1/n)^n`), iterated L'Hôpital, squeeze, `∞/∞` dominance hierarchy, and the `∞−∞` conjugate / common-denominator forms.
+    -   **Numeric on demand**: `approx(...)` / `evalf(...)` render any exact result (including a `root_sum`) as a 12-digit decimal, while the engine stays exact everywhere else.
+    -   Taylor/series expansion (`taylor(sin(x), x, 0, 5)`).
 -   **Number Theory**:
     -   GCD/LCM (`gcd(12, 18) -> 6`, `lcm(4, 6) -> 12`).
     -   Modular Arithmetic (`mod(10, 3) -> 1`, `10 mod 3 -> 1`).
