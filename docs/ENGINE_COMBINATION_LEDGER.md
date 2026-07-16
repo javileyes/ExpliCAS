@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 586 (newest first)
+Active entries: 587 (newest first)
 
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
 - 2026-07-16 | `retained` | `methods.rs` (`rootsum_logarithmic_antiderivative` + 5º bloque del Err-arm co... | CAPACIDAD (G1 Cap. E-iv-c: nodo root_sum + driver + wiring): LA CLAUSURA UNIVERSAL EMITE — la clase Galois-obstruida gradúa
 - 2026-07-16 | `retained` | `cas_math/rootsum_numeric.rs` (nuevo: Durand-Kerner complejo f64 + evaluador ... | CAPACIDAD (G1 Cap. E-iv-d1: approx()/evalf() + display decimal + eval numérico del root_sum + LaTeX Σ): la superficie de CONSUMO numérico
+- 2026-07-16 | `retained` | `polynomial.rs` (`count_real_roots_in_interval` — Sturm exacto V(a)−V(b) sobr... | CAPACIDAD (G1 Cap. E-iv-d2: definidas sobre root_sum + Sturm en intervalo): `approx(integrate(1/(x^3-x-1), x, 2, 3))` → `0.0944265690584`
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
@@ -19909,3 +19910,15 @@ Active entries: 586 (newest first)
   - **La primera superficie numérica de un engine exacto es un CONTRATO de capas, no un evaluador**: el valor f64 existe solo dentro de `approx`; el resultado viaja como racional exacto en un nodo `decimal` cuya ÚNICA semántica es display. Nada aguas abajo puede confundir un decimal con un exacto (el nodo lo marca) ni una decisión puede leer el f64 (no se expone).
   - **El pairing conjugado se verifica solo**: exigir |Im(Σ)| ≲ 1e-8 tras sumar sobre TODAS las raíces es un checksum gratuito de que R es real y la suma es genuina — un root_sum malformado (R no-real, summand asimétrico) declina en vez de dar basura real.
   - PRÓXIMO PELDAÑO: **E-iv-d2** — definidas `integrate(f,x,a,b)` sobre antiderivadas root_sum: requiere el primitivo **Sturm en intervalo** (contar raíces de D en [a,b] — extraer la cadena de `count_real_roots` que hoy es inline) porque F(b)−F(a) con polo dentro = WRONG ANSWER; con 0 polos → valor `decimal`. Después: LaTeX-tests, fila examples.csv del flujo approx.
+
+## 2026-07-16 - CAPACIDAD (G1 Cap. E-iv-d2: definidas sobre root_sum + Sturm en intervalo): `approx(integrate(1/(x^3-x-1), x, 2, 3))` → `0.0944265690584`
+
+- area: `polynomial.rs` (`count_real_roots_in_interval` — Sturm exacto V(a)−V(b) sobre la parte squarefree, cerrado en ambos extremos) + `meta_functions_support.rs` (`try_approx_definite_integral`: composición `approx(integrate(N/D, x, a, b))`) + tests
+- status: `retained`. Cierra E-iv-d ("Ambas + LaTeX", decisión usuario): approx ✅ (d1) + definidas ✅ (este) + LaTeX ✅ (d1).
+- capture:
+  - investment_class: capacidad Fase-1 (consumo del cierre G1) + primitivo Sturm-intervalo reusable.
+  - cell: `approx(integrate(1/(x^3-x-1), x, 2, 3))` → `0.0944265690584` (= cuadratura mpmath 30 dígitos); `approx(integrate(1/(x^5-x-1), x, 2, 3))` → `0.0132656737263` (**la definida del caso S₅** — sin forma radical, numéricamente consumible); límites invertidos → negado; a=b → 0. **EL GATE DE SOUNDNESS: `∫₁² 1/(x^3-x-1)` (polo en el número plástico 1.3247 ∈ (1,2), integral DIVERGE) → declina honesto** (queda sin evaluar): `F(b)−F(a)` con polo dentro sería un WRONG VALUE finito — el conteo de raíces de D en [a,b] es Sturm EXACTO (BigRational, extremos incluidos), jamás floats.
+  - diseño: (a) `count_real_roots_in_interval` calca la cadena de `count_real_roots` (parte squarefree; V(a)−V(b) cuenta en (a,b]; raíz en el extremo izquierdo se suma aparte; a>b → 0 por contrato); (b) el arm de approx detecta el `integrate(f,var,a,b)` RESIDUAL (solo existe si la vía definida normal declinó → sin dueño previo), exige integrando racional + límites racionales, pasa el gate de polos, obtiene F vía `try_algorithmic_integration_backend(residual_fallback)` + `public_antiderivative()` (respeta el estado de publicación), y evalúa F numéricamente en los límites con `numeric_eval_with_rootsum_at` (extensión var_map de d1).
+  - validación: unit tests Sturm-intervalo (raíz única/tres raíces/extremos izquierdo Y derecho/invertido) + test del meta-arm (happy + polo-declina + invertido) + probes CLI = referencias mpmath exactas. Workspace/clippy/fast (ver informe).
+  - retained learning: **una definida sobre antiderivada opaca es un teorema condicional** — F(b)−F(a) solo vale si F es continua en [a,b]; para integrandos racionales eso es EXACTAMENTE "D sin raíces en [a,b]", decidible por Sturm en intervalo. El primitivo era la única pieza que faltaba (la cadena ya existía inline); extraerlo sirve a cualquier futura definida/FTC honesta.
+  - PRÓXIMO PELDAÑO: fila examples.csv del flujo (`approx(integrate(1/(x^5-x-1), x, 2, 3))`); Track R (presentación ℚ-factorable); forma-real-numérica de la antiderivada como EXPRESIÓN (necesita coeficientes decimal en display — residual documentado).

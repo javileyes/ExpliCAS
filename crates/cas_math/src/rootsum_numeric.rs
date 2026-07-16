@@ -144,64 +144,72 @@ fn durand_kerner_roots(poly: &Polynomial) -> Option<Vec<C>> {
 /// Supports the shapes a `root_sum` summand contains (`t·ln(x − w(t))` and
 /// friends): numbers, the bound variable, +, −, ·, /, unary minus, integer
 /// powers and `ln`.
-fn eval_complex(ctx: &Context, expr: ExprId, bound: &str, value: C, depth: usize) -> Option<C> {
+fn eval_complex(
+    ctx: &Context,
+    expr: ExprId,
+    bound: &str,
+    value: C,
+    var_map: &HashMap<String, f64>,
+    depth: usize,
+) -> Option<C> {
     if depth == 0 {
         return None;
     }
     match ctx.get(expr) {
         Expr::Number(n) => Some(C::real(n.to_f64()?)),
         Expr::Variable(sym) => {
-            if ctx.sym_name(*sym) == bound {
+            let name = ctx.sym_name(*sym);
+            if name == bound {
                 Some(value)
             } else {
-                None
+                var_map.get(name).map(|v| C::real(*v))
             }
         }
         Expr::Add(l, r) => Some(
-            eval_complex(ctx, *l, bound, value, depth - 1)?.add(eval_complex(
+            eval_complex(ctx, *l, bound, value, var_map, depth - 1)?.add(eval_complex(
                 ctx,
                 *r,
                 bound,
                 value,
+                var_map,
                 depth - 1,
             )?),
         ),
         Expr::Sub(l, r) => Some(
-            eval_complex(ctx, *l, bound, value, depth - 1)?.sub(eval_complex(
+            eval_complex(ctx, *l, bound, value, var_map, depth - 1)?.sub(eval_complex(
                 ctx,
                 *r,
                 bound,
                 value,
+                var_map,
                 depth - 1,
             )?),
         ),
         Expr::Mul(l, r) => Some(
-            eval_complex(ctx, *l, bound, value, depth - 1)?.mul(eval_complex(
+            eval_complex(ctx, *l, bound, value, var_map, depth - 1)?.mul(eval_complex(
                 ctx,
                 *r,
                 bound,
                 value,
+                var_map,
                 depth - 1,
             )?),
         ),
-        Expr::Div(l, r) => eval_complex(ctx, *l, bound, value, depth - 1)?.div(eval_complex(
-            ctx,
-            *r,
-            bound,
-            value,
-            depth - 1,
-        )?),
-        Expr::Neg(inner) => Some(eval_complex(ctx, *inner, bound, value, depth - 1)?.neg()),
+        Expr::Div(l, r) => eval_complex(ctx, *l, bound, value, var_map, depth - 1)?
+            .div(eval_complex(ctx, *r, bound, value, var_map, depth - 1)?),
+        Expr::Neg(inner) => {
+            Some(eval_complex(ctx, *inner, bound, value, var_map, depth - 1)?.neg())
+        }
         Expr::Pow(base, exp) => {
             let e = match ctx.get(*exp) {
                 Expr::Number(n) if n.is_integer() => n.to_integer().to_u32()?,
                 _ => return None,
             };
-            Some(eval_complex(ctx, *base, bound, value, depth - 1)?.powi(e))
+            Some(eval_complex(ctx, *base, bound, value, var_map, depth - 1)?.powi(e))
         }
         Expr::Function(fn_id, args) if args.len() == 1 => {
             if ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
-                eval_complex(ctx, args[0], bound, value, depth - 1)?.ln()
+                eval_complex(ctx, args[0], bound, value, var_map, depth - 1)?.ln()
             } else {
                 None
             }
@@ -215,7 +223,11 @@ fn eval_complex(ctx: &Context, expr: ExprId, bound: &str, value: C, depth: usize
 /// come out real (conjugate imaginary parts cancel); a non-negligible
 /// residual imaginary part means the input was not a genuine real-valued
 /// root sum and evaluation declines.
-pub fn eval_rootsum_node_f64(ctx: &Context, args: &[ExprId]) -> Option<f64> {
+pub fn eval_rootsum_node_f64(
+    ctx: &Context,
+    args: &[ExprId],
+    var_map: &HashMap<String, f64>,
+) -> Option<f64> {
     if args.len() != 3 {
         return None;
     }
@@ -227,7 +239,7 @@ pub fn eval_rootsum_node_f64(ctx: &Context, args: &[ExprId]) -> Option<f64> {
     let roots = durand_kerner_roots(&r_poly)?;
     let mut total = C::real(0.0);
     for root in roots {
-        total = total.add(eval_complex(ctx, args[2], &bound, root, 200)?);
+        total = total.add(eval_complex(ctx, args[2], &bound, root, var_map, 200)?);
     }
     if !total.re.is_finite() || total.im.abs() > 1e-8 * (1.0 + total.re.abs()) {
         return None;
@@ -267,37 +279,55 @@ fn contains_root_sum(ctx: &Context, root: ExprId) -> bool {
 /// is walked here, `root_sum` nodes are summed over their numeric roots, and
 /// any root_sum-free subtree delegates to the existing real [`eval_f64`].
 pub fn numeric_eval_with_rootsum(ctx: &Context, expr: ExprId) -> Option<f64> {
-    numeric_eval_depth(ctx, expr, 200)
+    numeric_eval_with_rootsum_at(ctx, expr, &HashMap::new())
 }
 
-fn numeric_eval_depth(ctx: &Context, expr: ExprId, depth: usize) -> Option<f64> {
+/// Variant with free-variable bindings (used by definite-integral bound
+/// evaluation: `x → a`, `x → b`).
+pub fn numeric_eval_with_rootsum_at(
+    ctx: &Context,
+    expr: ExprId,
+    var_map: &HashMap<String, f64>,
+) -> Option<f64> {
+    numeric_eval_depth(ctx, expr, var_map, 200)
+}
+
+fn numeric_eval_depth(
+    ctx: &Context,
+    expr: ExprId,
+    var_map: &HashMap<String, f64>,
+    depth: usize,
+) -> Option<f64> {
     if depth == 0 {
         return None;
     }
     if !contains_root_sum(ctx, expr) {
-        return eval_f64(ctx, expr, &HashMap::new()).filter(|v| v.is_finite());
+        return eval_f64(ctx, expr, var_map).filter(|v| v.is_finite());
     }
     match ctx.get(expr) {
         Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "root_sum" => {
-            eval_rootsum_node_f64(ctx, args)
+            eval_rootsum_node_f64(ctx, args, var_map)
         }
-        Expr::Add(l, r) => {
-            Some(numeric_eval_depth(ctx, *l, depth - 1)? + numeric_eval_depth(ctx, *r, depth - 1)?)
-        }
-        Expr::Sub(l, r) => {
-            Some(numeric_eval_depth(ctx, *l, depth - 1)? - numeric_eval_depth(ctx, *r, depth - 1)?)
-        }
-        Expr::Mul(l, r) => {
-            Some(numeric_eval_depth(ctx, *l, depth - 1)? * numeric_eval_depth(ctx, *r, depth - 1)?)
-        }
+        Expr::Add(l, r) => Some(
+            numeric_eval_depth(ctx, *l, var_map, depth - 1)?
+                + numeric_eval_depth(ctx, *r, var_map, depth - 1)?,
+        ),
+        Expr::Sub(l, r) => Some(
+            numeric_eval_depth(ctx, *l, var_map, depth - 1)?
+                - numeric_eval_depth(ctx, *r, var_map, depth - 1)?,
+        ),
+        Expr::Mul(l, r) => Some(
+            numeric_eval_depth(ctx, *l, var_map, depth - 1)?
+                * numeric_eval_depth(ctx, *r, var_map, depth - 1)?,
+        ),
         Expr::Div(l, r) => {
-            let denom = numeric_eval_depth(ctx, *r, depth - 1)?;
+            let denom = numeric_eval_depth(ctx, *r, var_map, depth - 1)?;
             if denom == 0.0 {
                 return None;
             }
-            Some(numeric_eval_depth(ctx, *l, depth - 1)? / denom)
+            Some(numeric_eval_depth(ctx, *l, var_map, depth - 1)? / denom)
         }
-        Expr::Neg(inner) => Some(-numeric_eval_depth(ctx, *inner, depth - 1)?),
+        Expr::Neg(inner) => Some(-numeric_eval_depth(ctx, *inner, var_map, depth - 1)?),
         _ => None,
     }
 }

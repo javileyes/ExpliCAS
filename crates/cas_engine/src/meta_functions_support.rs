@@ -54,6 +54,15 @@ pub(crate) fn try_rewrite_meta_function_expr(
         // wrapped in the `decimal` display node. Free variables or
         // out-of-scope shapes leave the call unevaluated (no rewrite).
         "approx" | "evalf" => {
+            // Definite-integral composition: `approx(integrate(f, x, a, b))`
+            // over a RATIONAL integrand whose antiderivative comes from the
+            // algorithmic backend (e.g. a root_sum). Gated on the EXACT
+            // pole-in-interval check — a pole inside [a, b] means the
+            // integral diverges and F(b) − F(a) would be a WRONG value, so
+            // the Sturm count must be zero and both endpoints non-poles.
+            if let Some(rewrite) = try_approx_definite_integral(ctx, arg) {
+                return Some(rewrite);
+            }
             let value = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, arg)?;
             let rational = num_rational::BigRational::from_float(value)?;
             let number = ctx.add(Expr::Number(rational));
@@ -68,11 +77,135 @@ pub(crate) fn try_rewrite_meta_function_expr(
     }
 }
 
+/// `approx(integrate(N/D, x, a, b))`: numeric value of a definite integral
+/// whose indefinite antiderivative the algorithmic backend can produce (the
+/// root_sum universal closure included). Declines honestly — leaving the
+/// call unevaluated — unless the integrand is rational with rational bounds
+/// AND the denominator provably has NO real root in `[a, b]` (exact interval
+/// Sturm; floats never decide).
+fn try_approx_definite_integral(ctx: &mut Context, arg: ExprId) -> Option<MetaFunctionRewrite> {
+    use num_traits::Zero;
+    let (fn_id, args) = match ctx.get(arg) {
+        Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+        _ => return None,
+    };
+    if ctx.sym_name(fn_id) != "integrate" || args.len() != 4 {
+        return None;
+    }
+    let variable = match ctx.get(args[1]) {
+        Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+        _ => return None,
+    };
+    let (lower_raw, upper_raw) = (args[2], args[3]);
+    let as_rational = |ctx: &Context, e: ExprId| -> Option<num_rational::BigRational> {
+        match ctx.get(e) {
+            Expr::Number(n) => Some(n.clone()),
+            Expr::Neg(inner) => match ctx.get(*inner) {
+                Expr::Number(n) => Some(-n.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    };
+    let a = as_rational(ctx, lower_raw)?;
+    let b = as_rational(ctx, upper_raw)?;
+    if a == b {
+        let zero = ctx.add(Expr::Number(num_rational::BigRational::zero()));
+        let decimal_sym = ctx.intern_symbol("decimal");
+        let node = ctx.add(Expr::Function(decimal_sym, vec![zero]));
+        return Some(MetaFunctionRewrite {
+            rewritten: node,
+            desc: "approx(definite integral) -> numeric value",
+        });
+    }
+    let (lo, hi, sign) = if a < b { (a, b, 1.0) } else { (b, a, -1.0) };
+
+    // Rational integrand only: the exact pole gate needs D as a polynomial.
+    let (num_expr, den_expr) = match ctx.get(args[0]) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    let denominator = cas_math::polynomial::Polynomial::from_expr(ctx, den_expr, &variable).ok()?;
+    if cas_math::polynomial::Polynomial::from_expr(ctx, num_expr, &variable).is_err() {
+        return None;
+    }
+    // THE soundness gate: no pole at the endpoints or inside the interval.
+    if denominator.eval(&lo).is_zero()
+        || denominator.eval(&hi).is_zero()
+        || denominator.count_real_roots_in_interval(&lo, &hi) != 0
+    {
+        return None;
+    }
+
+    // Antiderivative via the public algorithmic backend route.
+    let candidate = cas_math::general_integration_backend::try_algorithmic_integration_backend(
+        ctx,
+        args[0],
+        &variable,
+        cas_math::general_integration_backend::AlgorithmicIntegrationBackendConfig::residual_fallback(),
+    );
+    let antiderivative = candidate.public_antiderivative()?;
+
+    use num_traits::ToPrimitive;
+    let mut var_map = std::collections::HashMap::new();
+    var_map.insert(variable.clone(), hi.to_f64()?);
+    let at_hi =
+        cas_math::rootsum_numeric::numeric_eval_with_rootsum_at(ctx, antiderivative, &var_map)?;
+    var_map.insert(variable, lo.to_f64()?);
+    let at_lo =
+        cas_math::rootsum_numeric::numeric_eval_with_rootsum_at(ctx, antiderivative, &var_map)?;
+    let value = sign * (at_hi - at_lo);
+    if !value.is_finite() {
+        return None;
+    }
+    let rational = num_rational::BigRational::from_float(value)?;
+    let number = ctx.add(Expr::Number(rational));
+    let decimal_sym = ctx.intern_symbol("decimal");
+    let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
+    Some(MetaFunctionRewrite {
+        rewritten: node,
+        desc: "approx(definite integral) -> numeric value",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn approx_definite_integral_evaluates_and_gates_poles() {
+        let mut ctx = Context::new();
+        // Happy path: no pole in [2,3]; reference = mpmath 30-digit quadrature.
+        let ok = parse("approx(integrate(1/(x^3-x-1), x, 2, 3))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_meta_function_expr(&mut ctx, ok).expect("must evaluate");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(rendered, "0.0944265690584");
+
+        // Pole inside (1,2) (the plastic-number root of x^3-x-1 at ~1.3247):
+        // the integral diverges, so the call must stay honestly unevaluated.
+        let pole = parse("approx(integrate(1/(x^3-x-1), x, 1, 2))", &mut ctx).expect("parse");
+        assert!(try_rewrite_meta_function_expr(&mut ctx, pole).is_none());
+
+        // Reversed bounds negate.
+        let rev = parse("approx(integrate(1/(x^3-x-1), x, 3, 2))", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_meta_function_expr(&mut ctx, rev).expect("must evaluate");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(rendered, "-0.0944265690584");
+    }
 
     #[test]
     fn rewrites_simplify_transparently() {

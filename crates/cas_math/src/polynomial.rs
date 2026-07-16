@@ -492,6 +492,71 @@ impl Polynomial {
         variations(true).saturating_sub(variations(false))
     }
 
+    /// Count the DISTINCT real roots in the closed interval `[a, b]` (exact
+    /// Sturm: variations `V(a) − V(b)` over the squarefree part count roots in
+    /// `(a, b]`; a root exactly at `a` is added separately). Requires `a <= b`.
+    /// This is the pole-in-interval gate for definite integration over
+    /// `root_sum` antiderivatives — a pole inside the interval means the
+    /// integral diverges, so this count must be EXACT (BigRational Sturm,
+    /// never floats).
+    pub fn count_real_roots_in_interval(&self, a: &BigRational, b: &BigRational) -> usize {
+        if self.is_zero() || self.degree() == 0 || a > b {
+            return 0;
+        }
+        let deriv = self.derivative();
+        let g = self.gcd(&deriv);
+        let squarefree = if g.degree() == 0 {
+            self.clone()
+        } else {
+            match self.div_rem(&g) {
+                Ok((q, _)) => q,
+                Err(_) => self.clone(),
+            }
+        };
+        let squarefree_deriv = squarefree.derivative();
+        let mut chain: Vec<Polynomial> = vec![squarefree.clone(), squarefree_deriv];
+        loop {
+            let last = &chain[chain.len() - 1];
+            if last.is_zero() || last.degree() == 0 {
+                break;
+            }
+            let prev = &chain[chain.len() - 2];
+            let rem = match prev.div_rem(last) {
+                Ok((_, r)) => r,
+                Err(_) => break,
+            };
+            if rem.is_zero() {
+                break;
+            }
+            chain.push(rem.neg());
+        }
+        let variations_at = |x: &BigRational| -> usize {
+            let mut count = 0usize;
+            let mut prev: i8 = 0;
+            for p in &chain {
+                let v = p.eval(x);
+                let s: i8 = if v > BigRational::zero() {
+                    1
+                } else if v < BigRational::zero() {
+                    -1
+                } else {
+                    0
+                };
+                if s == 0 {
+                    continue;
+                }
+                if prev != 0 && s != prev {
+                    count += 1;
+                }
+                prev = s;
+            }
+            count
+        };
+        let in_half_open = variations_at(a).saturating_sub(variations_at(b));
+        let at_left = usize::from(squarefree.eval(a).is_zero());
+        in_half_open + at_left
+    }
+
     // Returns a list of factors. The product of these factors (times content) equals the polynomial.
     // Factors are not necessarily irreducible if they have no rational roots (e.g. x^2 + 1).
     pub fn factor_rational_roots(&self) -> Vec<Polynomial> {
@@ -797,5 +862,44 @@ mod tests {
 
         let result = p.div_rem(&zero);
         assert!(matches!(result, Err(PolynomialError::DivisionByZero)));
+    }
+}
+
+#[cfg(test)]
+mod interval_sturm_tests {
+    use super::*;
+
+    fn poly(coeffs: &[i64]) -> Polynomial {
+        Polynomial::new(
+            coeffs
+                .iter()
+                .map(|&c| BigRational::from_integer(c.into()))
+                .collect(),
+            "x".to_string(),
+        )
+    }
+
+    fn rat(n: i64) -> BigRational {
+        BigRational::from_integer(n.into())
+    }
+
+    #[test]
+    fn interval_sturm_counts_exactly() {
+        // x^3 - x - 1: single real root at ~1.3247.
+        let d = poly(&[-1, -1, 0, 1]);
+        assert_eq!(d.count_real_roots_in_interval(&rat(1), &rat(2)), 1);
+        assert_eq!(d.count_real_roots_in_interval(&rat(2), &rat(3)), 0);
+        assert_eq!(d.count_real_roots_in_interval(&rat(-5), &rat(5)), 1);
+        // x^3 - 3x - 1: three real roots (~-1.53, ~-0.35, ~1.88).
+        let t = poly(&[-1, -3, 0, 1]);
+        assert_eq!(t.count_real_roots_in_interval(&rat(-2), &rat(2)), 3);
+        assert_eq!(t.count_real_roots_in_interval(&rat(0), &rat(2)), 1);
+        // Root exactly at the LEFT endpoint counts (closed interval).
+        let lin = poly(&[-2, 1]); // x - 2
+        assert_eq!(lin.count_real_roots_in_interval(&rat(2), &rat(3)), 1);
+        // Root exactly at the RIGHT endpoint counts too (Sturm (a, b]).
+        assert_eq!(lin.count_real_roots_in_interval(&rat(1), &rat(2)), 1);
+        // Reversed interval is empty by contract.
+        assert_eq!(d.count_real_roots_in_interval(&rat(3), &rat(2)), 0);
     }
 }
