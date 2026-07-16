@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 590 (newest first)
+Active entries: 591 (newest first)
 
+- 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -19966,3 +19967,14 @@ Active entries: 590 (newest first)
   - **Los exponentes negativos gradúan por COMPOSICIÓN**: no añadir el caso `n<0` al handler; la canonicalización `z^(-n) → 1/z^n` + el fold del interior + la regla de división existente lo cierran gratis. Antes de ampliar un handler, sondear si la composición de reglas ya lo cubre.
   - **El baseline de huella committeado puede ser STALE de varios ciclos** (ciclos previos no regeneraron docs/generated): la comparación contra baseline stale FABRICA deltas fantasma que parecen del ciclo actual. Stash-regenerate el baseline fiel ANTES de atribuir; el flujo limpio es: guardar after-files → `git checkout -- docs/generated/` → stash → regenerar baseline → checkout de generated → pop → comparar (evita el conflicto de pop sobre generated).
   - PRÓXIMO PELDAÑO (por el orden revisado del scoping): **A4 — solve complejo cuadrático desnudo** (F12, `solve(x^2+1,x) → {i,-i}`, rama `Δ<0∧Eq` de `solution_set.rs:527`); residual documentado de A1: `(1+i)^(-1)` emite el parcial `(1/2·2-i)/(2)` (ruta recíproca previa, dueño C1-display).
+
+## 2026-07-17 - FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
+
+- area: `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `_path`) + tests de regresión en `latex.rs`
+- status: `retained`. Reportado por el usuario desde la web (que renderiza `result_latex`): `67108864 · (-1 - 1·i)`.
+- capture:
+  - investment_class: soundness de presentación (inconsistencia de contrato wire: `result` y `result_latex` mostraban EXPRESIONES distintas para el mismo AST — el texto elide el coeficiente unidad, el LaTeX lo fabricaba).
+  - cell: raíz-causa: para `Mul(Number(-1), atom)` dentro de cadenas Add, `direct_negative_mul_abs_latex` (latex_core.rs:332) emite `|coef|\cdot atom` SIN elidir `|coef|==1`, y CORTOCIRCUITA antes de la elisión correcta del brazo `:302`. El gemelo de texto (`display/expr.rs:945`, `!n.is_one()`) siempre elidió — por eso CLI bien y web mal. Fix: guard `== "1"` en ambos combinadores (el normal y el `_path` de highlighting — MISMO patrón "los gemelos divergen" que los certificadores de intervalo). Reproducción mínima: `2*(1-i)`. Verificado: 7 probes texto==latex; **barrido adversarial de 168 expresiones** (CSVs de contrato + familia Gaussiana generada) contra 7 smells (`1\cdot` no-dígito, `\cdot 1` colgante, dobles signos, `\frac{1}{1}`) → CERO hallazgos ("¿está generalizado?" → NO, era esta única vía).
+  - validación: workspace 12367/0 (exit real); clippy limpio; engine-fast verde; huella pressure 0-delta, guardrail solo ruido de ranking por timing documentado. Ningún fixture pinneaba el latex buggy.
+  - NO-reproducido (documentado): el reporte citaba input `(1+i)^5000`, pero con la invocación EXACTA de la web (`server.py` → `--steps on --lang es --domain generic --inv-trig strict --time-budget-ms 1700 --value-domain complex`) declina honesto en binario nuevo Y viejo; `67108864·(-1-i)` es EXACTAMENTE `(1+i)^53`. Hipótesis: sesión web con reescritura de input o card de otro probe. Si reaparece tras reiniciar el server: capturar el JSON de `/api/eval`.
+  - retained learning: **los formatters de display vienen en GEMELOS (texto/LaTeX, normal/path-highlighted) y las políticas de elisión deben vivir en TODOS** — un smell visible en un canal y no en otro localiza el bug en la capa de render, no en el AST (el diagnóstico diferencial `result` vs `result_latex` lo aisló en 2 probes). El barrido de smells por regex sobre corpus es barato (~30s) y responde "¿está generalizado?" con evidencia en vez de opinión.

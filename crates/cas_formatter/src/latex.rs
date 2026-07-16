@@ -176,6 +176,58 @@ mod tests {
     }
 
     #[test]
+    fn test_latex_unit_negative_coefficient_elides_in_mul() {
+        // Regression (2026-07-17): `Mul(-1, i)` must render `-i`, never `-1\cdot i`.
+        // Parity with the text formatter, which skips unit coefficients.
+        let mut ctx = Context::new();
+        let neg_one = ctx.num(-1);
+        let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
+        let mul = ctx.add(Expr::Mul(neg_one, i));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: mul,
+        };
+        assert_eq!(latex.to_latex(), "-i");
+    }
+
+    #[test]
+    fn test_latex_unit_negative_coefficient_elides_in_add_chain() {
+        // Regression (2026-07-17): the factored Gaussian display
+        // `Add(-1, Mul(-1, i))` leaked `-1 - 1\cdot i` in LaTeX while the text
+        // formatter showed `-1 - i` (seen via `(1+i)^53` -> 67108864·(-1 - i)).
+        let mut ctx = Context::new();
+        let neg_one_a = ctx.num(-1);
+        let neg_one_b = ctx.num(-1);
+        let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
+        let minus_i = ctx.add(Expr::Mul(neg_one_b, i));
+        let sum = ctx.add(Expr::Add(neg_one_a, minus_i));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: sum,
+        };
+        assert_eq!(latex.to_latex(), "-1 - i");
+    }
+
+    #[test]
+    fn test_latex_non_unit_negative_coefficient_keeps_cdot() {
+        // Guard the sibling case: `Add(1, Mul(-2, x))` keeps its coefficient.
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let neg_two = ctx.num(-2);
+        let x = ctx.var("x");
+        let neg_two_x = ctx.add(Expr::Mul(neg_two, x));
+        let sum = ctx.add(Expr::Add(one, neg_two_x));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: sum,
+        };
+        assert_eq!(latex.to_latex(), "1 - 2\\cdot x");
+    }
+
+    #[test]
     fn test_latex_sqrt_from_power() {
         let mut ctx = Context::new();
         let x = ctx.var("x");

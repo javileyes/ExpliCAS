@@ -333,6 +333,11 @@ pub trait LaTeXRenderer {
         let left_neg = self.direct_negative_factor_latex(l);
         let right_neg = self.direct_negative_factor_latex(r);
         match (left_neg, right_neg) {
+            // A unit magnitude ("1") elides entirely: `-1·i` renders as `-i`, never
+            // `-1\cdot i` (parity with the text formatter, which skips unit
+            // coefficients — see display/expr.rs `positive_non_unit_coefficient`).
+            (Some(left), None) if left == "1" => Some(self.expr_to_latex_mul(r)),
+            (None, Some(right)) if right == "1" => Some(self.expr_to_latex_mul(l)),
             (Some(left), None) => Some(format!("{}\\cdot {}", left, self.expr_to_latex_mul(r))),
             (None, Some(right)) => Some(format!("{}\\cdot {}", self.expr_to_latex_mul(l), right)),
             _ => None,
@@ -1701,6 +1706,14 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         let left_neg = self.direct_negative_factor_latex_path(l, &self.child_path(path, 0));
         let right_neg = self.direct_negative_factor_latex_path(r, &self.child_path(path, 1));
         match (left_neg, right_neg) {
+            // Unit magnitude elides entirely (`-1·i` -> `-i`) — keep in lockstep
+            // with direct_negative_mul_abs_latex above.
+            (Some(left), None) if left == "1" => {
+                Some(self.render_mul_operand(r, &self.child_path(path, 1)))
+            }
+            (None, Some(right)) if right == "1" => {
+                Some(self.render_mul_operand(l, &self.child_path(path, 0)))
+            }
             (Some(left), None) => Some(format!(
                 "{}\\cdot {}",
                 left,
