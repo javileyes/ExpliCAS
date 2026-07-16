@@ -534,6 +534,13 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             }
             Expr::Function(fn_id, args) => {
                 let name = self.context.sym_name(*fn_id);
+                // `decimal(n)`: the approx(...) result wrapper — the one place
+                // an exact rational is presented as a decimal string.
+                if name == "decimal" && args.len() == 1 {
+                    if let Expr::Number(n) = self.context.get(args[0]) {
+                        return write!(f, "{}", crate::decimal::format_rational_decimal(n, 12));
+                    }
+                }
                 // ONLY internal __hold barrier is transparent for display
                 // User-facing hold(...) should be displayed explicitly
                 if crate::hold::is_internal_hold_name(name) && args.len() == 1 {

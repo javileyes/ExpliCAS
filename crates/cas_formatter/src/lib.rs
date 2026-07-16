@@ -7,6 +7,7 @@ pub use cas_ast::{eq, expr_path, hold, ordering, views};
 pub use cas_ast::{Constant, Context, Expr, ExprId};
 
 pub mod conditions;
+pub mod decimal;
 pub mod display;
 pub mod display_clean;
 pub mod display_context;

@@ -141,7 +141,22 @@ pub trait LaTeXRenderer {
             Expr::Pow(base, exp) => self.format_pow(*base, *exp),
             Expr::Neg(e) => self.format_neg(*e),
             Expr::Function(fn_id, args) => {
-                self.format_function(self.context().sym_name(*fn_id), args)
+                let name = self.context().sym_name(*fn_id);
+                // `decimal(n)`: approx(...) result — decimal presentation.
+                if name == "decimal" && args.len() == 1 {
+                    if let Expr::Number(n) = self.context().get(args[0]) {
+                        return crate::decimal::format_rational_decimal(n, 12);
+                    }
+                }
+                // `root_sum(R, t, summand)`: the universal rational-integration
+                // closure — render as a sum over the roots of R.
+                if name == "root_sum" && args.len() == 3 {
+                    let r = self.format_expr(args[0], false);
+                    let t = self.format_expr(args[1], false);
+                    let summand = self.format_expr(args[2], false);
+                    return format!("\\sum_{{{t} \\,:\\, {r} = 0}} \\left({summand}\\right)");
+                }
+                self.format_function(name, args)
             }
             Expr::Matrix { rows, cols, data } => self.format_matrix(*rows, *cols, data),
             Expr::SessionRef(id) => format!("\\#{}", id), // LaTeX escape

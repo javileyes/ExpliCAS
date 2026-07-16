@@ -48,6 +48,22 @@ pub(crate) fn try_rewrite_meta_function_expr(
             rewritten: expand_explicit_arg_with_post_compaction(ctx, arg),
             desc: "expand(x) -> expanded form",
         }),
+        // approx(x) / evalf(x): the explicit numeric-presentation surface.
+        // Exact-only everywhere else; here the value is evaluated in f64
+        // (root_sum-aware: sums over the numeric roots of the resultant) and
+        // wrapped in the `decimal` display node. Free variables or
+        // out-of-scope shapes leave the call unevaluated (no rewrite).
+        "approx" | "evalf" => {
+            let value = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, arg)?;
+            let rational = num_rational::BigRational::from_float(value)?;
+            let number = ctx.add(Expr::Number(rational));
+            let decimal_sym = ctx.intern_symbol("decimal");
+            let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
+            Some(MetaFunctionRewrite {
+                rewritten: node,
+                desc: "approx(x) -> numeric value (12 significant digits)",
+            })
+        }
         _ => None,
     }
 }
