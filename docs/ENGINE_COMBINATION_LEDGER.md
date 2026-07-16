@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 583 (newest first)
+Active entries: 584 (newest first)
 
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
+- 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
@@ -19862,3 +19863,16 @@ Active entries: 583 (newest first)
   - **La forma LIMPIA del RootSum es `t·log(x − w(t))` con w polinómico** — el argumento es LINEAL en x (para D+R squarefree, caso genérico), y w(t) = −b·a⁻¹ mod R sale directo del subresultante grado-1 que E-i ya produce. El único primitivo nuevo es el inverso modular. Toda la "maquinaria algebraica compleja" que el scoping temía para E-iv se reduce a un Euclides extendido de ~15 líneas encima de E-i.
   - **RootSum limpio > expansión radical de sympy** cuando el grado es "resoluble" pero feo (casus irreducibilis): sympy por defecto expande a radicales anidados ilegibles; el RootSum parametrizado es más limpio Y más honesto. El engine puede ser mejor que sympy aquí precisamente por NO forzar la expansión radical.
   - PRÓXIMO PELDAÑO: **E-iv-b** (nodo `Function("RootSum", …)` opaco + render `RootSum(R(t), t → t·ln(x−w(t)))` + eval numérico Σ sobre raíces) → **E-iv-c** (driver + wiring en el Err-arm + gating D/R-squarefree/arg-lineal + verificación numérica). Gradúa `1/(x^3-x-1)`, `1/(x^5-x-1)`, `1/(x^7-1)` etc.
+
+## 2026-07-16 - CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
+
+- area: `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`, `trace_mod`, `rootsum_log_derivative_at`, `verify_rootsum_antiderivative`)
+- status: `retained`. Segundo sub-ciclo de E-iv. **El verificador diferenciar-atrás existente (torre de radicales) NO aplica a RootSum (sin radicales) — este ciclo construye su sustituto: una PRUEBA de identidad exacta en ℚ, más fuerte que el muestreo numérico.**
+- capture:
+  - investment_class: capacidad Fase-1 (gatekeeper G1, cierre universal Cap. E; primitivo net-new).
+  - cell: `d/dx RootSum(R, t↦t·log(x−w(t))) = Σ_{c:R(c)=0} c/(x−w(c))` — y esa suma sobre raíces es la **TRAZA de `t·(x−w(t))⁻¹ mod R`**, computable EXACTA en ℚ sin extraer ninguna raíz: (a) `power_sums` por identidades de Newton (p_k desde los coeficientes de R); (b) `trace_mod(h,R) = Σ h(c) = Σ h_i·p_i`; (c) `rootsum_log_derivative_at` = trace(t·inv mod R) con el inverso modular de E-iv-a; (d) `verify_rootsum_antiderivative`: LHS y RHS son funciones racionales de grado ≤ bound = deg D + deg R·deg w → **igualdad exacta BigRational en 2·bound+1 puntos racionales distintos = prueba de identidad** (una función racional no-nula de grado acotado no puede tener tantas raíces). Paseo determinista 0,1,−1,2,−2,… saltando polos/no-invertibles, con válvula de attempts.
+  - validación: 9/9 tests del módulo — `power_sums` pinneado en raíces conocidas ((t−1)(t−2): p=2,3,5,9,17), traza vía reducción mod R, y el verificador CONFIRMA los 5 casos oráculo (`1/(x^3-x-1)`, `1/(x^5-x-1)` S₅, `x/(x^4+x+1)`, `1/(x^4+x+1)`, `1/(x^7-1)`) y **REFUTA un w desplazado en +1 en los 5** (barrido adversarial integrado al unit test — el verificador no es vacuamente verde). Workspace + clippy + engine-fast (ver informe). Huella byte-idéntica (wired-to-nothing).
+  - retained learning:
+  - **"Σ sobre raíces" no necesita raíces**: cualquier suma `Σ h(c)` sobre las raíces de R es una traza = combinación lineal de sumas de Newton, exacta desde los coeficientes. El patrón convierte verificaciones "numéricas" de RootSum en decisiones EXACTAS — reusable para cualquier residual futuro con RootSum (eval simbólico, igualdad, definidas).
+  - **Igualdad de funciones racionales por evaluación acotada es una PRUEBA, no muestreo**: con grados acotados, 2·bound+1 coincidencias exactas deciden la identidad. Es la versión racional-univariada del principio "soundness gates must be exact" — cero f64, cero epsilon.
+  - PRÓXIMO PELDAÑO: **E-iv-c** — nodo `Function("root_sum",…)` opaco + display + driver en el Err-arm (gate: D y R squarefree, argumento lineal, emisión gateada por ESTE verificador; si no → residual honesto). Gradúa `1/(x^3-x-1)` (batiendo el Cardano de sympy), `1/(x^5-x-1)`, `1/(x^7-1)`.

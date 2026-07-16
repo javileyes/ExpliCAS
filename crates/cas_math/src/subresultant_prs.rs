@@ -425,6 +425,105 @@ pub fn rothstein_trager_log_argument(
     Some((resultant, w))
 }
 
+/// Power sums `p_k = Σ cᵏ` over the roots of `r` (with multiplicity), for
+/// `k = 0..=upto`, via Newton's identities — exact rationals from the
+/// coefficients alone, no root extraction. Requires `deg r ≥ 1`.
+pub fn power_sums(r: &Polynomial, upto: usize) -> Option<Vec<BigRational>> {
+    let n = r.degree();
+    if n == 0 || r.is_zero() {
+        return None;
+    }
+    // Monic normalization: e_i = (-1)^i * elementary symmetric polynomials.
+    let lc = r.leading_coeff();
+    let a: Vec<BigRational> = r.coeffs.iter().map(|c| c / &lc).collect(); // a[i] = coeff of t^i
+    let mut p: Vec<BigRational> = Vec::with_capacity(upto + 1);
+    p.push(BigRational::from_integer((n as i64).into())); // p_0 = n
+    for k in 1..=upto {
+        // Newton: p_k = -k*a_{n-k} - Σ_{i=1}^{k-1} a_{n-i} * p_{k-i}   (k ≤ n)
+        //         p_k = -Σ_{i=1}^{n} a_{n-i} * p_{k-i}                 (k > n)
+        let mut sum = BigRational::zero();
+        for i in 1..k.min(n + 1) {
+            let coeff = a.get(n - i).cloned().unwrap_or_else(BigRational::zero);
+            sum += &coeff * &p[k - i];
+        }
+        if k <= n {
+            let coeff = a.get(n - k).cloned().unwrap_or_else(BigRational::zero);
+            sum += BigRational::from_integer((k as i64).into()) * coeff;
+        }
+        p.push(-sum);
+    }
+    Some(p)
+}
+
+/// The trace `Σ h(c)` over the roots `c` of `r` — exact, via power sums.
+/// `h` is reduced mod `r` first, so any representative works.
+pub fn trace_mod(h: &Polynomial, r: &Polynomial) -> Option<BigRational> {
+    let (_, reduced) = h.div_rem(r).ok()?;
+    let sums = power_sums(r, reduced.degree())?;
+    let mut out = BigRational::zero();
+    for (i, coeff) in reduced.coeffs.iter().enumerate() {
+        out += coeff * &sums[i];
+    }
+    Some(out)
+}
+
+/// Exact evaluation of `d/dx RootSum(R, t ↦ t·log(x − w(t)))` at a rational
+/// point `x₀`: the derivative is `Σ c/(x₀ − w(c))` over the roots of `R`,
+/// which equals the trace of `t·(x₀ − w(t))⁻¹ mod R` — computed entirely in
+/// ℚ via the modular inverse and Newton power sums. `None` when `x₀ − w(t)`
+/// is not invertible mod `R` (an unlucky sample; the caller picks another).
+pub fn rootsum_log_derivative_at(
+    r: &Polynomial,
+    w: &Polynomial,
+    x0: &BigRational,
+) -> Option<BigRational> {
+    // x0 − w(t) as a ℚ[t] element.
+    let shifted = t_const(x0.clone()).sub(w);
+    let inv = modular_inverse(&shifted, r)?;
+    let t_poly = Polynomial::new(vec![BigRational::zero(), BigRational::one()], T.to_string());
+    trace_mod(&t_poly.mul(&inv), r)
+}
+
+/// EXACT proof that `RootSum(R, t ↦ t·log(x − w(t)))` is an antiderivative of
+/// `N/D`: both `Σ c/(x − w(c))` and `N/D` are rational functions of `x` whose
+/// numerator/denominator degrees are bounded by `deg D + deg R·deg w`, so
+/// exact equality at `2·bound + 1` distinct rational points where both sides
+/// are defined PROVES the identity (a nonzero rational function of bounded
+/// degree cannot have that many roots). All arithmetic is BigRational — this
+/// is a decision procedure, not numeric sampling.
+pub fn verify_rootsum_antiderivative(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+    r: &Polynomial,
+    w: &Polynomial,
+) -> bool {
+    let bound = denominator.degree() + r.degree() * w.degree().max(1);
+    let needed = 2 * bound + 1;
+    let mut confirmed = 0usize;
+    let mut k: i64 = 0;
+    let mut attempts = 0usize;
+    // Deterministic sample walk 0, 1, -1, 2, -2, ... skipping poles and
+    // non-invertible points; cap attempts as a safety valve.
+    while confirmed < needed && attempts < 8 * needed + 64 {
+        attempts += 1;
+        let x0 = BigRational::from_integer(k.into());
+        k = if k >= 0 { -(k + 1) } else { -k };
+        let d0 = denominator.eval(&x0);
+        if d0.is_zero() {
+            continue;
+        }
+        let Some(lhs) = rootsum_log_derivative_at(r, w, &x0) else {
+            continue;
+        };
+        let rhs = numerator.eval(&x0) / d0;
+        if lhs != rhs {
+            return false;
+        }
+        confirmed += 1;
+    }
+    confirmed >= needed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,6 +690,69 @@ mod tests {
             assert_eq!(
                 t_ratio_coeffs(&w),
                 ratio(&[(1940, 1051), (-3921, 1051), (29312, 1051), (-32976, 1051)])
+            );
+        }
+    }
+
+    /// Newton power sums pinned on known roots: (t-1)(t-2) = t^2-3t+2 has
+    /// p_0=2, p_1=3, p_2=5, p_3=9, p_4=17.
+    #[test]
+    fn power_sums_match_known_roots() {
+        let r = Polynomial::new(
+            vec![
+                BigRational::from_integer(2.into()),
+                BigRational::from_integer((-3).into()),
+                BigRational::one(),
+            ],
+            T.to_string(),
+        );
+        let p = power_sums(&r, 4).expect("power sums");
+        let ints: Vec<i64> = p
+            .iter()
+            .map(|v| v.to_integer().try_into().unwrap())
+            .collect();
+        assert_eq!(ints, vec![2, 3, 5, 9, 17]);
+        // trace of t^3 mod r = p_3 = 9 (reduction path).
+        let t3 = Polynomial::new(
+            vec![
+                BigRational::zero(),
+                BigRational::zero(),
+                BigRational::zero(),
+                BigRational::one(),
+            ],
+            T.to_string(),
+        );
+        assert_eq!(
+            trace_mod(&t3, &r).expect("trace"),
+            BigRational::from_integer(9.into())
+        );
+    }
+
+    /// The full E-iv chain is an EXACT decision procedure: for each oracle
+    /// case, RootSum(R, t↦t·log(x−w(t))) differentiates back to N/D — proven
+    /// by exact rational identity testing (2·bound+1 points), no numerics.
+    /// Includes the Galois S₅ case where no radical closed form exists.
+    #[test]
+    fn rootsum_antiderivative_verifies_exactly() {
+        for (num, den) in [
+            (vec![1i64], vec![-1i64, -1, 0, 1]),      // 1/(x^3-x-1)
+            (vec![1], vec![-1, -1, 0, 0, 0, 1]),      // 1/(x^5-x-1)  (S_5)
+            (vec![0, 1], vec![1, 1, 0, 0, 1]),        // x/(x^4+x+1)
+            (vec![1], vec![1, 1, 0, 0, 1]),           // 1/(x^4+x+1)
+            (vec![1], vec![-1, 0, 0, 0, 0, 0, 0, 1]), // 1/(x^7-1)
+        ] {
+            let n = poly_x(&num);
+            let d = poly_x(&den);
+            let (r, w) = rothstein_trager_log_argument(&n, &d).expect("log argument");
+            assert!(
+                verify_rootsum_antiderivative(&n, &d, &r, &w),
+                "exact verification must confirm num={num:?} den={den:?}"
+            );
+            // Adversarial: a WRONG w (shifted by 1) must be refuted.
+            let wrong_w = w.add(&t_one());
+            assert!(
+                !verify_rootsum_antiderivative(&n, &d, &r, &wrong_w),
+                "shifted w must be refuted for den={den:?}"
             );
         }
     }
