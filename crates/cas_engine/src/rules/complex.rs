@@ -7,8 +7,9 @@ use crate::rule::Rewrite;
 pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
     try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-    try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
-    try_rewrite_negative_base_half_power_expr, try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
+    try_rewrite_gaussian_power_expr, try_rewrite_i_squared_mul_identity_expr,
+    try_rewrite_imaginary_power_expr, try_rewrite_negative_base_half_power_expr,
+    try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
 };
 
 fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
@@ -20,6 +21,9 @@ fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
         }
         ComplexRewriteKind::GaussianAdd => "Gaussian addition: (a+bi) + (c+di) = (a+c) + (b+d)i",
         ComplexRewriteKind::GaussianDiv => "Gaussian division: (a+bi)/(c+di) using conjugate",
+        ComplexRewriteKind::GaussianPower => {
+            "Gaussian power: (a+bi)^n by repeated multiplication (using i² = -1)"
+        }
         ComplexRewriteKind::SqrtNegative => "sqrt(-n) = i·√n (complex mode)",
     }
 }
@@ -113,12 +117,29 @@ define_rule!(
     }
 );
 
+define_rule!(
+    GaussianPowRule,
+    "Gaussian Power",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        // `(a+bi)^n` (true binomial base, integer n ≥ 2) folds to its exact
+        // Gaussian value. Real / pure-imaginary bases decline inside the helper
+        // (owned by ordinary arithmetic and power-of-a-product + i^n).
+        let rewrite = try_rewrite_gaussian_power_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImaginaryPowerRule));
     simplifier.add_rule(Box::new(ISquaredMulRule));
     simplifier.add_rule(Box::new(GaussianMulRule));
     simplifier.add_rule(Box::new(GaussianAddRule));
     simplifier.add_rule(Box::new(GaussianDivRule));
+    simplifier.add_rule(Box::new(GaussianPowRule));
     simplifier.add_rule(Box::new(SqrtNegativeRule));
     simplifier.add_rule(Box::new(NegativeBaseHalfPowerRule));
 }

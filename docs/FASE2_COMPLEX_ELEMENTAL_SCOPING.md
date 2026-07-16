@@ -61,7 +61,8 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 
 ### Bloque A — algebraico exacto (sin dependencia nueva)
 
-#### ☐ A1 — Potencia entera Gaussiana `(a+bi)^n` **[S] — PRIMER CICLO**
+#### ☑ A1 — Potencia entera Gaussiana `(a+bi)^n` **[S] — HECHO** *(2026-07-16, hash en el ledger)*
+- **Graduado:** `(1+i)^2→2i`, `(1+i)^3→2(i-1)`, `(2+i)^4→-7+24i`, `(3+4i)^2`, `(1-2i)^3→-11+2i`, `(1/2+i)^2→-3/4+i` (la canonicalización racional pliega `Div(1,2)` antes de la regla — extract_gaussian NO se ensanchó, lección widening-collector). **BONUS: `(1+i)^(-2)→-i/2` gradúa GRATIS** (canonicaliza a `1/(1+i)^2`, el fold interior + GaussianDivRule rematan — la composición anticipada en el scoping). Composiciones verifican: `(1+i)^2+(1-i)^2→0`, `(1+i)^2·(1-i)^2→4`. Ownership intacto (`^0`,`^1`, `(2i)^3`, `i^7`, `(x+i)^2` simbólico); modo real byte-idéntico; cap 4096 declina honesto (`(1+i)^5000`). `GaussianRational` estrena `mul()`/`pow()` como métodos (repeated squaring exacto). Narración al nivel de las 7 hermanas (rule + traza LaTeX). Residual documentado: `(1+i)^(-1)` sigue emitiendo el parcial `(1/2·2-i)/(2)` (ruta recíproca previa, dueño C1-display).
 - **Gradúa:** `(1+i)^2 → 2·i`, `(1+i)^3 → 2·i-2`, `(2+i)^4`, `(3+4i)^2`.
 - **Inserción:** `complex_support.rs:85` (variante `ComplexRewriteKind::GaussianPower`, antes del `}` en `:86`); `complex_support.rs:70` (impl `GaussianRational`: métodos `mul()/pow()` exactos sobre `BigRational` — hoy CERO ops son método); `complex_support.rs:~405` (`try_rewrite_gaussian_power_expr`, con **guard `g.is_real() || g.is_pure_imag() → None`** para no colisionar con `ImaginaryPowerRule`, exponente entero ≥0); `complex.rs:24` (brazo desc); `complex.rs:114` (`GaussianPowRule`, gate `RealOnly→None`); `complex.rs:123` (`add_rule` en `register()`).
 - **Reuso:** `extract_gaussian`, `to_expr`, fórmula mul inline `:239‑244`, `define_rule!` domain-aware.

@@ -6,9 +6,16 @@ los horizontes y, para cada uno, los items concretos. Fundado en dos evaluacione
 multi-agente (2026-06-21): la de completitud de la frontera real, y la de extensibilidad
 arquitectónica a complejo y multivariable.
 
-**Regla de oro:** la **Fase 1 es el ÚNICO objetivo activo**. Las Fases 2 y 3 NO se empiezan
-hasta cruzar el umbral de Fase 1 — existen aquí para que las decisiones de HOY las
-mantengan baratas (ver §Guardrails inter-fase). No son "deferred = abandonadas"; son
+**Regla de oro (actualizada 2026-07-16):** el umbral de Fase 1 quedó **CRUZADO 2026-07-15**
+(los 3 criterios del checklist cumplidos) y la **Fase 2 está ACTIVA** desde 2026-07-16 por
+decisión del usuario (frente complejo primero, ver la sección de Fase 2). La Fase 3 sigue
+gated tras la Fase 2. La regla de fondo se mantiene: cada fase se abre SOLO al cruzar el
+umbral de la anterior, y los guardrails inter-fase (§final) siguen siendo obligatorios en
+cada ciclo — ahora también preparan la Fase 3.
+
+*Texto original (histórico):* la **Fase 1 es el ÚNICO objetivo activo**. Las Fases 2 y 3 NO
+se empiezan hasta cruzar el umbral de Fase 1 — existen aquí para que las decisiones de HOY
+las mantengan baratas (ver §Guardrails inter-fase). No son "deferred = abandonadas"; son
 "deferred = secuenciadas, y conscientemente preparadas".
 
 **Qué ordena la fase (y qué no).** La restricción de fase ordena SOLO el trabajo de
@@ -173,9 +180,17 @@ cuando, los tres se cumplen:
 
 ---
 
-## Fase 2 — Complejo elemental principal-branch + cálculo vectorial multivariable  **[SIGUIENTE, gated]**
+## Fase 2 — Complejo elemental principal-branch + cálculo vectorial multivariable  **[ACTIVA 2026-07-16 — frente complejo ABIERTO]**
 
-**No se empieza hasta cruzar el umbral de Fase 1.** *Estimación de los audits, sin re-medir:*
+**⚑ ABIERTA 2026-07-16** (umbral de Fase 1 cruzado 2026-07-15; decisión del usuario). El
+frente elegido primero es el **Complejo elemental**, re-validado con el scoping workflow
+prometido abajo: `docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (6 mappers + síntesis + doble
+verificación adversarial; secuencia de sub-ciclos A1→A4→A2→A5 + bloque B re-scopeable +
+C transversales). **A1 (potencia Gaussiana) ATERRIZADO 2026-07-16** (hash en el ledger).
+El frente vectorial multivariable queda pendiente de su propio scoping al llegarle el turno.
+
+*Texto original (histórico):* **No se empieza hasta cruzar el umbral de Fase 1.**
+*Estimación de los audits, sin re-medir:*
 ambos serían **≈ M total y sin reescritura fundamental** sobre los cimientos reales. Es la
 proyección de dos evaluaciones de un solo día (2026-06-21), no una medición asentada: **estas
 estimaciones se re-validan con un scoping workflow al cruzar el umbral, no antes.** Cuál ir

@@ -1,4 +1,4 @@
-use super::complex::{extract_gaussian, GaussianRational, ImaginaryPowerRule};
+use super::complex::{extract_gaussian, GaussianPowRule, GaussianRational, ImaginaryPowerRule};
 use crate::rule::Rule;
 use cas_ast::{Constant, Context, Expr};
 use cas_formatter::DisplayExpr;
@@ -128,4 +128,110 @@ fn test_gaussian_to_expr() {
         }
     );
     assert_eq!(display, "3 + 2 * i");
+}
+
+/// Build `(a + i)^n` with integer `a`.
+fn int_plus_i_pow(ctx: &mut Context, a: i64, n: i64) -> cas_ast::ExprId {
+    let re = ctx.num(a);
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let base = ctx.add(Expr::Add(re, i));
+    let exp = ctx.num(n);
+    ctx.add(Expr::Pow(base, exp))
+}
+
+#[test]
+fn test_gaussian_power_squares_binomial() {
+    let mut ctx = Context::new();
+    let rule = GaussianPowRule;
+    let expr = int_plus_i_pow(&mut ctx, 1, 2);
+
+    let rewrite = rule.apply(&mut ctx, expr, &complex_ctx()).unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "2 * i"
+    );
+}
+
+#[test]
+fn test_gaussian_power_fourth_power_lands_real() {
+    // (1+i)^4 = -4: the fold may land on a pure-real value (no re-match risk).
+    let mut ctx = Context::new();
+    let rule = GaussianPowRule;
+    let expr = int_plus_i_pow(&mut ctx, 1, 4);
+
+    let rewrite = rule.apply(&mut ctx, expr, &complex_ctx()).unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "-4"
+    );
+}
+
+#[test]
+fn test_gaussian_power_general_binomial() {
+    // (2+i)^4 = -7 + 24i. The display layer renders the negative real part
+    // trailing ("24 * i - 7") — cartesian-order display normalization is a
+    // separate, scoped follow-up (Fase 2 C1); this pins the VALUE contract.
+    let mut ctx = Context::new();
+    let rule = GaussianPowRule;
+    let expr = int_plus_i_pow(&mut ctx, 2, 4);
+
+    let rewrite = rule.apply(&mut ctx, expr, &complex_ctx()).unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "24 * i - 7"
+    );
+    // Value check independent of display ordering: extract back as Gaussian.
+    let g = extract_gaussian(&ctx, rewrite.new_expr).expect("gaussian");
+    assert_eq!(g.real, BigRational::from_integer((-7).into()));
+    assert_eq!(g.imag, BigRational::from_integer(24.into()));
+}
+
+#[test]
+fn test_gaussian_power_inert_in_real_only_mode() {
+    // Footprint guard: in RealOnly (the default) the rule must return None,
+    // keeping real-mode output byte-identical.
+    let mut ctx = Context::new();
+    let rule = GaussianPowRule;
+    let expr = int_plus_i_pow(&mut ctx, 1, 2);
+
+    let real_ctx = crate::parent_context::ParentContext::root();
+    assert!(rule.apply(&mut ctx, expr, &real_ctx).is_none());
+}
+
+#[test]
+fn test_gaussian_power_declines_owned_shapes() {
+    let mut ctx = Context::new();
+    let rule = GaussianPowRule;
+
+    // Pure-imaginary base is owned by power-of-a-product + i^n.
+    let two = ctx.num(2);
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let two_i = ctx.add(Expr::Mul(two, i));
+    let three = ctx.num(3);
+    let imag_pow = ctx.add(Expr::Pow(two_i, three));
+    assert!(rule.apply(&mut ctx, imag_pow, &complex_ctx()).is_none());
+
+    // n = 1 has an existing owner; negative exponents decline here.
+    let unit_pow = int_plus_i_pow(&mut ctx, 1, 1);
+    assert!(rule.apply(&mut ctx, unit_pow, &complex_ctx()).is_none());
+    let neg_pow = int_plus_i_pow(&mut ctx, 1, -2);
+    assert!(rule.apply(&mut ctx, neg_pow, &complex_ctx()).is_none());
 }

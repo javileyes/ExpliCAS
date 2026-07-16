@@ -24,6 +24,29 @@ impl GaussianRational {
         self.real.is_zero() && !self.imag.is_zero()
     }
 
+    /// Exact Gaussian product: `(a+bi)(c+di) = (ac-bd) + (ad+bc)i`.
+    pub fn mul(&self, other: &Self) -> Self {
+        let real = &self.real * &other.real - &self.imag * &other.imag;
+        let imag = &self.real * &other.imag + &self.imag * &other.real;
+        Self { real, imag }
+    }
+
+    /// Exact non-negative integer power by repeated squaring (`z^0 = 1`).
+    pub fn pow(&self, mut n: u64) -> Self {
+        let mut result = Self::new(BigRational::one(), BigRational::zero());
+        let mut base = self.clone();
+        while n > 0 {
+            if n & 1 == 1 {
+                result = result.mul(&base);
+            }
+            n >>= 1;
+            if n > 0 {
+                base = base.mul(&base);
+            }
+        }
+        result
+    }
+
     /// Materialize this Gaussian number back into AST form.
     pub fn to_expr(&self, ctx: &mut Context) -> ExprId {
         let zero = BigRational::zero();
@@ -82,6 +105,7 @@ pub enum ComplexRewriteKind {
     GaussianMul,
     GaussianAdd,
     GaussianDiv,
+    GaussianPower,
     SqrtNegative,
 }
 
@@ -404,13 +428,58 @@ pub fn try_rewrite_negative_base_half_power_expr(
     })
 }
 
+/// Cap on the exponent admitted by [`try_rewrite_gaussian_power_expr`]. Beyond it
+/// the fold declines (honest residual): this bounds eager evaluation — coefficient
+/// bit-size grows linearly with the exponent — as declared intent, not as a patch.
+const MAX_GAUSSIAN_POWER_EXPONENT: u64 = 4096;
+
+/// Rewrite `(a+bi)^n` (true Gaussian binomial base, `a≠0 ∧ b≠0`, integer `n ≥ 2`)
+/// into its exact Gaussian value by repeated squaring.
+///
+/// Ownership guards: a real base defers to ordinary arithmetic; a pure-imaginary
+/// base (`(k·i)^n`, bare `i^n`) already folds via power-of-a-product +
+/// [`try_rewrite_imaginary_power_expr`] — this rule claims ONLY the binomial gap.
+/// `n ∈ {0, 1}` have existing owners; a negative exponent canonicalises to
+/// `1/(a+bi)^n`, whose inner power this rule folds and Gaussian division finishes.
+pub fn try_rewrite_gaussian_power_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    use crate::numeric_eval::as_rational_const;
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+
+    let g = extract_gaussian(ctx, base)?;
+    if g.is_real() || g.is_pure_imag() {
+        return None;
+    }
+
+    let n = as_rational_const(ctx, exp)?;
+    if !n.is_integer() {
+        return None;
+    }
+    let n_int = n.to_integer();
+    if n_int < num_bigint::BigInt::from(2)
+        || n_int > num_bigint::BigInt::from(MAX_GAUSSIAN_POWER_EXPONENT)
+    {
+        return None;
+    }
+    let n_u64 = n_int.to_u64()?;
+
+    let rewritten = g.pow(n_u64).to_expr(ctx);
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::GaussianPower,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         extract_gaussian, try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
-        try_rewrite_gaussian_mul_expr, try_rewrite_i_squared_mul_identity_expr,
-        try_rewrite_imaginary_power_expr, try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
-        GaussianRational,
+        try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
+        try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
+        try_rewrite_sqrt_negative_expr, ComplexRewriteKind, GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -546,5 +615,98 @@ mod tests {
             ),
             "-1"
         );
+    }
+
+    fn gauss(re: i64, im: i64) -> GaussianRational {
+        GaussianRational::new(
+            BigRational::from_integer(re.into()),
+            BigRational::from_integer(im.into()),
+        )
+    }
+
+    #[test]
+    fn gaussian_mul_method_exact() {
+        // (1+2i)(3+4i) = 3-8 + (4+6)i = -5+10i
+        let p = gauss(1, 2).mul(&gauss(3, 4));
+        assert_eq!(p.real, BigRational::from_integer((-5).into()));
+        assert_eq!(p.imag, BigRational::from_integer(10.into()));
+    }
+
+    #[test]
+    fn gaussian_pow_method_exact() {
+        // (1+i)^2 = 2i ; (1+i)^4 = -4 ; (2+i)^4 = -7+24i ; z^0 = 1
+        let z = gauss(1, 1);
+        let sq = z.pow(2);
+        assert!(sq.real.is_zero());
+        assert_eq!(sq.imag, BigRational::from_integer(2.into()));
+        let fourth = z.pow(4);
+        assert_eq!(fourth.real, BigRational::from_integer((-4).into()));
+        assert!(fourth.imag.is_zero());
+        let w = gauss(2, 1).pow(4);
+        assert_eq!(w.real, BigRational::from_integer((-7).into()));
+        assert_eq!(w.imag, BigRational::from_integer(24.into()));
+        let unit = gauss(5, -3).pow(0);
+        assert!(unit.real.is_one());
+        assert!(unit.imag.is_zero());
+    }
+
+    #[test]
+    fn rewrites_gaussian_power_binomial() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("(1 + i)^2", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_gaussian_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::GaussianPower);
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "2 * i"
+        );
+    }
+
+    #[test]
+    fn rewrites_gaussian_power_rational_coefficients() {
+        // (1/2 + i)^2 = 1/4 - 1 + i = -3/4 + i. Built with Number(1/2) directly:
+        // raw-parse keeps `Div(1,2)`, which extract_gaussian deliberately does not
+        // capture (widening the collector would change all 7 sibling rules'
+        // admission); the pipeline's rational canonicalization folds it upstream.
+        let mut ctx = Context::new();
+        let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let i = ctx.add(Expr::Constant(Constant::I));
+        let base = ctx.add(Expr::Add(half, i));
+        let two = ctx.num(2);
+        let expr = ctx.add(Expr::Pow(base, two));
+        let rewrite = try_rewrite_gaussian_power_expr(&mut ctx, expr).expect("rewrite");
+        let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
+        assert_eq!(g.real, BigRational::new((-3).into(), 4.into()));
+        assert!(g.imag.is_one());
+    }
+
+    #[test]
+    fn gaussian_power_declines_out_of_scope_bases_and_exponents() {
+        let mut ctx = Context::new();
+        // Real base: ordinary arithmetic owns it.
+        let real_pow = cas_parser::parse("3^2", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, real_pow).is_none());
+        // Pure-imaginary base: power-of-a-product + i^n own it.
+        let imag_pow = cas_parser::parse("(2*i)^3", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, imag_pow).is_none());
+        // n = 1 has an existing owner; negative and fractional exponents decline.
+        let unit_pow = cas_parser::parse("(1 + i)^1", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, unit_pow).is_none());
+        let neg_pow = cas_parser::parse("(1 + i)^(-2)", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, neg_pow).is_none());
+        let frac_pow = cas_parser::parse("(1 + i)^(1/2)", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, frac_pow).is_none());
+        // Symbolic base declines (extract_gaussian never captures symbols).
+        let sym_pow = cas_parser::parse("(x + i)^2", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, sym_pow).is_none());
+        // Exponent beyond the eager-evaluation cap declines (honest residual).
+        let huge_pow = cas_parser::parse("(1 + i)^5000", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_power_expr(&mut ctx, huge_pow).is_none());
     }
 }

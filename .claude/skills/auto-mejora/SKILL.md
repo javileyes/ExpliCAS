@@ -55,10 +55,15 @@ contexto — son tu memoria externa):
 
 ## Fases del north star (a qué apuntar)
 
-El north star tiene un ORDEN de fases deliberado (detalle en la fuente 7). La
-**Fase 1 es el ÚNICO objetivo activo**; las Fases 2-3 NO se empiezan hasta cruzar
-su umbral — existen para que las decisiones de HOY las mantengan baratas (no son
-"abandonadas", son "secuenciadas y preparadas").
+El north star tiene un ORDEN de fases deliberado (detalle en la fuente 7).
+**ACTUALIZACIÓN 2026-07-16: el umbral de Fase 1 quedó CRUZADO (2026-07-15, los 3
+criterios del checklist) y la Fase 2 está ACTIVA por decisión del usuario — frente
+complejo elemental primero, con scoping propio en
+`docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (secuencia A1→A4→A2→A5 + bloque B
+re-scopeable + C transversales; A1 aterrizado 2026-07-16).** La Fase 3 sigue gated
+tras la Fase 2. La regla de fondo se mantiene: cada fase se abre SOLO al cruzar el
+umbral de la anterior — las fases futuras "existen para que las decisiones de HOY
+las mantengan baratas" (no son "abandonadas", son "secuenciadas y preparadas").
 
 **Qué ordena la restricción de fase (y qué NO).** La restricción de fase ordena
 SOLO el trabajo de **nueva capacidad de cálculo**. **NO** están sujetos a ella y
@@ -78,32 +83,31 @@ operan DENTRO de este marco: el north-star de fase ORDENA la capacidad nueva, no
 deroga el ROI retenible. Cuando la cola P0 de la fuente 6 y la restricción de fase
 de la fuente 7 chocan, **gana P0/soundness**.
 
-- **Fase 1 (ACTIVA) — serio y universal: real, univariable, elemental + educativo
-  básico.** Todo candidato de **capacidad nueva** debe estar aquí (los de soundness/
-  arquitectura quedan exentos, ver arriba). A igualdad de coste, prioriza:
-  1. Los *gatekeepers* del umbral: **integración racional universal**
-     (factor-over-ℝ / LRT, gatekeeper G1) y **narrativa educativa de límites**
-     (L'Hôpital / límite notable / squeeze / factor-cancela, gatekeeper G2).
-     **NOTA 2026-07-15: G2 quedó sustancialmente CERRADO** — la narrativa de
-     límites es MADURA (factor-cancela, notables, L'Hôpital ITERADO, squeeze,
-     jerarquía ∞/∞, `e` vía `(1+1/x)^x`, y ∞−∞ en sus dos formas); el criterio de
-     salida #2 está CUMPLIDO. El gatekeeper VIVO de Fase 1 es **G1**; de los
-     límites solo quedan residuales ESTRECHOS (narración ∞−∞ con denom log/exp, y
-     el algoritmo de VALOR general tipo Gruntz). Prioriza G1 y los wins P1 baratos.
-  2. Wins P1 baratos: sintaxis `diff(x,n)`/`diff(x,y)`, sustitución-u general
-     transcendente, comando `taylor()`/`series()` + linealidad de sumatorios.
-  3. P2/P3 de cobertura y pulido educativo.
-- **Fase 2 (SIGUIENTE, gated) — complejo elemental principal-branch + cálculo
-  vectorial multivariable.** NO la abras hasta el umbral de Fase 1. Ambos ≈ M
-  sobre los cimientos reales, sin reescritura.
+- **Fase 1 (COMPLETADA 2026-07-15 — umbral cruzado) — serio y universal: real,
+  univariable, elemental + educativo básico.** Sus dos gatekeepers quedaron
+  CERRADOS: **G1** (integración racional universal, hasta la clausura RootSum
+  Cap. E-iv) y **G2** (narrativa de límites, MADURA). Los residuales que quedan
+  son ESTRECHOS y NO bloquean (narración ∞−∞ con denom log/exp, algoritmo de
+  VALOR general tipo Gruntz, Track R de presentación): siguen siendo candidatos
+  válidos de pulido, no gatekeepers.
+- **Fase 2 (ACTIVA 2026-07-16) — complejo elemental principal-branch + cálculo
+  vectorial multivariable.** El frente ABIERTO es el complejo elemental; su fuente
+  de verdad de candidatos es `docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (secuencia
+  A1→A4→A2→A5; bloque B transcendental se RE-SCOPEA al aterrizar el bloque A;
+  narración didáctica per-ciclo). Todo candidato de **capacidad nueva** sale de
+  ahí (los de soundness/arquitectura siguen exentos y van primero). El frente
+  vectorial multivariable espera su propio scoping. Guardrail de soundness del
+  frente complejo: reglas nuevas auto-gateadas `RealOnly→None` (modo real
+  byte-idéntico); en complejo, DECLINE honesto antes que valor/conjunto sin red
+  de verificación.
 - **Fase 3 (DESPUÉS) — capas analíticas** (Taylor multivariable, límites
   complejos/multivariable con punt honesto, integrales de línea/superficie;
   residuos solo con caso curricular). El complejo multivaluado / análisis
   complejo completo está FUERA del norte.
 
-**Guardrails inter-fase — OBLIGATORIOS en cada ciclo de Fase 1.** No cuestan más
-hoy y son la razón de que el orden real-primero sea correcto (vuelven Fase 2/3 ≈ M,
-no L):
+**Guardrails inter-fase — OBLIGATORIOS en cada ciclo (aplican igual en Fase 2).**
+No cuestan más hoy y son la razón de que el orden real-primero fue correcto
+(volvieron la Fase 2 ≈ M; ahora preparan la Fase 3 igual de barata):
 1. En toda regla nueva **cuyo resultado dependa del dominio de valores**
    (log/sqrt/exp/potencias/inversas) enhebra `ValueDomain` y gatea real-only
    (`value_domain() == RealOnly => return None`); nunca hard-codees RealOnly en un
