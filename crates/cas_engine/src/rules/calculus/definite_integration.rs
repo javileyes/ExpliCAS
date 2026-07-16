@@ -1236,11 +1236,13 @@ pub(super) fn definite_integration_rewrite(
         None => return None,
     };
     let mut antiderivative = antiderivative;
+    let mut antiderivative_was_held = false;
     loop {
         let unwrapped = cas_ast::hold::unwrap_hold(ctx, antiderivative);
         if unwrapped == antiderivative {
             break;
         }
+        antiderivative_was_held = true;
         antiderivative = unwrapped;
     }
 
@@ -1330,8 +1332,62 @@ pub(super) fn definite_integration_rewrite(
 
     let at_upper = cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.upper);
     let at_lower = cas_ast::substitute_expr_by_id(ctx, antiderivative, call.var_expr, call.lower);
-    let result = ctx.add(Expr::Sub(at_upper, at_lower));
+    let mut result = ctx.add(Expr::Sub(at_upper, at_lower));
+    // A HOLD-wrapped antiderivative (the algorithmic backend's contract: its
+    // canonical surd/root_sum render must not be re-folded) needs the SAME
+    // protection on the substituted difference — without it the simplifier
+    // mangles the mixed SURD log/arctan constants (observed: the x^4-4
+    // definite lost its arctan term entirely, a wrong value). Surd-free
+    // backend results (atanh/log of rational points) fold CORRECTLY and are
+    // pinned pre-folded, so only re-wrap when a surd or root_sum survives in
+    // the substituted difference.
+    if antiderivative_was_held && contains_surd_or_root_sum(ctx, result) {
+        result = cas_ast::hold::wrap_hold(ctx, result);
+    }
     Some(Rewrite::new(result).desc("integrate(f, x, a, b)"))
+}
+
+/// True when the expression contains a `sqrt`/`cbrt` call or a `root_sum`
+/// node — the shapes whose substituted definite differences the simplifier
+/// is known to mangle without the `__hold` barrier.
+fn contains_surd_or_root_sum(ctx: &Context, root: ExprId) -> bool {
+    // Only the MIXED forms need the barrier: a root_sum, or ln/arctan
+    // coexisting with sqrt/cbrt (the x^4-4 mangling shape). Plain surd
+    // powers (arclength) and surd-free atanh/ln fold correctly unwrapped.
+    let mut has_surd = false;
+    let mut has_log_or_arctan = false;
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if ctx.sym_name(*fn_id) == "root_sum" {
+                    return true;
+                }
+                match ctx.builtin_of(*fn_id) {
+                    Some(cas_ast::BuiltinFn::Sqrt) | Some(cas_ast::BuiltinFn::Cbrt) => {
+                        has_surd = true;
+                    }
+                    Some(cas_ast::BuiltinFn::Ln) | Some(cas_ast::BuiltinFn::Arctan) => {
+                        has_log_or_arctan = true;
+                    }
+                    _ => {}
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    has_surd && has_log_or_arctan
 }
 
 /// Boundary-touched endpoints: the obstruction sits exactly at an
@@ -1779,17 +1835,19 @@ fn nonzero_poly_on_interval(
             }
         }
         // Degree ≥ 3: split off the RATIONAL-root factors and check each (linear/quadratic decided
-        // exactly; a leftover degree-≥3 factor with no rational root is `Unknown`). The product is
-        // nonzero iff every factor is, and a factor that vanishes inside makes the integral diverge.
+        // exactly); a leftover degree-≥3 factor is decided by the EXACT interval Sturm count
+        // (G1 E-iv-d3 — this is what opens definite integrals over the algorithmic-backend
+        // antiderivatives, root_sum included). The product is nonzero iff every factor is, and a
+        // factor that vanishes inside makes the integral diverge.
         _ => {
             let factors = poly.factor_rational_roots();
             if factors.len() <= 1 {
-                return IntervalCertificate::Unknown; // no rational root extracted: cannot decide
+                return sturm_nonzero_certificate(poly, lower_bound, upper_bound);
             }
             let mut outcome = IntervalCertificate::Certified;
             for factor in &factors {
                 let certificate = if factor.degree() >= 3 {
-                    IntervalCertificate::Unknown
+                    sturm_nonzero_certificate(factor, lower_bound, upper_bound)
                 } else {
                     nonzero_poly_on_interval(factor, lower_bound, upper_bound)
                 };
@@ -1797,6 +1855,89 @@ fn nonzero_poly_on_interval(
             }
             outcome
         }
+    }
+}
+
+/// EXACT nonzero-on-interval certificate for an arbitrary-degree polynomial
+/// via the interval Sturm count (`count_real_roots_in_interval`,
+/// BigRational throughout — floats never decide). Semi-infinite rays are
+/// reduced to a finite interval through the Cauchy root bound
+/// `M = 1 + max|c_i|/|c_n|` (every real root lies in `[-M, M]`). A root
+/// EXACTLY at a finite endpoint stays `Unknown` (deferred, mirroring the
+/// quadratic case); a root strictly inside is an honest `Undefined`
+/// (the integral diverges at that pole).
+fn sturm_nonzero_certificate(
+    poly: &Polynomial,
+    lower_bound: &DefiniteBound,
+    upper_bound: &DefiniteBound,
+) -> IntervalCertificate {
+    use num_traits::One;
+    let cauchy_bound = || -> BigRational {
+        let lead = poly.leading_coeff();
+        let mut max = BigRational::zero();
+        for c in poly.coeffs.iter().take(poly.degree()) {
+            let ratio = (c / &lead).abs();
+            if ratio > max {
+                max = ratio;
+            }
+        }
+        max + BigRational::one()
+    };
+    let finite_rational = |bound: &DefiniteBound| -> Option<BigRational> {
+        match bound {
+            DefiniteBound::Finite(endpoint) => endpoint.as_pure_rational().cloned(),
+            _ => None,
+        }
+    };
+    let (lo, hi) = match (lower_bound, upper_bound) {
+        (DefiniteBound::NegInfinity, DefiniteBound::PosInfinity) => {
+            return if poly.count_real_roots() == 0 {
+                IntervalCertificate::Certified
+            } else {
+                IntervalCertificate::Undefined
+            };
+        }
+        (DefiniteBound::Finite(_), DefiniteBound::PosInfinity) => {
+            let Some(lo) = finite_rational(lower_bound) else {
+                return IntervalCertificate::Unknown;
+            };
+            let bound = cauchy_bound();
+            if lo > bound {
+                return IntervalCertificate::Certified;
+            }
+            (lo, bound)
+        }
+        (DefiniteBound::NegInfinity, DefiniteBound::Finite(_)) => {
+            let Some(hi) = finite_rational(upper_bound) else {
+                return IntervalCertificate::Unknown;
+            };
+            let bound = -cauchy_bound();
+            if hi < bound {
+                return IntervalCertificate::Certified;
+            }
+            (bound, hi)
+        }
+        (DefiniteBound::Finite(_), DefiniteBound::Finite(_)) => {
+            let (Some(lo), Some(hi)) = (finite_rational(lower_bound), finite_rational(upper_bound))
+            else {
+                return IntervalCertificate::Unknown;
+            };
+            if lo > hi {
+                return IntervalCertificate::Unknown;
+            }
+            (lo, hi)
+        }
+        _ => return IntervalCertificate::Unknown,
+    };
+    // A root exactly at a finite endpoint: defer (boundary semantics belong
+    // to other certificates), matching the quadratic arm's discipline.
+    if poly.eval(&lo).is_zero() || poly.eval(&hi).is_zero() {
+        return IntervalCertificate::Unknown;
+    }
+    if poly.count_real_roots_in_interval(&lo, &hi) == 0 {
+        IntervalCertificate::Certified
+    } else {
+        IntervalCertificate::Undefined
     }
 }
 
@@ -2969,7 +3110,37 @@ fn nonzero_on_interval(
                             }
                         }
                     }
-                    _ => return IntervalCertificate::Unknown,
+                    // Degree ≥ 3 leftover (no rational roots): the EXACT
+                    // interval Sturm count decides (G1 E-iv-d3 — this opens
+                    // definite integrals over every algorithmic-backend
+                    // antiderivative, root_sum included). Roots at an endpoint
+                    // get the same BoundaryTouch semantics as the linear arm;
+                    // a root strictly inside is an honest divergence.
+                    _ => {
+                        let (Some(lo), Some(hi)) = (
+                            interval_low.as_pure_rational(),
+                            interval_high.as_pure_rational(),
+                        ) else {
+                            return IntervalCertificate::Unknown;
+                        };
+                        let at_lower = factor.eval(lo).is_zero();
+                        let at_upper = factor.eval(hi).is_zero();
+                        let total = factor.count_real_roots_in_interval(lo, hi);
+                        let interior =
+                            total.saturating_sub(usize::from(at_lower) + usize::from(at_upper));
+                        if interior > 0 {
+                            return IntervalCertificate::Undefined;
+                        }
+                        let cert = if at_lower || at_upper {
+                            IntervalCertificate::BoundaryTouch {
+                                lower: at_lower,
+                                upper: at_upper,
+                            }
+                        } else {
+                            IntervalCertificate::Certified
+                        };
+                        outcome = combine_certificates(outcome, cert);
+                    }
                 }
             }
             outcome

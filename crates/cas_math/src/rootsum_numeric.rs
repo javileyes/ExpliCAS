@@ -301,6 +301,16 @@ fn numeric_eval_depth(
     if depth == 0 {
         return None;
     }
+    // The internal __hold wrapper (the backend's anti-refold barrier) is
+    // transparent for numeric evaluation.
+    let mut expr = expr;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_hold(ctx, expr);
+        if unwrapped == expr {
+            break;
+        }
+        expr = unwrapped;
+    }
     if !contains_root_sum(ctx, expr) {
         return eval_f64(ctx, expr, var_map).filter(|v| v.is_finite());
     }
@@ -328,6 +338,7 @@ fn numeric_eval_depth(
             Some(numeric_eval_depth(ctx, *l, var_map, depth - 1)? / denom)
         }
         Expr::Neg(inner) => Some(-numeric_eval_depth(ctx, *inner, var_map, depth - 1)?),
+        Expr::Hold(inner) => numeric_eval_depth(ctx, *inner, var_map, depth - 1),
         _ => None,
     }
 }

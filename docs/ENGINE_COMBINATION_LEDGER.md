@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 587 (newest first)
+Active entries: 588 (newest first)
 
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
@@ -122,6 +122,7 @@ Active entries: 587 (newest first)
 - 2026-07-16 | `retained` | `methods.rs` (`rootsum_logarithmic_antiderivative` + 5º bloque del Err-arm co... | CAPACIDAD (G1 Cap. E-iv-c: nodo root_sum + driver + wiring): LA CLAUSURA UNIVERSAL EMITE — la clase Galois-obstruida gradúa
 - 2026-07-16 | `retained` | `cas_math/rootsum_numeric.rs` (nuevo: Durand-Kerner complejo f64 + evaluador ... | CAPACIDAD (G1 Cap. E-iv-d1: approx()/evalf() + display decimal + eval numérico del root_sum + LaTeX Σ): la superficie de CONSUMO numérico
 - 2026-07-16 | `retained` | `polynomial.rs` (`count_real_roots_in_interval` — Sturm exacto V(a)−V(b) sobr... | CAPACIDAD (G1 Cap. E-iv-d2: definidas sobre root_sum + Sturm en intervalo): `approx(integrate(1/(x^3-x-1), x, 2, 3))` → `0.0944265690584`
+- 2026-07-16 | `retained` | `definite_integration.rs` (arm Sturm grado≥3 en `nonzero_on_interval` finita ... | CAPACIDAD (G1 Cap. E-iv-d3: la definida emite la diferencia EXACTA sobre antiderivadas del backend): `integrate(1/(x^5-x-1), x, 2, 3)` → resta de root_sums
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
@@ -19922,3 +19923,18 @@ Active entries: 587 (newest first)
   - validación: unit tests Sturm-intervalo (raíz única/tres raíces/extremos izquierdo Y derecho/invertido) + test del meta-arm (happy + polo-declina + invertido) + probes CLI = referencias mpmath exactas. Workspace/clippy/fast (ver informe).
   - retained learning: **una definida sobre antiderivada opaca es un teorema condicional** — F(b)−F(a) solo vale si F es continua en [a,b]; para integrandos racionales eso es EXACTAMENTE "D sin raíces en [a,b]", decidible por Sturm en intervalo. El primitivo era la única pieza que faltaba (la cadena ya existía inline); extraerlo sirve a cualquier futura definida/FTC honesta.
   - PRÓXIMO PELDAÑO: fila examples.csv del flujo (`approx(integrate(1/(x^5-x-1), x, 2, 3))`); Track R (presentación ℚ-factorable); forma-real-numérica de la antiderivada como EXPRESIÓN (necesita coeficientes decimal en display — residual documentado).
+
+## 2026-07-16 - CAPACIDAD (G1 Cap. E-iv-d3: la definida emite la diferencia EXACTA sobre antiderivadas del backend): `integrate(1/(x^5-x-1), x, 2, 3)` → resta de root_sums
+
+- area: `definite_integration.rs` (arm Sturm grado≥3 en `nonzero_on_interval` finita + `sturm_nonzero_certificate` para la unbounded + re-wrap `__hold` ESTRECHO a surd/root_sum) + `rootsum_numeric.rs` (unwrap de `__hold` transparente) + contratos + examples
+- status: `retained`. Responde la pregunta del usuario ("¿no debería darme root_sum?"): la definida ahora emite la forma exacta; `approx()` es solo el paso a decimal.
+- capture:
+  - investment_class: capacidad Fase-1 (consumo del cierre G1; destapa TODO el backend en definidas).
+  - cell: `∫₂³ 1/(x^5-x-1)` → **resta EXACTA de root_sums con constantes plegadas** (`ln(1619/625 − …)`); `∫₃⁵ 1/(x^4-4)` → forma log/arctan exacta (¡el backend Cap.A por fin en definidas!); `∫₂³ 1/(x^7-1)` → mixta `1/7·(ln(2) + 7·root_sum(…))`; **polo dentro (`∫₁² 1/(x^3-x-1)`, raíz 1.3247) → `undefined` honesto** (mejor que residual: divergencia activa). approx() compone sobre todas: 4/4 = mpmath exacto (0.0132656737263, 0.0944265690584, 0.0099414727316, 0.00238493270422). GAP RESTANTE documentado: condiciones con constantes ALGEBRAICAS (`x−∛2` de CbrtCubic, `x−5^(1/4)` de R2) no son polinómicas → `1/(x^3-2)` definida sigue residual (follow-up: comparación exacta k vs lo³/hi³).
+  - diseño: el chokepoint eran DOS certificadores gemelos — `nonzero_poly_on_interval` (unbounded) y el arm grado≥2 de `nonzero_on_interval` (finita), ambos con `deg≥3 → Unknown`. El Sturm-en-intervalo de d2 los cierra: intervalo finito directo; rayos semi-infinitos vía cota de Cauchy `M=1+max|cᵢ/cₙ|` (raíces ⊂ [−M,M]); raíz EXACTA en extremo → BoundaryTouch (misma semántica que el arm lineal); interior>0 → Undefined.
+  - **WRONG-VALUE cazado EN CICLO (patrón "widening desenmascara bug latente")**: el primer probe de `x^4-4` [3,5] emitió SIN el término arctan (+0.0391 vs verdadero +0.00994) — el simplificador mutila la resta sustituida de formas surd log/arctan (el indefinido se protege con `__hold` y la vía definida lo desenvolvía). Fix: re-wrap `__hold` de la resta, ESTRECHADO en DOS iteraciones guiadas por contratos: el blanket wrap congelaba los atanh/log racionales (`atanh(1/2)−atanh(0)` debía plegar; 2 contratos), y el wrap por-cualquier-surd congelaba el arclength (`13/27·√13−8/27` debía plegar; 1 contrato) → predicado final = root_sum ∨ (surd ∧ ln/arctan) — EXACTAMENTE la forma mutilada, ni más ni menos. El evaluador numérico desenvuelve `__hold` transparente (era `Function("__hold")`, no `Expr::Hold` — el doc del módulo lo decía).
+  - validación: integrate contracts **367/0**; workspace/clippy/fast (ver informe); smoke web OK (examples actualizados: la definida S₅ muestra la forma exacta; el divergente muestra `undefined`); dueños definidos existentes intactos (x², 1/x, impropias π/2).
+  - retained learning:
+  - **Los certificadores de intervalo vienen en PARES (finito/unbounded)** — cerrar el chokepoint en uno deja al gemelo devolviendo Unknown; grep por la constante compartida (`IntervalCertificate`) antes de dar por cerrado un widening de certificación.
+  - **La protección `__hold` debe seguir al VALOR, no a la vía**: el contrato anti-refold del backend aplica a lo que contenga los renders frágiles (surd/root_sum), no a todo lo que pasó por el backend — un wrap por-vía congela plegados correctos y un unwrap por-vía mutila los frágiles. Predicado por CONTENIDO.
+  - PRÓXIMO PELDAÑO: condiciones algebraicas en definidas (`x−∛2` ∉ [a,b] por comparación exacta de potencias); Track R; forma-real-numérica como expresión.

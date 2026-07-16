@@ -915,6 +915,40 @@ fn integrate_contract_even_quartic_real_resolvent_integrates_x4_minus_5_family()
     }
 }
 
+/// G1 Cap. E-iv-d3 (2026-07-16): DEFINITE integrals over algorithmic-backend
+/// antiderivatives emit the EXACT bound-substituted difference — including
+/// the root_sum closure (the S₅ definite!) — certified pole-free on the
+/// interval by the exact Sturm count. A pole strictly inside gives an
+/// honest `undefined` (the integral diverges); the substituted difference
+/// keeps the backend's __hold protection (without it the simplifier mangled
+/// the mixed log/arctan constants — a wrong value caught in-cycle).
+#[test]
+fn integrate_contract_definite_over_backend_antiderivatives() {
+    for (input, fragment) in [
+        ("integrate(1/(x^5-x-1), x, 2, 3)", "root_sum("),
+        ("integrate(1/(x^3-x-1), x, 2, 3)", "root_sum("),
+        ("integrate(1/(x^4-4), x, 3, 5)", "arctan("),
+        ("integrate(1/(x^7-1), x, 2, 3)", "root_sum("),
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "definite must emit the exact difference: {input} -> {result}"
+        );
+        assert!(
+            result.contains(fragment),
+            "expected `{fragment}` in: {input} -> {result}"
+        );
+    }
+    // A pole strictly inside the interval: honest divergence, never a value.
+    let (result, _required) =
+        evaluated_integral_with_required_conditions("integrate(1/(x^3-x-1), x, 1, 2)");
+    assert_eq!(
+        result, "undefined",
+        "pole inside [1,2] must report divergence"
+    );
+}
+
 /// G1 residual R3 (2026-07-15): the doubly-even octic `c/(x^8 + P·x^4 + R)`
 /// with `S = √R`, `s = √S` rational and `A = √(2S − P)` irrational splits over
 /// ℝ as two conjugate quartics in ℚ(A), each splitting into a symmetric surd
