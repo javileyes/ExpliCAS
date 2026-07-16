@@ -676,16 +676,17 @@ fn integrate_contract_real_root_quadratic_factor_renders_real_log_ratio() {
     );
 }
 
-/// Honest-residual contract for the later G1 sub-cycles: denominators needing
-/// factorization over an algebraic extension not yet covered (√5-quadratics,
-/// cube roots, deeper even quartics) must stay residual — declining, never
-/// emitting a wrong antiderivative.
+/// Honest-residual contract for the universal closure's gates: symbolic
+/// coefficients, non-squarefree denominators and non-squarefree resultants
+/// must stay residual — declining, never emitting a wrong antiderivative.
+/// (Every earlier algebraic-extension pin graduated: √5/∛2 via Cap. C/D,
+/// the octics via R3, and the Galois-obstructed class via the E-iv RootSum.)
 #[test]
 fn integrate_contract_algebraic_extension_denominators_stay_residual() {
     for input in [
-        "integrate(1/(x^3-x-1), x)", // cubic with an irrational non-∛ root
-        "integrate(1/(x^4+x+1), x)", // resolvent cubic has no rational root
-        "integrate(1/(x^5-2), x)",   // irreducible quintic: no quartic factor at all
+        "integrate(1/(x^3-a), x)", // symbolic coefficient: no numeric resultant
+        "integrate(1/((x^3-x-1)^2), x)", // non-squarefree denominator
+        "integrate(1/(x^8+x^4+1), x)", // non-squarefree Rothstein-Trager resultant
     ] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
@@ -903,12 +904,13 @@ fn integrate_contract_even_quartic_real_resolvent_integrates_x4_minus_5_family()
     );
 
     // Δ < 0 (complex resolvent roots outside the even/general quartic owners)
-    // stays an honest residual: this render only claims Δ > 0 non-square.
+    // is out of THIS render's scope — the E-iv universal RootSum closure now
+    // claims those shapes instead (verified by its exact-identity proof).
     for input in ["integrate(1/(x^4+5), x)", "integrate(1/(x^4+2*x^2+3), x)"] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
-            result.contains("integrate("),
-            "negative-discriminant resolvent is out of scope for R2: {input} -> {result}"
+            result.contains("root_sum("),
+            "delta<0 quartics now emit via the RootSum closure: {input} -> {result}"
         );
     }
 }
@@ -949,20 +951,79 @@ fn integrate_contract_doubly_even_octic_integrates_x8_plus_1_family() {
         );
     }
 
-    // Honest declines: A² ≤ 0 (x^8+3x^4+1), s irrational (x^8+4), and
-    // non-constant numerators outside the u-substitution owners.
+    // A² ≤ 0 (x^8+3x^4+1), s irrational (x^8+4) and non-constant numerators
+    // are out of THIS render's scope — the E-iv universal RootSum closure now
+    // claims most of them (verified by its exact-identity proof); x/(x^8+1)
+    // stays an honest residual (no clean linear log argument in its PRS).
     for input in [
         "integrate(1/(x^8+3*x^4+1), x)",
         "integrate(1/(x^8+4), x)",
         "integrate(x^2/(x^8+1), x)",
-        "integrate(x/(x^8+1), x)",
     ] {
         let (result, _required) = evaluated_integral_with_required_conditions(input);
         assert!(
-            result.contains("integrate("),
-            "out of the R3 gate, must stay residual: {input} -> {result}"
+            result.contains("root_sum("),
+            "out of the R3 gate but claimed by the RootSum closure: {input} -> {result}"
         );
     }
+    {
+        let input = "integrate(x/(x^8+1), x)";
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            result.contains("integrate("),
+            "no clean linear log argument, must stay residual: {input} -> {result}"
+        );
+    }
+}
+
+/// G1 Cap. E-iv (2026-07-16): the UNIVERSAL closure. Denominators whose
+/// Rothstein-Trager resultant R(t) is squarefree emit the clean parameterized
+/// form `root_sum(R(t), t, t·ln(x − w(t)))` — including the Galois-obstructed
+/// class where NO radical closed form exists (`1/(x^5-x-1)` is the canonical
+/// S₅ case, and SymPy expands the "solvable" `1/(x^3-x-1)` into an unreadable
+/// Cardano nested-radical monster; the clean RootSum strictly beats it).
+/// Rational roots of R peel into elementary real logs (`1/(x^7-1)` →
+/// `(1/7)·ln|x−1| + root_sum(...)`). Emission is gated on the EXACT
+/// rational-identity proof (Newton traces at 2·bound+1 exact points), and the
+/// only public conditions are the integrand's own pole conditions — the
+/// root_sum node is a binder, opaque to domain inference (no bound-variable
+/// leaks).
+#[test]
+fn integrate_contract_rootsum_universal_closure_emits() {
+    for (input, fragment) in [
+        ("integrate(1/(x^3-x-1), x)", "root_sum("),
+        ("integrate(1/(x^5-x-1), x)", "root_sum("),
+        ("integrate(x/(x^4+x+1), x)", "root_sum("),
+        (
+            "integrate(1/(x^5-2), x)",
+            "root_sum(1 - 50000 * t^5, t, t * ln(x - 10 * t))",
+        ),
+        ("integrate(1/(x^3-3*x-1), x)", "root_sum("),
+        // Mixed: the rational root of R peels into an elementary log.
+        ("integrate(1/(x^7-1), x)", "ln(|x - 1|)"),
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate("),
+            "should emit via the RootSum closure: {input} -> {result}"
+        );
+        assert!(
+            result.contains(fragment),
+            "expected `{fragment}` in: {input} -> {result}"
+        );
+        assert!(
+            !result.contains("root_sum") || result.contains("t * ln("),
+            "the summand must be the clean t·ln(x − w(t)) form: {result}"
+        );
+    }
+
+    // The bound variable must never leak into public conditions.
+    let (_, required) = evaluated_integral_with_required_conditions("integrate(1/(x^3-x-1), x)");
+    assert_eq!(
+        required,
+        vec!["x^3 - x - 1 ≠ 0"],
+        "only the integrand pole condition may surface: {required:?}"
+    );
 }
 
 #[test]

@@ -444,6 +444,12 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
 
     while let Some((expr, inside_calculus_call)) = stack.pop() {
         match ctx.get(expr) {
+            // `root_sum(R(t), t, body)` BINDS `t`: any condition read off its
+            // body would leak the bound variable to the public boundary as a
+            // nonsense pointwise predicate (`x - 7·t != 0`). The node is
+            // domain-opaque — its real-domain honesty is carried by the
+            // integrand's own pole conditions — so do not descend at all.
+            Expr::Function(fn_id, _) if ctx.sym_name(*fn_id) == "root_sum" => {}
             Expr::Function(fn_id, args)
                 if !inside_calculus_call
                     && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Acosh)

@@ -213,11 +213,10 @@ fn sextic_rational_factoring_fully_over_q_verifies() {
 fn sextic_rational_irreducible_over_q_stays_residual() {
     // A raised algebraic zero-test budget must not falsely CLAIM a denominator whose real
     // factorization is not yet rendered — it only lets an already-correct render VERIFY.
-    // (1/(x^6+1) and 1/(x^8-1) moved into scope via G1 Cap. B, 1/(x^5-1) via Cap. C, and
-    // 1/(x^8+1) via the R3 doubly-even octic probe — all now legitimate results; an
-    // irreducible quintic like x^5-2 has no quartic factor at all, and a septic like x^7-2
-    // is outside every rendered family, so they must stay residual regardless of budget.)
-    for src in ["1/(x^5-2)", "1/(x^7-2)"] {
+    // (x^5-2 and x^7-2 graduated via the E-iv RootSum closure; the honest
+    // declines are now the shapes the closure gates out: symbolic
+    // coefficients and non-squarefree denominators.)
+    for src in ["1/(x^3-a)", "1/((x^3-x-1)^2)"] {
         let mut ctx = Context::new();
         let integrand = cas_parser::parse(src, &mut ctx).expect("integrand");
         let candidate = try_algorithmic_integration_backend(
@@ -6118,9 +6117,10 @@ fn general_quartic_conjugate_pair_verifies_phi5_family() {
         );
     }
 
-    // Honest declines: x⁴+x+1 (resolvent cubic t³ − 4t − 1 has no rational
-    // root) and x⁵−2 (irreducible quintic, no quartic factor at all).
-    for source in ["1/(x^4+x+1)", "1/(x^5-2)"] {
+    // Honest declines for the whole pipeline: symbolic coefficients and a
+    // non-squarefree denominator. (x⁴+x+1 and x⁵−2 graduated via the E-iv
+    // RootSum closure — they are no longer residual anywhere.)
+    for source in ["1/(x^4+a)", "1/((x^2+x+1)^2*(x^3-2))"] {
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,
@@ -6175,9 +6175,10 @@ fn cbrt_cubic_factor_verifies_x3_minus_k_family() {
         );
     }
 
-    // Honest decline: a cubic with an irrational non-∛ root is out of scope.
+    // Honest decline: a symbolic-coefficient cubic is out of every route's
+    // scope. (1/(x^3-x-1) graduated via the E-iv RootSum closure.)
     {
-        let source = "1/(x^3-x-1)";
+        let source = "1/(x^3-a)";
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,
@@ -6237,9 +6238,10 @@ fn even_quartic_real_resolvent_verifies_x4_minus_5_family() {
         );
     }
 
-    // Honest declines: Δ < 0 keeps the complex-resolvent quartics out of this
-    // render's scope (they stay with their existing owners or residual).
-    for source in ["1/(x^4+5)", "1/(x^4+2*x^2+3)"] {
+    // Honest declines for the whole pipeline: symbolic coefficients and a
+    // non-squarefree denominator. (The Δ < 0 quartics 1/(x^4+5) and
+    // 1/(x^4+2x^2+3) graduated via the E-iv RootSum closure.)
+    for source in ["1/(x^4+a)", "1/((x^4+5)^2)"] {
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,
@@ -6297,7 +6299,71 @@ fn doubly_even_octic_verifies_x8_plus_1_family() {
 
     // Honest declines: A^2 <= 0 (x^8+3x^4+1), s irrational (x^8+4), and
     // non-constant numerators stay with their owners or residual.
-    for source in ["1/(x^8+3*x^4+1)", "1/(x^8+4)", "x^2/(x^8+1)"] {
+    // (x^8+3x^4+1, x^8+4 and x^2/(x^8+1) graduated via the E-iv RootSum
+    // closure; the honest declines are the closure's own gates.)
+    for source in ["1/(x^8+b)", "x/(x^8+1)"] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            !matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must stay an honest residual (got {:?})",
+            candidate.verification_status
+        );
+    }
+}
+
+#[test]
+fn rootsum_universal_closure_verifies_galois_obstructed_family() {
+    // G1 Cap. E-iv-c: denominators whose Rothstein-Trager resultant has
+    // irreducible factors of degree >= 3 (no radical closed form exists) emit
+    // the clean parameterized RootSum, gated on the EXACT rational-identity
+    // proof (Newton traces) and marked Preverified — the symbolic
+    // differentiator cannot rewrite the opaque node, and that is expected.
+    let mut ctx = Context::new();
+    for source in [
+        "1/(x^3-x-1)", // solvable-but-Cardano cubic: we beat SymPy's output
+        "1/(x^5-x-1)", // Galois S_5: RootSum is the ONLY elementary form
+        "x/(x^4+x+1)",
+        "1/(x^7-1)", // mixed: rational root peels into (1/7)ln|x-1|
+        "1/(x^5-2)",
+        "1/(x^3-3*x-1)", // three real roots
+    ] {
+        let integrand = cas_parser::parse(source, &mut ctx).expect(source);
+        let candidate = try_algorithmic_integration_backend(
+            &mut ctx,
+            integrand,
+            "x",
+            AlgorithmicIntegrationBackendConfig::diagnostic_only(),
+        );
+        assert!(
+            matches!(
+                candidate.verification_status,
+                AlgorithmicIntegrationVerificationStatus::Verified
+                    | AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+            ),
+            "{source} must verify through the RootSum closure (got {:?}, blocker: {:?})",
+            candidate.verification_status,
+            candidate.verification_blocker
+        );
+        assert_eq!(
+            candidate.verification_evidence,
+            AlgorithmicIntegrationVerificationEvidence::Preverified,
+            "{source} must carry the exact-proof evidence"
+        );
+    }
+
+    // Honest declines: symbolic coefficients, non-squarefree denominators,
+    // and a non-squarefree resultant (x^8+x^4+1).
+    for source in ["1/(x^3-a)", "1/((x^3-x-1)^2)", "1/(x^8+x^4+1)"] {
         let integrand = cas_parser::parse(source, &mut ctx).expect(source);
         let candidate = try_algorithmic_integration_backend(
             &mut ctx,

@@ -89,6 +89,40 @@ fn try_rational_reciprocal_affine_probe(
                 verify_antiderivative_by_differentiation(ctx, &mut candidate);
                 return AlgorithmicIntegrationProbeResult::Candidate(candidate);
             }
+            if let Some((antiderivative, required_conditions)) =
+                rootsum_logarithmic_antiderivative(ctx, integrand, variable)
+            {
+                let mut candidate = AlgorithmicIntegrationCandidate::unverified(
+                    integrand,
+                    variable,
+                    antiderivative,
+                    AlgorithmicIntegrationMethod::Rational,
+                );
+                if !probe_runner.try_verification_check() {
+                    candidate.mark_budget_exceeded();
+                    return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+                }
+                // The antiderivative contains an opaque `root_sum` node the
+                // symbolic differentiator cannot rewrite, so the standard
+                // differentiate-back check is inapplicable here. Emission was
+                // instead gated INSIDE the builder on the EXACT rational
+                // identity proof (`verify_rootsum_antiderivative`: the
+                // Newton-trace derivative equals N/D at 2·bound+1 exact
+                // rational points — a decision procedure, strictly stronger
+                // than sampled differentiation). Mark that as Preverified.
+                candidate.verification_status = if required_conditions.is_empty() {
+                    AlgorithmicIntegrationVerificationStatus::Verified
+                } else {
+                    AlgorithmicIntegrationVerificationStatus::VerifiedUnderConditions
+                };
+                candidate.required_conditions = required_conditions;
+                candidate.verification_evidence =
+                    AlgorithmicIntegrationVerificationEvidence::Preverified;
+                // `unverified` pre-fills the residual reason pending the
+                // standard verification report; the exact proof clears it.
+                candidate.residual_reason = None;
+                return AlgorithmicIntegrationProbeResult::Candidate(candidate);
+            }
             return AlgorithmicIntegrationProbeResult::NoMatch(reason);
         }
     };
@@ -1822,6 +1856,167 @@ fn doubly_even_octic_antiderivative(
     }
 
     Some(result)
+}
+
+/// Integrate `N/D` in the UNIVERSAL clean RootSum form (G1 Cap. E-iv-c):
+/// `∫ N/D = Σ_{c: R(c)=0} c·ln(x − w(c))`, written as elementary logs for the
+/// RATIONAL roots of `R` plus an opaque `root_sum(R₂(t), t, t·ln(x − w₂(t)))`
+/// node over the remaining (irrational, possibly non-solvable) roots. This is
+/// the closure for denominators whose Rothstein-Trager resultant has
+/// irreducible factors of degree ≥ 3 — the Galois-obstructed class
+/// (`1/(x^3-x-1)`, `1/(x^5-x-1)` = S₅, `1/(x^7-1)`) where NO radical closed
+/// form exists and the parameterized RootSum is the only elementary answer.
+/// SymPy expands the "solvable" cubic case through Cardano into an unreadable
+/// nested-radical monster; the clean RootSum strictly beats it.
+///
+/// Pipeline: `R(t) = res_x(N − t·D', D)` and `w(t)` (log argument, linear in
+/// `x`) come from the E-i subresultant PRS + the E-iv-a modular inverse. The
+/// rational roots of `R` are peeled into real logs `c·ln|x − w(c)|` (their
+/// poles are REAL rational poles of the integrand → NonZero conditions); the
+/// rest stays as one RootSum whose summand uses the plain complex-analytic
+/// `ln` (conjugate-pair imaginary parts combine into the arctan content —
+/// an `abs` would destroy that pairing). The RootSum block's real poles are
+/// covered by a polynomial `NonZero(D₂)` condition, emitted ONLY when Sturm
+/// (`count_real_roots`, exact) says `D₂` has real roots.
+///
+/// EMISSION GATE: `verify_rootsum_antiderivative` — the exact
+/// rational-identity PROOF (E-iv-b: trace of `t·(x₀−w(t))⁻¹ mod R` equals
+/// `N/D` at `2·bound+1` exact rational points). The standard differentiate-back
+/// verifier cannot differentiate the opaque node, so the candidate is marked
+/// Preverified on the strength of that proof; a failed proof (or any
+/// structural degeneracy, or > 2 conditions — the public cap) declines to an
+/// honest residual.
+fn rootsum_logarithmic_antiderivative(
+    ctx: &mut Context,
+    integrand: ExprId,
+    variable: &str,
+) -> Option<(ExprId, Vec<ConditionPredicate>)> {
+    let (numerator_expr, denominator_expr) = match ctx.get(integrand) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let denominator =
+        crate::polynomial::Polynomial::from_expr(ctx, denominator_expr, variable).ok()?;
+    // Degrees ≤ 2 (and everything ℚ-factorable / template-shaped) are owned by
+    // the earlier routes; this probe only runs after they ALL declined.
+    if denominator.degree() < 3 {
+        return None;
+    }
+    let numerator = crate::polynomial::Polynomial::from_expr(ctx, numerator_expr, variable).ok()?;
+    if numerator.is_zero() || numerator.degree() >= denominator.degree() {
+        return None;
+    }
+    // D squarefree and coprime with N: repeated parts belong to Ostrogradsky,
+    // shared factors to cancellation — both live in other owners.
+    if denominator.gcd(&denominator.derivative()).degree() != 0
+        || numerator.gcd(&denominator).degree() != 0
+    {
+        return None;
+    }
+
+    let (r, w) = crate::subresultant_prs::rothstein_trager_log_argument(&numerator, &denominator)?;
+    if r.degree() < 2 {
+        return None;
+    }
+    // R squarefree: the clean single-w RootSum form needs distinct roots.
+    if r.gcd(&r.derivative()).degree() != 0 {
+        return None;
+    }
+    // THE gate: exact identity proof (never emit an unproven RootSum).
+    if !crate::subresultant_prs::verify_rootsum_antiderivative(&numerator, &denominator, &r, &w) {
+        return None;
+    }
+
+    // Peel the RATIONAL roots of R into elementary real logs.
+    let variable_expr = ctx.var(variable);
+    let mut conditions: Vec<ConditionPredicate> = Vec::new();
+    let mut elementary = ctx.num(0);
+    let mut remaining_denominator = denominator.clone();
+    let mut r2 = crate::polynomial::Polynomial::one("t".to_string());
+    for factor in r.factor_rational_roots() {
+        if factor.degree() == 1 {
+            // q·t + c0 = 0  ⇒  root = −c0/q.
+            let root = -&factor.coeffs[0] / &factor.coeffs[1];
+            if root.is_zero() {
+                // A zero log coefficient contributes nothing (and would make
+                // the elementary term degenerate); R(0)=0 means res vanishes
+                // at t=0, a structural oddity — decline honestly.
+                return None;
+            }
+            let pole = w.eval(&root);
+            // Defense in depth: x = w(c) must be a real pole of the integrand.
+            if !denominator.eval(&pole).is_zero() {
+                return None;
+            }
+            // Strip the linear factor from D for the RootSum condition block.
+            let linear = crate::polynomial::Polynomial::new(
+                vec![-pole.clone(), num_traits::One::one()],
+                variable.to_string(),
+            );
+            let (quotient, rem) = remaining_denominator.div_rem(&linear).ok()?;
+            if !rem.is_zero() {
+                return None;
+            }
+            remaining_denominator = quotient;
+            // c·ln|x − w(c)| + NonZero(x − w(c)).
+            let pole_expr = ctx.add(Expr::Number(pole));
+            let shifted = build_backend_difference(ctx, variable_expr, pole_expr);
+            let abs = ctx.call_builtin(BuiltinFn::Abs, vec![shifted]);
+            let ln = ctx.call_builtin(BuiltinFn::Ln, vec![abs]);
+            let coeff = ctx.add(Expr::Number(root));
+            let term = build_backend_product(ctx, coeff, ln);
+            elementary = build_backend_sum(ctx, elementary, term);
+            conditions.push(ConditionPredicate::NonZero(shifted));
+        } else if factor.degree() >= 2 {
+            r2 = r2.mul(&factor);
+        }
+    }
+    // The irrational block must be genuinely present (a fully rational R is
+    // ℚ-factorable territory and would not have reached this probe).
+    if r2.degree() < 2 {
+        return None;
+    }
+    let (_, w2) = w.div_rem(&r2).ok()?;
+
+    // Real poles of the RootSum block: exact Sturm count on the remaining
+    // denominator factor. No real roots ⇒ positive-definite ⇒ no condition.
+    if remaining_denominator.count_real_roots() > 0 {
+        let d2_expr = remaining_denominator.to_expr(ctx);
+        conditions.push(ConditionPredicate::NonZero(d2_expr));
+    }
+    // Public boundary allows at most two NonZero conditions.
+    if conditions.len() > 2 {
+        return None;
+    }
+
+    // Build root_sum(R₂(t), t, t·ln(x − w₂(t))) with a collision-free bound var.
+    let bound_name = if variable == "t" { "s" } else { "t" };
+    let rebind = |p: &crate::polynomial::Polynomial| crate::polynomial::Polynomial {
+        coeffs: p.coeffs.clone(),
+        var: bound_name.to_string(),
+    };
+    let r2_expr = rebind(&r2).to_expr(ctx);
+    let bound_var = ctx.var(bound_name);
+    // Spell the log argument additively when every coefficient of w₂ is
+    // non-positive (`x + 20·t`, not the double-negative `x - -20·t`).
+    let all_nonpositive = !w2.is_zero() && w2.coeffs.iter().all(|c| !c.is_positive());
+    let ln_arg = if all_nonpositive {
+        let neg_w2_expr = rebind(&w2.neg()).to_expr(ctx);
+        build_backend_sum(ctx, variable_expr, neg_w2_expr)
+    } else {
+        let w2_expr = rebind(&w2).to_expr(ctx);
+        build_backend_difference(ctx, variable_expr, w2_expr)
+    };
+    let ln = ctx.call_builtin(BuiltinFn::Ln, vec![ln_arg]);
+    let summand = build_backend_product(ctx, bound_var, ln);
+    let root_sum_sym = ctx.intern_symbol("root_sum");
+    let node = ctx.add(Expr::Function(
+        root_sum_sym,
+        vec![r2_expr, bound_var, summand],
+    ));
+
+    let result = build_backend_sum(ctx, elementary, node);
+    Some((result, conditions))
 }
 
 /// Integrate `(a3*x^3 + a2*x^2 + a1*x + a0) / (x^4 + p*x^2 + r)` when the even

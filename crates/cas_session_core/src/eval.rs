@@ -79,6 +79,11 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         // / `diff(f, x, y)` desugared by `HigherOrderDiffRule`.
         "diff" => arity >= 2,
         "integrate" => matches!(arity, 1 | 2 | 4),
+        // Opaque parameterized sum over the roots of a polynomial, produced by
+        // the universal rational-integration closure (G1 Cap. E-iv):
+        // `root_sum(R(t), t, summand)`. Accepted back as input so emitted
+        // results stay re-enterable; it evaluates to itself (symbolic node).
+        "root_sum" => arity == 3,
         "sum" | "product" => arity == 4,
         // taylor(f, x) (default order) / taylor(f, x, n) / taylor(f, x, point, n) and `series`.
         "taylor" | "series" => matches!(arity, 2..=4),
