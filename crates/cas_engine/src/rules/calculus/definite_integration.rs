@@ -2996,6 +2996,50 @@ fn denominator_provably_nonzero_everywhere(ctx: &mut Context, expr: ExprId) -> b
     prove_pos(ctx, neg)
 }
 
+/// Certificate for a LINEAR condition `x ± C` whose root is an ALGEBRAIC
+/// constant (`∛2`, nested `√(√20/2)`, …) the polynomial path cannot parse:
+/// the exact constant-bounds oracle (`const_value_bounds`, outward
+/// BigRational enclosures — floats never decide) locates the root against
+/// the closed interval. Enclosure fully outside → Certified; enclosure
+/// strictly inside → Undefined (a pole: the integral diverges); anything
+/// touching an endpoint or undecided → Unknown (honest residual).
+fn algebraic_linear_condition_certificate(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> Option<IntervalCertificate> {
+    use cas_math::expr_predicates::contains_variable;
+    let is_var = |ctx: &Context, e: ExprId| -> bool {
+        matches!(ctx.get(e), Expr::Variable(sym) if ctx.sym_name(*sym) == var_name)
+    };
+    // Extract the root expression: `x − C` (root C), `x + C` / `C + x`
+    // (root −C), `C − x` (root C). The constant side must be variable-free.
+    let (constant, negate) = match ctx.get(expr) {
+        Expr::Sub(a, b) if is_var(ctx, *a) && !contains_variable(ctx, *b) => (*b, false),
+        Expr::Sub(a, b) if is_var(ctx, *b) && !contains_variable(ctx, *a) => (*a, false),
+        Expr::Add(a, b) if is_var(ctx, *a) && !contains_variable(ctx, *b) => (*b, true),
+        Expr::Add(a, b) if is_var(ctx, *b) && !contains_variable(ctx, *a) => (*a, true),
+        _ => return None,
+    };
+    let (mut root_lo, mut root_hi) = cas_math::const_sign::const_value_bounds(ctx, constant)?;
+    if negate {
+        let (l, h) = (-root_hi, -root_lo);
+        root_lo = l;
+        root_hi = h;
+    }
+    let lo = interval_low.as_pure_rational()?;
+    let hi = interval_high.as_pure_rational()?;
+    if &root_hi < lo || &root_lo > hi {
+        return Some(IntervalCertificate::Certified);
+    }
+    if &root_lo > lo && &root_hi < hi {
+        return Some(IntervalCertificate::Undefined);
+    }
+    Some(IntervalCertificate::Unknown)
+}
+
 fn nonzero_on_interval(
     ctx: &mut Context,
     expr: ExprId,
@@ -3018,6 +3062,19 @@ fn nonzero_on_interval(
     let poly = match Polynomial::from_expr(ctx, expr, var_name) {
         Ok(poly) => poly,
         Err(_) => {
+            // A linear condition with an ALGEBRAIC constant root (`x − ∛2`
+            // from the CbrtCubic render, `x − √(√20/2)` from the R2 poles):
+            // locate the root against the interval through the EXACT
+            // constant-bounds oracle (G1 E-iv-d3 follow-up).
+            if let Some(certificate) = algebraic_linear_condition_certificate(
+                ctx,
+                expr,
+                var_name,
+                interval_low,
+                interval_high,
+            ) {
+                return certificate;
+            }
             // A TRANSCENDENTAL denominator the polynomial path cannot parse
             // (`e^x + 1`, `cosh(x) + 2`): if it is provably positive — or negative —
             // EVERYWHERE, it has no pole anywhere, so the definite FTC path is safe on

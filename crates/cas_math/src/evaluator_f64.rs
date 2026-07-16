@@ -367,6 +367,9 @@ fn eval_function_checked(
             Ok(arg.sqrt())
         }
 
+        // Cube root: the real odd root (negative radicands included).
+        "cbrt" => Ok(arg_vals.first().copied().unwrap_or(0.0).cbrt()),
+
         // Other functions
         "abs" => Ok(arg_vals.first().copied().unwrap_or(0.0).abs()),
         "floor" => Ok(arg_vals.first().copied().unwrap_or(0.0).floor()),
@@ -502,6 +505,7 @@ fn eval_f64_depth(
 
                 // Other
                 "sqrt" => Some(arg_vals.first()?.sqrt()),
+                "cbrt" => Some(arg_vals.first()?.cbrt()),
                 "abs" => Some(arg_vals.first()?.abs()),
                 "floor" => Some(arg_vals.first()?.floor()),
                 "ceil" => Some(arg_vals.first()?.ceil()),

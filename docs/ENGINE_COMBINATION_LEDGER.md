@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 588 (newest first)
+Active entries: 589 (newest first)
 
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
@@ -123,6 +123,7 @@ Active entries: 588 (newest first)
 - 2026-07-16 | `retained` | `cas_math/rootsum_numeric.rs` (nuevo: Durand-Kerner complejo f64 + evaluador ... | CAPACIDAD (G1 Cap. E-iv-d1: approx()/evalf() + display decimal + eval numérico del root_sum + LaTeX Σ): la superficie de CONSUMO numérico
 - 2026-07-16 | `retained` | `polynomial.rs` (`count_real_roots_in_interval` — Sturm exacto V(a)−V(b) sobr... | CAPACIDAD (G1 Cap. E-iv-d2: definidas sobre root_sum + Sturm en intervalo): `approx(integrate(1/(x^3-x-1), x, 2, 3))` → `0.0944265690584`
 - 2026-07-16 | `retained` | `definite_integration.rs` (arm Sturm grado≥3 en `nonzero_on_interval` finita ... | CAPACIDAD (G1 Cap. E-iv-d3: la definida emite la diferencia EXACTA sobre antiderivadas del backend): `integrate(1/(x^5-x-1), x, 2, 3)` → resta de root_sums
+- 2026-07-16 | `retained` | `definite_integration.rs` (`algebraic_linear_condition_certificate`: condició... | CAPACIDAD (G1 E-iv-d4: condiciones de polo ALGEBRAICAS en definidas): `integrate(1/(x^3-2), x, 2, 3)` emite exacto
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
@@ -19938,3 +19939,14 @@ Active entries: 588 (newest first)
   - **Los certificadores de intervalo vienen en PARES (finito/unbounded)** — cerrar el chokepoint en uno deja al gemelo devolviendo Unknown; grep por la constante compartida (`IntervalCertificate`) antes de dar por cerrado un widening de certificación.
   - **La protección `__hold` debe seguir al VALOR, no a la vía**: el contrato anti-refold del backend aplica a lo que contenga los renders frágiles (surd/root_sum), no a todo lo que pasó por el backend — un wrap por-vía congela plegados correctos y un unwrap por-vía mutila los frágiles. Predicado por CONTENIDO.
   - PRÓXIMO PELDAÑO: condiciones algebraicas en definidas (`x−∛2` ∉ [a,b] por comparación exacta de potencias); Track R; forma-real-numérica como expresión.
+
+## 2026-07-16 - CAPACIDAD (G1 E-iv-d4: condiciones de polo ALGEBRAICAS en definidas): `integrate(1/(x^3-2), x, 2, 3)` emite exacto
+
+- area: `definite_integration.rs` (`algebraic_linear_condition_certificate`: condición lineal `x ± C` con C algebraica localizada vía `const_value_bounds`) + `const_sign.rs` (arm `Cbrt` del oráculo de cotas — raíz impar monótona, radicandos negativos incluidos) + `evaluator_f64.rs` (arms `cbrt` en ambos evaluadores) + pins
+- status: `retained`. Cierra el gap documentado en d3.
+- capture:
+  - investment_class: capacidad Fase-1 (consumo del cierre G1).
+  - cell: `∫₂³ 1/(x^3-2)` → forma exacta cbrt/arctan/log; `approx(...)` → **0.0826140448044 = mpmath exacto**; `∫₃⁴ 1/(x^4-5)` → **0.00743324486274 = mpmath exacto**; `∫₁² 1/(x^4-5)` (polo 5^(1/4)≈1.495 dentro) → **`undefined` honesto**. `approx(cbrt(2))` → 1.25992104989 de regalo.
+  - diseño: la condición `x − ∛2` no es polinómica → nuevo certificado en el Err-arm de `nonzero_on_interval`: extrae la raíz de la forma lineal (`x−C`/`x+C`/`C+x`, C variable-free), la ENCIERRA con `const_value_bounds` (cotas racionales exactas outward, ∛/√-anidada/π/e) y compara: enclosure fuera del intervalo → Certified; estrictamente dentro → Undefined; tocando extremo → Unknown. El oráculo necesitaba el arm `Cbrt` (solo tenía `Pow(k,1/3)`; Cap.D emite el builtin — otra instancia del gotcha "el spelling del radical importa").
+  - retained learning: **el certificado algebraico es enclosure-vs-intervalo, no igualdad** — con cotas outward exactas, "fuera" y "estrictamente dentro" son decidibles; "en el extremo" no (y no hace falta: conservador). El mismo predicado sirve para CUALQUIER constante que el oráculo acote — una sola pieza cierra ∛ (Cap.D), radios anidados (R2/R3) y futuros.
+  - PRÓXIMO PELDAÑO: Track R (presentación); forma-real-numérica como expresión.

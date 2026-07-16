@@ -475,6 +475,23 @@ fn const_value_bounds_depth(
                 let (_, hi) = sqrt_bounds(&ah)?;
                 let (lo, _) = sqrt_bounds(&al)?;
                 Some((lo, hi))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Cbrt) && args.len() == 1 {
+                // cbrt(a): monotone increasing on ALL of ℝ (odd root — negative
+                // radicands are real, the G1 R1 branch), so the bounds are the
+                // per-endpoint cube-root enclosures.
+                let (al, ah) = bounds(args[0])?;
+                let third = BigRational::new(1.into(), 3.into());
+                let cbrt_point = |r: &BigRational| -> Option<(BigRational, BigRational)> {
+                    if r.is_negative() {
+                        let (lo, hi) = interval_pow((-r.clone(), -r.clone()), &third)?;
+                        Some((-hi, -lo))
+                    } else {
+                        interval_pow((r.clone(), r.clone()), &third)
+                    }
+                };
+                let (lo, _) = cbrt_point(&al)?;
+                let (_, hi) = cbrt_point(&ah)?;
+                Some((lo, hi))
             } else if ctx.is_builtin_call(expr, BuiltinFn::Ln) && args.len() == 1 {
                 ln_interval_bounds(bounds(args[0])?)
             } else if ctx.is_builtin_call(expr, BuiltinFn::Log2) && args.len() == 1 {

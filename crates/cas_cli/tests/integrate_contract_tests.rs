@@ -940,13 +940,30 @@ fn integrate_contract_definite_over_backend_antiderivatives() {
             "expected `{fragment}` in: {input} -> {result}"
         );
     }
+    // Algebraic-constant pole conditions (x − ∛2, x − 5^(1/4)) are located
+    // against the interval by the exact constant-bounds oracle: outside the
+    // interval emits, strictly inside reports divergence (E-iv-d4).
+    for (input, fragment) in [
+        ("integrate(1/(x^3-2), x, 2, 3)", "cbrt("),
+        ("integrate(1/(x^4-5), x, 3, 4)", "arctan("),
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            !result.contains("integrate(") && result.contains(fragment),
+            "algebraic pole outside the interval must emit: {input} -> {result}"
+        );
+    }
     // A pole strictly inside the interval: honest divergence, never a value.
-    let (result, _required) =
-        evaluated_integral_with_required_conditions("integrate(1/(x^3-x-1), x, 1, 2)");
-    assert_eq!(
-        result, "undefined",
-        "pole inside [1,2] must report divergence"
-    );
+    for input in [
+        "integrate(1/(x^3-x-1), x, 1, 2)",
+        "integrate(1/(x^4-5), x, 1, 2)", // pole at 5^(1/4) ≈ 1.495
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(
+            result, "undefined",
+            "pole inside the interval must report divergence: {input}"
+        );
+    }
 }
 
 /// G1 residual R3 (2026-07-15): the doubly-even octic `c/(x^8 + P·x^4 + R)`
