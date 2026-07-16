@@ -76,11 +76,12 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 - **Inserción:** `cas_ast/src/builtin.rs` (**5 sitios sincronizados**: enum + `name()` + `from_name()` + `ALL_BUILTINS` + `COUNT 46→49`); `cas_session_core/src/eval.rs:68` (`is_known_eval_engine_function` pasa auto si `from_name` es `Some`); `abs_support.rs:299` (rama módulo Gaussiano reusando `negative_abs_to_i_sqrt` para el fold de cuadrado perfecto); reglas de despacho `Re/Im/conjugate` target `FUNCTION` en `complex.rs:116`; helpers puros en `complex_support.rs`.
 - **Reuso:** `extract_gaussian`, `to_expr`, `negative_abs_to_i_sqrt`.
 - **Blast:** **MEDIO** — `builtin.rs` de 5 sitios (`COUNT` desincronizado = fallo SILENCIOSO). `Arg` **NO** va aquí (necesita `atan2` transcendental → B3).
-- **Decisión de gating (surfaceada por la verificación):** las 7 reglas existentes gatean OFF en `RealOnly`. Un `|a+bi|` **sin gate** haría `abs(3+4i)→5` en modo REAL mientras la álgebra Gaussiana sigue congelada. Además, en `RealOnly` `i` es un **símbolo ordinario** (`domain_contract_tests.rs:653`). → **Gatear el módulo/builtins a `ComplexEnabled`** por consistencia (recomendado), o documentar la asimetría conscientemente.
+- **Decisión de gating (TOMADA en la revisión 2026-07-16):** las 7 reglas existentes gatean OFF en `RealOnly`. Un `|a+bi|` **sin gate** haría `abs(3+4i)→5` en modo REAL mientras la álgebra Gaussiana sigue congelada; además, en `RealOnly` `i` es un **símbolo ordinario** (`domain_contract_tests.rs:653`), así que evaluar su módulo sería incoherente con la semántica del modo. → **Módulo y builtins gateados a `ComplexEnabled`**, como sus 7 hermanas.
 - **Depende:** nada.
 - **Retención:** `domain_contract_tests.rs:394` (`prove_positive(i)==Unknown`) DEBE sobrevivir — un módulo/comparación nuevo NO debe hacer `prove_positive(i)=Proven`.
 
-#### ☐ A3 — Reducción exacta `i²=-1` en la capa de equivalencia (CHOKEPOINT-B) **[S/M]**
+#### ☐ A3 — Reducción exacta `i²=-1` en la capa de equivalencia (CHOKEPOINT-B) **[S/M — DIFERIDO, on-demand]**
+> **Decisión de revisión (2026-07-16):** NO es prerequisito duro de A1/A2/A4/A5 (la aritmética Gaussiana y las raíces cuadráticas son exactas por construcción). Su valor real aparece cuando un ciclo necesite CONFIRMAR una identidad algebraica compleja (integración compleja, verificación de antiderivadas con `i`). **Se difiere hasta que un ciclo lo requiera** — en ese momento se ejecuta como prerequisito nombrado de ese ciclo (patrón nivel-2 de G1), no como ciclo especulativo.
 - **Gradúa:** `(x+i)(x-i) ≡ x²+1` confirmable exactamente; el verificador de integración complejo puede confirmar antiderivadas con `i` una vez conocido `i²=-1`.
 - **Inserción:** `expr_domain.rs:10` (reducción `i²=-1` en `multipoly_from_expr` — módulo `i²+1`) y `semantic_equality.rs:16`; `general_integration_backend/verification.rs:176` (confirm de antiderivada compleja).
 - **Reuso:** la maquinaria multipoly existente; `GaussianRational` para el confirm cerrado.
@@ -109,6 +110,7 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 #### ☐ B1 — Evaluador numérico complejo (`Complex<f64>`, **refute-only**) **[M] — el primitivo E-i del bloque**
 - **Gradúa:** unit-tests de `eval_complex` (exp/ln/powc principal-branch) verdes + probe refute-only cableado en la equivalencia; `approx(abs(i)) → 1.0`.
 - **Inserción:** `cas_math/Cargo.toml` (dep NUEVA `num-complex = "0.4"` — hoy AUSENTE; `num-rational` `:17` y `num-bigint` `:19` son 0.4, `num-traits` `:18` es 0.2, `num-integer` `:20` es 0.1); `evaluator_f64.rs:534` (añadir `eval_complex` **PARALELO, NO ensanchar la firma de `eval_f64`**); `numeric_eval.rs:290` (`numeric_poly_zero_check`: fallback probe complejo **refute-only**); `engine/equivalence.rs:78/:344` (fallback numérico complejo refute-only; `:65` confirm exacto sigue en ℚ[i]).
+- **Decisión abierta (evaluar al re-scopear el bloque B):** `num-complex` como dep vs. `Complex<f64>` hand-rolled (~50 líneas: add/mul/exp/ln/powc/sqrt principal-branch). El repo es soundness-first y casi todo hand-rolled; el probe es refute-only (tolerante a f64), así que ambas vías son sound — decidir por mantenimiento, no por soundness.
 - **Reuso:** la asimetría de exactitud YA codificada `eval/actions.rs:450` ("un probe puede REFUTAR, nunca CONFIRMAR"); `numeric_poly_zero_check` ya la implementa para reales. `num-complex` trae `exp/ln/powc/sqrt` principal-branch out-of-the-box.
 - **Blast:** **MEDIO** — add PARALELO (no widening). `eval_f64` se re-exporta en `cas_engine/api.rs:79`, `cas_solver/api.rs:22` y ~8 sitios de `solve_backend_local` → **NO cambiar su firma** (rompería suites round-trip/metamorphic).
 - **Depende:** nada duro, pero **DEBE ir antes de B2/B3/B4**.
@@ -149,11 +151,12 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 - **Blast:** **BAJO** (cosmético) pero interactúa con pins de formato → migración consciente.
 - **Depende:** nada; ROI mayor tras A1/A2.
 
-#### ☐ C2 — Narración didáctica de operaciones complejas **[M]**
-- **Gradúa:** trazas `--steps` para las operaciones complejas (hoy `description: None` → 0% educativo, paralelo a como límites estaba a 0%). El engine es explícitamente **educativo**; ningún ciclo A/B lo listaba como entregable.
+#### ☐ C2 — Pulido/localización de la narración compleja **[S — reducido en la revisión 2026-07-16]**
+- **Contexto de la reducción:** la narración didáctica dejó de ser un batch final — es **entregable per-ciclo** dentro del `graduates` de cada A/B (ver "Orden recomendado"). Dejar las reglas nacer mudas para narrarlas después repetiría el error histórico de "límites a 0% educativo".
+- **Gradúa (lo que queda aquí):** localización es/en de las descripciones (`format_complex_rewrite_desc` emite solo inglés hoy), elevación de narraciones-cáscara a cadenas multi-paso donde aporte (p.ej. la división por conjugado narrada en 2 pasos), y coherencia de estilo con la narrativa G2.
 - **Inserción:** templates es/en en `locale.rs` + builders en `cas_didactic` (mismo patrón que la narrativa de límites G2).
-- **Blast:** **MEDIO** — capa didáctica, huella NONE sobre resultados.
-- **Depende:** las capacidades que narra (puede ir al final, o como entregable **per-ciclo** dentro del `graduates` de cada A/B — decisión de estilo).
+- **Blast:** **BAJO** — capa didáctica, huella NONE sobre resultados.
+- **Depende:** las capacidades ya narradas per-ciclo; va al final del frente.
 
 ---
 
@@ -163,7 +166,14 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 
 **Resolución explícita de la dependencia M3↔M4** (por qué la red numérica NO va primero): el evaluador numérico complejo (**B1**) **no** es prerequisito de los ciclos algebraicos (A1‑A5 son EXACTOS, verificables por ℚ[i] o keep/drop-safe). B1 **sí** es prerequisito **duro y único** de los transcendentales (B2/B3/B4): las identidades a-nivel-valor (`e^(iπ)=-1`, `ln(-1)=iπ`) no tienen variable → el diff-back simbólico es inaplicable → el probe numérico complejo es el ÚNICO cross-check independiente; sin él el engine soundness-first declina. Por eso B1 es el "primitivo duro reusable, huella byte-idéntica" **pero su lugar es al ENCABEZAR el bloque B**, no en el arranque absoluto.
 
-**Orden global:** `A1 → A2 → A3 → A4 → A5 → B1 → B2 → B3 → B4` (+ `C1/C2` transversales, intercalables). A2/A3/A4 son independientes entre sí; A5 depende de A4; B1 antes de B2/B3; B4 tras B2+B3.
+**Orden global (revisado 2026-07-16):** `A1 → A4 → A2 → A5` (bloque A) `→ B1 → B2 → B3 → B4` (bloque B) + `C1` intercalable. Ajustes de la revisión sobre el orden original `A1→A2→A3→A4→A5`:
+
+- **A4 adelantado al 2º ciclo:** es el gap emblemático vs. sympy (fila F12 del assessment), es [S], y es independiente de A2/A3. Los dos fallos más visibles del frente (`(1+i)^2` y `solve(x²+1)`) quedan verdes en los dos primeros ciclos. Coste asumido: un context-switch reglas↔solver antes de lo ideal.
+- **A3 diferido on-demand** (ver su entrada): no es prereq duro de nada del bloque A; se ejecuta como prerequisito nombrado del primer ciclo que necesite confirmación exacta de identidades complejas.
+- **Compromiso por bloques:** el greenlight de esta revisión cubre el **bloque A completo**. El bloque B se **RE-SCOPEA al aterrizar A** (patrón G1: Cap. E se scopeó con la máquina A‑D ya verde) — B introduce la primera dependencia externa candidata (`num-complex`, decisión abierta en B1) y la superficie principal-branch, y merece decidirse con la experiencia del bloque A en la mano. Las entradas B1‑B4 de este doc son el borrador de partida de ese re-scoping, no un compromiso de diseño.
+- **Narración didáctica PER-CICLO, no batch:** cada sub-ciclo A/B incluye su traza `--steps` narrada (es/en) como parte de su `graduates` — el engine es mitad educativo, y dejar las reglas nacer mudas para narrarlas en un batch final repetiría el error histórico de "límites a 0% educativo". **C2 queda reducido a pulido/localización**, no a deuda acumulada. (Las 7 reglas Gaussianas existentes ya emiten descripción vía `format_complex_rewrite_desc` — el listón es mantener ese contrato en cada regla nueva y elevarlo donde la narración sea cáscara.)
+
+Dependencias netas: A5 depende de A4; B1 antes de B2/B3; B4 tras B2+B3; A1/A2/A4 independientes entre sí.
 
 ---
 
