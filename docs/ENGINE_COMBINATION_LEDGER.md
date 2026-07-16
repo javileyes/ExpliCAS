@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 582 (newest first)
+Active entries: 583 (newest first)
 
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
+- 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-15 | `retained` | `crates/cas_math/src/general_integration_backend/verification_algebraic.rs` (... | CAPACIDAD (verificación: subir el budget del zero-test algebraico emite numeradores generales sobre cuártica par): `integrate((x^3+5)/(x^6+1), x)`
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: racionalización del conjugado): `limit(sqrt(x^2+x)-x, x, infinity)` --steps
 - 2026-07-15 | `retained` | `crates/cas_didactic/src/didactic/focused_rule_substeps.rs` (reconocedor `lim... | CAPACIDAD EDUCATIVA (narrativa de límites ∞−∞: común denominador en punto finito): `limit(1/x - 1/sin(x), x, 0)` --steps
@@ -19847,3 +19848,17 @@ Active entries: 582 (newest first)
   - **`prem` con escalado `lc^(δ+1)` reproduce el elemento subresultante de sympy en el primer paso** (δ=1 ⟹ β₁=1): el `S[2]` de sympy salió idéntico a `prem(D, N−tD')` sin división. Verificar a mano UN paso del PRS contra sympy antes de codificar el bucle completo cazó mi confusión inicial de índices (había multiplicado por lc una vez de más).
   - **La hipótesis "no-squarefree ⟹ resultante 0" es FALSA** — `res_x(1−tD', (x−1)²)=1` (sympy). El test se corrigió al oráculo (precedente "la correct answer es hipótesis, no oráculo"). LRT exige D squarefree como PRECONDICIÓN aguas arriba, no algo que la resultante detecte por anularse.
   - PRÓXIMO PELDAÑO: **E-ii** (driver Rothstein-Trager + render real de Rioboo): consume esta cadena; NET-NEW dentro = aislamiento de raíces reales que DEVUELVA raíces (upgrade de `count_real_roots:435`) + la recursión `LogToAtan` de Rioboo (arctan continua). Gatea a residual honesto los factores no-resolubles (S₅). Ver `docs/G1_RATIONAL_INTEGRATION_SCOPING.md` §Cap.E.
+
+## 2026-07-16 - CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
+
+- area: `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `rothstein_trager_log_argument`)
+- status: `retained`. **Primer sub-ciclo de E-iv (RootSum, la clausura universal REAL — decisión del usuario 2026-07-16 tras falsificar la premisa de E-ii). El ladrillo del argumento logarítmico, testeable contra sympy, zero blast.**
+- capture:
+  - investment_class: capacidad Fase-1 (gatekeeper G1, cierre universal Cap. E; primitivo net-new).
+  - cell: `∫ N/D = RootSum(R(t), t ↦ t·log(x − w(t)))` — la forma LIMPIA universal. `R(t)` lo da E-i; este ciclo calcula `w(t)` (ℚ[t], grado < deg R): del subresultante grado-1-en-x de la cadena de E-i `S₁=a(t)x+b(t)`, `w = −b·a⁻¹ mod R`. Nuevo primitivo: `modular_inverse(a,m)` (Euclides extendido ℚ[t]). Aún NO cableado a integración (eso es E-iv-b/c).
+  - **DIFERENCIADOR sobre sympy MEDIDO:** para `1/(x^3-x-1)` (grado 3, "resoluble") sympy expande las raíces vía Cardano → **casus irreducibilis, monstruo de miles de chars ilegible**; nuestra forma es el RootSum LIMPIO `RootSum(-23t³-3t+1, t↦t·log(x−(46t²/9+23t/9+4/9)))`. Superamos, no igualamos. Para `1/(x^5-x-1)` (Galois S₅, NO resoluble) el RootSum es la ÚNICA forma cerrada elemental — sympy también da RootSum ahí y coincidimos exacto.
+  - validación: `w(t)` pinneado EXACTO contra sympy 1.14 en `1/(x^3-x-1)`, `1/(x^5-x-1)` (S₅), `x/(x^4+x+1)` (verificado además numéricamente en scoping: Σ c/(x−w(c)) ≟ N/D, err ~1e-165) + `modular_inverse` round-trip (t⁻¹=−t mod t²+1) + no-coprimo declina. 7/7 tests del módulo. Workspace + clippy (ver informe). Huella byte-idéntica (wired-to-nothing).
+  - retained learning:
+  - **La forma LIMPIA del RootSum es `t·log(x − w(t))` con w polinómico** — el argumento es LINEAL en x (para D+R squarefree, caso genérico), y w(t) = −b·a⁻¹ mod R sale directo del subresultante grado-1 que E-i ya produce. El único primitivo nuevo es el inverso modular. Toda la "maquinaria algebraica compleja" que el scoping temía para E-iv se reduce a un Euclides extendido de ~15 líneas encima de E-i.
+  - **RootSum limpio > expansión radical de sympy** cuando el grado es "resoluble" pero feo (casus irreducibilis): sympy por defecto expande a radicales anidados ilegibles; el RootSum parametrizado es más limpio Y más honesto. El engine puede ser mejor que sympy aquí precisamente por NO forzar la expansión radical.
+  - PRÓXIMO PELDAÑO: **E-iv-b** (nodo `Function("RootSum", …)` opaco + render `RootSum(R(t), t → t·ln(x−w(t)))` + eval numérico Σ sobre raíces) → **E-iv-c** (driver + wiring en el Err-arm + gating D/R-squarefree/arg-lineal + verificación numérica). Gradúa `1/(x^3-x-1)`, `1/(x^5-x-1)`, `1/(x^7-1)` etc.

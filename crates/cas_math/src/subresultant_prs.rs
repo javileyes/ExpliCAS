@@ -355,6 +355,76 @@ pub fn rothstein_trager_prs(
     subresultant_prs(&a, &b)
 }
 
+/// Modular inverse `a⁻¹ mod m` in ℚ[t] via the extended Euclidean algorithm.
+/// Returns the unique representative of degree `< deg(m)`, or `None` when `a`
+/// and `m` are not coprime (no inverse exists).
+pub fn modular_inverse(a: &Polynomial, m: &Polynomial) -> Option<Polynomial> {
+    if a.is_zero() || m.is_zero() {
+        return None;
+    }
+    // Track (r, s) with the invariant `a·s ≡ r (mod m)`.
+    let mut old_r = a.clone();
+    let mut r = m.clone();
+    let mut old_s = t_one();
+    let mut s = t_zero();
+    while !r.is_zero() {
+        let (q, next_r) = old_r.div_rem(&r).ok()?;
+        old_r = r;
+        r = next_r;
+        let next_s = old_s.sub(&q.mul(&s));
+        old_s = s;
+        s = next_s;
+    }
+    // old_r is gcd(a, m); invertibility requires it to be a non-zero constant.
+    if old_r.degree() != 0 || old_r.is_zero() {
+        return None;
+    }
+    // a·old_s ≡ old_r (a non-zero constant) ⇒ a·(old_s / old_r) ≡ 1.
+    let g = old_r.leading_coeff();
+    let inverse = old_s.div_scalar(&g);
+    let (_, reduced) = inverse.div_rem(m).ok()?;
+    Some(reduced)
+}
+
+/// The Rothstein-Trager logarithmic part of `∫ N/D` in clean RootSum form:
+/// `∫ N/D = RootSum(R(t), t ↦ t·log(x − w(t)))`, returning `(R(t), w(t))`.
+///
+/// `R(t) = res_x(N − t·D', D)` is the resultant (roots = log coefficients);
+/// `w(t)` is a ℚ[t] polynomial of degree `< deg R` such that the log argument
+/// is `x − w(t)`. It is read off the degree-1-in-`x` subresultant
+/// `S₁ = a(t)·x + b(t)` of the E-i chain as `w = −b·a⁻¹ mod R`. Returns `None`
+/// when there is no degree-1 subresultant (the log argument is not linear in
+/// `x`), when `R` is degenerate, or when the modular inverse fails (a shared
+/// factor) — every such case is an honest decline for the caller.
+///
+/// This is the universal closure: it applies whenever `D` and `R` are
+/// squarefree, including denominators whose splitting field is not
+/// radical-expressible (`1/(x^5-x-1)`, the Galois S₅ case) — there the
+/// RootSum is the ONLY elementary closed form, and it is a CLEAN one (SymPy
+/// falls back to a giant Cardano nested-radical for the cubic case instead).
+pub fn rothstein_trager_log_argument(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+) -> Option<(Polynomial, Polynomial)> {
+    let prs = rothstein_trager_prs(numerator, denominator)?;
+    let resultant = prs.resultant;
+    if resultant.degree() == 0 {
+        return None;
+    }
+    // Find the degree-1-in-x subresultant S₁ = a(t)·x + b(t).
+    let s1 = prs.chain.iter().find(|s| s.degree_x() == 1)?;
+    let b = s1.x_coeffs.first().cloned().unwrap_or_else(t_zero); // x^0 coeff
+    let a = s1.x_coeffs.get(1).cloned().unwrap_or_else(t_zero); // x^1 coeff
+    if a.is_zero() {
+        return None;
+    }
+    // w(t) = −b · a⁻¹ mod R
+    let a_inv = modular_inverse(&a, &resultant)?;
+    let product = b.neg().mul(&a_inv);
+    let (_, w) = product.div_rem(&resultant).ok()?;
+    Some((resultant, w))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,6 +449,23 @@ mod tests {
                 c.to_integer().try_into().expect("fits i64")
             })
             .collect()
+    }
+
+    /// Ascending-in-t rational coefficient list `(num, den)` of a ℚ[t] element.
+    fn t_ratio_coeffs(p: &Polynomial) -> Vec<(i64, i64)> {
+        p.coeffs
+            .iter()
+            .map(|c| {
+                (
+                    c.numer().try_into().expect("num fits i64"),
+                    c.denom().try_into().expect("den fits i64"),
+                )
+            })
+            .collect()
+    }
+
+    fn ratio(pairs: &[(i64, i64)]) -> Vec<(i64, i64)> {
+        pairs.to_vec()
     }
 
     /// Rothstein-Trager resultants verified against SymPy 1.14
@@ -463,6 +550,70 @@ mod tests {
         let n = poly_x(&[1]);
         let r = rothstein_trager_resultant(&n, &d).expect("resultant");
         assert_eq!(t_coeffs(&r), vec![1], "res must match SymPy's value of 1");
+    }
+
+    /// The clean-RootSum log argument `w(t)` in `∫N/D = RootSum(R, t↦t·log(x−w(t)))`,
+    /// pinned EXACTLY against SymPy 1.14 (which prints the summand as
+    /// `t·log(x − w(t))`). These include the Galois S₅ case `1/(x^5-x-1)`,
+    /// where the RootSum is the only elementary closed form — and the cubic
+    /// `1/(x^3-x-1)`, where our clean `w(t)` beats SymPy's Cardano fallback.
+    #[test]
+    fn rothstein_trager_log_argument_matches_sympy() {
+        // 1/(x^3-x-1): R = -23t^3 - 3t + 1, w = 46t^2/9 + 23t/9 + 4/9
+        {
+            let (r, w) = rothstein_trager_log_argument(&poly_x(&[1]), &poly_x(&[-1, -1, 0, 1]))
+                .expect("cubic log argument");
+            assert_eq!(t_coeffs(&r), vec![1, -3, 0, -23]);
+            assert_eq!(t_ratio_coeffs(&w), ratio(&[(4, 9), (23, 9), (46, 9)]));
+        }
+        // 1/(x^5-x-1): w = 256/625 + 309t/625 + 21716t^2/625 + 45904t^3/625 + 183616t^4/625
+        {
+            let (r, w) =
+                rothstein_trager_log_argument(&poly_x(&[1]), &poly_x(&[-1, -1, 0, 0, 0, 1]))
+                    .expect("quintic log argument");
+            assert_eq!(t_coeffs(&r), vec![1, -15, 80, -160, 0, -2869]);
+            assert_eq!(
+                t_ratio_coeffs(&w),
+                ratio(&[
+                    (256, 625),
+                    (309, 625),
+                    (21716, 625),
+                    (45904, 625),
+                    (183616, 625),
+                ])
+            );
+        }
+        // x/(x^4+x+1): w = 1940/1051 - 3921t/1051 + 29312t^2/1051 - 32976t^3/1051
+        {
+            let (r, w) = rothstein_trager_log_argument(&poly_x(&[0, 1]), &poly_x(&[1, 1, 0, 0, 1]))
+                .expect("quartic numerator log argument");
+            assert_eq!(t_coeffs(&r), vec![1, 1, 32, 0, 229]);
+            assert_eq!(
+                t_ratio_coeffs(&w),
+                ratio(&[(1940, 1051), (-3921, 1051), (29312, 1051), (-32976, 1051)])
+            );
+        }
+    }
+
+    #[test]
+    fn modular_inverse_round_trips() {
+        // In ℚ[t]/(t^2+1): (t)·(−t) = −t^2 ≡ 1, so t⁻¹ = −t.
+        let m = Polynomial::new(
+            vec![BigRational::one(), BigRational::zero(), BigRational::one()],
+            T.to_string(),
+        );
+        let a = Polynomial::new(vec![BigRational::zero(), BigRational::one()], T.to_string());
+        let inv = modular_inverse(&a, &m).expect("t is invertible mod t^2+1");
+        assert_eq!(t_coeffs(&inv), vec![0, -1]); // −t
+                                                 // a·inv ≡ 1 (mod m)
+        let (_, prod) = a.mul(&inv).div_rem(&m).expect("div");
+        assert_eq!(t_coeffs(&prod), vec![1]);
+        // A non-coprime pair has no inverse: gcd(t, t^2) = t.
+        let t2 = Polynomial::new(
+            vec![BigRational::zero(), BigRational::zero(), BigRational::one()],
+            T.to_string(),
+        );
+        assert!(modular_inverse(&a, &t2).is_none());
     }
 
     #[test]

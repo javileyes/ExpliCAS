@@ -235,3 +235,19 @@ Para `N/D` con `D` squarefree sobre ℚ, SIN factorizar `D`: forma `R(t) = res_x
 - **☐ E-iv [L, terminal opcional] — Tipo RootSum/RootOf para factores no-resolubles.** La clausura VERDADERAMENTE universal: `1/(x^5-x-1)` y compañía. Grande, terminal, opcional (las familias curriculares están cubiertas sin esto).
 
 **Orden recomendado:** Track R (win barato, intercalable) → **E-i (PRIMERO del track LRT)** → E-ii → E-iii → E-iv (opcional). Riesgos top: (1) blowup de coeficientes del PRS ℚ[t] si se usa pseudo-remainder naive → usar la fórmula subresultante; (2) techo de clausura radical → gatear no-resolubles a residual honesto, jamás surd incorrecto; (3) continuidad de Rioboo → `LogToAtan` obligatorio, no `atan(B/A)`.
+
+### Cap. E-iv — RootSum (universalidad real): scoping de sub-ciclos (2026-07-16)
+
+**Decisión del usuario (2026-07-16):** tras el análisis de R(t) (casi todos los targets tienen R(t) irreducible grado ≥3 → sin forma radical; E-ii radical solo alcanza Rioboo), se elige **E-iv RootSum** — la clausura universal de verdad.
+
+**Insight que lo hace tractable Y un diferenciador sobre sympy:** la forma limpia universal es
+`∫ N/D = RootSum(R(t), t ↦ t·log(x − w(t)))` con `R(t) = res_x(N − t·D', D)` (ya lo da **E-i**) y `w(t)` un polinomio en t de grado < deg R. Se calcula del subresultante de **grado-1-en-x** de la cadena de E-i (`S₁ = a(t)·x + b(t)`) como `w(t) = −b(t)·a(t)⁻¹ mod R(t)`. **VERIFICADO numéricamente** (err ~1e-165) y `w(t)` coincide EXACTO con sympy para `1/(x^3-x-1)`, `1/(x^5-x-1)`, `x/(x^4+x+1)`. Para `1/(x^3-x-1)` (grado 3) emitimos el RootSum LIMPIO mientras **sympy devuelve la basura de Cardano (casus irreducibilis, miles de chars)** → superamos a sympy, no solo igualamos.
+
+**Alcance (acotado):** D squarefree, R(t) squarefree, argumento log LINEAL en x (el subresultante grado-1 es el gcd). Gradúa toda la clase "genuinamente irreducible": `1/(x^3-x-1)`, `1/(x^5-x-1)`, `1/(x^7-1)`, `x/(x^4+x+1)`, `1/(x^4+x+1)`… Casos con argumento no-lineal (raíces múltiples de D colapsando a un c) o R no-squarefree → residual honesto.
+
+**Representación AST (bajo-blast):** el residual `integrate(...)` es un `Expr::Function` opaco con símbolo "integrate" (`symbolic_calculus_call_support.rs:29`) — RootSum sigue el MISMO patrón: `Function("RootSum", [R(t)_expr, summand_expr, t_var])` opaco a eval, renderizado especial. Sin variante nueva de `Expr`.
+
+**Sub-ciclos:**
+- **☑ E-iv-a [S] — HECHO 2026-07-16 (hash en el ledger) — inverso modular ℚ[t] + extracción de w(t).** Extiende `subresultant_prs.rs`: `modular_inverse(a, m)` (Euclides extendido en ℚ[t]) + `rothstein_trager_log_argument(N, D) -> (R(t), w(t))` que localiza el S₁ grado-1 en la cadena de E-i y calcula `w = −b·a⁻¹ mod R`. Unit-test contra el w(t) exacto de sympy (3 casos ya verificados). Wired-to-nothing, huella byte-idéntica. **PRIMER CICLO.**
+- **☐ E-iv-b [M] — nodo RootSum + render + eval numérico.** `Function("RootSum", …)` opaco; display `RootSum(R(t), t → t·ln(x − w(t)))`; eval numérico = Σ sobre raíces numéricas de R de `c·ln(x − w(c))`. No choca en pasadas downstream (patrón residual-integrate).
+- **☐ E-iv-c [M] — driver + wiring + gating + verificación.** Ensambla RootSum vía E-iv-a; inserta en el Err-arm (junto a R2/R3, tras general_rational); gate: D+R squarefree, arg lineal, si no → residual honesto; verificación diferenciar-atrás numérica (Σ c/(x−w(c)) ≟ N/D en puntos muestrales). Gradúa `1/(x^3-x-1)` etc.
