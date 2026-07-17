@@ -22,6 +22,7 @@ pub use cas_math::evaluator_f64::{
     eval_f64, eval_f64_checked, EvalCheckedError, EvalCheckedOptions,
 };
 pub use cas_math::expr_predicates::is_zero_expr as is_zero;
+pub use cas_math::{eval_complex, Complex64};
 pub use cas_solver_core::diagnostics_model::{Diagnostics, RequiredItem};
 pub use cas_solver_core::equivalence::EquivalenceResult;
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};

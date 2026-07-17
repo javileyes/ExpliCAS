@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 597 (newest first)
+Active entries: 598 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -123,6 +123,7 @@ Active entries: 597 (newest first)
 - 2026-07-17 | `retained` | `cas_solver_core` — `rational_roots.rs` (kernels + 4 wrappers del chain con `... | CAPACIDAD (Fase 2 · A5: solve complejo grado ≥3 — kernel rational-roots domain-aware): `solve(x^4-1, x)` → `{i, -i, -1, 1}`
 - 2026-07-17 | `retained` | `cas_solver_core` (`isolation_power.rs`: campo `value_domain_real_only` en Ke... | SOUNDNESS+CAPACIDAD (Fase 2 · pow-isolation domain-aware + gemelos backend): `solve(x^6-1)` → las 6 raíces de la unidad
 - 2026-07-17 | `retained` | `cas_engine/engine/transform/transform_helpers.rs` (`transform_pow` — gate de... | SOUNDNESS (Fase 2 · el pipeline-layer que perdía el dominio ERA el traversal TRANSFORM): `(x^2)^(1/2)` honesto en ℂ
+- 2026-07-17 | `retained` | `cas_math/src/evaluator_complex.rs` (NUEVO — `Complex64` pub + walker) + `roo... | CAPACIDAD (Fase 2 · B1: eval_complex refute-only por EXTRACCIÓN): la red numérica del bloque transcendental
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20073,3 +20074,18 @@ Active entries: 597 (newest first)
   - **Un step-name NO identifica al emisor**: reglas y transforms/shortcuts pueden fabricar steps con nombres idénticos; el diagnóstico correcto de "mi gate no funciona" es el PANIC-TRAMPA condicional en la regla sospechosa — si no dispara y el output sigue mal, el emisor es otra capa (2 minutos de coste, un ciclo de ahorro).
   - **El pipeline tiene TRES capas de reescritura** (reglas gateables, root-shortcuts, y el TRAVERSAL con early-detections preorder) — un widening de dominio debe auditar las tres; los early-detections del transformer son los más invisibles (sin registro, sin nombre propio).
   - PRÓXIMO PELDAÑO: re-scope bloque B (ciclo 3); quirk del traversal `abs((1+i)^2)` sin plegar interior (clase A, orquestador — honesto, no bloquea).
+
+## 2026-07-17 - CAPACIDAD (Fase 2 · B1: eval_complex refute-only por EXTRACCIÓN): la red numérica del bloque transcendental
+
+- area: `cas_math/src/evaluator_complex.rs` (NUEVO — `Complex64` pub + walker) + `rootsum_numeric.rs` (delega al tipo compartido) + `cas_engine/engine/equivalence.rs` (red refute-only gateada por sticky) + re-exports aditivos
+- status: `retained`. Cuarto y último ciclo de la tanda 2. Cierra el chokepoint-A del scoping (eval numérico rechaza `i`) por la vía de EXTRACCIÓN.
+- capture:
+  - investment_class: capacidad Fase-2 (primitivo E-i del bloque B — la red que permite retener B2/B3/B4).
+  - cell: `Complex64` con `exp/sin/cos/sqrt/powc/arg` nuevos sobre el núcleo extraído de rootsum (el `ln` principal-branch vía `atan2` ya venía testeado vs mpmath); walker general (`i`/π/e, aritmética, Pow entero-exacto + principal, ln/exp/sin/cos/tan/sqrt/abs/Re/Im/conjugate). Tests pinnean: `e^(iπ)→-1`, `ln(i)→iπ/2`, `i^i→e^(-π/2)`, `sqrt(3+4i)→2+i`, **la convención principal `(-8)^(1/3)→1+i√3`** (≠ raíz impar real `-2` — la trampa pow-convención documentada en el header). RED: `are_equivalent_extended` bajo sticky ComplexEnabled REFUTA `e^(iπ)≡1` y `ln(-1)≡-iπ`, JAMÁS confirma `e^(iπ)≡-1` (Unknown hasta B2 exacto), inerte en real (3 tests de contrato). **CERO deps nuevas** — la decisión anti-num-complex heredada del propio archivo extraído (G1 E-iv-d1 `:21`).
+  - diseño: extracción-then-extend (patrón C-i/E-i): promover el struct privado probado, no reescribirlo. El sitio 2 del re-scope (`numeric_poly_zero_check`) se OMITIÓ deliberadamente: su brazo complejo no cambiaría nada observable (camino `true` prohibido por no-polinomial; el `false` ya ocurre) — anotado como decisión, no olvido. `eval_equiv` (comando) intacto: su contrato exacto-only es correcto y la red vive en `are_equivalent_extended` (consumidores: suite metamórfica = el harness de retención de B2, equiv_command, derive).
+  - validación: workspace 12388/0 (exit real); clippy --all-targets limpio (tras convertir add/sub/mul/neg a traits std::ops — el struct original se libraba del lint `should_implement_trait` por ser privado; `div→checked_div` idiomático); engine-fast verde; pressure 0-delta, guardrail +3 filtered_out (tests nuevos) + slot de ruido. Suite mpmath de rootsum valida la delegación byte-a-byte.
+  - **INCIDENTE (recuperado, lección):** un script python desechable contenía un `open(p,"w")` "cancelado" SIN write → TRUNCÓ `rootsum_numeric.rs` a 0 bytes con cambios sin commitear. Recuperación: `git checkout` + rehacer los 2 edits (pequeños y documentados). **Lección: el open-para-escritura ES la destrucción — jamás dejar write-opens muertos en scripts desechables; y los edits de un ciclo deben ser re-derivables (documentados o commiteados temprano).**
+  - retained learning:
+  - **"Extraer-y-extender un primitivo probado" > "escribir el primitivo"**: el 100% del riesgo de rama de B1 (ln principal) venía resuelto y referencia-testeado de G1 — buscar SIEMPRE el núcleo existente antes de decidir una dep o una reescritura (el re-scope lo encontró porque se le preguntó explícitamente).
+  - **Lint-hygiene de visibilidad**: promover un struct privado a pub activa lints nuevos (`should_implement_trait`) — la promoción incluye adecuar la API al idioma público (traits std::ops), no solo cambiar `pub`.
+  - PRÓXIMO PELDAÑO: **B2 EulerRule** (con `split_i_factor` — el bloqueador real; red: metamórfica ODE + pins verificados contra ESTA red B1); luego B3 (Arg exacto 9-casos + PrincipalBranch condition) → B4. Residuales nombrados: `approx()` complejo sin cablear; unimodularidad `|e^(ix)|→1`.

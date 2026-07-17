@@ -34,6 +34,7 @@ pub mod div_den_factor_out_support;
 pub mod div_expand_cancel_support;
 pub mod div_expand_num_for_cancel_support;
 pub mod div_scalar_into_add_support;
+pub mod evaluator_complex;
 pub mod evaluator_f64;
 pub mod expand_call_support;
 pub mod expand_eager;
@@ -198,4 +199,5 @@ pub mod trig_weierstrass_support;
 pub mod undefined_risk_support;
 pub mod unipoly_modp;
 
+pub use evaluator_complex::{eval_complex, Complex64};
 pub use evaluator_f64::{eval_f64, eval_f64_checked, EvalCheckedError, EvalCheckedOptions};

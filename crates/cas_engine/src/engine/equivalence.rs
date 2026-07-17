@@ -350,9 +350,80 @@ impl Simplifier {
                         return EquivalenceResult::False;
                     }
                 }
+
+                // COMPLEX REFUTE-ONLY NET (B1): under the ComplexEnabled sticky
+                // domain, an `i`-carrying difference that the f64 evaluator
+                // cannot touch gets one principal-branch complex probe. A
+                // clearly non-zero modulus REFUTES the identity; a near-zero
+                // one stays Unknown — a probe may never CONFIRM equivalence
+                // (see eval/actions.rs). Gated on the sticky domain so real
+                // mode is byte-identical (in RealOnly, `i` stays opaque).
+                if self.sticky_value_domain == crate::semantics::ValueDomain::ComplexEnabled {
+                    let complex_map: std::collections::HashMap<String, cas_math::Complex64> =
+                        var_map
+                            .iter()
+                            .map(|(k, v)| (k.clone(), cas_math::Complex64::real(*v)))
+                            .collect();
+                    if let Some(z) =
+                        cas_math::eval_complex(&self.context, result_expr, &complex_map)
+                    {
+                        if !cas_solver_core::equivalence::is_numeric_equiv_zero(z.abs()) {
+                            return EquivalenceResult::False;
+                        }
+                    }
+                }
             }
             // Can't determine
             EquivalenceResult::Unknown
         }
+    }
+}
+
+#[cfg(test)]
+mod complex_refute_tests {
+    use crate::{EquivalenceResult, Simplifier};
+
+    fn extended(src_a: &str, src_b: &str, complex: bool) -> EquivalenceResult {
+        let mut s = Simplifier::with_default_rules();
+        if complex {
+            s.set_sticky_value_domain(crate::semantics::ValueDomain::ComplexEnabled);
+        }
+        let a = cas_parser::parse(src_a, &mut s.context).expect("parse a");
+        let b = cas_parser::parse(src_b, &mut s.context).expect("parse b");
+        s.are_equivalent_extended(a, b)
+    }
+
+    #[test]
+    fn complex_probe_refutes_false_identity() {
+        // e^(iπ) = 1 is FALSE (true value -1): the complex probe refutes it.
+        assert!(matches!(
+            extended("e^(i*pi)", "1", true),
+            EquivalenceResult::False
+        ));
+        // ln(-1) = -i·π is FALSE (principal branch gives +i·π).
+        assert!(matches!(
+            extended("ln(-1)", "-i*pi", true),
+            EquivalenceResult::False
+        ));
+    }
+
+    #[test]
+    fn complex_probe_never_confirms_true_identity() {
+        // e^(iπ) = -1 IS true, but a probe may never CONFIRM: stays Unknown
+        // until the exact B2 rule lands.
+        assert!(matches!(
+            extended("e^(i*pi)", "-1", true),
+            EquivalenceResult::Unknown
+        ));
+    }
+
+    #[test]
+    fn real_mode_keeps_i_expressions_unknown() {
+        // Footprint guard: without the ComplexEnabled sticky domain the net is
+        // inert — i-carrying differences stay Unknown exactly as before B1.
+        assert!(matches!(
+            extended("e^(i*pi)", "1", false),
+            EquivalenceResult::Unknown
+        ));
     }
 }

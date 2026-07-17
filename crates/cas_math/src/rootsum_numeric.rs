@@ -18,69 +18,11 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::ToPrimitive;
 use std::collections::HashMap;
 
-/// Minimal complex arithmetic over f64 (kept local: no new dependency).
-#[derive(Clone, Copy, Debug)]
-struct C {
-    re: f64,
-    im: f64,
-}
-
-impl C {
-    fn new(re: f64, im: f64) -> Self {
-        C { re, im }
-    }
-    fn real(re: f64) -> Self {
-        C { re, im: 0.0 }
-    }
-    fn add(self, o: C) -> C {
-        C::new(self.re + o.re, self.im + o.im)
-    }
-    fn sub(self, o: C) -> C {
-        C::new(self.re - o.re, self.im - o.im)
-    }
-    fn mul(self, o: C) -> C {
-        C::new(
-            self.re * o.re - self.im * o.im,
-            self.re * o.im + self.im * o.re,
-        )
-    }
-    fn div(self, o: C) -> Option<C> {
-        let d = o.re * o.re + o.im * o.im;
-        if d == 0.0 || !d.is_finite() {
-            return None;
-        }
-        Some(C::new(
-            (self.re * o.re + self.im * o.im) / d,
-            (self.im * o.re - self.re * o.im) / d,
-        ))
-    }
-    fn neg(self) -> C {
-        C::new(-self.re, -self.im)
-    }
-    fn abs(self) -> f64 {
-        self.re.hypot(self.im)
-    }
-    /// Principal branch of the complex logarithm.
-    fn ln(self) -> Option<C> {
-        let m = self.abs();
-        if m == 0.0 || !m.is_finite() {
-            return None;
-        }
-        Some(C::new(m.ln(), self.im.atan2(self.re)))
-    }
-    fn powi(self, mut e: u32) -> C {
-        let mut acc = C::real(1.0);
-        let mut base = self;
-        while e > 0 {
-            if e & 1 == 1 {
-                acc = acc.mul(base);
-            }
-            base = base.mul(base);
-            e >>= 1;
-        }
-        acc
-    }
-}
+/// Complex arithmetic type shared with `evaluator_complex` (promoted there
+/// from this module's original private struct — same no-new-dependency
+/// decision, one implementation of the principal-branch `ln`).
+use crate::evaluator_complex::Complex64 as C;
+use std::ops::{Add, Mul, Neg, Sub};
 
 /// All complex roots of a ℚ-coefficient univariate polynomial, via the
 /// Durand-Kerner (Weierstrass) simultaneous iteration in complex f64.
@@ -124,7 +66,7 @@ fn durand_kerner_roots(poly: &Polynomial) -> Option<Vec<C>> {
                     denom = denom.mul(roots[i].sub(roots[j]));
                 }
             }
-            let delta = eval(roots[i]).div(denom)?;
+            let delta = eval(roots[i]).checked_div(denom)?;
             roots[i] = roots[i].sub(delta);
             moved = moved.max(delta.abs());
         }
@@ -144,7 +86,7 @@ fn durand_kerner_roots(poly: &Polynomial) -> Option<Vec<C>> {
 /// Supports the shapes a `root_sum` summand contains (`t·ln(x − w(t))` and
 /// friends): numbers, the bound variable, +, −, ·, /, unary minus, integer
 /// powers and `ln`.
-fn eval_complex(
+fn eval_bound_complex(
     ctx: &Context,
     expr: ExprId,
     bound: &str,
@@ -165,51 +107,45 @@ fn eval_complex(
                 var_map.get(name).map(|v| C::real(*v))
             }
         }
-        Expr::Add(l, r) => Some(
-            eval_complex(ctx, *l, bound, value, var_map, depth - 1)?.add(eval_complex(
-                ctx,
-                *r,
-                bound,
-                value,
-                var_map,
-                depth - 1,
-            )?),
-        ),
-        Expr::Sub(l, r) => Some(
-            eval_complex(ctx, *l, bound, value, var_map, depth - 1)?.sub(eval_complex(
-                ctx,
-                *r,
-                bound,
-                value,
-                var_map,
-                depth - 1,
-            )?),
-        ),
-        Expr::Mul(l, r) => Some(
-            eval_complex(ctx, *l, bound, value, var_map, depth - 1)?.mul(eval_complex(
-                ctx,
-                *r,
-                bound,
-                value,
-                var_map,
-                depth - 1,
-            )?),
-        ),
-        Expr::Div(l, r) => eval_complex(ctx, *l, bound, value, var_map, depth - 1)?
-            .div(eval_complex(ctx, *r, bound, value, var_map, depth - 1)?),
+        Expr::Add(l, r) => {
+            Some(
+                eval_bound_complex(ctx, *l, bound, value, var_map, depth - 1)?.add(
+                    eval_bound_complex(ctx, *r, bound, value, var_map, depth - 1)?,
+                ),
+            )
+        }
+        Expr::Sub(l, r) => {
+            Some(
+                eval_bound_complex(ctx, *l, bound, value, var_map, depth - 1)?.sub(
+                    eval_bound_complex(ctx, *r, bound, value, var_map, depth - 1)?,
+                ),
+            )
+        }
+        Expr::Mul(l, r) => {
+            Some(
+                eval_bound_complex(ctx, *l, bound, value, var_map, depth - 1)?.mul(
+                    eval_bound_complex(ctx, *r, bound, value, var_map, depth - 1)?,
+                ),
+            )
+        }
+        Expr::Div(l, r) => {
+            eval_bound_complex(ctx, *l, bound, value, var_map, depth - 1)?.checked_div(
+                eval_bound_complex(ctx, *r, bound, value, var_map, depth - 1)?,
+            )
+        }
         Expr::Neg(inner) => {
-            Some(eval_complex(ctx, *inner, bound, value, var_map, depth - 1)?.neg())
+            Some(eval_bound_complex(ctx, *inner, bound, value, var_map, depth - 1)?.neg())
         }
         Expr::Pow(base, exp) => {
             let e = match ctx.get(*exp) {
                 Expr::Number(n) if n.is_integer() => n.to_integer().to_u32()?,
                 _ => return None,
             };
-            Some(eval_complex(ctx, *base, bound, value, var_map, depth - 1)?.powi(e))
+            Some(eval_bound_complex(ctx, *base, bound, value, var_map, depth - 1)?.powi(e))
         }
         Expr::Function(fn_id, args) if args.len() == 1 => {
             if ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
-                eval_complex(ctx, args[0], bound, value, var_map, depth - 1)?.ln()
+                eval_bound_complex(ctx, args[0], bound, value, var_map, depth - 1)?.ln()
             } else {
                 None
             }
@@ -239,7 +175,9 @@ pub fn eval_rootsum_node_f64(
     let roots = durand_kerner_roots(&r_poly)?;
     let mut total = C::real(0.0);
     for root in roots {
-        total = total.add(eval_complex(ctx, args[2], &bound, root, var_map, 200)?);
+        total = total.add(eval_bound_complex(
+            ctx, args[2], &bound, root, var_map, 200,
+        )?);
     }
     if !total.re.is_finite() || total.im.abs() > 1e-8 * (1.0 + total.re.abs()) {
         return None;

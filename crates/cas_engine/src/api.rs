@@ -79,6 +79,7 @@ pub use cas_math::evaluator_f64::{
     eval_f64, eval_f64_checked, EvalCheckedError, EvalCheckedOptions,
 };
 pub use cas_math::expr_predicates::is_zero_expr as is_zero;
+pub use cas_math::{eval_complex, Complex64};
 /// Budget for conditional branching in solver.
 /// Controls how many branches can be created (anti-explosion).
 pub use cas_solver_core::solve_budget::SolveBudget;
