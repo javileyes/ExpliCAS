@@ -129,6 +129,29 @@ impl<'a> DisplayExprWithHints<'a> {
                     return self.fmt_mul_with_sign_pullout(f, *r, *l);
                 }
 
+                // Decimal coefficients lead for display (`6.28…·x`):
+                // reorder at render time — the canonical tree cannot hold
+                // this order (interning re-sorts Mul pairs).
+                if let Some(factors) =
+                    super::ordering::decimal_coefficient_first_factors(self.context, *l, *r)
+                {
+                    for (i, factor) in factors.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, "{}", mul_symbol())?;
+                        }
+                        let needs_parens =
+                            matches!(self.context.get(*factor), Expr::Add(_, _) | Expr::Sub(_, _));
+                        if needs_parens {
+                            write!(f, "(")?;
+                        }
+                        self.fmt_internal(f, *factor)?;
+                        if needs_parens {
+                            write!(f, ")")?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 // P3: Try to display as fraction using FractionDisplayView
                 if let Some(frac) = FractionDisplayView::from(self.context, self.id) {
                     // Handle sign

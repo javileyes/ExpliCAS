@@ -398,6 +398,30 @@ pub trait LaTeXRenderer {
             };
         }
 
+        // Decimal coefficients lead for display (`6.28…\cdot x`): the
+        // canonical tree cannot hold this order (interning re-sorts Mul
+        // pairs), so reorder at render time — twin of the text renderer.
+        if let Some(factors) =
+            crate::display::decimal_coefficient_first_factors(self.context(), l, r)
+        {
+            let parts: Vec<String> = factors
+                .iter()
+                .map(|factor| {
+                    let needs_parens = matches!(
+                        self.context().get(*factor),
+                        Expr::Add(_, _) | Expr::Sub(_, _)
+                    );
+                    self.expr_to_latex(*factor, needs_parens)
+                })
+                .collect();
+            let joined = parts.join("\\cdot ");
+            return if parent_needs_parens {
+                format!("({})", joined)
+            } else {
+                joined
+            };
+        }
+
         if let Some((coefficient, radicand, denominator)) =
             reciprocal_sqrt_times_unit_fraction_for_latex(self.context(), l, r)
         {

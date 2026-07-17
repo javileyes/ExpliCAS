@@ -10770,11 +10770,11 @@ fn complex_mode_approximates_closed_complex_values() {
     // walker into a cartesian `a + b·i` decimal (presentation surface —
     // approx is f64 by contract).
     for (src, expected) in [
-        ("approx(ln(i))", "i·1.57079632679"),
-        ("approx(e^(i*pi/3))", "0.5 + i·0.866025403784"),
-        ("approx(2^i)", "0.769238901364 + i·0.638961276314"),
-        ("approx(ln(-2))", "0.69314718056 + i·3.14159265359"),
-        ("approx(ln(-e))", "1 + i·3.14159265359"),
+        ("approx(ln(i))", "1.57079632679·i"),
+        ("approx(e^(i*pi/3))", "0.5 + 0.866025403784·i"),
+        ("approx(2^i)", "0.769238901364 + 0.638961276314·i"),
+        ("approx(ln(-2))", "0.69314718056 + 3.14159265359·i"),
+        ("approx(ln(-e))", "1 + 3.14159265359·i"),
     ] {
         let (output, _code) =
             run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
@@ -10835,7 +10835,8 @@ fn complex_mode_approximates_closed_complex_values() {
     // approx — the maximal closed numeric parts fold to ONE decimal
     // coefficient each; integer-only shapes decline (D5).
     for (src, expected) in [
-        ("approx(sqrt(2)*pi*e*x)", "x·12.0770079568"),
+        // Migrated by the decimal-coefficient-first display fix.
+        ("approx(sqrt(2)*pi*e*x)", "12.0770079568·x"),
         ("approx(1/3 + x)", "0.333333333333 + x"),
         ("approx(sin(x) + pi)", "sin(x) + 3.14159265359"),
         ("approx(approx(1/3))", "0.333333333333"),
@@ -10856,7 +10857,7 @@ fn complex_mode_approximates_closed_complex_values() {
         "complex",
     ]);
     let wire = parse_wire(&output);
-    assert_eq!(wire["result"], "i·x·1.41421356237");
+    assert_eq!(wire["result"], "1.41421356237·i·x");
 
     // Session axis (T5-ciclo4): --numeric-display decimal applies the same
     // walker at the OUTPUT BOUNDARY — internally everything stays exact.

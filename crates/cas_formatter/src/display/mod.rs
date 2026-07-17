@@ -28,6 +28,7 @@ mod styled;
 pub use expr::{DisplayExpr, RawDisplayExpr};
 pub use hints::DisplayExprWithHints;
 pub(crate) use ordering::cmp_term_for_display;
+pub(crate) use ordering::decimal_coefficient_first_factors;
 pub use ordering::{DisplayFactor, FractionDisplayView, OrderingMode};
 pub use styled::DisplayExprStyled;
 

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 610 (newest first)
+Active entries: 611 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -136,6 +136,7 @@ Active entries: 610 (newest first)
 - 2026-07-17 | `retained` | `cas_math/numeric_presentation.rs` (NUEVO — walker movido de cas_engine + `pr... | CAPACIDAD (T5·ciclo4 — eje `--numeric-display`): el selector "number approx" del usuario, como pase de frontera de salida
 - 2026-07-17 | `retained` | `web/index.html` (selector "Números" 4º junto a Modo/Rama/Complejo + sessionS... | WEB (T5·web — selector NÚMEROS exact/decimal): el eje numeric-display llega a la UI
 - 2026-07-17 | `retained` | `cas_solver_core` (`NumericDisplayMode` en const_fold_types + campo `EvalOpti... | REPL (T5·repl — eje `numeric` en `semantics set`): paridad interactiva del numeric-display
+- 2026-07-17 | `retained` | `cas_formatter/display/ordering.rs` (helper `decimal_coefficient_first_factor... | PRESENTACIÓN (T5·coef — coeficiente decimal PRIMERO): `6.28318530718·x`, nunca `x·6.28…`
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20268,3 +20269,15 @@ Active entries: 610 (newest first)
   - retained learning:
   - **Cada superficie de render del REPL es su propio boundary**: eval y solve tienen builders distintos — al añadir un pase de presentación, enumerar los renders por PROBE (pedir el mismo contenido por cada comando), no asumir que un hook los cubre; el solve exacto tras el hook de eval fue el delator.
   - PRÓXIMO PELDAÑO: comandos REPL restantes con render propio (integrate/diff results si emiten numéricos — verificar bajo demanda); contagio de literales (T5c5, diseño listo).
+
+## 2026-07-17 - PRESENTACIÓN (T5·coef — coeficiente decimal PRIMERO): `6.28318530718·x`, nunca `x·6.28…`
+
+- area: `cas_formatter/display/ordering.rs` (helper `decimal_coefficient_first_factors(ctx, l, r)`) + brazos en los 3 renderers Mul (`display/expr.rs`, `display/hints.rs`, `latex_core.rs::format_mul`) + 8 pins migrados
+- status: `retained`. Cierra el residual cosmético nombrado en T5c3 (reportado por el usuario: `2*pi*x` en decimal daba `x·6.28318530718`).
+- capture:
+  - cell: `2·pi·x` decimal → `6.28318530718·x` (convención matemática: coeficiente numérico primero, como el exacto `2·pi·x` y `3·x`); LaTeX `6.28318530718\cdot x`; ambas rutas (eje `--numeric-display` Y `approx()`). **BONUS — cae otro residual nombrado**: las partes imaginarias cartesianas ahora `1.57079632679·i` / `0.5 + 0.866025403784·i` (antes `i·1.57…` — el quirk anotado en T4c4), consistente con el exacto `3 + 4·i`. Exacto intacto byte-a-byte (`2·pi·x`, `x·sqrt(2)`, `3·x`); declines: signos/fracciones a sus dueños (Neg/Div/Number-negativo → None), sin decimal → None, decimal ya líder → None.
+  - diseño: **el orden del árbol NO PUEDE sostener la convención** — diagnóstico en 3 capas: (1) el walker construyendo decimal-primero no bastó; (2) `MulView::rebuild(commutative: false)` tampoco; (3) causa raíz: `ctx.add` CANONICALIZA los pares Mul al internar (hash-consing aplana+ordena por compare_expr, que rankea la Function decimal tras las variables) — cualquier `ctx.add(Mul(...))` re-ordena. Tocar `compare_expr` (comparador canónico engine-wide) por una preferencia de display habría sido el fix equivocado (matchers/memos). El fix vive donde vivió C1: la capa de display, con UN helper compartido por texto+hints+LaTeX que aplana el chain y antepone los factores `decimal(Number)` como coeficientes.
+  - validación: workspace 12418/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella IDÉNTICA ambos scorecards; 8 pins migrados conscientemente (todos del propio T5, ninguno pre-existente).
+  - retained learning:
+  - **Antes de "arreglar el orden" de un árbol, pregunta quién lo canonicaliza al INTERNAR**: en un AST hash-consed, `ctx.add` es un normalizador — el orden de construcción es una ilusión; toda convención de orden que difiera de la canónica es, por definición, un problema de DISPLAY (el probe unitario del árbol delató el nivel exacto en 2 minutos: LEFT=x tras construir [decimal, x]).
+  - PRÓXIMO PELDAÑO: pendientes de capa: contagio literales (T5c5), Pow-fold decimal (2b), echo JSON del eje.

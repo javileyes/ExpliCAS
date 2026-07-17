@@ -222,7 +222,7 @@ mod tests {
         // Open expressions approximate their closed numeric parts and keep
         // the symbolic structure; the closed SET folds to ONE coefficient.
         for (src, expected) in [
-            ("approx(sqrt(2)*pi*e*x)", "x * 12.0770079568"),
+            ("approx(sqrt(2)*pi*e*x)", "12.0770079568 * x"),
             ("approx(1/3 + x)", "0.333333333333 + x"),
             ("approx(sqrt(2) + pi + x)", "4.55580621596 + x"),
             ("approx(sin(x) + pi)", "sin(x) + 3.14159265359"),
@@ -312,8 +312,8 @@ mod tests {
         // ComplexEnabled: closed values the real f64 path rejects evaluate
         // through the complex walker into `a + b·i` decimals.
         for (src, expected) in [
-            ("approx(ln(i))", "i * 1.57079632679"),
-            ("approx(ln(-2))", "0.69314718056 + i * 3.14159265359"),
+            ("approx(ln(i))", "1.57079632679 * i"),
+            ("approx(ln(-2))", "0.69314718056 + 3.14159265359 * i"),
         ] {
             let mut ctx = Context::new();
             let expr = parse(src, &mut ctx).expect("parse");

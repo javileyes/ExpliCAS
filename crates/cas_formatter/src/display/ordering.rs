@@ -101,6 +101,76 @@ fn term_mentions_i(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+/// Flattened Mul factors reordered so `decimal(Number)` display
+/// coefficients LEAD — `6.28…·x`, never `x·6.28…`. The canonical tree
+/// ranks the decimal Function after variables and interning re-sorts Mul
+/// pairs on every `ctx.add`, so the coefficient-first convention can only
+/// live at the display layer (the Mul-factor analog of the cartesian Add
+/// ordering). `Some` only when a reorder is actually needed; sign and
+/// fraction shapes decline to their established render paths.
+pub(crate) fn decimal_coefficient_first_factors(
+    ctx: &Context,
+    l: ExprId,
+    r: ExprId,
+) -> Option<Vec<ExprId>> {
+    fn collect(ctx: &Context, id: ExprId, out: &mut Vec<ExprId>) {
+        if let Expr::Mul(l, r) = ctx.get(id) {
+            collect(ctx, *l, out);
+            collect(ctx, *r, out);
+        } else {
+            out.push(id);
+        }
+    }
+    fn is_display_decimal(ctx: &Context, id: ExprId) -> bool {
+        matches!(ctx.get(id), Expr::Function(fn_id, args)
+            if args.len() == 1
+                && ctx.sym_name(*fn_id) == "decimal"
+                && matches!(ctx.get(args[0]), Expr::Number(_)))
+    }
+
+    let mut factors: Vec<ExprId> = Vec::new();
+    collect(ctx, l, &mut factors);
+    collect(ctx, r, &mut factors);
+    if factors.len() < 2 {
+        return None;
+    }
+    if factors.iter().any(|&factor| match ctx.get(factor) {
+        Expr::Neg(_) | Expr::Div(_, _) => true,
+        Expr::Number(n) => n.is_negative(),
+        _ => false,
+    }) {
+        return None;
+    }
+    let decimal_count = factors
+        .iter()
+        .filter(|&&factor| is_display_decimal(ctx, factor))
+        .count();
+    if decimal_count == 0 {
+        return None;
+    }
+    if factors
+        .iter()
+        .take(decimal_count)
+        .all(|&factor| is_display_decimal(ctx, factor))
+    {
+        return None;
+    }
+    let mut reordered: Vec<ExprId> = Vec::new();
+    reordered.extend(
+        factors
+            .iter()
+            .copied()
+            .filter(|&factor| is_display_decimal(ctx, factor)),
+    );
+    reordered.extend(
+        factors
+            .iter()
+            .copied()
+            .filter(|&factor| !is_display_decimal(ctx, factor)),
+    );
+    Some(reordered)
+}
+
 /// Compare terms for display ordering.
 /// Primary for function-polynomial terms: recognizable degree descending, so
 /// post-calculus log polynomials keep their mathematical reading order.
