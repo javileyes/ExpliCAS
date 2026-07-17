@@ -6,12 +6,12 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
-    try_rewrite_arg_expr, try_rewrite_conjugate_expr, try_rewrite_euler_expr,
-    try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
-    try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
-    try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr, try_rewrite_imaginary_power_expr,
-    try_rewrite_negative_base_half_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
-    ComplexRewriteKind,
+    try_rewrite_arg_expr, try_rewrite_complex_general_power_expr, try_rewrite_conjugate_expr,
+    try_rewrite_euler_expr, try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr,
+    try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
+    try_rewrite_gaussian_sqrt_expr, try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr,
+    try_rewrite_imaginary_power_expr, try_rewrite_negative_base_half_power_expr,
+    try_rewrite_re_expr, try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
 };
 
 fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
@@ -34,6 +34,12 @@ fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
         ComplexRewriteKind::Euler => "Euler's formula: e^(iθ) = cos θ + i·sin θ",
         ComplexRewriteKind::PrincipalArg => "Principal argument: arg(a+bi) via exact atan2",
         ComplexRewriteKind::PrincipalLog => "Principal logarithm: ln(z) = ln|z| + i·Arg(z)",
+        ComplexRewriteKind::GaussianSqrt => {
+            "Principal square root: sqrt(a+bi) = sqrt((|z|+a)/2) + i·sign(b)·sqrt((|z|-a)/2)"
+        }
+        ComplexRewriteKind::ComplexGeneralPower => {
+            "Complex power: z^w = e^(w·ln z) (principal branch)"
+        }
     }
 }
 
@@ -226,6 +232,61 @@ define_rule!(ArgRule, "Principal Argument", |ctx, expr, parent_ctx| {
     Some(out)
 });
 
+define_rule!(
+    GaussianSqrtRule,
+    "Gaussian Square Root",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        // `sqrt(a+bi)` with a perfect-square norm folds to the EXACT
+        // principal root (sqrt(3+4i) -> 2+i). Pure-real radicands and
+        // non-perfect squares decline inside the helper.
+        let rewrite = try_rewrite_gaussian_sqrt_expr(ctx, expr)?;
+        let radicand = match ctx.get(expr) {
+            cas_ast::Expr::Pow(base, _) => *base,
+            cas_ast::Expr::Function(_, args) => args[0],
+            _ => return None,
+        };
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_complex_rewrite_desc(rewrite.kind))
+                .requires(crate::ImplicitCondition::PrincipalBranch {
+                    func: "sqrt",
+                    arg: radicand,
+                }),
+        )
+    }
+);
+
+define_rule!(
+    ComplexGeneralPowerRule,
+    "Complex General Power",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        // `z^w = e^(w·ln z)` for closed Gaussians (i^i, 2^i, (1+i)^(1/3)).
+        // The helper declines every owned form — including base == e, which
+        // doubles as the anti-churn guard for the rule's own Pow(E,·) output.
+        let rewrite = try_rewrite_complex_general_power_expr(ctx, expr)?;
+        let base = match ctx.get(expr) {
+            cas_ast::Expr::Pow(base, _) => *base,
+            _ => return None,
+        };
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_complex_rewrite_desc(rewrite.kind))
+                .requires(crate::ImplicitCondition::PrincipalBranch {
+                    func: "pow",
+                    arg: base,
+                }),
+        )
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImaginaryPowerRule));
     simplifier.add_rule(Box::new(ISquaredMulRule));
@@ -241,4 +302,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImagPartRule));
     simplifier.add_rule(Box::new(EulerRule));
     simplifier.add_rule(Box::new(ArgRule));
+    simplifier.add_rule(Box::new(GaussianSqrtRule));
+    simplifier.add_rule(Box::new(ComplexGeneralPowerRule));
 }

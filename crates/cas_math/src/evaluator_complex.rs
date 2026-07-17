@@ -28,6 +28,16 @@ pub struct Complex64 {
     pub im: f64,
 }
 
+/// Collapse `-0.0` to `+0.0`. Exact real values have no signed zero: the
+/// principal branch must treat a real negative as approached from above.
+fn signed_zero_fix(x: f64) -> f64 {
+    if x == 0.0 {
+        0.0
+    } else {
+        x
+    }
+}
+
 impl Complex64 {
     pub fn new(re: f64, im: f64) -> Self {
         Complex64 { re, im }
@@ -54,11 +64,18 @@ impl Complex64 {
         self.re.hypot(self.im)
     }
     /// Principal argument `Arg(z) ∈ (-π, π]`; `None` for `z = 0`.
+    ///
+    /// The imaginary part is normalized through `signed_zero_fix`: these
+    /// values come from EXACT expressions, where `-e` is the real number
+    /// `-e` whose principal argument is `+π` — but IEEE `Neg` produces
+    /// `im = -0.0` and `atan2(-0.0, -x)` answers `-π`, silently flipping
+    /// the branch on the negative real axis (a probe that REFUTES true
+    /// identities like `ln(-e) = 1 + iπ`).
     pub fn arg(self) -> Option<f64> {
         if self.re == 0.0 && self.im == 0.0 {
             return None;
         }
-        Some(self.im.atan2(self.re))
+        Some(signed_zero_fix(self.im).atan2(self.re))
     }
     /// Principal branch of the complex logarithm.
     pub fn ln(self) -> Option<Complex64> {
@@ -66,7 +83,10 @@ impl Complex64 {
         if m == 0.0 || !m.is_finite() {
             return None;
         }
-        Some(Complex64::new(m.ln(), self.im.atan2(self.re)))
+        Some(Complex64::new(
+            m.ln(),
+            signed_zero_fix(self.im).atan2(self.re),
+        ))
     }
     /// Complex exponential `e^z = e^re · (cos im + i sin im)`.
     pub fn exp(self) -> Complex64 {
@@ -229,6 +249,19 @@ mod tests {
     use std::collections::HashMap;
 
     const EPS: f64 = 1e-12;
+
+    #[test]
+    fn negated_real_takes_the_principal_branch_not_minus_pi() {
+        // IEEE Neg produces im = -0.0; without normalization atan2 answers
+        // -π on the negative real axis and ln(-e) evaluates to 1 - iπ —
+        // a probe that REFUTES the true identity ln(-e) = 1 + iπ.
+        let z = -Complex64::real(std::f64::consts::E);
+        let ln = z.ln().expect("ln(-e) defined");
+        assert!((ln.re - 1.0).abs() < EPS);
+        assert!((ln.im - std::f64::consts::PI).abs() < EPS, "im = {}", ln.im);
+        let arg = z.arg().expect("arg(-e) defined");
+        assert!((arg - std::f64::consts::PI).abs() < EPS, "arg = {arg}");
+    }
 
     fn close(z: Complex64, re: f64, im: f64) -> bool {
         (z.re - re).abs() < EPS && (z.im - im).abs() < EPS

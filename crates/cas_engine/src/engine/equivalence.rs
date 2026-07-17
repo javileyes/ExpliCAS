@@ -421,11 +421,26 @@ mod complex_refute_tests {
             extended("ln(-1)", "i*pi", true),
             EquivalenceResult::True | EquivalenceResult::ConditionalTrue { .. }
         ));
-        // The never-confirm property lives on with a TRUE identity that has
-        // no exact fold yet: i^i = e^(-π/2) waits for B4 (z^w) — the probe
-        // sees a near-zero difference and must stay Unknown, never True.
+        // B4b (z^w) landed: i^i = e^(-π/2) confirms via the exact chain —
+        // the second graduation this fixture slot has seen.
         assert!(matches!(
             extended("i^i", "e^(-pi/2)", true),
+            EquivalenceResult::True | EquivalenceResult::ConditionalTrue { .. }
+        ));
+        // The never-confirm property lives on with TRUE identities that
+        // have no exact fold yet. ln(-e) = 1 + i·π needs the
+        // negative-real-factor split (extract does not capture -e); this
+        // fixture also caught a REAL net bug when first anchored: IEEE Neg
+        // produced im = -0.0 and atan2 flipped the branch to -π, making
+        // the probe REFUTE the true identity (fixed via signed_zero_fix).
+        assert!(matches!(
+            extended("ln(-e)", "1 + i*pi", true),
+            EquivalenceResult::Unknown
+        ));
+        // sin(i) = i·sinh(1): trig of an imaginary argument has no complex
+        // rule (outside block B; waits for a complex-trig cycle).
+        assert!(matches!(
+            extended("sin(i)", "i*(e - 1/e)/2", true),
             EquivalenceResult::Unknown
         ));
     }

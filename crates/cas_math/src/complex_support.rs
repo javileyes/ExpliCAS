@@ -114,6 +114,8 @@ pub enum ComplexRewriteKind {
     Euler,
     PrincipalArg,
     PrincipalLog,
+    GaussianSqrt,
+    ComplexGeneralPower,
 }
 
 /// Extract `a + bi` from an expression when possible.
@@ -719,6 +721,156 @@ pub fn try_rewrite_euler_expr(ctx: &mut Context, expr: ExprId) -> Option<Complex
     })
 }
 
+/// `sqrt(a+bi)` (both the `sqrt(...)` call and the `Pow(z, 1/2)` form) with
+/// `b != 0` and `a²+b²` a perfect rational square folds to the EXACT
+/// principal square root
+///   `sqrt((|z|+a)/2) + i·sign(b)·sqrt((|z|-a)/2)`
+/// (`Re ≥ 0` — the principal-branch choice). Pure-real radicands decline:
+/// the real machinery and `SqrtNegative` keep their ownership. Non-perfect
+/// squares decline to the polar route (`z^w`) or stay symbolic.
+pub fn try_rewrite_gaussian_sqrt_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    use num_traits::Signed as _;
+    let radicand = match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            let base = *base;
+            let exp = *exp;
+            let half = BigRational::new(1.into(), 2.into());
+            if crate::numeric_eval::as_rational_const(ctx, exp)? != half {
+                return None;
+            }
+            base
+        }
+        Expr::Function(fn_id, args)
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    let g = extract_gaussian(ctx, radicand)?;
+    if g.imag.is_zero() {
+        return None;
+    }
+    let norm = &g.real * &g.real + &g.imag * &g.imag;
+    let modulus = crate::perfect_square_support::rational_sqrt(&norm)?;
+    let two = BigRational::from_integer(2.into());
+    let re_sq = (&modulus + &g.real) / &two;
+    let im_sq = (&modulus - &g.real) / &two;
+    let re_part = sqrt_of_nonnegative_rational(ctx, re_sq);
+    let im_part = sqrt_of_nonnegative_rational(ctx, im_sq);
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let i_im = ctx.add(Expr::Mul(i, im_part));
+    let rewritten = if g.imag.is_positive() {
+        ctx.add(Expr::Add(re_part, i_im))
+    } else {
+        ctx.add(Expr::Sub(re_part, i_im))
+    };
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::GaussianSqrt,
+    })
+}
+
+/// `sqrt(q)` of a non-negative rational: exact `Number` when `q` is a
+/// perfect square, else the canonical `q^(1/2)` power form.
+fn sqrt_of_nonnegative_rational(ctx: &mut Context, q: BigRational) -> ExprId {
+    if let Some(root) = crate::perfect_square_support::rational_sqrt(&q) {
+        return ctx.add(Expr::Number(root));
+    }
+    let q_expr = ctx.add(Expr::Number(q));
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    ctx.add(Expr::Pow(q_expr, half))
+}
+
+/// `z^w = e^(w·ln z)` (principal branch) for CLOSED Gaussian base and
+/// exponent. Fires when the exponent has a genuine imaginary part
+/// (`i^i`, `2^i`) or when a non-real base meets a non-integer rational
+/// exponent (`(1+i)^(1/3)` — honest polar form). Everything with an
+/// existing owner declines:
+///   - base `e` (EulerRule owns `Pow(E, ·)` — this decline is also the
+///     anti-churn guard: the rule's OWN output is `Pow(E, ·)`),
+///   - integer exponents (GaussianPowRule / ordinary arithmetic),
+///   - real rational base with real rational exponent (real machinery,
+///     ComplexNegativeBaseRoot, SqrtNegative),
+///   - `z^(1/2)` with perfect-square norm (GaussianSqrtRule, exact > polar),
+///   - symbolic base or exponent (honest residual).
+pub fn try_rewrite_complex_general_power_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ComplexRewrite> {
+    use num_traits::Signed as _;
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+    if crate::expr_predicates::is_e_constant_expr(ctx, base) {
+        return None;
+    }
+    let g_base = extract_gaussian(ctx, base)?;
+    if g_base.real.is_zero() && g_base.imag.is_zero() {
+        return None; // 0^w: ln(0) has no principal value.
+    }
+    // The exponent may reach us in raw `Div(1,3)` form (the pipeline
+    // canonicalizes to `Number(1/3)`, but the helper must not depend on
+    // that): fall back to the rational-const folder for real exponents.
+    let g_exp = extract_gaussian(ctx, exp).or_else(|| {
+        crate::numeric_eval::as_rational_const(ctx, exp)
+            .map(|c| GaussianRational::new(c, BigRational::zero()))
+    })?;
+    if g_exp.imag.is_zero() {
+        let c = &g_exp.real;
+        if c.is_integer() {
+            return None;
+        }
+        if g_base.imag.is_zero() {
+            return None;
+        }
+        let half = BigRational::new(1.into(), 2.into());
+        if *c == half {
+            let norm = &g_base.real * &g_base.real + &g_base.imag * &g_base.imag;
+            if crate::perfect_square_support::rational_sqrt(&norm).is_some() {
+                return None;
+            }
+        }
+    }
+    // Positive real base with a genuine i-exponent: emit the Euler form
+    // DIRECTLY — z^(c+di) = z^c·(cos(d·ln z) + i·sin(d·ln z)). Routing it
+    // through e^(w·ln z) would ping-pong with the real exp-log
+    // canonicalizer (e^(a·ln b) -> b^a) whenever ln z stays symbolic
+    // (2^i: ln 2 has no closed form for ComplexLogRule to consume).
+    if g_base.imag.is_zero() && g_base.real.is_positive() && !g_exp.imag.is_zero() {
+        let ln_z = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+        let d = ctx.add(Expr::Number(g_exp.imag.clone()));
+        let theta = ctx.add(Expr::Mul(d, ln_z));
+        let cos = ctx.call_builtin(BuiltinFn::Cos, vec![theta]);
+        let sin = ctx.call_builtin(BuiltinFn::Sin, vec![theta]);
+        let i = ctx.add(Expr::Constant(Constant::I));
+        let i_sin = ctx.add(Expr::Mul(i, sin));
+        let trig = ctx.add(Expr::Add(cos, i_sin));
+        let rewritten = if g_exp.real.is_zero() {
+            trig
+        } else {
+            let c = ctx.add(Expr::Number(g_exp.real.clone()));
+            let z_c = ctx.add(Expr::Pow(base, c));
+            ctx.add(Expr::Mul(z_c, trig))
+        };
+        return Some(ComplexRewrite {
+            rewritten,
+            kind: ComplexRewriteKind::ComplexGeneralPower,
+        });
+    }
+
+    let ln_z = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    let w_ln = ctx.add(Expr::Mul(exp, ln_z));
+    let e = ctx.add(Expr::Constant(Constant::E));
+    let rewritten = ctx.add(Expr::Pow(e, w_ln));
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::ComplexGeneralPower,
+    })
+}
+
 /// Extract the single Gaussian argument of `Function(builtin, [arg])`.
 /// Declines (None) when the shape or the builtin does not match, or when the
 /// argument is not a closed Gaussian number (symbolic args stay symbolic —
@@ -792,10 +944,11 @@ pub fn try_rewrite_im_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRew
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_gaussian, try_rewrite_arg_expr, try_rewrite_complex_ln_expr,
-        try_rewrite_conjugate_expr, try_rewrite_euler_expr, try_rewrite_gaussian_abs_expr,
-        try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
-        try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
+        extract_gaussian, try_rewrite_arg_expr, try_rewrite_complex_general_power_expr,
+        try_rewrite_complex_ln_expr, try_rewrite_conjugate_expr, try_rewrite_euler_expr,
+        try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr,
+        try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
+        try_rewrite_gaussian_power_expr, try_rewrite_gaussian_sqrt_expr,
         try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr,
         try_rewrite_imaginary_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
         ComplexRewriteKind, GaussianRational,
@@ -1249,6 +1402,149 @@ mod tests {
             assert!(
                 (before.re - after.re).abs() < 1e-12 && (before.im - after.im).abs() < 1e-12,
                 "{src}: rewrite changed the value {before:?} -> {after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn gaussian_sqrt_folds_perfect_square_norms_exactly() {
+        for (src, expected) in [
+            ("sqrt(3 + 4*i)", "2 + i"),
+            ("sqrt(3 - 4*i)", "2 - i"),
+            ("(3 + 4*i)^(1/2)", "2 + i"),
+            ("sqrt(-5 + 12*i)", "2 + 3 * i"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let rewrite = try_rewrite_gaussian_sqrt_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("sqrt should fire for {src}"));
+            assert_eq!(rewrite.kind, ComplexRewriteKind::GaussianSqrt);
+            let shown = format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            );
+            assert_eq!(
+                shown.replace(" · ", "·"),
+                expected.replace(" · ", "·"),
+                "{src}"
+            );
+        }
+    }
+
+    #[test]
+    fn gaussian_sqrt_declines_owned_and_out_of_scope_radicands() {
+        // Pure-real radicands (real machinery / SqrtNegative own), norms
+        // that are not perfect squares (polar route), symbolic radicands.
+        for src in [
+            "sqrt(4)",
+            "sqrt(-4)",
+            "(-4)^(1/2)",
+            "sqrt(1 + i)",
+            "sqrt(x + i)",
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_gaussian_sqrt_expr(&mut ctx, expr).is_none(),
+                "gaussian sqrt must decline {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn complex_general_power_emits_log_form_and_declines_owned_shapes() {
+        // i^i -> e^(i·ln(i)): the general branch emits the exponential-log
+        // form for the pipeline (ComplexLogRule folds ln(i) next).
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("i^i", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_complex_general_power_expr(&mut ctx, expr).expect("i^i fires");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::ComplexGeneralPower);
+        let shown = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(shown.contains("ln(i)"), "i^i -> {shown}");
+
+        // 2^i takes the DIRECT Euler branch (no e^(w·ln z) intermediate):
+        // routing through the log form would ping-pong with the real
+        // exp-log canonicalizer since ln(2) stays symbolic.
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("2^i", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_complex_general_power_expr(&mut ctx, expr).expect("2^i fires");
+        let shown = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(
+            shown.contains("cos") && shown.contains("sin") && !shown.contains("e^"),
+            "2^i -> {shown}"
+        );
+
+        // Owned or out-of-scope shapes decline, each with its owner:
+        // base e (EulerRule + anti-churn), integer exponents (GaussianPow),
+        // real-real rationals (real machinery), perfect-square half powers
+        // (GaussianSqrtRule), zero base (no principal log), symbolics.
+        for src in [
+            "e^i",
+            "(2 + i)^2",
+            "(1 + i)^(-2)",
+            "2^(1/2)",
+            "(-8)^(1/3)",
+            "(3 + 4*i)^(1/2)",
+            "0^i",
+            "x^i",
+            "2^x",
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_complex_general_power_expr(&mut ctx, expr).is_none(),
+                "general power must decline {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn gaussian_sqrt_and_general_power_match_complex_evaluator() {
+        // Independent B1-net verification: the rewrite preserves the value.
+        use crate::evaluator_complex::eval_complex;
+        use std::collections::HashMap;
+        for src in ["sqrt(3 + 4*i)", "sqrt(-5 + 12*i)", "sqrt(i)"] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let before = eval_complex(&ctx, expr, &HashMap::new()).expect("eval before");
+            let rewrite = try_rewrite_gaussian_sqrt_expr(&mut ctx, expr).expect("fires");
+            let after = eval_complex(&ctx, rewrite.rewritten, &HashMap::new()).expect("eval after");
+            assert!(
+                (before.re - after.re).abs() < 1e-12 && (before.im - after.im).abs() < 1e-12,
+                "{src}: {before:?} -> {after:?}"
+            );
+        }
+        for src in [
+            "i^i",
+            "2^i",
+            "(-2)^i",
+            "(1 + i)^(1/2)",
+            "i^(1/3)",
+            "2^(1 + i)",
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let before = eval_complex(&ctx, expr, &HashMap::new()).expect("eval before");
+            let rewrite = try_rewrite_complex_general_power_expr(&mut ctx, expr).expect("fires");
+            let after = eval_complex(&ctx, rewrite.rewritten, &HashMap::new()).expect("eval after");
+            assert!(
+                (before.re - after.re).abs() < 1e-10 && (before.im - after.im).abs() < 1e-10,
+                "{src}: {before:?} -> {after:?}"
             );
         }
     }

@@ -10669,3 +10669,58 @@ fn complex_principal_branch_condition_survives_to_output() {
         Some(0)
     );
 }
+
+#[test]
+fn complex_mode_computes_general_powers_and_gaussian_sqrt() {
+    // T4-ciclo2 (B4b): z^w = e^(w·ln z) on closed Gaussians and the exact
+    // principal square root for perfect-square norms. Every fold carries
+    // the PrincipalBranch condition.
+    for (src, expected) in [
+        ("i^i", "e^(-1/2·pi)"),
+        ("2^i", "cos(ln(2)) + i·sin(ln(2))"),
+        ("sqrt(3+4*i)", "2 + i"),
+        ("sqrt(3-4*i)", "2 - i"),
+        ("sqrt(i)", "sqrt(1/2)·(1 + i)"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "complex `{src}`");
+        let conds = wire["required_conditions"]
+            .as_array()
+            .expect("conditions array");
+        assert!(
+            conds.iter().any(|c| c["kind"] == "PrincipalBranch"),
+            "`{src}` must carry the PrincipalBranch condition"
+        );
+    }
+
+    // Owners keep their exact forms — the polar route must NOT degrade them.
+    for (src, expected) in [
+        ("(-8)^(1/3)", "3·i·3^(-1/2) + 1"),
+        ("sqrt(-4)", "2·i"),
+        ("(2+i)^2", "3 + 4·i"),
+        ("2^(1/2)", "sqrt(2)"),
+        ("e^(i*pi)", "-1"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "complex owner `{src}`");
+    }
+
+    // REAL mode: everything stays symbolic or keeps its real-domain verdict.
+    for (src, expected) in [
+        ("i^i", "i^i"),
+        ("2^i", "2^i"),
+        ("sqrt(3+4*i)", "(3 + 4·i)^(1/2)"),
+        ("(-8)^(1/3)", "-2"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire["result"], expected,
+            "real `{src}` must stay `{expected}`"
+        );
+    }
+}
