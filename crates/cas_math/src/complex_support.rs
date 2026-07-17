@@ -112,6 +112,8 @@ pub enum ComplexRewriteKind {
     RealPart,
     ImagPart,
     Euler,
+    PrincipalArg,
+    PrincipalLog,
 }
 
 /// Extract `a + bi` from an expression when possible.
@@ -478,6 +480,123 @@ pub fn try_rewrite_gaussian_power_expr(ctx: &mut Context, expr: ExprId) -> Optio
     })
 }
 
+/// Exact principal argument of a CLOSED Gaussian `a+bi` — the 9-case atan2
+/// sign table over `(-π, π]`, emitting rational multiples of `π` and symbolic
+/// `atan(q)` forms. ZERO f64 (soundness-gates-must-be-exact): every branch
+/// decision is a `BigRational` sign test. `Arg(0)` is `None` (undefined).
+fn exact_principal_arg(ctx: &mut Context, g: &GaussianRational) -> Option<ExprId> {
+    use num_traits::Signed as _;
+    let a = &g.real;
+    let b = &g.imag;
+    let pi = |ctx: &mut Context| ctx.add(Expr::Constant(Constant::Pi));
+    let half_pi = |ctx: &mut Context, negate: bool| {
+        let p = pi(ctx);
+        let two = ctx.num(2);
+        let h = ctx.add(Expr::Div(p, two));
+        if negate {
+            ctx.add(Expr::Neg(h))
+        } else {
+            h
+        }
+    };
+    let atan_q = |ctx: &mut Context, q: BigRational| {
+        let qn = ctx.add(Expr::Number(q));
+        ctx.call_builtin(BuiltinFn::Atan, vec![qn])
+    };
+
+    Some(match (a.is_zero(), b.is_zero()) {
+        (true, true) => return None, // Arg(0): undefined
+        (false, true) => {
+            if a.is_positive() {
+                ctx.num(0)
+            } else {
+                pi(ctx)
+            }
+        }
+        (true, false) => half_pi(ctx, b.is_negative()),
+        (false, false) => {
+            let q = b / a;
+            if a.is_positive() {
+                // Right half-plane: atan(b/a) directly (atan(±1) folds to ±π/4).
+                atan_q(ctx, q)
+            } else if b.is_positive() {
+                // Second quadrant: π + atan(b/a) (atan term is negative).
+                let at = atan_q(ctx, q);
+                let p = pi(ctx);
+                ctx.add(Expr::Add(p, at))
+            } else {
+                // Third quadrant: atan(b/a) − π.
+                let at = atan_q(ctx, q);
+                let p = pi(ctx);
+                ctx.add(Expr::Sub(at, p))
+            }
+        }
+    })
+}
+
+/// Rewrite `arg(a+bi)` (closed Gaussian) into its EXACT principal value.
+/// `arg(0)` rewrites to `Undefined` explicitly; symbolic args decline.
+pub fn try_rewrite_arg_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    let g = gaussian_unary_builtin_arg(ctx, expr, BuiltinFn::Arg)?;
+    let rewritten = match exact_principal_arg(ctx, &g) {
+        Some(id) => id,
+        None => ctx.add(Expr::Constant(Constant::Undefined)),
+    };
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::PrincipalArg,
+    })
+}
+
+/// Principal logarithm of a CLOSED Gaussian: `ln(z) = ln|z| + i·Arg(z)`.
+/// DECLINES a positive rational argument (the real `EvaluateLogRule` owns
+/// `ln(2)` — its narration and footprint must not change) and `z = 0`.
+/// `ln(-c)` (negative real) yields `ln(c) + i·π`; `ln(i)` yields `i·π/2`.
+pub fn try_rewrite_complex_ln_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    use num_traits::Signed as _;
+    let g = gaussian_unary_builtin_arg(ctx, expr, BuiltinFn::Ln)?;
+    if g.real.is_zero() && g.imag.is_zero() {
+        return None; // ln(0): the real machinery's undefined verdict stands.
+    }
+    if g.imag.is_zero() && g.real.is_positive() {
+        return None; // positive real: owned by the real log machinery.
+    }
+
+    // ln|z|: |z|² = a²+b² rational; emit ln(√(a²+b²)) = ln(a²+b²)/2, folding
+    // the perfect-square case to ln(rational). For b=0 the modulus is |a|.
+    let modulus_ln = if g.imag.is_zero() {
+        let abs_a = ctx.add(Expr::Number(g.real.abs()));
+        Some(ctx.call_builtin(BuiltinFn::Ln, vec![abs_a]))
+    } else {
+        let norm = &g.real * &g.real + &g.imag * &g.imag;
+        if let Some(root) = crate::perfect_square_support::rational_sqrt(&norm) {
+            if root.is_one() {
+                None // |z| = 1: the ln|z| term vanishes (ln(i) → i·π/2).
+            } else {
+                let r = ctx.add(Expr::Number(root));
+                Some(ctx.call_builtin(BuiltinFn::Ln, vec![r]))
+            }
+        } else {
+            let n = ctx.add(Expr::Number(norm));
+            let ln_norm = ctx.call_builtin(BuiltinFn::Ln, vec![n]);
+            let two = ctx.num(2);
+            Some(ctx.add(Expr::Div(ln_norm, two)))
+        }
+    };
+
+    let arg = exact_principal_arg(ctx, &g)?;
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let i_arg = ctx.add(Expr::Mul(i, arg));
+    let rewritten = match modulus_ln {
+        Some(m) => ctx.add(Expr::Add(m, i_arg)),
+        None => i_arg,
+    };
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::PrincipalLog,
+    })
+}
+
 /// STRUCTURAL split of an exponent into `real_part + i·theta` — exact, no
 /// folding. Returns `(real_part, theta)` where `None` means "zero part";
 /// both components are guaranteed i-free. Declines (`None` overall) on any
@@ -673,12 +792,13 @@ pub fn try_rewrite_im_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRew
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_gaussian, try_rewrite_conjugate_expr, try_rewrite_euler_expr,
-        try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr,
-        try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-        try_rewrite_gaussian_power_expr, try_rewrite_i_squared_mul_identity_expr,
-        try_rewrite_im_expr, try_rewrite_imaginary_power_expr, try_rewrite_re_expr,
-        try_rewrite_sqrt_negative_expr, ComplexRewriteKind, GaussianRational,
+        extract_gaussian, try_rewrite_arg_expr, try_rewrite_complex_ln_expr,
+        try_rewrite_conjugate_expr, try_rewrite_euler_expr, try_rewrite_gaussian_abs_expr,
+        try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
+        try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
+        try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr,
+        try_rewrite_imaginary_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
+        ComplexRewriteKind, GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -1035,6 +1155,96 @@ mod tests {
             let expr = cas_parser::parse(src, &mut ctx).expect("parse");
             let before = eval_complex(&ctx, expr, &HashMap::new()).expect("eval before");
             let rewrite = try_rewrite_euler_expr(&mut ctx, expr).expect("euler fires");
+            let after = eval_complex(&ctx, rewrite.rewritten, &HashMap::new()).expect("eval after");
+            assert!(
+                (before.re - after.re).abs() < 1e-12 && (before.im - after.im).abs() < 1e-12,
+                "{src}: rewrite changed the value {before:?} -> {after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn principal_arg_nine_case_table() {
+        // The exact atan2 sign table over (-π, π]: axes, quadrants, zero.
+        for (src, expected) in [
+            ("arg(3)", "0"),
+            ("arg(-2)", "pi"),
+            ("arg(i)", "pi / 2"),
+            ("arg(-i)", "-pi / 2"),
+            ("arg(1 + i)", "atan(1)"),
+            ("arg(-1 + i)", "atan(-1) + pi"),
+            ("arg(-1 - i)", "atan(1) - pi"),
+            ("arg(2 - 2*i)", "atan(-1)"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let rewrite = try_rewrite_arg_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("arg should fire for {src}"));
+            let shown = format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            );
+            assert_eq!(shown, expected, "{src}");
+        }
+        // arg(0) -> Undefined explicitly; symbolic declines.
+        let mut ctx = Context::new();
+        let zero_arg = cas_parser::parse("arg(0)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_arg_expr(&mut ctx, zero_arg).expect("fires");
+        assert!(matches!(
+            ctx.get(rewrite.rewritten),
+            cas_ast::Expr::Constant(Constant::Undefined)
+        ));
+        let sym = cas_parser::parse("arg(x)", &mut ctx).expect("parse");
+        assert!(try_rewrite_arg_expr(&mut ctx, sym).is_none());
+    }
+
+    #[test]
+    fn principal_log_shapes_and_declines() {
+        for (src, must_contain) in [
+            ("ln(-1)", "pi"),
+            ("ln(i)", "pi"),
+            ("ln(-2)", "ln(2)"),
+            ("ln(1 + i)", "ln(2)"),
+            ("ln(2*i)", "ln(2)"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let rewrite = try_rewrite_complex_ln_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("complex ln should fire for {src}"));
+            assert_eq!(rewrite.kind, ComplexRewriteKind::PrincipalLog);
+            let shown = format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            );
+            assert!(shown.contains(must_contain), "{src} -> {shown}");
+        }
+        // Ownership declines: positive rational, zero, symbolic.
+        for src in ["ln(2)", "ln(1)", "ln(0)", "ln(x)"] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_complex_ln_expr(&mut ctx, expr).is_none(),
+                "complex ln must decline {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn principal_log_and_arg_match_complex_evaluator() {
+        // Independent B1-net verification on generic (non-special) Gaussians.
+        use crate::evaluator_complex::eval_complex;
+        use std::collections::HashMap;
+        for src in ["ln(3 + 4*i)", "ln(-2 + i)", "ln(-3 - 5*i)"] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let before = eval_complex(&ctx, expr, &HashMap::new()).expect("eval before");
+            let rewrite = try_rewrite_complex_ln_expr(&mut ctx, expr).expect("fires");
             let after = eval_complex(&ctx, rewrite.rewritten, &HashMap::new()).expect("eval after");
             assert!(
                 (before.re - after.re).abs() < 1e-12 && (before.im - after.im).abs() < 1e-12,

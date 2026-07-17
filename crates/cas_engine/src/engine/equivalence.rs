@@ -415,10 +415,15 @@ mod complex_refute_tests {
             extended("e^(i*pi)", "-1", true),
             EquivalenceResult::True | EquivalenceResult::ConditionalTrue { .. }
         ));
+        // B3 (principal log) landed: ln(-1) = i·π confirms via the exact
+        // fold too — the graduation the B2 ledger entry anticipated.
+        assert!(matches!(
+            extended("ln(-1)", "i*pi", true),
+            EquivalenceResult::True | EquivalenceResult::ConditionalTrue { .. }
+        ));
         // The never-confirm property lives on with a TRUE identity that has
-        // no exact fold yet: i^i = e^(-π/2) waits for B3+B4 — the probe sees
-        // a near-zero difference and must stay Unknown, never True. (ln(-1)
-        // is unsuitable here: it still collapses to `undefined` pre-B3.)
+        // no exact fold yet: i^i = e^(-π/2) waits for B4 (z^w) — the probe
+        // sees a near-zero difference and must stay Unknown, never True.
         assert!(matches!(
             extended("i^i", "e^(-pi/2)", true),
             EquivalenceResult::Unknown

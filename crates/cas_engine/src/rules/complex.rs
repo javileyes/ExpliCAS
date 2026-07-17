@@ -6,11 +6,12 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
-    try_rewrite_conjugate_expr, try_rewrite_euler_expr, try_rewrite_gaussian_abs_expr,
-    try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-    try_rewrite_gaussian_power_expr, try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr,
-    try_rewrite_imaginary_power_expr, try_rewrite_negative_base_half_power_expr,
-    try_rewrite_re_expr, try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
+    try_rewrite_arg_expr, try_rewrite_conjugate_expr, try_rewrite_euler_expr,
+    try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
+    try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
+    try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr, try_rewrite_imaginary_power_expr,
+    try_rewrite_negative_base_half_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
+    ComplexRewriteKind,
 };
 
 fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
@@ -31,6 +32,8 @@ fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
         ComplexRewriteKind::RealPart => "Real part: Re(a+bi) = a",
         ComplexRewriteKind::ImagPart => "Imaginary part: Im(a+bi) = b",
         ComplexRewriteKind::Euler => "Euler's formula: e^(iθ) = cos θ + i·sin θ",
+        ComplexRewriteKind::PrincipalArg => "Principal argument: arg(a+bi) via exact atan2",
+        ComplexRewriteKind::PrincipalLog => "Principal logarithm: ln(z) = ln|z| + i·Arg(z)",
     }
 }
 
@@ -198,6 +201,17 @@ define_rule!(EulerRule, "Euler Formula", |ctx, expr, parent_ctx| {
     Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
 });
 
+define_rule!(ArgRule, "Principal Argument", |ctx, expr, parent_ctx| {
+    if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+        return None;
+    }
+
+    // `arg(a+bi)` (closed Gaussian) -> exact principal value in (-π, π] via
+    // the 9-case sign table; `arg(0)` -> Undefined explicitly.
+    let rewrite = try_rewrite_arg_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+});
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImaginaryPowerRule));
     simplifier.add_rule(Box::new(ISquaredMulRule));
@@ -212,4 +226,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RealPartRule));
     simplifier.add_rule(Box::new(ImagPartRule));
     simplifier.add_rule(Box::new(EulerRule));
+    simplifier.add_rule(Box::new(ArgRule));
 }

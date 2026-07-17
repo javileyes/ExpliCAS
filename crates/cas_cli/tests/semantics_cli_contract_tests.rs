@@ -10573,3 +10573,44 @@ fn complex_mode_applies_euler_formula() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "e^(pi·i)");
 }
+
+#[test]
+fn complex_mode_computes_principal_log_and_arg() {
+    // T3-ciclo2 (B3): ln(z) = ln|z| + i·Arg(z) on closed Gaussians, and
+    // arg(a+bi) via the exact 9-case atan2 sign table over (-π, π].
+    for (src, expected) in [
+        ("ln(-1)", "pi·i"),
+        ("ln(i)", "1/2·pi·i"),
+        ("ln(-2)", "ln(2) + pi·i"),
+        ("ln(1+i)", "1/2·ln(2) + 1/4·pi·i"),
+        ("arg(i)", "1/2·pi"),
+        ("arg(-1)", "pi"),
+        ("arg(-1-i)", "-3/4·pi"),
+        ("arg(0)", "undefined"),
+        ("arg(3)", "0"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire["result"], expected,
+            "complex `{src}` should yield `{expected}`"
+        );
+    }
+
+    // REAL mode is byte-identical to pre-B3: ln of a negative stays the
+    // honest real-domain `undefined`, `arg` stays a symbolic call, and
+    // the positive-rational log keeps its owner.
+    for (src, expected) in [
+        ("ln(-1)", "undefined"),
+        ("arg(i)", "arg(i)"),
+        ("ln(2)", "ln(2)"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire["result"], expected,
+            "real `{src}` must stay `{expected}`"
+        );
+    }
+}

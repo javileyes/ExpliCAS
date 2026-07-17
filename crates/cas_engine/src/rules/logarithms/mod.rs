@@ -49,6 +49,44 @@ define_rule!(
     }
 );
 
+/// Principal complex logarithm: `ln(z) = ln|z| + i·Arg(z)` for a CLOSED
+/// Gaussian argument under ComplexEnabled (`ln(-1) → i·π`, `ln(i) → i·π/2`,
+/// `ln(-2) → ln(2) + i·π`). Positive-rational arguments DECLINE inside the
+/// helper — the real `EvaluateLogRule` keeps its ownership, narration and
+/// footprint. Priority 16: must intercept BEFORE EvaluateLogRule's
+/// negative-argument `undefined` verdict, which is the REAL-domain answer.
+pub struct ComplexLogRule;
+
+impl crate::rule::Rule for ComplexLogRule {
+    fn name(&self) -> &str {
+        "Principal Complex Logarithm"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+        let rewrite = cas_math::complex_support::try_rewrite_complex_ln_expr(ctx, expr)?;
+        Some(
+            crate::rule::Rewrite::new(rewrite.rewritten)
+                .desc("Principal logarithm: ln(z) = ln|z| + i·Arg(z)"),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
+    }
+
+    fn priority(&self) -> i32 {
+        16
+    }
+}
+
 define_rule!(
     EvaluateLogRule,
     "Evaluate Logarithms",
@@ -199,6 +237,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     // ln(c)/ln(b) → log_b(c) when both are integers and the ratio is rational (ln(8)/ln(2) → 3).
     simplifier.add_rule(Box::new(LnQuotientRationalRule));
+
+    // Complex principal log intercepts (priority 16) before the real
+    // EvaluateLogRule can emit its real-domain `undefined` for ln(negative).
+    simplifier.add_rule(Box::new(ComplexLogRule));
 
     simplifier.add_rule(Box::new(EvaluateLogRule));
 

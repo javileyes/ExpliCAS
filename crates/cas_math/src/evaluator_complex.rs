@@ -209,6 +209,9 @@ fn eval_complex_depth(
                 BuiltinFn::Tan => a.sin().checked_div(a.cos()),
                 BuiltinFn::Sqrt => a.sqrt(),
                 BuiltinFn::Abs => Some(Complex64::real(a.abs())),
+                // Real-argument atan only (what the exact Arg table emits);
+                // complex atan is out of scope — honest decline.
+                BuiltinFn::Atan if a.im == 0.0 => Some(Complex64::real(a.re.atan())),
                 BuiltinFn::Re => Some(Complex64::real(a.re)),
                 BuiltinFn::Im => Some(Complex64::real(a.im)),
                 BuiltinFn::Conjugate => Some(Complex64::new(a.re, -a.im)),

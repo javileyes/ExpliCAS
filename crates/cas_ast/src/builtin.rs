@@ -123,12 +123,13 @@ pub enum BuiltinFn {
     Re,        // Re(z) - real part
     Im,        // Im(z) - imaginary part
     Conjugate, // conjugate(z) - complex conjugate
+    Arg,       // arg(z) - principal argument in (-pi, pi]
 }
 
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 49;
+    pub const COUNT: usize = 50;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -204,6 +205,7 @@ impl BuiltinFn {
             BuiltinFn::Re => "Re",
             BuiltinFn::Im => "Im",
             BuiltinFn::Conjugate => "conjugate",
+            BuiltinFn::Arg => "arg",
         }
     }
 
@@ -282,6 +284,8 @@ impl BuiltinFn {
             "im" => Some(BuiltinFn::Im),
             "conjugate" => Some(BuiltinFn::Conjugate),
             "conj" => Some(BuiltinFn::Conjugate),
+            "arg" => Some(BuiltinFn::Arg),
+            "Arg" => Some(BuiltinFn::Arg),
             _ => None,
         }
     }
@@ -345,6 +349,7 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Re,
     BuiltinFn::Im,
     BuiltinFn::Conjugate,
+    BuiltinFn::Arg,
 ];
 
 /// Cache of builtin function SymbolIds.
