@@ -15,6 +15,19 @@ pub struct DivZeroNumeratorPattern {
     pub denominator_is_literal_zero: bool,
 }
 
+/// A literal zero for the zero identities: a bare `Number(0)` or the
+/// `decimal(0)` display wrapper (a rounded-to-zero payload IS zero by the
+/// WYSIWYG contract; the identity result stays exact either way).
+fn is_literal_zero(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => n.is_zero(),
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.sym_name(*fn_id) == "decimal" => {
+            matches!(ctx.get(args[0]), Expr::Number(n) if n.is_zero())
+        }
+        _ => false,
+    }
+}
+
 /// Match `0 * e` or `e * 0`.
 pub fn match_mul_zero_pattern(ctx: &Context, expr: ExprId) -> Option<MulZeroPattern> {
     let Expr::Mul(lhs, rhs) = ctx.get(expr) else {
@@ -23,8 +36,8 @@ pub fn match_mul_zero_pattern(ctx: &Context, expr: ExprId) -> Option<MulZeroPatt
     let lhs = *lhs;
     let rhs = *rhs;
 
-    let lhs_is_zero = matches!(ctx.get(lhs), Expr::Number(n) if n.is_zero());
-    let rhs_is_zero = matches!(ctx.get(rhs), Expr::Number(n) if n.is_zero());
+    let lhs_is_zero = is_literal_zero(ctx, lhs);
+    let rhs_is_zero = is_literal_zero(ctx, rhs);
     if !(lhs_is_zero || rhs_is_zero) {
         return None;
     }
@@ -45,7 +58,7 @@ pub fn match_div_zero_numerator_pattern(
         return None;
     };
 
-    let num_is_zero = matches!(ctx.get(*num), Expr::Number(n) if n.is_zero());
+    let num_is_zero = is_literal_zero(ctx, *num);
     if !num_is_zero {
         return None;
     }

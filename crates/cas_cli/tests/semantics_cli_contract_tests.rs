@@ -10801,6 +10801,36 @@ fn complex_mode_approximates_closed_complex_values() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "14285714285700000000");
 
+    // Sticky fold-through (T5-ciclo2): arithmetic sees through decimal(q)
+    // exactly and the result keeps the decimal display preference. The
+    // headline WYSIWYG identity: subtracting the displayed value back
+    // yields EXACTLY zero.
+    for (src, expected) in [
+        ("approx(3/7) - 0.428571428571", "0"),
+        ("approx(1/3) + 1/3", "0.666666666666"),
+        ("approx(1/3)*3", "0.999999999999"),
+        ("approx(1/3)+approx(1/4)", "0.583333333333"),
+        ("2 * approx(3/7)", "0.857142857142"),
+        ("approx(0)*x", "0"),
+        ("approx(1)*x", "x"),
+        ("approx(0) + x", "x"),
+        ("1/approx(0)", "undefined"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "`{src}`");
+    }
+
+    // Exact-only expressions never acquire the decimal preference.
+    for (src, expected) in [
+        ("1/3 + 1/3", "2/3"),
+        ("3/7 - 0.428571428571", "3/7000000000000"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "exact `{src}` untouched");
+    }
+
     // REAL mode: the complex fallback never leaks — approx(ln(i)) stays
     // symbolic, approx(ln(-1)) keeps the honest real-domain undefined.
     for (src, expected) in [

@@ -83,6 +83,53 @@ pub fn round_rational_sig(value: &BigRational, sig: usize) -> BigRational {
     rounded
 }
 
+/// Render a rational as a plain decimal string at the display width
+/// (rounding first — a no-op for already-rounded payloads). Used by fold
+/// descriptions so didactic text never leaks `428571428571/1000000000000`.
+pub fn decimal_display_string(value: &BigRational) -> String {
+    let rounded = round_rational_sig(value, DECIMAL_DISPLAY_SIG_DIGITS);
+    if rounded.is_zero() {
+        return "0".to_string();
+    }
+    let negative = rounded.is_negative();
+    let v = rounded.abs();
+    let (num, den) = (v.numer().clone(), v.denom().clone());
+    // Rounded payloads have denominators dividing a power of ten.
+    let ten = BigInt::from(10);
+    let mut k = 0u32;
+    let mut pow = BigInt::from(1);
+    while (&pow % &den) != BigInt::from(0) && k < 4096 {
+        pow *= &ten;
+        k += 1;
+    }
+    let scaled = &num * (&pow / &den);
+    let digits = scaled.to_string();
+    let mut out = String::new();
+    if negative {
+        out.push('-');
+    }
+    if k == 0 {
+        out.push_str(&digits);
+        return out;
+    }
+    let k = k as usize;
+    if digits.len() > k {
+        out.push_str(&digits[..digits.len() - k]);
+        let frac = digits[digits.len() - k..].trim_end_matches('0');
+        if !frac.is_empty() {
+            out.push('.');
+            out.push_str(frac);
+        }
+    } else {
+        out.push_str("0.");
+        for _ in 0..(k - digits.len()) {
+            out.push('0');
+        }
+        out.push_str(digits.trim_end_matches('0'));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +137,15 @@ mod tests {
 
     fn rat(n: i64, d: i64) -> BigRational {
         BigRational::new(n.into(), d.into())
+    }
+
+    #[test]
+    fn decimal_string_renders_rounded_payloads() {
+        assert_eq!(decimal_display_string(&rat(3, 7)), "0.428571428571");
+        assert_eq!(decimal_display_string(&rat(-2, 3)), "-0.666666666667");
+        assert_eq!(decimal_display_string(&rat(1, 2)), "0.5");
+        assert_eq!(decimal_display_string(&rat(3, 1)), "3");
+        assert_eq!(decimal_display_string(&rat(0, 1)), "0");
     }
 
     #[test]

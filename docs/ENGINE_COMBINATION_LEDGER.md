@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 605 (newest first)
+Active entries: 606 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -131,6 +131,7 @@ Active entries: 605 (newest first)
 - 2026-07-17 | `retained` | `cas_formatter/display/ordering.rs` (`cmp_term_for_display` + `term_mentions_... | PRESENTACIÓN (Fase 2 · C1: orden cartesiano `a+bi`): `-1 + 2·i`, nunca `2·i - 1`
 - 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (brazo approx: fallback complejo vía `... | CAPACIDAD (Fase 2 · approx() complejo): `approx(ln(i))` → `i·1.5707…` — la superficie numérica del frente complejo
 - 2026-07-17 | `retained` | `cas_math/src/decimal_display.rs` (NUEVO: `approx_display_rational` + `round_... | PRESENTACIÓN (T5·ciclo1 — capa numeric-display, WYSIWYG): el payload de `decimal()` ES el valor mostrado
+- 2026-07-17 | `retained` | `cas_math/arithmetic_rule_support.rs` (helpers `as_fold_number`/`wrap_fold_nu... | PRESENTACIÓN (T5·ciclo2 — fold-through sticky): `approx(3/7) - 0.428571428571` → `0` EXACTO
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20201,3 +20202,16 @@ Active entries: 605 (newest first)
   - retained learning:
   - **WYSIWYG es un contrato de IGUALDAD payload==display, y se testea como tal**: el unit test decisivo no compara strings — compara el racional interno contra el racional que produce PARSEAR el string mostrado; cualquier deriva futura formatter/payload lo rompe desde ambos lados.
   - PRÓXIMO PELDAÑO: T5·ciclo2 — fold-through sticky en `try_rewrite_combine_constants_expr` (el chokepoint único de Add/Sub/Mul/Div; gradúa el headline `approx(3/7) - 0.428571428571 → 0`).
+
+## 2026-07-17 - PRESENTACIÓN (T5·ciclo2 — fold-through sticky): `approx(3/7) - 0.428571428571` → `0` EXACTO
+
+- area: `cas_math/arithmetic_rule_support.rs` (helpers `as_fold_number`/`wrap_fold_number`/`fold_desc_number` + los ~12 match-points de `try_rewrite_combine_constants_expr` + identidades add-zero/mul-one) + `arithmetic_zero_support.rs` (matchers mul-zero/div-zero ven `decimal(0)`) + `decimal_display.rs` (`decimal_display_string` para descs D9) + e2e
+- status: `retained`. Segundo ciclo de la tanda 5. **Gradúa el síntoma reportado por el usuario.**
+- capture:
+  - investment_class: presentación/UX — el contagio de preferencia decimal, SOUND porque es display-preference sobre valores exactos, jamás semántica f64.
+  - cell: `approx(3/7) - 0.428571428571 → 0` (LA identidad WYSIWYG: el payload redondeado del ciclo 1 == el racional del literal tipeado), `approx(1/3)+1/3 → 0.666666666666`, `approx(1/3)*3 → 0.999999999999` (honestidad WYSIWYG: NO es 1), `approx(1/3)+approx(1/4) → 0.583333333333`, `2·approx(3/7) → 0.857142857142`; aniquiladores/identidades EXACTOS con sticky deliberadamente soltado (D6: `approx(0)*x → 0`, `approx(1)*x → x`, `approx(0)+x → x`); `1/approx(0) → undefined` (D7: payload redondeado-a-cero ES cero). Exactos intactos (`1/3+1/3 → 2/3`; `3/7 - 0.428571428571 → 3/7000000000000` sin adquirir preferencia). Pins cartesianos complejos intactos (`Mul(decimal,i)` no es fold-number — sin merge a través de la frontera `·i`).
+  - diseño: el hallazgo estructural del scoping pagó — TODOS los folds binarios Add/Sub/Mul/Div pasan por UNA función (`try_rewrite_combine_constants_expr`, 4 callers) que casa `Expr::Number` directo (no `as_rational_const`): un solo par de helpers (`as_fold_number` un-nivel + `wrap_fold_number` sticky-OR) cubre el engine entero. Los matchers cero (`match_mul_zero_pattern`/`div_zero`) extendidos con `is_literal_zero`. Descs D9: `decimal_display_string` — el texto didáctico jamás muestra `428571428571/1000000000000`.
+  - validación: workspace 12416/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella IDÉNTICA en ambos scorecards (el fold nuevo solo dispara ante nodos decimal — inexistentes en las lanes).
+  - retained learning:
+  - **"Display-preference contagion" es la forma sound del contagio float**: lo que se propaga es CÓMO mostrar, no QUÉ valor es — y las excepciones correctas son exactamente donde el operando numérico DESAPARECE del resultado (aniquilador/identidad → exacto, D6) porque ahí la preferencia no tiene portador y un 0 exacto mantiene sound todo zero-test aguas abajo.
+  - PRÓXIMO PELDAÑO: T5·ciclo3 — approx sobre subárboles cerrados maximales (walker con MulView/AddView por el interleaving canónico; gate D5 de trivialidad; brazo de idempotencia `approx(approx(x))`). Residual nombrado del ciclo: Pow no foldea a través de decimal (`approx(2)^2` queda `2^2` simbólico-decimal — sub-cycle 2b del scoping: `literal_rational`/`power_eval_support` con sticky).
