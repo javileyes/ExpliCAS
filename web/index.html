@@ -1511,6 +1511,14 @@
                     <option value="on">on</option>
                 </select>
             </label>
+            <label class="mode-control" for="numeric-display-select"
+                data-i18n-title="input.numeric_display.title" title="Presentación numérica: decimal aproxima el resultado final (12 dígitos significativos); internamente todo sigue siendo exacto y simbólico">
+                <span class="mode-label" data-i18n="input.numeric_display.label">Números</span>
+                <select class="mode-select" id="numeric-display-select">
+                    <option value="exact" selected>exact</option>
+                    <option value="decimal">decimal</option>
+                </select>
+            </label>
             <input type="text" class="input-field" id="expression-input"
                 data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
             <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()" data-i18n="input.submit.label">
@@ -1589,6 +1597,7 @@
         const DOMAIN_MODE_STORAGE_KEY = 'expliCAS_domain_mode';
         const BRANCH_MODE_STORAGE_KEY = 'expliCAS_branch_mode';
         const COMPLEX_MODE_STORAGE_KEY = 'expliCAS_complex_arithmetic';
+        const NUMERIC_DISPLAY_STORAGE_KEY = 'expliCAS_numeric_display';
         const LANG_MODE_STORAGE_KEY = 'expliCAS_step_language';
 
         // ===== Interface i18n (es/en) — one catalog, driven by the ES/EN language toggle =====
@@ -1623,6 +1632,8 @@
                         "input.branch_mode.label": "Rama",
                         "input.complex_mode.title": "Aritmética compleja: activado trata i como la unidad imaginaria (i^2 = -1, productos gaussianos)",
                         "input.complex_mode.label": "Complejo",
+                        "input.numeric_display.title": "Presentación numérica: decimal aproxima el resultado final (12 dígitos significativos); internamente todo sigue siendo exacto y simbólico",
+                        "input.numeric_display.label": "Números",
                         "input.expression.placeholder": "Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))",
                         "input.submit.label": "Evaluar",
                         "variables_panel.title": "📦 Variables asignadas",
@@ -1702,6 +1713,8 @@
                         "input.branch_mode.label": "Branch",
                         "input.complex_mode.title": "Complex arithmetic: on treats i as the imaginary unit (i^2 = -1, Gaussian products)",
                         "input.complex_mode.label": "Complex",
+                        "input.numeric_display.title": "Numeric display: decimal approximates the final result (12 significant digits); everything stays exact and symbolic internally",
+                        "input.numeric_display.label": "Numbers",
                         "input.expression.placeholder": "Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))",
                         "input.submit.label": "Evaluate",
                         "variables_panel.title": "📦 Assigned Variables",
@@ -1811,6 +1824,16 @@
             sessionStorage.setItem(COMPLEX_MODE_STORAGE_KEY, complexModeSelect.value);
         });
 
+        const numericDisplaySelect = document.getElementById('numeric-display-select');
+        const savedNumericDisplay = sessionStorage.getItem(NUMERIC_DISPLAY_STORAGE_KEY);
+        if (savedNumericDisplay === 'exact' || savedNumericDisplay === 'decimal') {
+            numericDisplaySelect.value = savedNumericDisplay;
+        }
+
+        numericDisplaySelect.addEventListener('change', () => {
+            sessionStorage.setItem(NUMERIC_DISPLAY_STORAGE_KEY, numericDisplaySelect.value);
+        });
+
         const langModeSelect = document.getElementById('lang-mode-select');
         const savedLangMode = sessionStorage.getItem(LANG_MODE_STORAGE_KEY);
         if (savedLangMode === 'es' || savedLangMode === 'en') {
@@ -1899,6 +1922,7 @@
                         domain: domainModeSelect.value,
                         branch: branchModeSelect.value,
                         complex_arithmetic: complexModeSelect.value,
+                        numeric_display: numericDisplaySelect.value,
                         language: langModeSelect.value,
                         time_budget_ms: DEFAULT_TIME_BUDGET_MS
                     })

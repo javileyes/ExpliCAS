@@ -92,6 +92,18 @@ def _coerce_complex_arithmetic(raw_value):
     return value
 
 
+def _coerce_numeric_display(raw_value):
+    """Parse the web numeric-display selector (exact/decimal; default exact)."""
+    if raw_value is None or raw_value == "":
+        return "exact"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"exact", "decimal"}:
+        raise ValueError("numeric_display must be 'exact' or 'decimal'")
+
+    return value
+
+
 def _coerce_branch_mode(raw_value):
     if raw_value is None or raw_value == "":
         return "strict"
@@ -251,6 +263,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             domain_mode = _coerce_domain_mode(data.get("domain"))
             branch_mode = _coerce_branch_mode(data.get("branch"))
             complex_arithmetic = _coerce_complex_arithmetic(data.get("complex_arithmetic"))
+            numeric_display = _coerce_numeric_display(data.get("numeric_display"))
             if not expression:
                 self.send_json_error("No expression provided")
                 return
@@ -266,6 +279,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     domain_mode,
                     branch_mode,
                     complex_arithmetic,
+                    numeric_display,
                 )
                 if result.get("ok", False):
                     session_variables[var_name] = result.get("result", "")
@@ -278,6 +292,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     domain_mode,
                     branch_mode,
                     complex_arithmetic,
+                    numeric_display,
                 )
 
             session_results.append(result)
@@ -302,6 +317,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         domain_mode,
         branch_mode="strict",
         complex_arithmetic="off",
+        numeric_display="exact",
     ):
         expr = expression
 
@@ -329,6 +345,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 domain_mode=domain_mode,
                 branch_mode=branch_mode,
                 complex_arithmetic=complex_arithmetic,
+                numeric_display=numeric_display,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
@@ -338,6 +355,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     domain_mode=domain_mode,
                     branch_mode=branch_mode,
                     complex_arithmetic=complex_arithmetic,
+                    numeric_display=numeric_display,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
@@ -348,6 +366,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             domain_mode=domain_mode,
             branch_mode=branch_mode,
             complex_arithmetic=complex_arithmetic,
+            numeric_display=numeric_display,
         )
 
     def call_cas_cli(
@@ -358,6 +377,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         domain_mode="generic",
         branch_mode="strict",
         complex_arithmetic="off",
+        numeric_display="exact",
     ):
         try:
             # Use absolute path if available
@@ -373,6 +393,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             ]
             if complex_arithmetic == "on":
                 cmd += ["--value-domain", "complex"]
+            if numeric_display == "decimal":
+                cmd += ["--numeric-display", "decimal"]
             if time_budget_ms is not None:
                 cmd += ["--time-budget-ms", str(time_budget_ms)]
 
