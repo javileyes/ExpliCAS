@@ -10831,6 +10831,33 @@ fn complex_mode_approximates_closed_complex_values() {
         assert_eq!(wire["result"], expected, "exact `{src}` untouched");
     }
 
+    // Closed-subtree mapping (T5-ciclo3): free variables no longer block
+    // approx — the maximal closed numeric parts fold to ONE decimal
+    // coefficient each; integer-only shapes decline (D5).
+    for (src, expected) in [
+        ("approx(sqrt(2)*pi*e*x)", "x·12.0770079568"),
+        ("approx(1/3 + x)", "0.333333333333 + x"),
+        ("approx(sin(x) + pi)", "sin(x) + 3.14159265359"),
+        ("approx(approx(1/3))", "0.333333333333"),
+        ("approx(2*x)", "approx(2·x)"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "`{src}`");
+    }
+
+    // Complex closed subtrees compose with the cartesian surface.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "approx(sqrt(2)*i*x)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "i·x·1.41421356237");
+
     // REAL mode: the complex fallback never leaks — approx(ln(i)) stays
     // symbolic, approx(ln(-1)) keeps the honest real-domain undefined.
     for (src, expected) in [

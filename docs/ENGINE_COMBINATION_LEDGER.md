@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 606 (newest first)
+Active entries: 607 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -132,6 +132,7 @@ Active entries: 606 (newest first)
 - 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (brazo approx: fallback complejo vía `... | CAPACIDAD (Fase 2 · approx() complejo): `approx(ln(i))` → `i·1.5707…` — la superficie numérica del frente complejo
 - 2026-07-17 | `retained` | `cas_math/src/decimal_display.rs` (NUEVO: `approx_display_rational` + `round_... | PRESENTACIÓN (T5·ciclo1 — capa numeric-display, WYSIWYG): el payload de `decimal()` ES el valor mostrado
 - 2026-07-17 | `retained` | `cas_math/arithmetic_rule_support.rs` (helpers `as_fold_number`/`wrap_fold_nu... | PRESENTACIÓN (T5·ciclo2 — fold-through sticky): `approx(3/7) - 0.428571428571` → `0` EXACTO
+- 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (walker `approx_closed_subtrees` + gat... | CAPACIDAD (T5·ciclo3 — approx sobre subárboles cerrados): `approx(sqrt(2)*pi*e*x)` → `x·12.0770079568`
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20215,3 +20216,16 @@ Active entries: 606 (newest first)
   - retained learning:
   - **"Display-preference contagion" es la forma sound del contagio float**: lo que se propaga es CÓMO mostrar, no QUÉ valor es — y las excepciones correctas son exactamente donde el operando numérico DESAPARECE del resultado (aniquilador/identidad → exacto, D6) porque ahí la preferencia no tiene portador y un 0 exacto mantiene sound todo zero-test aguas abajo.
   - PRÓXIMO PELDAÑO: T5·ciclo3 — approx sobre subárboles cerrados maximales (walker con MulView/AddView por el interleaving canónico; gate D5 de trivialidad; brazo de idempotencia `approx(approx(x))`). Residual nombrado del ciclo: Pow no foldea a través de decimal (`approx(2)^2` queda `2^2` simbólico-decimal — sub-cycle 2b del scoping: `literal_rational`/`power_eval_support` con sticky).
+
+## 2026-07-17 - CAPACIDAD (T5·ciclo3 — approx sobre subárboles cerrados): `approx(sqrt(2)*pi*e*x)` → `x·12.0770079568`
+
+- area: `cas_engine/meta_functions_support.rs` (walker `approx_closed_subtrees` + gate D5 `closed_subtree_wants_decimal` + helpers `eval_closed_to_decimal`/`eval_closed_complex_to_decimal` extraído + brazo idempotencia) + e2e
+- status: `retained`. Tercer ciclo de la tanda 5. **Gradúa el segundo síntoma reportado por el usuario.**
+- capture:
+  - investment_class: capacidad de presentación (el evalf-sobre-estructura de sympy, con gate de trivialidad propio).
+  - cell: `approx(sqrt(2)*pi*e*x) → x·12.0770079568` (UN coeficiente — las vistas n-ary porque el orden canónico intercala cerrados y abiertos), `approx(1/3+x) → 0.333333333333+x`, `approx(sin(x)+pi) → sin(x)+3.14159265359`, `approx(x/sqrt(2)) → x/1.41421356237`, `approx(approx(1/3)) → 0.333333333333` (idempotencia — desatasca el probe del scoping); complejo compone: `approx(sqrt(2)*i*x) → i·x·1.41421356237`, `approx(ln(-2)*x)` cartesiano por términos. DECLINES honestos D5: `approx(2*x)` (solo enteros — sin churn `2→2.0`), `approx(x+i)` (los 2 pins "honest residual" sobreviven SIN migrar, como predijo el scoping), `approx(x^(1/3))` (exponentes exactos en v1). Protección de inertes: `root_sum`/`integrate` bounds jamás decimal-izados (el walker NO entra en args de Function; términos con variable ligada cuentan como abiertos).
+  - diseño: recursión SOLO estructural (Add/Sub/Neg vía AddView con signos, Mul vía MulView, Div ambos lados, Pow solo base); el conjunto cerrado se evalúa ENTERO como un valor (real primero, cartesiano complejo si enabled); sin progreso → None y el wrapper `approx(...)` se queda (jamás soltar approx en fallo parcial). La emisión cartesiana se extrajo a helper compartido entre el whole-arg y el walker.
+  - validación: workspace 12417/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella: pressure idéntica, guardrail +1 filtered_out (test nuevo — clase intencionada).
+  - retained learning:
+  - **El gate de trivialidad (D5) es lo que hace las particiones estables**: "envuelve solo si alguna hoja numérica no es entero-valuada" deja pasar exactamente los casos útiles y hace que los pins de decline existentes SOBREVIVAN sin migración — un walker sin gate habría convertido cada `2·x` en `2.0·x` y roto media suite.
+  - PRÓXIMO PELDAÑO: T5·ciclo4 — el eje de sesión `--numeric-display` (el pase de frontera de salida ES este walker en modo wrap-only; wiring según el patrón --value-domain, aterrizando en finalize). Residuales: Pow-fold decimal (2b), orden display del coeficiente decimal en Mul (`x·12.07` vs `12.07·x` — cosmético), exponentes decimales (v2 si se pide).
