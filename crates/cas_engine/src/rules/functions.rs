@@ -233,9 +233,13 @@ define_rule!(
     EvenPowerOverAbsRule,
     "Even Power Over Absolute Value",
     Some(crate::target_kind::TargetKindSet::DIV),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
         // x^(2k)/|x| -> |x|^(2k-1), a removable-singularity cancellation that
         // keeps the x != 0 condition (the same treatment as x^2/x -> x).
+        // REAL-ONLY: over ℂ, z^(2k) ≠ |z|^(2k), so the cancellation is unsound.
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let (rewritten, base) = try_rewrite_even_power_over_abs_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewritten)
@@ -564,6 +568,11 @@ impl crate::rule::Rule for AbsSquaredRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
+        // REAL-ONLY: over ℂ, |z|^(2k) = (z·z̄)^k ≠ z^(2k) — stripping the abs
+        // is unsound for potentially-complex bases.
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         // V2.15.9: Skip if parent is ln or log to allow LogAbsPowerRule to apply first
         if parent_ctx
             .immediate_parent()
@@ -603,6 +612,10 @@ impl crate::rule::Rule for AbsPowerOddMagnitudeRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
+        // REAL-ONLY: |z|^(2k+1) → z^(2k)·|z| assumes |z|² = z², false over ℂ.
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         if parent_ctx
             .immediate_parent()
             .is_some_and(|parent_id| is_ln_or_log_call(ctx, parent_id))
@@ -651,7 +664,12 @@ define_rule!(
     SimplifySqrtSquareRule,
     "Simplify Square Root of Square",
     Some(crate::target_kind::TargetKindSet::FUNCTION | crate::target_kind::TargetKindSet::POW),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY: `√(z²) = |z|` is a real-domain identity — over ℂ,
+        // `√(i²) = √(-1) = i` while `|i| = 1`.
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = try_rewrite_sqrt_square_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
@@ -785,12 +803,18 @@ define_rule!(
 // =============================================================================
 // Abs Of Even Power Rule: |x^(2k)| → x^(2k)
 // Absolute value of even power is just the even power (always non-negative)
+// REAL-ONLY: over ℂ, |z^(2k)| = |z|^(2k) ≠ z^(2k) (e.g. |(1+i)²| = 2, not 2i).
+// In complex mode the abs stays (honest); closed Gaussian args fold via
+// GaussianAbsRule instead.
 // =============================================================================
 define_rule!(
     AbsOfEvenPowerRule,
     "Abs Of Even Power",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = try_rewrite_abs_even_power_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
@@ -851,7 +875,12 @@ define_rule!(
     AbsSqrtRule,
     "Abs Of Sqrt",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY: over ℂ the principal √ of a negative/complex argument is
+        // complex (`√(-4) = 2i`, `|2i| = 2 ≠ 2i`).
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = try_rewrite_abs_sqrt_identity_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
@@ -865,7 +894,11 @@ define_rule!(
     AbsExpRule,
     "Abs Of Exp",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY: over ℂ, `|e^z| = e^Re(z)` (`|e^(ix)| = 1 ≠ e^(ix)`).
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = try_rewrite_abs_exp_identity_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }
@@ -879,7 +912,12 @@ define_rule!(
     AbsSumOfSquaresRule,
     "Abs Of Sum Of Squares",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY: "squares are nonnegative" is a real-domain fact — over ℂ,
+        // `|z² (+ c)| ≠ z² + c` in general (`(1+i)² = 2i`).
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = try_rewrite_abs_sum_nonnegative_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }

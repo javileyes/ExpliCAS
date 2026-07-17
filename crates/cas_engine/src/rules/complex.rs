@@ -6,10 +6,11 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 pub use cas_math::complex_support::{extract_gaussian, GaussianRational};
 use cas_math::complex_support::{
-    try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-    try_rewrite_gaussian_power_expr, try_rewrite_i_squared_mul_identity_expr,
-    try_rewrite_imaginary_power_expr, try_rewrite_negative_base_half_power_expr,
-    try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
+    try_rewrite_conjugate_expr, try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr,
+    try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
+    try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr, try_rewrite_imaginary_power_expr,
+    try_rewrite_negative_base_half_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
+    ComplexRewriteKind,
 };
 
 fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
@@ -25,6 +26,10 @@ fn format_complex_rewrite_desc(kind: ComplexRewriteKind) -> &'static str {
             "Gaussian power: (a+bi)^n by repeated multiplication (using i² = -1)"
         }
         ComplexRewriteKind::SqrtNegative => "sqrt(-n) = i·√n (complex mode)",
+        ComplexRewriteKind::GaussianAbs => "Complex modulus: |a+bi| = √(a²+b²)",
+        ComplexRewriteKind::Conjugate => "Complex conjugate: conjugate(a+bi) = a-bi",
+        ComplexRewriteKind::RealPart => "Real part: Re(a+bi) = a",
+        ComplexRewriteKind::ImagPart => "Imaginary part: Im(a+bi) = b",
     }
 }
 
@@ -133,6 +138,53 @@ define_rule!(
     }
 );
 
+define_rule!(
+    GaussianAbsRule,
+    "Complex Modulus",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        // `abs(a+bi)` with b ≠ 0 folds to the exact modulus √(a²+b²) (perfect
+        // squares fold to a rational). Real arguments decline inside the
+        // helper: the real-`abs` machinery keeps its ownership.
+        let rewrite = try_rewrite_gaussian_abs_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+    }
+);
+
+define_rule!(
+    ConjugateRule,
+    "Complex Conjugate",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+
+        let rewrite = try_rewrite_conjugate_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+    }
+);
+
+define_rule!(RealPartRule, "Real Part", |ctx, expr, parent_ctx| {
+    if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+        return None;
+    }
+
+    let rewrite = try_rewrite_re_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+});
+
+define_rule!(ImagPartRule, "Imaginary Part", |ctx, expr, parent_ctx| {
+    if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+        return None;
+    }
+
+    let rewrite = try_rewrite_im_expr(ctx, expr)?;
+    Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+});
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImaginaryPowerRule));
     simplifier.add_rule(Box::new(ISquaredMulRule));
@@ -142,4 +194,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(GaussianPowRule));
     simplifier.add_rule(Box::new(SqrtNegativeRule));
     simplifier.add_rule(Box::new(NegativeBaseHalfPowerRule));
+    simplifier.add_rule(Box::new(GaussianAbsRule));
+    simplifier.add_rule(Box::new(ConjugateRule));
+    simplifier.add_rule(Box::new(RealPartRule));
+    simplifier.add_rule(Box::new(ImagPartRule));
 }

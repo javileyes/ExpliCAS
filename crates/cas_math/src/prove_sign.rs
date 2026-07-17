@@ -565,14 +565,18 @@ where
                 }
             }
 
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() {
-                    let int_val = n.to_integer();
-                    let two: num_bigint::BigInt = 2.into();
-                    if &int_val % &two == 0.into() {
-                        let base_nonzero = prove_nonzero(ctx, *base, depth - 1);
-                        if base_nonzero == TriProof::Proven {
-                            return TriProof::Proven;
+            // Even power of a nonzero base is strictly positive over ℝ ONLY:
+            // over ℂ, `i ≠ 0` yet `i² = -1`. Gate to the real-only domain.
+            if real_only {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() {
+                        let int_val = n.to_integer();
+                        let two: num_bigint::BigInt = 2.into();
+                        if &int_val % &two == 0.into() {
+                            let base_nonzero = prove_nonzero(ctx, *base, depth - 1);
+                            if base_nonzero == TriProof::Proven {
+                                return TriProof::Proven;
+                            }
                         }
                     }
                 }
@@ -724,12 +728,18 @@ where
             TriProof::Proven
         }
         Expr::Pow(base, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() {
-                    let int_val = n.to_integer();
-                    let two: num_bigint::BigInt = 2.into();
-                    if &int_val % &two == 0.into() && int_val > 0.into() {
-                        return TriProof::Proven;
+            // Even power ⇒ nonnegative holds over ℝ ONLY: over ℂ, `(1+i)² = 2i`
+            // is not even real. Gate to the real-only domain (this was the leak
+            // that let `|z^(2k)| → z^(2k)` fire in complex mode via the
+            // sign-based abs simplification).
+            if real_only {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() {
+                        let int_val = n.to_integer();
+                        let two: num_bigint::BigInt = 2.into();
+                        if &int_val % &two == 0.into() && int_val > 0.into() {
+                            return TriProof::Proven;
+                        }
                     }
                 }
             }

@@ -107,6 +107,10 @@ pub enum ComplexRewriteKind {
     GaussianDiv,
     GaussianPower,
     SqrtNegative,
+    GaussianAbs,
+    Conjugate,
+    RealPart,
+    ImagPart,
 }
 
 /// Extract `a + bi` from an expression when possible.
@@ -473,13 +477,85 @@ pub fn try_rewrite_gaussian_power_expr(ctx: &mut Context, expr: ExprId) -> Optio
     })
 }
 
+/// Extract the single Gaussian argument of `Function(builtin, [arg])`.
+/// Declines (None) when the shape or the builtin does not match, or when the
+/// argument is not a closed Gaussian number (symbolic args stay symbolic —
+/// honest residual, never a fabricated value).
+fn gaussian_unary_builtin_arg(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<GaussianRational> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.builtin_of(*fn_id) != Some(builtin) || args.len() != 1 {
+        return None;
+    }
+    extract_gaussian(ctx, args[0])
+}
+
+/// Rewrite `abs(a+bi)` into the exact modulus `√(a²+b²)`, folding a
+/// perfect-square radicand to a rational (`|3+4i| → 5`, `|i| → 1`,
+/// `|1+i| → √2`). Claims only args with a NON-ZERO imaginary part: real
+/// arguments keep their existing real-`abs` owner.
+pub fn try_rewrite_gaussian_abs_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    let g = gaussian_unary_builtin_arg(ctx, expr, BuiltinFn::Abs)?;
+    if g.is_real() {
+        return None;
+    }
+    let norm = &g.real * &g.real + &g.imag * &g.imag;
+    let rewritten = if let Some(root) = crate::perfect_square_support::rational_sqrt(&norm) {
+        ctx.add(Expr::Number(root))
+    } else {
+        let radicand = ctx.add(Expr::Number(norm));
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand])
+    };
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::GaussianAbs,
+    })
+}
+
+/// Rewrite `conjugate(a+bi)` into `a-bi` (real args are their own conjugate).
+pub fn try_rewrite_conjugate_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    let g = gaussian_unary_builtin_arg(ctx, expr, BuiltinFn::Conjugate)?;
+    let rewritten = GaussianRational::new(g.real, -g.imag).to_expr(ctx);
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::Conjugate,
+    })
+}
+
+/// Rewrite `Re(a+bi)` into `a`.
+pub fn try_rewrite_re_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    let g = gaussian_unary_builtin_arg(ctx, expr, BuiltinFn::Re)?;
+    let rewritten = ctx.add(Expr::Number(g.real));
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::RealPart,
+    })
+}
+
+/// Rewrite `Im(a+bi)` into `b`.
+pub fn try_rewrite_im_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    let g = gaussian_unary_builtin_arg(ctx, expr, BuiltinFn::Im)?;
+    let rewritten = ctx.add(Expr::Number(g.imag));
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::ImagPart,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_gaussian, try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
+        extract_gaussian, try_rewrite_conjugate_expr, try_rewrite_gaussian_abs_expr,
+        try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
         try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
-        try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
-        try_rewrite_sqrt_negative_expr, ComplexRewriteKind, GaussianRational,
+        try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr,
+        try_rewrite_imaginary_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
+        ComplexRewriteKind, GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -684,6 +760,95 @@ mod tests {
         let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
         assert_eq!(g.real, BigRational::new((-3).into(), 4.into()));
         assert!(g.imag.is_one());
+    }
+
+    #[test]
+    fn gaussian_abs_folds_modulus_exactly() {
+        let mut ctx = Context::new();
+        // Perfect square: |3+4i| = 5
+        let expr = cas_parser::parse("abs(3 + 4*i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_gaussian_abs_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::GaussianAbs);
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "5"
+        );
+        // Pure imaginary unit: |i| = 1
+        let unit = cas_parser::parse("abs(i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_gaussian_abs_expr(&mut ctx, unit).expect("rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "1"
+        );
+        // Non-perfect square stays exact: |1+i| = sqrt(2)
+        let surd = cas_parser::parse("abs(1 + i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_gaussian_abs_expr(&mut ctx, surd).expect("rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "sqrt(2)"
+        );
+    }
+
+    #[test]
+    fn gaussian_abs_declines_real_and_symbolic_args() {
+        let mut ctx = Context::new();
+        // Real argument: the real-abs machinery owns it.
+        let real_abs = cas_parser::parse("abs(-3)", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_abs_expr(&mut ctx, real_abs).is_none());
+        // Symbolic argument: honest residual.
+        let sym_abs = cas_parser::parse("abs(x)", &mut ctx).expect("parse");
+        assert!(try_rewrite_gaussian_abs_expr(&mut ctx, sym_abs).is_none());
+    }
+
+    #[test]
+    fn conjugate_re_im_evaluate_closed_gaussians() {
+        let mut ctx = Context::new();
+        let conj = cas_parser::parse("conjugate(3 + 4*i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_conjugate_expr(&mut ctx, conj).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::Conjugate);
+        let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
+        assert_eq!(g.real, BigRational::from_integer(3.into()));
+        assert_eq!(g.imag, BigRational::from_integer((-4).into()));
+
+        let re = cas_parser::parse("Re(3 + 4*i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_re_expr(&mut ctx, re).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::RealPart);
+        let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
+        assert_eq!(g.real, BigRational::from_integer(3.into()));
+        assert!(g.imag.is_zero());
+
+        let im = cas_parser::parse("Im(3 + 4*i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_im_expr(&mut ctx, im).expect("rewrite");
+        assert_eq!(rewrite.kind, ComplexRewriteKind::ImagPart);
+        let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
+        assert_eq!(g.real, BigRational::from_integer(4.into()));
+
+        // Real arg: conjugate(5) = 5, Im(7) = 0 (still closed Gaussians).
+        let conj_real = cas_parser::parse("conjugate(5)", &mut ctx).expect("parse");
+        assert!(try_rewrite_conjugate_expr(&mut ctx, conj_real).is_some());
+        // Symbolic arg declines (honest residual).
+        let conj_sym = cas_parser::parse("conjugate(x + i)", &mut ctx).expect("parse");
+        assert!(try_rewrite_conjugate_expr(&mut ctx, conj_sym).is_none());
+        let re_sym = cas_parser::parse("Re(x)", &mut ctx).expect("parse");
+        assert!(try_rewrite_re_expr(&mut ctx, re_sym).is_none());
     }
 
     #[test]

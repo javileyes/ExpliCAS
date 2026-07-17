@@ -117,12 +117,18 @@ pub enum BuiltinFn {
     GreaterEqual, // GreaterEqual(a, b)
     NotEqual,     // NotEqual(a, b)
     Eq,           // __eq__(lhs, rhs) - internal equation wrapper
+
+    // Complex (Fase 2): evaluated only under ComplexEnabled; in RealOnly they
+    // stay symbolic (honest residual), never error.
+    Re,        // Re(z) - real part
+    Im,        // Im(z) - imaginary part
+    Conjugate, // conjugate(z) - complex conjugate
 }
 
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 46;
+    pub const COUNT: usize = 49;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -193,6 +199,11 @@ impl BuiltinFn {
             BuiltinFn::GreaterEqual => "GreaterEqual",
             BuiltinFn::NotEqual => "NotEqual",
             BuiltinFn::Eq => "__eq__",
+
+            // Complex
+            BuiltinFn::Re => "Re",
+            BuiltinFn::Im => "Im",
+            BuiltinFn::Conjugate => "conjugate",
         }
     }
 
@@ -264,6 +275,13 @@ impl BuiltinFn {
             "GreaterEqual" => Some(BuiltinFn::GreaterEqual),
             "NotEqual" => Some(BuiltinFn::NotEqual),
             "__eq__" => Some(BuiltinFn::Eq),
+            // Complex (canonical + lowercase/short aliases)
+            "Re" => Some(BuiltinFn::Re),
+            "re" => Some(BuiltinFn::Re),
+            "Im" => Some(BuiltinFn::Im),
+            "im" => Some(BuiltinFn::Im),
+            "conjugate" => Some(BuiltinFn::Conjugate),
+            "conj" => Some(BuiltinFn::Conjugate),
             _ => None,
         }
     }
@@ -324,6 +342,9 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::GreaterEqual,
     BuiltinFn::NotEqual,
     BuiltinFn::Eq,
+    BuiltinFn::Re,
+    BuiltinFn::Im,
+    BuiltinFn::Conjugate,
 ];
 
 /// Cache of builtin function SymbolIds.

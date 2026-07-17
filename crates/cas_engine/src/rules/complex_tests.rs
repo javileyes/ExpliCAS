@@ -217,6 +217,45 @@ fn test_gaussian_power_inert_in_real_only_mode() {
 }
 
 #[test]
+fn test_complex_builtins_gated_to_complex_mode() {
+    // The four A2 rules (modulus / conjugate / Re / Im) fire only under
+    // ComplexEnabled; in RealOnly (default) the functions stay symbolic —
+    // footprint guard for real mode.
+    use super::complex::{ConjugateRule, GaussianAbsRule, ImagPartRule, RealPartRule};
+
+    let mut ctx = Context::new();
+    let three = ctx.num(3);
+    let four = ctx.num(4);
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let four_i = ctx.add(Expr::Mul(four, i));
+    let z = ctx.add(Expr::Add(three, four_i));
+    let abs_z = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![z]);
+    let conj_z = ctx.call_builtin(cas_ast::BuiltinFn::Conjugate, vec![z]);
+    let re_z = ctx.call_builtin(cas_ast::BuiltinFn::Re, vec![z]);
+    let im_z = ctx.call_builtin(cas_ast::BuiltinFn::Im, vec![z]);
+
+    let real_ctx = crate::parent_context::ParentContext::root();
+    assert!(GaussianAbsRule.apply(&mut ctx, abs_z, &real_ctx).is_none());
+    assert!(ConjugateRule.apply(&mut ctx, conj_z, &real_ctx).is_none());
+    assert!(RealPartRule.apply(&mut ctx, re_z, &real_ctx).is_none());
+    assert!(ImagPartRule.apply(&mut ctx, im_z, &real_ctx).is_none());
+
+    let show = |ctx: &Context, id| format!("{}", DisplayExpr { context: ctx, id });
+    let r = GaussianAbsRule
+        .apply(&mut ctx, abs_z, &complex_ctx())
+        .unwrap();
+    assert_eq!(show(&ctx, r.new_expr), "5");
+    let r = ConjugateRule
+        .apply(&mut ctx, conj_z, &complex_ctx())
+        .unwrap();
+    assert_eq!(show(&ctx, r.new_expr), "3 - 4 * i");
+    let r = RealPartRule.apply(&mut ctx, re_z, &complex_ctx()).unwrap();
+    assert_eq!(show(&ctx, r.new_expr), "3");
+    let r = ImagPartRule.apply(&mut ctx, im_z, &complex_ctx()).unwrap();
+    assert_eq!(show(&ctx, r.new_expr), "4");
+}
+
+#[test]
 fn test_gaussian_power_declines_owned_shapes() {
     let mut ctx = Context::new();
     let rule = GaussianPowRule;
