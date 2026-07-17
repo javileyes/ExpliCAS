@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 602 (newest first)
+Active entries: 603 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -128,6 +128,7 @@ Active entries: 602 (newest first)
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (`Arg` 5-sitios, COUNT 49→50) + `cas_math/complex_suppor... | CAPACIDAD (Fase 2 · B3: Log principal + Arg exacto): `ln(-1)` → `π·i` — el logaritmo sale del plano real
 - 2026-07-17 | `retained` | `cas_ast/domain.rs` (`ConditionPredicate::PrincipalBranch`) + `cas_solver_cor... | GUARDRAIL #3 (Fase 2 · B4a: condición estructurada `PrincipalBranch`): el corte de rama viaja como contrato, no como prosa
 - 2026-07-17 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_sqrt_expr` + `try_rewrit... | CAPACIDAD (Fase 2 · B4b: `z^w` + sqrt Gaussiano): `i^i` → `e^(-π/2)` — el bloque B transcendental queda COMPLETO
+- 2026-07-17 | `retained` | `cas_formatter/display/ordering.rs` (`cmp_term_for_display` + `term_mentions_... | PRESENTACIÓN (Fase 2 · C1: orden cartesiano `a+bi`): `-1 + 2·i`, nunca `2·i - 1`
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20154,3 +20155,19 @@ Active entries: 602 (newest first)
   - **`-0.0` es un enemigo del principal-branch**: cualquier walker numérico que alimente `atan2` desde expresiones exactas debe normalizar el cero con signo — la convención IEEE (cero direccional) y la convención exacta (real negativo ⇒ `+π`) difieren EXACTAMENTE en el corte de rama, el lugar más caro para equivocarse.
   - **Cuando el pipeline revierte tu rewrite, la salida es elegir la FORMA que el dueño del churn no reconoce**: no gates de prioridad ni tocar la regla ajena — emitir directamente la forma final (Euler directo) para la familia afectada y dejar la ruta general para el resto.
   - PRÓXIMO PELDAÑO: **C1** (normalización cartesiana de display: `2·i-1→-1+2·i`, el parcial `(1+i)^(-1)`, y los quirks tipo `3/2·3^(-1/2)` en vez de `√3/2`); luego C2/approx()-complejo/re-scope vectorial. Residuales nombrados: split factor-negativo-real para `ln(-e)`; trig-de-i (`sin(i)`); roots-of-unity solve.
+
+## 2026-07-17 - PRESENTACIÓN (Fase 2 · C1: orden cartesiano `a+bi`): `-1 + 2·i`, nunca `2·i - 1`
+
+- area: `cas_formatter/display/ordering.rs` (`cmp_term_for_display` + `term_mentions_i`) + 2 migraciones de pin conscientes + contrato e2e
+- status: `retained`. Tercer ciclo de la tanda 4.
+- capture:
+  - investment_class: presentación Fase-2 (C1 del scoping — la primera cara didáctica del frente complejo).
+  - cell: `(3+4i)/(1-2i)→-1+2·i` (antes `2·i-1`), `solve(x²+2x+5,x)→{-1-2·i, -1+2·i}`, `2i-3→-3+2·i`, `(1+i)^3→2·(-1+i)`, `(-8)^(1/3)→1+3·i·3^(-1/2)`. Sin `i`, byte-idéntico (pins `1-x`, `x²-3x+2` — este último conserva su quirk BASELINE `x²+2-3·x`, verificado contra binario stash pre-cambio: sign-before-degree preexistente, NO regresión de este ciclo).
+  - diseño: el punto de apalancamiento resultó ser UN comparador — `cmp_term_for_display` alimenta texto, hints y LaTeX (`latex_core.rs:201`), así que la convención cartesiana es un solo override de 8 líneas ANTES de la regla positivo-antes-que-negativo, shape-gated por `term_mentions_i` (sin `i` ⇒ fall-through exacto). El blast real: SOLO 2 pins en todo el workspace, y AMBOS se auto-documentaban como "espera C1" (`complex_tests.rs`: "cartesian-order display normalization is a separate, scoped follow-up (Fase 2 C1)") — la migración era su graduación anunciada.
+  - **RESIDUAL nombrado (diagnóstico avanzado, emisor no localizado en timebox):** el parcial `(1+i)^(-1) → (1/2·2 - i)/(2)` NO es de display — el árbol llega mangled SOLO vía `Pow(z,-1)` (la ruta `1/(1+i)` produce `1/2 - 1/2·i` limpio; `1/2 - i/2` como input también). Un pase de recombinación de fracciones (maquinaria AddFractions, holds internos) deja `Mul(1/2, 2)` sin plegar — los holds bloquean el fold. Peldaño: panic-trampa condicional para cazar el emisor (patrón del ciclo pipeline-layer T2).
+  - validación: workspace 12406/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella de contadores IDÉNTICA (guardrail+pressure) — el shape-gate en `i` contuvo el blast a cero lanes.
+  - retained learning:
+  - **Antes de tocar N sitios de render, busca el COMPARADOR compartido**: la convención de orden de términos vivía en una sola función consumida por los 3 formatos — el equivalente display del "chokepoint > parche por caso" de soundness.
+  - **Un pin que documenta su propia obsolescencia programada ("espera al ciclo X") es la migración perfecta**: cero juicio requerido al graduarlo — escribir los pins de residuales SIEMPRE con el ciclo que los graduará.
+  - **Verificar "regresiones" contra el binario stash ANTES de investigar**: `x²+2-3·x` parecía regresión del ciclo y era baseline preexistente — 2 minutos de stash-rebuild ahorraron una investigación entera (variante barata del bisect-before-believing).
+  - PRÓXIMO PELDAÑO (candidatos ciclo 4): (a) el emisor del parcial `(z)^(-1)` vía panic-trampa; (b) `approx()` complejo (`meta_functions_support.rs:56-66`, residual B1); (c) C2 localización es/en de las 16 descs complejas; (d) re-scope del frente vectorial multivariable (scoping workflow). Recomendación: (a) si se quiere cerrar la presentación del frente; (d) si se quiere abrir el siguiente frente de Fase 2.

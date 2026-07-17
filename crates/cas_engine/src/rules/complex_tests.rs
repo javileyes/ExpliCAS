@@ -180,9 +180,8 @@ fn test_gaussian_power_fourth_power_lands_real() {
 
 #[test]
 fn test_gaussian_power_general_binomial() {
-    // (2+i)^4 = -7 + 24i. The display layer renders the negative real part
-    // trailing ("24 * i - 7") — cartesian-order display normalization is a
-    // separate, scoped follow-up (Fase 2 C1); this pins the VALUE contract.
+    // (2+i)^4 = -7 + 24i. Fase 2 C1 landed the cartesian display order:
+    // the real part now leads even when negative ("-7 + 24 * i").
     let mut ctx = Context::new();
     let rule = GaussianPowRule;
     let expr = int_plus_i_pow(&mut ctx, 2, 4);
@@ -196,7 +195,7 @@ fn test_gaussian_power_general_binomial() {
                 id: rewrite.new_expr
             }
         ),
-        "24 * i - 7"
+        "-7 + 24 * i"
     );
     // Value check independent of display ordering: extract back as Gaussian.
     let g = extract_gaussian(&ctx, rewrite.new_expr).expect("gaussian");

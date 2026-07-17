@@ -149,11 +149,9 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 
 ### Bloque C — presentación / pedagogía (transversal)
 
-#### ☐ C1 — Normalización de forma cartesiana `a+bi` **[S]**
-- **Gradúa:** salida en orden canónico `-1 + 2·i` (hoy `2·i - 1`, imag-first / como resta); limpia el parcial sin terminar `(1+i)^(-1) → (1/2·2 - i)/(2)`.
-- **Inserción:** normalizador de orden cartesiano en la capa de display/`to_expr`; migrar conscientemente el pin `complex_tests.rs:130` (`'3 + 2 * i'`).
-- **Blast:** **BAJO** (cosmético) pero interactúa con pins de formato → migración consciente.
-- **Depende:** nada; ROI mayor tras A1/A2.
+#### ☑ C1 — Normalización de forma cartesiana `a+bi` **[S] — HECHO (orden)** *(2026-07-17, hash en el ledger)*
+- **GRADUADO:** orden cartesiano en display — `(3+4i)/(1-2i)→-1+2·i` (antes `2·i-1`), `solve(x²+2x+5)→{-1-2·i, -1+2·i}`, `(1+i)^3→2·(-1+i)`, `(-8)^(1/3)→1+3·i·3^(-1/2)`. Implementación: override en `cmp_term_for_display` (`ordering.rs`) ANTES de la regla positivo-antes-que-negativo, shape-gated por presencia de `i` (término i-free primero SIEMPRE) — UN comparador alimenta texto, hints y LaTeX. Solo 2 pins migrados (ambos se auto-documentaban como "espera C1"). Expresiones sin `i` intactas byte-a-byte (pins `1-x`, `x²-3x+2`).
+- **RESIDUAL nombrado (el parcial `(z)^(-1)`):** `(1+i)^(-1) → (1/2·2 - i)/(2)` NO es de display — el ÁRBOL final llega mangled SOLO por la ruta `Pow(z,-1)` (la ruta directa `1/(1+i)` da `1/2 - 1/2·i` limpio). Diagnóstico avanzado: un pase de recombinación de fracciones con holds internos deja `Mul(1/2, 2)` sin plegar (los holds bloquean el fold Number×Number); el emisor vive en la maquinaria AddFractions (`algebra/fractions/addition_rules.rs`), no localizado el sitio exacto en el timebox. Peldaño futuro: cazar el emisor con panic-trampa condicional (patrón T2-pipeline-layer).
 
 #### ☐ C2 — Pulido/localización de la narración compleja **[S — reducido en la revisión 2026-07-16]**
 - **Contexto de la reducción:** la narración didáctica dejó de ser un batch final — es **entregable per-ciclo** dentro del `graduates` de cada A/B (ver "Orden recomendado"). Dejar las reglas nacer mudas para narrarlas después repetiría el error histórico de "límites a 0% educativo".

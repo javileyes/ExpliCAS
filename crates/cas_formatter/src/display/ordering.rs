@@ -85,6 +85,22 @@ fn ln_power_display_degree(ctx: &Context, id: ExprId) -> Option<i32> {
     }
 }
 
+/// Does this display term mention the imaginary unit anywhere?
+/// Used for the cartesian `a + b·i` ordering convention: within an Add,
+/// i-free (real) terms display before i-carrying terms, even when the real
+/// part is negative (`-1 + 2·i`, never `2·i - 1`).
+fn term_mentions_i(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Constant(cas_ast::Constant::I) => true,
+        Expr::Neg(inner) => term_mentions_i(ctx, *inner),
+        Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            term_mentions_i(ctx, *a) || term_mentions_i(ctx, *b)
+        }
+        Expr::Function(_, args) => args.iter().any(|arg| term_mentions_i(ctx, *arg)),
+        _ => false,
+    }
+}
+
 /// Compare terms for display ordering.
 /// Primary for function-polynomial terms: recognizable degree descending, so
 /// post-calculus log polynomials keep their mathematical reading order.
@@ -110,6 +126,15 @@ pub(crate) fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::
                 return db.cmp(&da);
             }
         }
+    }
+
+    // Cartesian convention: the real part displays before the imaginary
+    // part regardless of sign (`-1 + 2·i`). Shape-gated on the presence of
+    // `i` — expressions without the imaginary unit are untouched.
+    match (term_mentions_i(ctx, a), term_mentions_i(ctx, b)) {
+        (false, true) => return Ordering::Less,
+        (true, false) => return Ordering::Greater,
+        _ => {}
     }
 
     // Positive terms before negative terms when degree did not decide.

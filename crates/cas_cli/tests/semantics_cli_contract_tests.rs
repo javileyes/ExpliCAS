@@ -10697,7 +10697,8 @@ fn complex_mode_computes_general_powers_and_gaussian_sqrt() {
 
     // Owners keep their exact forms — the polar route must NOT degrade them.
     for (src, expected) in [
-        ("(-8)^(1/3)", "3·i·3^(-1/2) + 1"),
+        // Migrated by C1 (cartesian display order): real part first.
+        ("(-8)^(1/3)", "1 + 3·i·3^(-1/2)"),
         ("sqrt(-4)", "2·i"),
         ("(2+i)^2", "3 + 4·i"),
         ("2^(1/2)", "sqrt(2)"),
@@ -10722,5 +10723,43 @@ fn complex_mode_computes_general_powers_and_gaussian_sqrt() {
             wire["result"], expected,
             "real `{src}` must stay `{expected}`"
         );
+    }
+}
+
+#[test]
+fn cartesian_display_orders_real_part_first() {
+    // T4-ciclo3 (C1): within an Add, i-free terms display before i-carrying
+    // terms even when the real part is negative — `-1 + 2·i`, never
+    // `2·i - 1`. One comparator drives text, hints, and LaTeX.
+    for (src, expected) in [
+        ("(3+4*i)/(1-2*i)", "-1 + 2·i"),
+        ("(1+i)^3", "2·(-1 + i)"),
+        ("2*i-3", "-3 + 2·i"),
+        ("(2+i)^2", "3 + 4·i"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "complex `{src}`");
+    }
+
+    // Solve sets pick up the same convention.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(x^2+2*x+5,x)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "{ -1 - 2·i, -1 + 2·i }");
+
+    // The ordering is shape-gated on `i`: i-free expressions keep their
+    // established display (affine orientation, sign-first convention).
+    for (src, expected) in [("1-x", "1 - x"), ("x^2-3*x+2", "x^2 + 2 - 3·x")] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "real `{src}` untouched");
     }
 }
