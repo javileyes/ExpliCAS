@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 603 (newest first)
+Active entries: 604 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -129,6 +129,7 @@ Active entries: 603 (newest first)
 - 2026-07-17 | `retained` | `cas_ast/domain.rs` (`ConditionPredicate::PrincipalBranch`) + `cas_solver_cor... | GUARDRAIL #3 (Fase 2 · B4a: condición estructurada `PrincipalBranch`): el corte de rama viaja como contrato, no como prosa
 - 2026-07-17 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_sqrt_expr` + `try_rewrit... | CAPACIDAD (Fase 2 · B4b: `z^w` + sqrt Gaussiano): `i^i` → `e^(-π/2)` — el bloque B transcendental queda COMPLETO
 - 2026-07-17 | `retained` | `cas_formatter/display/ordering.rs` (`cmp_term_for_display` + `term_mentions_... | PRESENTACIÓN (Fase 2 · C1: orden cartesiano `a+bi`): `-1 + 2·i`, nunca `2·i - 1`
+- 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (brazo approx: fallback complejo vía `... | CAPACIDAD (Fase 2 · approx() complejo): `approx(ln(i))` → `i·1.5707…` — la superficie numérica del frente complejo
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20171,3 +20172,18 @@ Active entries: 603 (newest first)
   - **Un pin que documenta su propia obsolescencia programada ("espera al ciclo X") es la migración perfecta**: cero juicio requerido al graduarlo — escribir los pins de residuales SIEMPRE con el ciclo que los graduará.
   - **Verificar "regresiones" contra el binario stash ANTES de investigar**: `x²+2-3·x` parecía regresión del ciclo y era baseline preexistente — 2 minutos de stash-rebuild ahorraron una investigación entera (variante barata del bisect-before-believing).
   - PRÓXIMO PELDAÑO (candidatos ciclo 4): (a) el emisor del parcial `(z)^(-1)` vía panic-trampa; (b) `approx()` complejo (`meta_functions_support.rs:56-66`, residual B1); (c) C2 localización es/en de las 16 descs complejas; (d) re-scope del frente vectorial multivariable (scoping workflow). Recomendación: (a) si se quiere cerrar la presentación del frente; (d) si se quiere abrir el siguiente frente de Fase 2.
+
+## 2026-07-17 - CAPACIDAD (Fase 2 · approx() complejo): `approx(ln(i))` → `i·1.5707…` — la superficie numérica del frente complejo
+
+- area: `cas_engine/meta_functions_support.rs` (brazo approx: fallback complejo vía `eval_complex`, firma `_in_domain(complex_enabled)`) + `rules/functions.rs` (EvaluateMetaFunctionsRule → forma domain-aware) + contrato e2e
+- status: `retained`. Cuarto y último ciclo de la tanda 4. Gradúa el residual nombrado MÁS ANTIGUO del bloque B (nombrado en B1, `587df0a76`).
+- capture:
+  - investment_class: capacidad Fase-2 (presentación numérica — cierra el circuito exacto→numérico del frente complejo elemental).
+  - cell: `approx(ln(i))→i·1.57079632679`, `approx(e^(iπ/3))→0.5+i·0.866025403784`, `approx(2^i)→0.769238901364+i·0.638961276314`, `approx(ln(-2))→0.693…+i·3.14159265359`, `approx(ln(-e))→1+i·3.14159265359` (el fix signed-zero de B4b visible al usuario), `approx(sin(i))→i·1.17520119364` (el walker evalúa lo que el exacto aún no pliega — approx es MÁS ancho que la capa de reglas, correcto para una superficie de presentación). Reales (`approx(i^i)→0.2078…`) y simbólicos (`approx(x+i)` residual) conservan sus dueños; real mode byte-idéntico (`approx(ln(i))` simbólico, `approx(ln(-1))→undefined`).
+  - diseño: el fallback vive DETRÁS del camino real (`numeric_eval_with_rootsum` primero — cero cambio para todo lo que ya funcionaba) y solo con `complex_enabled` (la regla pasó a la forma domain-aware del macro; el bool viene de `parent_ctx.value_domain()`). Contrato f64-por-diseño citado en el comentario: approx ES la superficie numérica explícita — ningún keep/drop decide sobre este valor (guardrail #4 intacto). `im==0.0` exacto declina (un resultado real aquí = el camino real debía tomarlo; no adivinar por él). Cartesiano `decimal(re) + decimal(im)·i` — el orden C1 lo presenta.
+  - lint-higiene: el wrapper compat `try_rewrite_meta_function_expr` quedó dead-code en lib (solo tests lo usaban) → eliminado y call-sites de test migrados a `_in_domain(…, false)` explícito — el bool visible en el test documenta QUÉ superficie se está fijando.
+  - validación: workspace 12408/0 (exit real); clippy --all-targets limpio (cazó el wrapper muerto y un doc-list); engine-fast verde; huella: pressure idéntica, guardrail +1 filtered_out (el unit test nuevo — la clase de delta intencionado documentada en B1).
+  - retained learning:
+  - **Una superficie de presentación numérica puede ser legítimamente MÁS ancha que la capa exacta**: `approx(sin(i))` evalúa aunque ninguna regla pliegue `sin(i)` — el contrato "f64 por diseño, sin keep/drop" es lo que lo hace sound; la misma anchura sería un P0 en cualquier capa de decisión.
+  - **El parámetro de dominio explícito en los call-sites de test (`…, false`) es documentación gratis**: cada test declara qué superficie fija, y la promoción a domain-aware no puede pasar desapercibida en el diff.
+  - PRÓXIMO PELDAÑO (candidatos tanda 5): (a) el emisor del parcial `(z)^(-1)` (panic-trampa, diagnóstico listo en el ledger C1); (b) **re-scope del frente vectorial multivariable** (scoping workflow — abre la segunda mitad de Fase 2); (c) C2 localización es/en; (d) unimodularidad `|e^(ix)|→1` + `e^(-ix)` recíproco. Recomendación: (b) — el frente complejo elemental queda A+B+C1+approx COMPLETO salvo pulidos; el siguiente salto de valor es abrir el frente vectorial con su propio scoping multi-agente.

@@ -13,9 +13,15 @@ pub struct MetaFunctionRewrite {
 /// - `simplify(expr)` -> `expr`
 /// - `factor(expr)` -> factored `expr` (or unchanged if irreducible)
 /// - `expand(expr)` -> expanded `expr`
-pub(crate) fn try_rewrite_meta_function_expr(
+/// - `approx(expr)` / `evalf(expr)` -> f64 decimal presentation
+///
+/// `complex_enabled` opens the complex `approx()` fallback (an `a + b·i`
+/// decimal result) when the real f64 path declines; `false` is the exact
+/// pre-existing real surface.
+pub(crate) fn try_rewrite_meta_function_expr_in_domain(
     ctx: &mut Context,
     expr: ExprId,
+    complex_enabled: bool,
 ) -> Option<MetaFunctionRewrite> {
     let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
         (*fn_id, args.clone())
@@ -63,14 +69,52 @@ pub(crate) fn try_rewrite_meta_function_expr(
             if let Some(rewrite) = try_approx_definite_integral(ctx, arg) {
                 return Some(rewrite);
             }
-            let value = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, arg)?;
-            let rational = num_rational::BigRational::from_float(value)?;
-            let number = ctx.add(Expr::Number(rational));
+            if let Some(value) = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, arg) {
+                let rational = num_rational::BigRational::from_float(value)?;
+                let number = ctx.add(Expr::Number(rational));
+                let decimal_sym = ctx.intern_symbol("decimal");
+                let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
+                return Some(MetaFunctionRewrite {
+                    rewritten: node,
+                    desc: "approx(x) -> numeric value (12 significant digits)",
+                });
+            }
+            // Complex fallback (ComplexEnabled only): closed values the real
+            // path rejects (`approx(ln(i))`, `approx(2^i)`) evaluate through
+            // the refute-net walker into a cartesian `a + b·i` decimal.
+            // Presentation surface only — approx is f64 BY CONTRACT; no
+            // keep/drop decision rides on this value.
+            if !complex_enabled {
+                return None;
+            }
+            let z = cas_math::evaluator_complex::eval_complex(
+                ctx,
+                arg,
+                &std::collections::HashMap::new(),
+            )?;
+            if !z.re.is_finite() || !z.im.is_finite() || z.im == 0.0 {
+                // A real result here means the real path SHOULD have taken
+                // it (or it did and we never reach this): decline rather
+                // than second-guess the real surface.
+                return None;
+            }
             let decimal_sym = ctx.intern_symbol("decimal");
-            let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
+            let im_rational = num_rational::BigRational::from_float(z.im)?;
+            let im_number = ctx.add(Expr::Number(im_rational));
+            let im_decimal = ctx.add(Expr::Function(decimal_sym, vec![im_number]));
+            let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
+            let im_part = ctx.add(Expr::Mul(im_decimal, i));
+            let rewritten = if z.re == 0.0 {
+                im_part
+            } else {
+                let re_rational = num_rational::BigRational::from_float(z.re)?;
+                let re_number = ctx.add(Expr::Number(re_rational));
+                let re_decimal = ctx.add(Expr::Function(decimal_sym, vec![re_number]));
+                ctx.add(Expr::Add(re_decimal, im_part))
+            };
             Some(MetaFunctionRewrite {
-                rewritten: node,
-                desc: "approx(x) -> numeric value (12 significant digits)",
+                rewritten,
+                desc: "approx(z) -> complex numeric value a + b·i (12 significant digits)",
             })
         }
         _ => None,
@@ -175,11 +219,48 @@ mod tests {
     use cas_parser::parse;
 
     #[test]
+    fn approx_complex_fallback_emits_cartesian_decimal() {
+        // ComplexEnabled: closed values the real f64 path rejects evaluate
+        // through the complex walker into `a + b·i` decimals.
+        for (src, expected) in [
+            ("approx(ln(i))", "i * 1.57079632679"),
+            ("approx(ln(-2))", "0.69314718056 + i * 3.14159265359"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(src, &mut ctx).expect("parse");
+            let rewrite = try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, true)
+                .unwrap_or_else(|| panic!("{src} should evaluate"));
+            let rendered = format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            );
+            assert_eq!(rendered, expected, "{src}");
+        }
+
+        // Real surface (complex_enabled = false): byte-identical decline —
+        // the complex fallback must never leak into the real contract.
+        let mut ctx = Context::new();
+        let expr = parse("approx(ln(i))", &mut ctx).expect("parse");
+        assert!(try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).is_none());
+        let expr = parse("approx(ln(i))", &mut ctx).expect("parse");
+        assert!(try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).is_none());
+
+        // Free variables decline in every domain (honest residual).
+        let mut ctx = Context::new();
+        let expr = parse("approx(x + i)", &mut ctx).expect("parse");
+        assert!(try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, true).is_none());
+    }
+
+    #[test]
     fn approx_definite_integral_evaluates_and_gates_poles() {
         let mut ctx = Context::new();
         // Happy path: no pole in [2,3]; reference = mpmath 30-digit quadrature.
         let ok = parse("approx(integrate(1/(x^3-x-1), x, 2, 3))", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, ok).expect("must evaluate");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, ok, false).expect("must evaluate");
         let rendered = format!(
             "{}",
             DisplayExpr {
@@ -192,11 +273,12 @@ mod tests {
         // Pole inside (1,2) (the plastic-number root of x^3-x-1 at ~1.3247):
         // the integral diverges, so the call must stay honestly unevaluated.
         let pole = parse("approx(integrate(1/(x^3-x-1), x, 1, 2))", &mut ctx).expect("parse");
-        assert!(try_rewrite_meta_function_expr(&mut ctx, pole).is_none());
+        assert!(try_rewrite_meta_function_expr_in_domain(&mut ctx, pole, false).is_none());
 
         // Reversed bounds negate.
         let rev = parse("approx(integrate(1/(x^3-x-1), x, 3, 2))", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, rev).expect("must evaluate");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, rev, false).expect("must evaluate");
         let rendered = format!(
             "{}",
             DisplayExpr {
@@ -211,7 +293,8 @@ mod tests {
     fn rewrites_simplify_transparently() {
         let mut ctx = Context::new();
         let expr = parse("simplify(x+1)", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
         assert_eq!(rewrite.desc, "simplify(x) = x (already processed)");
         let rendered = format!(
             "{}",
@@ -227,7 +310,8 @@ mod tests {
     fn rewrites_expand_call() {
         let mut ctx = Context::new();
         let expr = parse("expand((x+1)^2)", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
         assert_eq!(rewrite.desc, "expand(x) -> expanded form");
         let rendered = format!(
             "{}",
@@ -243,7 +327,8 @@ mod tests {
     fn rewrites_expand_call_with_compact_univariate_polynomial_terms() {
         let mut ctx = Context::new();
         let expr = parse("expand(3-(x^2+2*x+1)^2)", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
         let rendered = format!(
             "{}",
             DisplayExpr {
@@ -258,7 +343,8 @@ mod tests {
     fn rewrites_factor_call_with_multivar_common_monomial() {
         let mut ctx = Context::new();
         let expr = parse("factor(y^2*z^2 + 2*y^2*z + y^2)", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
         assert_eq!(rewrite.desc, "factor(x) -> factored form");
         let rendered = format!(
             "{}",
@@ -277,7 +363,8 @@ mod tests {
     fn rewrites_factor_call_with_multivar_common_numeric_content() {
         let mut ctx = Context::new();
         let expr = parse("factor(2*x + 4*y)", &mut ctx).expect("parse");
-        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
         assert_eq!(rewrite.desc, "factor(x) -> factored form");
         let rendered = format!(
             "{}",

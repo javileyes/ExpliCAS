@@ -10763,3 +10763,49 @@ fn cartesian_display_orders_real_part_first() {
         assert_eq!(wire["result"], expected, "real `{src}` untouched");
     }
 }
+
+#[test]
+fn complex_mode_approximates_closed_complex_values() {
+    // T4-ciclo4: approx() of closed complex values goes through the B1
+    // walker into a cartesian `a + b·i` decimal (presentation surface —
+    // approx is f64 by contract).
+    for (src, expected) in [
+        ("approx(ln(i))", "i·1.57079632679"),
+        ("approx(e^(i*pi/3))", "0.5 + i·0.866025403784"),
+        ("approx(2^i)", "0.769238901364 + i·0.638961276314"),
+        ("approx(ln(-2))", "0.69314718056 + i·3.14159265359"),
+        ("approx(ln(-e))", "1 + i·3.14159265359"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "complex `{src}`");
+    }
+
+    // Real-valued and symbolic arguments keep their owners.
+    for (src, expected) in [
+        ("approx(i^i)", "0.207879576351"),
+        ("approx(sqrt(2))", "1.41421356237"),
+        ("approx(x + i)", "approx(x + i)"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "complex `{src}`");
+    }
+
+    // REAL mode: the complex fallback never leaks — approx(ln(i)) stays
+    // symbolic, approx(ln(-1)) keeps the honest real-domain undefined.
+    for (src, expected) in [
+        ("approx(ln(i))", "approx(ln(i))"),
+        ("approx(ln(-1))", "undefined"),
+        ("approx(sqrt(2))", "1.41421356237"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire["result"], expected,
+            "real `{src}` must stay `{expected}`"
+        );
+    }
+}

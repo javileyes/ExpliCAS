@@ -780,8 +780,14 @@ define_rule!(
     EvaluateMetaFunctionsRule,
     "Evaluate Meta Functions",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
-        let rewrite = crate::meta_functions_support::try_rewrite_meta_function_expr(ctx, expr)?;
+    |ctx, expr, parent_ctx| {
+        let complex_enabled =
+            parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled;
+        let rewrite = crate::meta_functions_support::try_rewrite_meta_function_expr_in_domain(
+            ctx,
+            expr,
+            complex_enabled,
+        )?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
 );
