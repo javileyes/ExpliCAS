@@ -257,27 +257,40 @@ impl Matrix {
         Some(ctx.num(rank as i64))
     }
 
-    /// Euclidean / Frobenius norm `√(Σ entryᵢ²)`. For a vector (n×1 or 1×n) this
+    /// Euclidean / Frobenius norm `√(Σ |entryᵢ|²)`. For a vector (n×1 or 1×n) this
     /// is the usual length; for a matrix it is the Frobenius norm. Works
-    /// symbolically too — `norm([a,b]) = √(a²+b²)` — and the engine folds the
-    /// numeric case (`norm([3,4]) = 5`).
-    pub fn norm(&self, ctx: &mut Context) -> Option<ExprId> {
-        use num_traits::Zero;
+    /// symbolically too and the engine folds the numeric case (`norm([3,4]) = 5`).
+    ///
+    /// The norm is VALUE-DEPENDENT — `|entry|² = entry²` only holds for real-valued
+    /// entries — so the caller must say which domain it is in:
+    /// - `complex_enabled`: a recognized Gaussian `a+bi` folds to the exact rational
+    ///   `a² + b²`, and any other entry squares its MODULUS (`|z|²`). Squaring the raw
+    ///   component would make a complex entry go imaginary or negative (`norm([3,4i])`
+    ///   must be `5`, not `sqrt(9+(4i)²) = i·√7`; `norm([1,i])` must be `sqrt(2)`, not
+    ///   `0`) — and a bare symbol may hold a complex value, so `x²` is just as wrong.
+    /// - real mode: `i` is an ordinary symbol (the same contract as the gated Gaussian
+    ///   rules), so every entry keeps the raw `entry²` form and an `i`-carrying vector
+    ///   stays an honest unevaluated radical.
+    ///
+    /// NOTE: `dot` is deliberately BILINEAR (no conjugation — SymPy's default), so over
+    /// ℂ `norm(v) ≠ sqrt(dot(v,v))` by design; the Hermitian metric lives only here.
+    pub fn norm_in_domain(&self, ctx: &mut Context, complex_enabled: bool) -> Option<ExprId> {
         let two = ctx.num(2);
         let mut sum_of_squares = ctx.num(0);
         for &entry in &self.data {
-            // The Euclidean norm squares the MAGNITUDE of each component, `|a+bi|^2 = a^2 + b^2`,
-            // NOT `(a+bi)^2` — squaring the raw component makes a complex entry go imaginary or
-            // negative (`norm([3,4i])` must be `5`, not `sqrt(9+(4i)^2) = i·sqrt(7)`; `norm([1,i])`
-            // must be `sqrt(2)`, not `sqrt(1+i^2) = 0`). A real entry keeps the `entry^2` form
-            // (RealOnly-identical); a recognized Gaussian `a+bi` with `b != 0` folds to the exact
-            // rational `a^2 + b^2`.
-            let square = match crate::complex_support::extract_gaussian(ctx, entry) {
-                Some(g) if !g.imag.is_zero() => {
-                    let magnitude_squared = &g.real * &g.real + &g.imag * &g.imag;
-                    ctx.add(Expr::Number(magnitude_squared))
+            let square = if complex_enabled {
+                match crate::complex_support::extract_gaussian(ctx, entry) {
+                    Some(g) => {
+                        let magnitude_squared = &g.real * &g.real + &g.imag * &g.imag;
+                        ctx.add(Expr::Number(magnitude_squared))
+                    }
+                    None => {
+                        let abs_entry = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![entry]);
+                        ctx.add(Expr::Pow(abs_entry, two))
+                    }
                 }
-                _ => ctx.add(Expr::Pow(entry, two)),
+            } else {
+                ctx.add(Expr::Pow(entry, two))
             };
             sum_of_squares = ctx.add(Expr::Add(sum_of_squares, square));
         }
@@ -1166,5 +1179,110 @@ mod tests {
             ],
         };
         assert!(m.inverse(&mut ctx).is_none());
+    }
+
+    /// Collect every node of `expr` (inclusive) in preorder.
+    fn collect_nodes(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>) {
+        out.push(expr);
+        match ctx.get(expr) {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                let (l, r) = (*l, *r);
+                collect_nodes(ctx, l, out);
+                collect_nodes(ctx, r, out);
+            }
+            Expr::Neg(e) => {
+                let e = *e;
+                collect_nodes(ctx, e, out);
+            }
+            Expr::Function(_, args) | Expr::Matrix { data: args, .. } => {
+                for a in args.clone() {
+                    collect_nodes(ctx, a, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn contains_call_named(ctx: &Context, expr: ExprId, name: &str) -> bool {
+        let mut nodes = Vec::new();
+        collect_nodes(ctx, expr, &mut nodes);
+        nodes
+            .iter()
+            .any(|&n| matches!(ctx.get(n), Expr::Function(f, _) if ctx.sym_name(*f) == name))
+    }
+
+    #[test]
+    fn test_norm_in_domain_complex_folds_gaussian_magnitude() {
+        // complex_enabled: Gaussian entries fold |a+bi|² = a²+b² EXACTLY — no abs, no raw
+        // Pow of the entry ([i,1] must reach sqrt(1+1), never sqrt(1+i²) = 0).
+        let mut ctx = Context::new();
+        let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
+        let one = ctx.num(1);
+        let v = Matrix {
+            rows: 2,
+            cols: 1,
+            data: vec![i, one],
+        };
+        let norm = v.norm_in_domain(&mut ctx, true).unwrap();
+        assert!(!contains_call_named(&ctx, norm, "abs"));
+        let mut nodes = Vec::new();
+        collect_nodes(&ctx, norm, &mut nodes);
+        // Every Pow would be a raw-entry square; the Gaussian fold leaves only Numbers.
+        assert!(
+            !nodes.iter().any(|&n| matches!(ctx.get(n), Expr::Pow(_, _))),
+            "gaussian entries must fold to exact rational magnitudes"
+        );
+    }
+
+    #[test]
+    fn test_norm_in_domain_complex_symbolic_squares_modulus() {
+        // complex_enabled: a bare symbol may hold a complex value — square |x|, never x.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let v = Matrix {
+            rows: 2,
+            cols: 1,
+            data: vec![x, y],
+        };
+        let norm = v.norm_in_domain(&mut ctx, true).unwrap();
+        assert!(contains_call_named(&ctx, norm, "abs"));
+        let mut nodes = Vec::new();
+        collect_nodes(&ctx, norm, &mut nodes);
+        // No Pow may have the bare variable as its base (that is the latent wrong answer).
+        assert!(
+            !nodes
+                .iter()
+                .any(|&n| matches!(ctx.get(n), Expr::Pow(b, _) if *b == x || *b == y)),
+            "symbolic entries must square the modulus, not the raw symbol"
+        );
+    }
+
+    #[test]
+    fn test_norm_in_domain_real_keeps_raw_squares() {
+        // real mode: `i` is an ordinary symbol (same contract as the gated Gaussian rules)
+        // — the entry squares RAW and nothing folds to a magnitude.
+        let mut ctx = Context::new();
+        let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
+        let one = ctx.num(1);
+        let v = Matrix {
+            rows: 2,
+            cols: 1,
+            data: vec![i, one],
+        };
+        let norm = v.norm_in_domain(&mut ctx, false).unwrap();
+        assert!(!contains_call_named(&ctx, norm, "abs"));
+        let mut nodes = Vec::new();
+        collect_nodes(&ctx, norm, &mut nodes);
+        assert!(
+            nodes
+                .iter()
+                .any(|&n| matches!(ctx.get(n), Expr::Pow(b, _) if *b == i)),
+            "real mode must keep the raw i² square (honest symbolic radical)"
+        );
     }
 }

@@ -159,6 +159,31 @@ impl SimpleRule for MatrixFunctionRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+        // Legacy no-parent-context path: real-mode view (`ValueDomain` defaults to RealOnly).
+        self.apply_in_domain(ctx, expr, false)
+    }
+
+    fn apply_with_context(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // `norm` is value-dependent (`|entry|² = entry²` only for real entries) — thread the
+        // domain so the Gaussian-modulus fold runs exactly where `i` IS the imaginary unit.
+        let complex_enabled =
+            parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled;
+        self.apply_in_domain(ctx, expr, complex_enabled)
+    }
+}
+
+impl MatrixFunctionRule {
+    fn apply_in_domain(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        complex_enabled: bool,
+    ) -> Option<Rewrite> {
         // `charpoly`/`det` of a NUMERIC matrix expand to an UNFOLDED cofactor sum that
         // transiently exceeds the anti-worsen node budget before the recursive pass folds
         // it to a number / polynomial; with a tiny numeric input it is rejected, leaving a
@@ -186,7 +211,7 @@ impl SimpleRule for MatrixFunctionRule {
             Vec::new()
         };
 
-        if let Some(rewrite) = try_rewrite_matrix_function_rule_expr(ctx, expr) {
+        if let Some(rewrite) = try_rewrite_matrix_function_rule_expr(ctx, expr, complex_enabled) {
             let base = Rewrite::new(rewrite.rewritten).desc(rewrite.desc);
             let within_caps = operands
                 .first()

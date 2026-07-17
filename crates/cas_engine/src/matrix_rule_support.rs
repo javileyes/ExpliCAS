@@ -982,6 +982,7 @@ fn matrix_linsolve(ctx: &mut Context, a: &Matrix, b: &Matrix) -> Option<ExprId> 
 pub(crate) fn try_eval_matrix_function_expr(
     ctx: &mut Context,
     expr: ExprId,
+    complex_enabled: bool,
 ) -> Option<MatrixFunctionEval> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
@@ -1027,7 +1028,7 @@ pub(crate) fn try_eval_matrix_function_expr(
         "nullspace" | "null" | "kernel" => try_matrix_nullspace(ctx, &matrix)
             .map(|value| MatrixFunctionEval::Nullspace { shape, value }),
         "norm" => matrix
-            .norm(ctx)
+            .norm_in_domain(ctx, complex_enabled)
             .map(|value| MatrixFunctionEval::Norm { shape, value }),
         "adjugate" | "adj" => matrix
             .adjugate(ctx)
@@ -1050,8 +1051,9 @@ pub(crate) fn try_eval_matrix_function_expr(
 pub(crate) fn try_rewrite_matrix_function_rule_expr(
     ctx: &mut Context,
     expr: ExprId,
+    complex_enabled: bool,
 ) -> Option<MatrixFunctionRewrite> {
-    match try_eval_matrix_function_expr(ctx, expr)? {
+    match try_eval_matrix_function_expr(ctx, expr, complex_enabled)? {
         MatrixFunctionEval::Determinant { shape, value } => {
             let desc =
                 format_matrix_function_desc(&MatrixFunctionEval::Determinant { shape, value });

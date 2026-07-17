@@ -2252,8 +2252,14 @@ fn test_eval_binary_matrix_ops_dot_cross_linsolve() {
 
 #[test]
 fn test_eval_vector_norm() {
-    // `norm(v)` is the Euclidean / Frobenius norm √(Σ |entryᵢ|²): for a COMPLEX entry it squares the
-    // MAGNITUDE (`|a+bi|² = a²+b²`), not the raw component. Numeric folds; symbolic stays exact.
+    // `norm(v)` is the Euclidean / Frobenius norm √(Σ |entryᵢ|²) and it is VALUE-DEPENDENT
+    // (`|entry|² = entry²` only for real entries), so it is domain-threaded (Fase 2 V0):
+    // - real mode (default): `i` is an ordinary symbol — the same contract as the gated
+    //   Gaussian rules (`abs(3+4i)` stays residual) — so every entry squares RAW and an
+    //   `i`-carrying vector stays an honest unevaluated radical.
+    // - complex mode: a Gaussian entry folds its MAGNITUDE (`|a+bi|² = a²+b²`) exactly and
+    //   a symbolic entry squares its modulus (`|x|²`) — `x²` would be wrong for ℂ-valued x
+    //   (x:=i would make `sqrt(x²+1)` collapse to 0 while the norm is sqrt(2)).
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -2262,18 +2268,52 @@ fn test_eval_vector_norm() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Real entries: identical in both domains.
     assert_eq!(r("norm([3,4])"), "5");
     assert_eq!(r("norm([1,2,2])"), "3");
     assert_eq!(r("norm([1,1])"), "sqrt(2)");
     assert_eq!(r("norm([3,-4])"), "5");
     assert_eq!(r("norm([[3,4],[0,12]])"), "13"); // Frobenius norm of a matrix
-    assert_eq!(r("norm([a,b])"), "(a^2 + b^2)^(1/2)"); // symbolic
-                                                       // Complex entries: square the magnitude, never the raw component (which went imaginary before).
-    assert_eq!(r("norm([3,4i])"), "5"); // was sqrt(9+(4i)^2) = i·sqrt(7)
-    assert_eq!(r("norm([1,i])"), "sqrt(2)"); // was sqrt(1+i^2) = 0
-    assert_eq!(r("norm([1+i,1])"), "sqrt(3)"); // |1+i|^2 + 1 = 3
-    assert_eq!(r("norm([2i])"), "2");
-    assert_eq!(r("norm([3i,4i])"), "5");
+    assert_eq!(r("norm([a,b])"), "(a^2 + b^2)^(1/2)"); // symbolic, real-valued symbols
+    assert_eq!(rc("norm([3,4])"), "5");
+    assert_eq!(rc("norm([[3,4],[0,12]])"), "13");
+    // Real mode + `i`: honest symbolic radical (i is a plain symbol here; the Imaginary
+    // Usage Warning nudges to complex mode). Folding these to 5 / sqrt(2) was the V0
+    // incoherence: the metric layer treated `i` as imaginary while every gated Gaussian
+    // rule (and `abs(3+4i)`) kept it symbolic.
+    assert_eq!(r("norm([3,4i])"), "(9 + 16·i^2)^(1/2)");
+    assert_eq!(r("norm([1,i])"), "(1 + i^2)^(1/2)");
+    assert_eq!(r("norm([1+i,1])"), "(2 + i^2 + 2·i)^(1/2)");
+    assert_eq!(r("norm([2i])"), "2·|i|"); // sqrt((2i)²) = |2i| with i symbolic
+    assert_eq!(r("norm([3i,4i])"), "5·|i|");
+    // Complex mode: the magnitude fold lives HERE (its correct domain).
+    assert_eq!(rc("norm([3,4i])"), "5"); // NOT sqrt(9+(4i)^2) = i·sqrt(7)
+    assert_eq!(rc("norm([1,i])"), "sqrt(2)"); // NOT sqrt(1+i^2) = 0
+    assert_eq!(rc("norm([1+i,1])"), "sqrt(3)"); // |1+i|^2 + 1 = 3
+    assert_eq!(rc("norm([2i])"), "2");
+    assert_eq!(rc("norm([3i,4i])"), "5");
+    // Complex mode + symbols: Hermitian form — the V0 P0 fix. `(x^2+y^2)^(1/2)` here was a
+    // latent wrong answer (x:=i, y:=1 → 0 instead of sqrt(2)).
+    assert_eq!(rc("norm([x,y])"), "(|x|^2 + |y|^2)^(1/2)");
+    // Conscious contract: `dot` stays BILINEAR (no conjugation — SymPy's default), so over
+    // ℂ `norm(v) ≠ sqrt(dot(v,v))` by design: dot([i,1],[i,1]) = i²+1 = 0 while the norm
+    // of [i,1] is sqrt(2) (pinned above).
+    assert_eq!(rc("dot([i,1],[i,1])"), "0");
 }
 
 #[test]

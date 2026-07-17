@@ -70,7 +70,7 @@ fn matrix_function_eval_handles_transpose() {
         .expect("matrix");
     let expr = ctx.call("transpose", vec![matrix]);
 
-    let eval = try_eval_matrix_function_expr(&mut ctx, expr).expect("transpose");
+    let eval = try_eval_matrix_function_expr(&mut ctx, expr, false).expect("transpose");
     match eval {
         MatrixFunctionEval::Transpose { from, to, .. } => {
             assert_eq!(from.rows, 2);
@@ -119,7 +119,7 @@ fn matrix_function_rule_rewrite_materializes_transpose_matrix() {
         .expect("matrix");
     let expr = ctx.call("transpose", vec![matrix]);
 
-    let rewrite = try_rewrite_matrix_function_rule_expr(&mut ctx, expr).expect("rewrite");
+    let rewrite = try_rewrite_matrix_function_rule_expr(&mut ctx, expr, false).expect("rewrite");
     let materialized =
         cas_math::matrix::Matrix::from_expr(&ctx, rewrite.rewritten).expect("matrix");
     assert_eq!(materialized.rows, 2);
@@ -153,6 +153,7 @@ fn description_builders_include_shapes() {
     assert!(mul_eval.mul_desc().contains("= 2x2") || mul_eval.mul_desc().contains("= 2×2"));
 
     let transposed = ctx.call("transpose", vec![m1]);
-    let function_eval = try_eval_matrix_function_expr(&mut ctx, transposed).expect("transpose");
+    let function_eval =
+        try_eval_matrix_function_expr(&mut ctx, transposed, false).expect("transpose");
     assert!(format_matrix_function_desc(&function_eval).contains("transpose(2"));
 }

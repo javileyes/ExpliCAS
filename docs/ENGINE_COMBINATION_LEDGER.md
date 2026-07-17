@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 612 (newest first)
+Active entries: 613 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
+- 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20299,3 +20300,19 @@ Active entries: 612 (newest first)
   - **El "claim central" de un scoping es un deliverable a verificar, no un resumen**: "ningún wrong-answer de VALOR" era falso tal cual estaba escrito; la doble verificación (anclas + completitud) existe exactamente para eso — 7 correcciones y 8 gaps sobre un borrador que ya parecía sólido.
   - **Un fold con su contraejemplo en el comentario es un P0 esperando dominio**: `Matrix::norm` documenta por qué `entry²` es incorrecto para complejos… y lo emite igual para símbolos; los comentarios que justifican un caso especial son el mejor detector de la mitad no cubierta (variante del "la reducción cubre el caso nombrado y pierde el hermano").
   - SIGUIENTE ITERACIÓN RECOMENDADA: **V0** (coherencia de dominio de la capa métrica de Matrix, [S], soundness-primero) y de seguido V1 (el primitivo componentwise). El doc de scoping es la fuente de candidatos del frente.
+
+## 2026-07-18 - SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
+
+- area: `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas_engine/matrix_rule_support.rs` (threading bool por `try_eval_matrix_function_expr`/`try_rewrite_matrix_function_rule_expr`) + `rules/matrix_ops.rs` (`MatrixFunctionRule` estrena `apply_with_context` — lee `parent_ctx.value_domain()`) + 3 unit tests estructurales + bloque contract e2e dual-dominio
+- status: `retained`. Ciclo 1/8 de la tanda vectorial (V0 del scoping `22addb861` — soundness antes que capacidad).
+- capture:
+  - investment_class: soundness (candidato P0 del scoping, hand-verificado): la misma raíz sticky-fold que la familia `|x|²→x²`.
+  - cell: **complex** `norm([x,y])→(|x|²+|y|²)^(1/2)` (antes `(x²+y²)^(1/2)` — con `x:=i,y:=1` daba 0 ≠ sqrt(2)), `norm([x+i,1])→(|x+i|²+1)^(1/2)`, `norm([1/2+i,0])→1/2·sqrt(5)` exacto, folds gaussianos intactos (`norm([3,4i])→5`, `norm([1,i])→sqrt(2)`); **real** `norm([i,1])→(1+i²)^(1/2)` residual honesto (antes sqrt(2) — `i` es símbolo ordinario en RealOnly, contrato A2; el Imaginary Usage Warning ya empujaba a complex), `norm([2i])→2·|i|` (sqrt de cuadrado con i simbólica); reales puros byte-idénticos en ambos dominios (`norm([3,4])→5`, Frobenius 13, `norm([a,b])` real intacto).
+  - diseño: el fold gaussiano se movió AL dominio donde `i` ES la unidad imaginaria (patrón `_in_domain` con bool explícito — cas_math no depende de solver_core); en complex el simbólico emite `Pow(Abs(entry),2)` (la forma hermitiana honesta — `abs(x)²` NO re-pliega a `x²` bajo complex, verificado); en real, `entry²` crudo para TODO. `SimpleRule::apply_with_context` (el hook existente jamás usado por las reglas matrix) resultó el cableado mínimo: cero cambio de trait, `apply_simple` queda como vista legacy real-mode. `dot` queda BILINEAL documentado (convención SymPy) con pin del contrato consciente `norm(v) ≠ sqrt(dot(v,v))` sobre ℂ (`dot([i,1],[i,1])→0` vs `norm([i,1])→sqrt(2)`).
+  - pins migrados: 5 del bloque `test_eval_vector_norm` (fijaban el fold-siempre pre-A2; su intención "no emitir i·√7" se preserva — en real ahora queda RADICAL SIN EVALUAR, no un valor equivocado); el bloque quedó dual-superficie (r/rc) con el porqué en comentario.
+  - residual nombrado: `norm([pi,0])` complex → `sqrt(|pi|²)` (el fold |π|²→π² no dispara con radicando solitario — gemelo preexistente de `sqrt(pi^2)` que tampoco pliega; `norm([pi,1])→(π²+1)^(1/2)` sí compone). Presentación, no soundness.
+  - validación: workspace failed:0 (exit real); clippy --all-targets limpio; engine-fast verde; huella: CONTADORES idénticos en las 16+3 lanes (delta solo en slots ordenados-por-timing y métricas _us/bytes/percent — la clase de ruido de [[scorecard-huella-latency-noise]], clasificada exhaustivamente por bucket).
+  - retained learning:
+  - **`apply_with_context` es el canal de dominio BARATO para las SimpleRule legacy**: el hook existía sin usuarios en la familia matrix; enhebrar `ValueDomain` a una regla vieja no exige migrarla a `define_rule!` — override de 8 líneas y el `apply_simple` queda como vista real-mode explícita.
+  - **Un fold "conveniente" fuera de su dominio es deuda que el modo estricto convierte en P0**: norm plegaba `i` en real "porque el valor era útil" — exactamente el tipo de excepción que A2 eliminó para abs; alinearlo costó 5 pins migrados y CERO capacidad perdida (el valor útil vive en complex, a un flag de distancia).
+  - PRÓXIMO PELDAÑO: **V1** (diff componentwise sobre Matrix + cierre matmul — el primitivo `map_matrix_components` que estrena la mecánica de los 6 verbos). El scoping es la fuente; V0 queda ☑ (hash en el ledger del ciclo siguiente).
