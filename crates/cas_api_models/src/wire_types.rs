@@ -1117,6 +1117,27 @@ impl EvalValueDomain {
     }
 }
 
+/// Session-level numeric display mode: `Exact` renders results as exact
+/// fractions/radicals (the default, byte-identical contract); `Decimal`
+/// applies the numeric-presentation walker at the OUTPUT BOUNDARY only —
+/// internally everything stays symbolic and exact.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EvalNumericDisplay {
+    #[default]
+    Exact,
+    Decimal,
+}
+
+impl EvalNumericDisplay {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Exact => "exact",
+            Self::Decimal => "decimal",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum EvalInvTrigPolicy {
@@ -1170,6 +1191,7 @@ pub struct EvalSessionRunConfig<'a> {
     pub complex_branch: EvalBranchMode,
     pub inv_trig: EvalInvTrigPolicy,
     pub assume_scope: EvalAssumeScope,
+    pub numeric_display: EvalNumericDisplay,
 }
 
 // =============================================================================

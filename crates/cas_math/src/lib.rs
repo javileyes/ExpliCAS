@@ -119,6 +119,7 @@ pub mod nested_fraction_support;
 pub mod number_theory_support;
 pub mod numeric;
 pub mod numeric_eval;
+pub mod numeric_presentation;
 pub mod opaque_atoms;
 pub mod opaque_function_calls_support;
 pub mod pattern_marks;

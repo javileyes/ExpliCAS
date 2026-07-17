@@ -25,6 +25,7 @@ mod tests {
             complex_branch: cas_api_models::EvalBranchMode::Principal,
             inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
             assume_scope: cas_api_models::EvalAssumeScope::Real,
+            numeric_display: cas_api_models::EvalNumericDisplay::Exact,
         }
     }
 
@@ -334,6 +335,7 @@ mod tests {
                 complex_branch: cas_api_models::EvalBranchMode::Principal,
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
+                numeric_display: cas_api_models::EvalNumericDisplay::Exact,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -366,6 +368,7 @@ mod tests {
                 complex_branch: cas_api_models::EvalBranchMode::Principal,
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
+                numeric_display: cas_api_models::EvalNumericDisplay::Exact,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -520,6 +523,7 @@ mod tests {
                 complex_branch: cas_api_models::EvalBranchMode::Principal,
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
+                numeric_display: cas_api_models::EvalNumericDisplay::Exact,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -561,6 +565,7 @@ mod tests {
                 complex_branch: cas_api_models::EvalBranchMode::Principal,
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
+                numeric_display: cas_api_models::EvalNumericDisplay::Exact,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -709,6 +714,7 @@ mod tests {
                 complex_branch: cas_api_models::EvalBranchMode::Principal,
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
+                numeric_display: cas_api_models::EvalNumericDisplay::Exact,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),

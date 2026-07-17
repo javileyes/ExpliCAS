@@ -37,6 +37,7 @@ fn eval_config<'a>(expr: &'a str, auto_store: bool) -> EvalSessionRunConfig<'a> 
         complex_branch: cas_api_models::EvalBranchMode::Principal,
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
+        numeric_display: cas_api_models::EvalNumericDisplay::Exact,
     }
 }
 

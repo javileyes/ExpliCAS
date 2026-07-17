@@ -70,6 +70,7 @@ fn consecutive_factorial_ratio_wire_uses_factorial_latex_and_nonnegative_require
             complex_branch: EvalBranchMode::Principal,
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
+            numeric_display: cas_api_models::EvalNumericDisplay::Exact,
         },
         cas_solver_core::eval_option_axes::Language::Es,
         |_steps, _events, _context, _steps_mode| Vec::new(),

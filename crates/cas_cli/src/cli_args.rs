@@ -171,6 +171,17 @@ pub enum ValueDomainArg {
     Complex,
 }
 
+/// Numeric display mode for results (presentation-only)
+#[derive(ValueEnum, Debug, Clone, Copy, Default)]
+pub enum NumericDisplayArg {
+    /// Exact fractions and radicals (default)
+    #[default]
+    Exact,
+    /// Approximate numeric parts of results at the output boundary
+    /// (internally everything stays symbolic and exact)
+    Decimal,
+}
+
 /// Inverse trig composition policy
 #[derive(ValueEnum, Debug, Clone, Copy, Default)]
 pub enum InvTrigArg {
@@ -337,6 +348,11 @@ pub struct EvalArgs {
     /// Value domain: real or complex
     #[arg(long, value_enum, default_value_t = ValueDomainArg::Real)]
     pub value_domain: ValueDomainArg,
+
+    /// Numeric display: exact (default) or decimal (approximate results at
+    /// the output boundary; internals stay symbolic)
+    #[arg(long, value_enum, default_value_t = NumericDisplayArg::Exact)]
+    pub numeric_display: NumericDisplayArg,
 
     /// Inverse trig composition policy: strict or principal
     #[arg(long, value_enum, default_value_t = InvTrigArg::Strict)]

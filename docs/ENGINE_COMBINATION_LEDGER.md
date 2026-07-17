@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 607 (newest first)
+Active entries: 608 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -133,6 +133,7 @@ Active entries: 607 (newest first)
 - 2026-07-17 | `retained` | `cas_math/src/decimal_display.rs` (NUEVO: `approx_display_rational` + `round_... | PRESENTACIÓN (T5·ciclo1 — capa numeric-display, WYSIWYG): el payload de `decimal()` ES el valor mostrado
 - 2026-07-17 | `retained` | `cas_math/arithmetic_rule_support.rs` (helpers `as_fold_number`/`wrap_fold_nu... | PRESENTACIÓN (T5·ciclo2 — fold-through sticky): `approx(3/7) - 0.428571428571` → `0` EXACTO
 - 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (walker `approx_closed_subtrees` + gat... | CAPACIDAD (T5·ciclo3 — approx sobre subárboles cerrados): `approx(sqrt(2)*pi*e*x)` → `x·12.0770079568`
+- 2026-07-17 | `retained` | `cas_math/numeric_presentation.rs` (NUEVO — walker movido de cas_engine + `pr... | CAPACIDAD (T5·ciclo4 — eje `--numeric-display`): el selector "number approx" del usuario, como pase de frontera de salida
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20229,3 +20230,17 @@ Active entries: 607 (newest first)
   - retained learning:
   - **El gate de trivialidad (D5) es lo que hace las particiones estables**: "envuelve solo si alguna hoja numérica no es entero-valuada" deja pasar exactamente los casos útiles y hace que los pins de decline existentes SOBREVIVAN sin migración — un walker sin gate habría convertido cada `2·x` en `2.0·x` y roto media suite.
   - PRÓXIMO PELDAÑO: T5·ciclo4 — el eje de sesión `--numeric-display` (el pase de frontera de salida ES este walker en modo wrap-only; wiring según el patrón --value-domain, aterrizando en finalize). Residuales: Pow-fold decimal (2b), orden display del coeficiente decimal en Mul (`x·12.07` vs `12.07·x` — cosmético), exponentes decimales (v2 si se pide).
+
+## 2026-07-17 - CAPACIDAD (T5·ciclo4 — eje `--numeric-display`): el selector "number approx" del usuario, como pase de frontera de salida
+
+- area: `cas_math/numeric_presentation.rs` (NUEVO — walker movido de cas_engine + `present_numeric`) + `cas_api_models/wire_types.rs` (`EvalNumericDisplay{Exact,Decimal}` + campo en EvalSessionRunConfig) + `cas_cli` (flag `--numeric-display`) + hook en `finalize_eval_collected` (Expr/Set/Discrete/Continuous/Union) + 15 ficheros de inicializadores test/bench
+- status: `retained`. Cuarto ciclo de la tanda 5. **Implementa el selector propuesto por el usuario con su propio diseño: "internamente está todo simbólico, la aproximación es un print final".**
+- capture:
+  - investment_class: capacidad de presentación (el eje de sesión que completa la capa numeric-display).
+  - cell: con `--numeric-display decimal`: `1/3+1/3 → 0.666666666667`, `sqrt(2)·pi·e → 12.0770079568`, `solve(2x=1) → {0.5}`, `solve(x²<2) → (-1.41421356237, 1.41421356237)` (bounds de intervalo), `sqrt(2)+x → 1.41421356237+x` (mixto simbólico), `2+2 → 4` (D5: enteros sin churn). Default `Exact` byte-idéntico — TODA la suite existente pasa sin tocar un pin.
+  - diseño: el pase de frontera ES el walker del ciclo 3 en forma whole-result (`present_numeric`), movido a `cas_math::numeric_presentation` porque el finalize vive en cas_solver (dirección de deps). El hook va en `finalize_eval_collected` — el ÚNICO punto con `&mut Engine` justo antes del build inmutable del output — y cubre text+json+latex de una vez. El eje NO entra en semantics (jamás gatea una regla): viaja como config y muere en presentación. Periodic/Conditional/Residual quedan exactos en v1 (sus miembros alimentan re-evaluación exacta aguas abajo).
+  - **regex-blanket lesson**: parchear inicializadores por regex "assume_scope-seguido-de-}" tocó 4 structs EQUIVOCADOS que comparten el nombre de campo (EvalConfig de solver_core, EvalOptionAxes) — el compilador los delató de inmediato, pero la lección es parchear por LISTA DE ERRORES del compilador (los E0063 exactos), no por grep del campo hermano.
+  - validación: workspace 12417/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella IDÉNTICA ambos scorecards (default Exact = aditivo puro).
+  - retained learning:
+  - **Un eje puramente presentacional se cablea config→finalize, saltándose semantics por completo**: si el valor del eje jamás debe cambiar un resultado, que el tipo del wiring lo garantice (no hay brazo de semantics que puedan consultar las reglas) — la versión de tipos del "guardrail por construcción".
+  - PRÓXIMOS PELDAÑOS (la capa queda COMPLETA para el usuario; pulidos nombrados): (a) contagio de literales tipeados vía sniffing `ParseStyleSignals` + variante `Auto` (ciclo 5 del scoping, gated: default-Exact primero, flip en commit propio); (b) echo del eje en el wire JSON; (c) REPL/envelope parity; (d) Pow-fold decimal (2b); (e) steps en modo decimal (D10 v2); (f) orden display coeficiente decimal en Mul.

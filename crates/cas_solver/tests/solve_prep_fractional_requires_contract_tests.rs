@@ -27,6 +27,7 @@ fn fractional_symbolic_solve_prep_dedupes_scaled_nonzero_requires() {
             complex_branch: EvalBranchMode::Principal,
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
+            numeric_display: cas_api_models::EvalNumericDisplay::Exact,
         },
         cas_solver_core::eval_option_axes::Language::Es,
         |_steps, _events, _context, _steps_mode| Vec::new(),

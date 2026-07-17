@@ -10,8 +10,8 @@ use crate::{
 };
 use cas_api_models::{
     EvalAssumeScope, EvalBranchMode, EvalBudgetPreset, EvalComplexMode, EvalConstFoldMode,
-    EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
-    EvalValueDomain,
+    EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalNumericDisplay,
+    EvalStepsMode, EvalValueDomain,
 };
 
 pub(crate) fn render(mut args: EvalArgs) -> Result<CommandOutput, String> {
@@ -79,6 +79,7 @@ pub(super) fn eval_command_config<'a>(
         complex_branch: complex_branch_mode(args.complex_branch),
         inv_trig: effective_inv_trig_mode(args.inv_trig, args.branch),
         assume_scope: assume_scope(args.assume_scope),
+        numeric_display: numeric_display(args.numeric_display),
     }
 }
 
@@ -133,6 +134,13 @@ fn value_domain(vd: ValueDomainArg) -> EvalValueDomain {
     match vd {
         ValueDomainArg::Real => EvalValueDomain::Real,
         ValueDomainArg::Complex => EvalValueDomain::Complex,
+    }
+}
+
+fn numeric_display(nd: crate::cli_args::NumericDisplayArg) -> EvalNumericDisplay {
+    match nd {
+        crate::cli_args::NumericDisplayArg::Exact => EvalNumericDisplay::Exact,
+        crate::cli_args::NumericDisplayArg::Decimal => EvalNumericDisplay::Decimal,
     }
 }
 

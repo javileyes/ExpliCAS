@@ -726,6 +726,7 @@ fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
         complex_branch: EvalBranchMode::Principal,
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
+        numeric_display: cas_api_models::EvalNumericDisplay::Exact,
     };
     let (output, _, _) = evaluate_eval_command_with_session(
         None,

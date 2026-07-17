@@ -85,7 +85,9 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
             // Presentation surface only — approx is f64 BY CONTRACT; no
             // keep/drop decision rides on this value.
             if complex_enabled {
-                if let Some(rewritten) = eval_closed_complex_to_decimal(ctx, arg) {
+                if let Some(rewritten) =
+                    cas_math::numeric_presentation::eval_closed_complex_to_decimal(ctx, arg)
+                {
                     return Some(MetaFunctionRewrite {
                         rewritten,
                         desc: "approx(z) -> complex numeric value a + b·i (12 significant digits)",
@@ -94,7 +96,7 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
             }
             // Idempotence: `approx(<already-decimal>)` unwraps the call —
             // the argument IS the numeric presentation.
-            if is_decimal_node(ctx, arg) {
+            if cas_math::numeric_presentation::is_decimal_node(ctx, arg) {
                 return Some(MetaFunctionRewrite {
                     rewritten: arg,
                     desc: "approx(x) -> x (already a numeric value)",
@@ -104,233 +106,15 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
             // subtrees and keep the symbolic structure —
             // `approx(sqrt(2)*pi*e*x)` -> `12.0770079568·x`. No progress
             // keeps the approx(...) wrapper as an honest residual.
-            if let Some(rewritten) = approx_closed_subtrees(ctx, arg, complex_enabled) {
+            if let Some(rewritten) =
+                cas_math::numeric_presentation::approx_closed_subtrees(ctx, arg, complex_enabled)
+            {
                 return Some(MetaFunctionRewrite {
                     rewritten,
                     desc: "approx(expr) -> numeric coefficients (12 significant digits)",
                 });
             }
             None
-        }
-        _ => None,
-    }
-}
-
-/// Is this node the `decimal(Number)` display wrapper?
-fn is_decimal_node(ctx: &Context, id: ExprId) -> bool {
-    matches!(
-        ctx.get(id),
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.sym_name(*fn_id) == "decimal"
-    )
-}
-
-/// Evaluate a CLOSED subexpression through the complex walker and emit the
-/// cartesian `decimal(re) + decimal(im)·i` (pure-imaginary and finite-only;
-/// a real result means the real f64 surface owns it — decline).
-fn eval_closed_complex_to_decimal(ctx: &mut Context, id: ExprId) -> Option<ExprId> {
-    let z = cas_math::evaluator_complex::eval_complex(ctx, id, &std::collections::HashMap::new())?;
-    if !z.re.is_finite() || !z.im.is_finite() || z.im == 0.0 {
-        return None;
-    }
-    let decimal_sym = ctx.intern_symbol("decimal");
-    let im_rational = cas_math::decimal_display::approx_display_rational(z.im)?;
-    let im_number = ctx.add(Expr::Number(im_rational));
-    let im_decimal = ctx.add(Expr::Function(decimal_sym, vec![im_number]));
-    let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
-    let im_part = ctx.add(Expr::Mul(im_decimal, i));
-    if z.re == 0.0 {
-        return Some(im_part);
-    }
-    let re_rational = cas_math::decimal_display::approx_display_rational(z.re)?;
-    let re_number = ctx.add(Expr::Number(re_rational));
-    let re_decimal = ctx.add(Expr::Function(decimal_sym, vec![re_number]));
-    Some(ctx.add(Expr::Add(re_decimal, im_part)))
-}
-
-/// D5 triviality gate: a closed subtree is worth approximating only when it
-/// contains a numeric leaf that is not integer-valued (a non-integer
-/// rational, `pi`/`e`, a function call like `sqrt(2)`, a fractional power,
-/// a non-exact quotient). Bare integers, bare `i`, and integer·`i` stay
-/// symbolic — no `2 -> 2.0` churn, and `approx(x + i)` keeps declining.
-fn closed_subtree_wants_decimal(ctx: &Context, id: ExprId) -> bool {
-    match ctx.get(id) {
-        Expr::Number(n) => !n.is_integer(),
-        Expr::Constant(cas_ast::Constant::Pi) | Expr::Constant(cas_ast::Constant::E) => true,
-        Expr::Constant(_) => false,
-        Expr::Function(fn_id, _) => ctx.sym_name(*fn_id) != "decimal",
-        Expr::Pow(b, e) => {
-            closed_subtree_wants_decimal(ctx, *b) || closed_subtree_wants_decimal(ctx, *e)
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-            closed_subtree_wants_decimal(ctx, *l) || closed_subtree_wants_decimal(ctx, *r)
-        }
-        Expr::Div(l, r) => {
-            if closed_subtree_wants_decimal(ctx, *l) || closed_subtree_wants_decimal(ctx, *r) {
-                return true;
-            }
-            // Integer/integer with a non-exact quotient wants a decimal.
-            if let (Expr::Number(a), Expr::Number(b)) = (ctx.get(*l), ctx.get(*r)) {
-                use num_traits::Zero as _;
-                return !b.is_zero() && !(a / b).is_integer();
-            }
-            false
-        }
-        Expr::Neg(inner) => closed_subtree_wants_decimal(ctx, *inner),
-        _ => false,
-    }
-}
-
-/// Evaluate a CLOSED numeric subexpression to its decimal form: the real
-/// f64 surface first, the complex cartesian form when enabled.
-fn eval_closed_to_decimal(ctx: &mut Context, id: ExprId, complex_enabled: bool) -> Option<ExprId> {
-    if let Some(value) = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, id) {
-        let rational = cas_math::decimal_display::approx_display_rational(value)?;
-        let number = ctx.add(Expr::Number(rational));
-        let decimal_sym = ctx.intern_symbol("decimal");
-        return Some(ctx.add(Expr::Function(decimal_sym, vec![number])));
-    }
-    if complex_enabled {
-        return eval_closed_complex_to_decimal(ctx, id);
-    }
-    None
-}
-
-/// Map the MAXIMAL closed numeric subtrees of an open expression to decimal
-/// coefficients (`None` = no change). Structure-only recursion: Add/Sub and
-/// Mul spines partition through the n-ary views (canonical ordering
-/// interleaves closed and open operands — `pi·e·x·sqrt(2)` must yield ONE
-/// coefficient), Div and Pow-bases recurse, and `Expr::Function` args and
-/// matrices are NEVER entered: closed pointwise calls are caught whole at
-/// their own node, and recursing into args would decimal-ize inert
-/// `integrate`/`root_sum`/`solve` bounds whose exact re-evaluation the
-/// soundness gates depend on. Exponents stay exact in v1.
-fn approx_closed_subtrees(ctx: &mut Context, id: ExprId, complex_enabled: bool) -> Option<ExprId> {
-    use cas_math::expr_predicates::contains_variable;
-
-    // A closed node: evaluate whole (D5-gated); trivial closed stays.
-    if !contains_variable(ctx, id) {
-        if closed_subtree_wants_decimal(ctx, id) {
-            return eval_closed_to_decimal(ctx, id, complex_enabled);
-        }
-        return None;
-    }
-
-    match ctx.get(id).clone() {
-        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_) => {
-            let view = cas_math::expr_nary::AddView::from_expr(ctx, id);
-            let mut closed: Vec<(ExprId, cas_math::expr_nary::Sign)> = Vec::new();
-            let mut open: Vec<(ExprId, cas_math::expr_nary::Sign)> = Vec::new();
-            for (term, sign) in view.terms.iter().copied() {
-                if contains_variable(ctx, term) {
-                    open.push((term, sign));
-                } else {
-                    closed.push((term, sign));
-                }
-            }
-            let closed_wants = closed
-                .iter()
-                .any(|(t, _)| closed_subtree_wants_decimal(ctx, *t));
-            let mut changed = false;
-            let mut new_terms: smallvec::SmallVec<[(ExprId, cas_math::expr_nary::Sign); 8]> =
-                smallvec::SmallVec::new();
-            if closed_wants && !closed.is_empty() {
-                let closed_view = cas_math::expr_nary::AddView {
-                    root: id,
-                    terms: closed.iter().copied().collect(),
-                };
-                let closed_sum = closed_view.rebuild(ctx);
-                if let Some(decimal) = eval_closed_to_decimal(ctx, closed_sum, complex_enabled) {
-                    new_terms.push((decimal, cas_math::expr_nary::Sign::Pos));
-                    changed = true;
-                } else {
-                    new_terms.extend(closed.iter().copied());
-                }
-            } else {
-                new_terms.extend(closed.iter().copied());
-            }
-            for (term, sign) in open {
-                match approx_closed_subtrees(ctx, term, complex_enabled) {
-                    Some(new_term) => {
-                        new_terms.push((new_term, sign));
-                        changed = true;
-                    }
-                    None => new_terms.push((term, sign)),
-                }
-            }
-            if !changed {
-                return None;
-            }
-            let rebuilt = cas_math::expr_nary::AddView {
-                root: id,
-                terms: new_terms,
-            };
-            Some(rebuilt.rebuild(ctx))
-        }
-        Expr::Mul(_, _) => {
-            let view = cas_math::expr_nary::MulView::from_expr(ctx, id);
-            let mut closed: Vec<ExprId> = Vec::new();
-            let mut open: Vec<ExprId> = Vec::new();
-            for factor in view.factors.iter().copied() {
-                if contains_variable(ctx, factor) {
-                    open.push(factor);
-                } else {
-                    closed.push(factor);
-                }
-            }
-            let closed_wants = closed.iter().any(|t| closed_subtree_wants_decimal(ctx, *t));
-            let mut changed = false;
-            let mut new_factors: smallvec::SmallVec<[ExprId; 8]> = smallvec::SmallVec::new();
-            if closed_wants && !closed.is_empty() {
-                let closed_view = cas_math::expr_nary::MulView {
-                    root: id,
-                    factors: closed.iter().copied().collect(),
-                    commutative: true,
-                };
-                let closed_prod = closed_view.rebuild(ctx);
-                if let Some(decimal) = eval_closed_to_decimal(ctx, closed_prod, complex_enabled) {
-                    new_factors.push(decimal);
-                    changed = true;
-                } else {
-                    new_factors.extend(closed.iter().copied());
-                }
-            } else {
-                new_factors.extend(closed.iter().copied());
-            }
-            for factor in open {
-                match approx_closed_subtrees(ctx, factor, complex_enabled) {
-                    Some(new_factor) => {
-                        new_factors.push(new_factor);
-                        changed = true;
-                    }
-                    None => new_factors.push(factor),
-                }
-            }
-            if !changed {
-                return None;
-            }
-            let rebuilt = cas_math::expr_nary::MulView {
-                root: id,
-                factors: new_factors,
-                commutative: true,
-            };
-            Some(rebuilt.rebuild(ctx))
-        }
-        Expr::Div(num, den) => {
-            let new_num = approx_closed_subtrees(ctx, num, complex_enabled);
-            let new_den = approx_closed_subtrees(ctx, den, complex_enabled);
-            if new_num.is_none() && new_den.is_none() {
-                return None;
-            }
-            let n = new_num.unwrap_or(num);
-            let d = new_den.unwrap_or(den);
-            Some(ctx.add(Expr::Div(n, d)))
-        }
-        Expr::Pow(base, exp) => {
-            // Exponents stay exact (x^(1/3), not x^0.333…): only the base
-            // recurses in v1.
-            let new_base = approx_closed_subtrees(ctx, base, complex_enabled)?;
-            Some(ctx.add(Expr::Pow(new_base, exp)))
         }
         _ => None,
     }

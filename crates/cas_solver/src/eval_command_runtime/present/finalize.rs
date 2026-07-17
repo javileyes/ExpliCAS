@@ -7,9 +7,52 @@ use super::{EvalCommandOutput, EvalCommandRunConfig, PreparedEvalRun};
 pub(super) fn finalize_eval_collected(
     engine: &mut crate::Engine,
     config: EvalCommandRunConfig<'_>,
-    prepared: PreparedEvalRun,
+    mut prepared: PreparedEvalRun,
     collected: CollectedEvalArtifacts,
 ) -> Result<EvalCommandOutput, String> {
+    // `--numeric-display decimal`: OUTPUT-BOUNDARY presentation only. The
+    // whole pipeline above ran exact and symbolic; here the final result
+    // (and solution-set members / interval bounds) maps its maximal closed
+    // numeric subtrees to decimal display nodes via the shared walker.
+    if config.numeric_display == cas_api_models::EvalNumericDisplay::Decimal {
+        let complex_enabled = config.value_domain == cas_api_models::EvalValueDomain::Complex;
+        let ctx = &mut engine.simplifier.context;
+        let present = |ctx: &mut cas_ast::Context, id: cas_ast::ExprId| {
+            cas_math::numeric_presentation::present_numeric(ctx, id, complex_enabled).unwrap_or(id)
+        };
+        match &mut prepared.output_view.result {
+            crate::EvalResult::Expr(id) => {
+                *id = present(ctx, *id);
+            }
+            crate::EvalResult::Set(ids) => {
+                for id in ids.iter_mut() {
+                    *id = present(ctx, *id);
+                }
+            }
+            crate::EvalResult::SolutionSet(set) => match set {
+                cas_ast::SolutionSet::Discrete(ids) => {
+                    for id in ids.iter_mut() {
+                        *id = present(ctx, *id);
+                    }
+                }
+                cas_ast::SolutionSet::Continuous(interval) => {
+                    interval.min = present(ctx, interval.min);
+                    interval.max = present(ctx, interval.max);
+                }
+                cas_ast::SolutionSet::Union(intervals) => {
+                    for interval in intervals.iter_mut() {
+                        interval.min = present(ctx, interval.min);
+                        interval.max = present(ctx, interval.max);
+                    }
+                }
+                // Periodic/Conditional/Residual keep exact presentation in
+                // v1 (their members feed downstream exact re-evaluation).
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
     finalize_eval_output(EvalOutputFinalizeInput {
         result: &prepared.output_view.result,
         ctx: &engine.simplifier.context,

@@ -10858,6 +10858,33 @@ fn complex_mode_approximates_closed_complex_values() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "i·x·1.41421356237");
 
+    // Session axis (T5-ciclo4): --numeric-display decimal applies the same
+    // walker at the OUTPUT BOUNDARY — internally everything stays exact.
+    for (src, expected) in [
+        ("1/3 + 1/3", "0.666666666667"),
+        ("sqrt(2)*pi*e", "12.0770079568"),
+        ("solve(2*x=1, x)", "{ 0.5 }"),
+        ("solve(x^2 < 2, x)", "(-1.41421356237, 1.41421356237)"),
+        ("sqrt(2)+x", "1.41421356237 + x"),
+        ("2+2", "4"),
+    ] {
+        let (output, _code) = run_cli(&[
+            "eval",
+            src,
+            "--format",
+            "json",
+            "--numeric-display",
+            "decimal",
+        ]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "decimal-display `{src}`");
+    }
+
+    // Default axis is Exact: byte-identical to the pre-axis contract.
+    let (output, _code) = run_cli(&["eval", "1/3 + 1/3", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "2/3");
+
     // REAL mode: the complex fallback never leaks — approx(ln(i)) stays
     // symbolic, approx(ln(-1)) keeps the honest real-domain undefined.
     for (src, expected) in [
