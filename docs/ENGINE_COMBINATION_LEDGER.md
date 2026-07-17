@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 595 (newest first)
+Active entries: 596 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
 - 2026-07-17 | `retained` | `cas_engine/rules/` — `canonicalization.rs` (brazo `SqrtEvenPower` de Canonic... | SOUNDNESS (Fase 2 · P0 familia sqrt-square en complejo): `sqrt(x^2)` deja de fabricar `|x|` bajo ℂ
 - 2026-07-17 | `retained` | `cas_solver_core` — `rational_roots.rs` (kernels + 4 wrappers del chain con `... | CAPACIDAD (Fase 2 · A5: solve complejo grado ≥3 — kernel rational-roots domain-aware): `solve(x^4-1, x)` → `{i, -i, -1, 1}`
+- 2026-07-17 | `retained` | `cas_solver_core` (`isolation_power.rs`: campo `value_domain_real_only` en Ke... | SOUNDNESS+CAPACIDAD (Fase 2 · pow-isolation domain-aware + gemelos backend): `solve(x^6-1)` → las 6 raíces de la unidad
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20043,3 +20044,17 @@ Active entries: 595 (newest first)
   - **"Completo" es una afirmación POR DOMINIO**: un verdicto de completitud calculado con maquinaria real (Sturm, conteo de raíces reales) NUNCA viaja gratis al dominio complejo — cada widening de dominio debe re-derivar sus verdictos de completitud, no heredarlos.
   - **El patrón "threading del bool por el chain genérico" es mecánico y seguro** (2ª instancia tras A4): el compilador enumera los llamadores rotos; los tests del chain se re-pinnean con `true` (real) sin pérdida. Cuidado con regex de parcheo que alcanzan el sitio de producción ya editado (doble insert cazado por el compilador).
   - PRÓXIMO PELDAÑO: **pow-isolation domain-aware** (cierra `x^4+1`/`x^5-1`/`x^3=8` en ℂ); luego el pipeline-layer RealOnly de sqrt-square (ciclo 3); luego re-scope bloque B (Euler/Log/evaluador — con A completo, toca decidir num-complex vs hand-rolled); C1 display.
+
+## 2026-07-17 - SOUNDNESS+CAPACIDAD (Fase 2 · pow-isolation domain-aware + gemelos backend): `solve(x^6-1)` → las 6 raíces de la unidad
+
+- area: `cas_solver_core` (`isolation_power.rs`: campo `value_domain_real_only` en KernelInputs/Config + gate en el route entry; `strategy_options.rs`) + `cas_solver/solve_backend_local.rs` (gemelos `try_solve_biquadratic` + `try_solve_polynomial_with_quartic_factor` domain-aware) + 2 tests e2e de contrato CLI
+- status: `retained`. Primer ciclo de la tanda 2 — cierra el residual P0 nombrado de la tanda 1.
+- capture:
+  - investment_class: soundness Fase-2 (wrong-answers) + capacidad (emisión de pares conjugados en los gemelos).
+  - cell: WRONG-ANSWERS cerrados: `x^5=1`→era `{1}` (subset de 5), `x^7=3`→era `{3^(1/7)}`, `x^4=-1`/`x^4+1=0`→era `No solution`, `x^6-1`/`x^6=1`→era `{±1}` (subset de 6), `x^4+x^2+1=0`→era `No solution`. AHORA: **`x^6-1` → LAS 6 RAÍCES COMPLETAS** `{±1, (±1±i√3)/2}` (gemelo cuártico emite los pares disc<0), `x^4+x^2+1` → 4 raíces, quíntica mixta `x^5-5x^3+x^2-5` → 5 raíces (reales surds + par complejo); `x^4=±1`, `x^5=1`, `x^7=3` → **residual honesto** (√i / roots-of-unity generales = bloque B). Real mode INTACTO en todo (incl. biquadrático surd `x^4-8x^2+15`).
+  - diseño: (a) el flow de pow-isolation YA recibía `value_domain_real_only` (4ª instancia del smell "el bool llega y nadie lo consulta") — se almacena en el KernelConfig y el route entry gatea `Eq ∧ entero |n|≥3 ∨ (par ∧ rhs-negativo)` → `residual_solution_set` (patrón del decline de log-base-variable); desigualdades y n=2 intactos (ℂ sin orden / par ±√c completo). (b) Los GEMELOS del backend (mismo tail de verificación — el anchor de replace casó 2× y los DELATÓ): en ℂ emiten los pares disc<0/z<0 como `exact_complex_roots` que BYPASEAN la verificación f64 (rechaza `i`; exactos por construcción — raíces de cuadráticas racionales de factorización verificada); `Δ_z<0` → None (decline) en vez de Empty.
+  - validación: workspace 12379/0 (exit real); clippy limpio; engine-fast verde; pressure 0-delta, guardrail solo el swap de ranking por timing. 2 tests e2e (decline honesto ×3 + real intacto; 6 raíces de x^6-1 + decline de x^4+1).
+  - retained learning:
+  - **Un anchor de replace que casa 2 veces es un DETECTOR de gemelos**: la colisión textual reveló el segundo helper con la misma lógica real-only ANTES de que un probe lo hiciera — convertir el assert fallido en pregunta ("¿qué otra fn tiene este tail?") en vez de solo desambiguar.
+  - **El bypass correcto de una verificación numérica es POR CONSTRUCCIÓN, no por relajación**: los pares complejos no pueden pasar eval_f64, pero no lo necesitan — son raíces exactas de factores exactos ya verificados; separar `exact_*` de `raw_*` mantiene la verificación f64 intacta para lo que sí la necesita.
+  - PRÓXIMO PELDAÑO: pipeline-layer RealOnly (`(x^2)^(1/2)→|x|`, ciclo 2); roots-of-unity para los declines honestos (`x^5=1` → 5 raíces vía cos/sin — bloque B con Euler); re-scope B.

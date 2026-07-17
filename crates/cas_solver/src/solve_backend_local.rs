@@ -11170,7 +11170,7 @@ fn solve_local_core_inner(
     // A BIQUADRATIC `a·x⁴ + b·x² + c` whose `x`-roots are surds (`x⁴-8x²+15 → {±√3, ±√5}`) otherwise
     // leaks a circular residual `solve(x − (8x²−15)^(1/4)=0)`. Solve it by the `z = x²` substitution.
     let set = if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
-        try_solve_biquadratic(simplifier, eq, var).unwrap_or(set)
+        try_solve_biquadratic(simplifier, eq, var, opts.value_domain.is_real_only()).unwrap_or(set)
     } else {
         set
     };
@@ -11179,7 +11179,12 @@ fn solve_local_core_inner(
     // (`x⁵-5x³+x²-5 = (x+1)(x²-5)(x²-x+1)` drops the `±√5` roots): peel the rational roots and solve
     // the quadratic factors. Replaces a `Residual`/`Conditional`; augments a `Discrete` the normal
     // path left incomplete (only the rational roots) when the quartic factor adds genuinely new roots.
-    let set = match try_solve_polynomial_with_quartic_factor(simplifier, eq, var) {
+    let set = match try_solve_polynomial_with_quartic_factor(
+        simplifier,
+        eq,
+        var,
+        opts.value_domain.is_real_only(),
+    ) {
         Some(complete) => match (&set, &complete) {
             (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _) => complete,
             (SolutionSet::Discrete(current), SolutionSet::Discrete(c))
@@ -11501,6 +11506,7 @@ fn try_solve_biquadratic(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    is_real_only: bool,
 ) -> Option<SolutionSet> {
     use cas_math::polynomial::Polynomial;
     use cas_solver_core::quadratic_formula::sqrt_expr;
@@ -11528,8 +11534,13 @@ fn try_solve_biquadratic(
     let (af, bf, cf) = (a.to_f64()?, b.to_f64()?, c.to_f64()?);
     let disc_f = bf * bf - 4.0 * af * cf;
     if disc_f < 0.0 {
-        // Complex z roots ⇒ no real x.
-        return Some(SolutionSet::Empty);
+        if is_real_only {
+            // Complex z roots ⇒ no real x.
+            return Some(SolutionSet::Empty);
+        }
+        // ComplexEnabled: `x = ±√(a+bi)` is block-B machinery — decline to an
+        // honest residual instead of a wrong Empty.
+        return None;
     }
 
     // Build the exact `z = (−b ± √disc)/(2a)`, then `x = ±√z` for each non-negative z root.
@@ -11540,9 +11551,11 @@ fn try_solve_biquadratic(
     let neg_b = num(ctx, -&b);
     let two_a = num(ctx, &a * r(2));
     let mut raw_roots: Vec<ExprId> = Vec::new();
+    let mut exact_complex_roots: Vec<ExprId> = Vec::new();
     for s in [1.0f64, -1.0f64] {
         let z_f = (-bf + s * disc_f.sqrt()) / (2.0 * af);
-        if z_f < -1e-12 {
+        let negative_z = z_f < -1e-12;
+        if negative_z && is_real_only {
             continue; // z < 0 ⇒ x² = z has no real solution
         }
         let signed = if s > 0.0 {
@@ -11554,8 +11567,15 @@ fn try_solve_biquadratic(
         let z_expr = ctx.add(Expr::Div(z_numer, two_a));
         let sqrt_z = sqrt_expr(ctx, z_expr);
         let neg_sqrt_z = ctx.add(Expr::Neg(sqrt_z));
-        raw_roots.push(sqrt_z);
-        raw_roots.push(neg_sqrt_z);
+        if negative_z {
+            // ComplexEnabled: `±√z` with z < 0 folds to the pure-imaginary
+            // pair downstream — exact, bypasses the f64 verification.
+            exact_complex_roots.push(sqrt_z);
+            exact_complex_roots.push(neg_sqrt_z);
+        } else {
+            raw_roots.push(sqrt_z);
+            raw_roots.push(neg_sqrt_z);
+        }
     }
 
     // Simplify, verify each candidate by numeric back-substitution, and dedup by numeric value.
@@ -11578,6 +11598,11 @@ fn try_solve_biquadratic(
             continue;
         }
         seen.push(xv);
+        roots.push(root);
+    }
+    // ComplexEnabled: append the z<0 pure-imaginary pairs (exact, no f64 verify).
+    for raw in exact_complex_roots {
+        let (root, _) = simplifier.simplify(raw);
         roots.push(root);
     }
     if roots.is_empty() {
@@ -11683,6 +11708,7 @@ fn try_solve_polynomial_with_quartic_factor(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    is_real_only: bool,
 ) -> Option<SolutionSet> {
     use cas_math::polynomial::Polynomial;
     use cas_solver_core::quadratic_formula::sqrt_expr;
@@ -11728,9 +11754,14 @@ fn try_solve_polynomial_with_quartic_factor(
 
     // Solve each monic quadratic `x² + p·x + q` for its real roots `(−p ± √(p²−4q))/2`.
     let mut raw_roots: Vec<ExprId> = Vec::new();
+    // Under ComplexEnabled the disc<0 conjugate pairs are emitted too (exact
+    // roots of exact rational quadratic factors; `√(negative)` folds to the
+    // i-form downstream). They bypass the f64 back-substitution below, which
+    // rejects `i`.
+    let mut exact_complex_roots: Vec<ExprId> = Vec::new();
     for (p, q) in [(p1, q1), (p2, q2)] {
         let disc = p * p - 4 * q;
-        if disc < 0 {
+        if disc < 0 && is_real_only {
             continue; // complex roots ⇒ no real solution from this factor
         }
         let ctx = &mut simplifier.context;
@@ -11740,8 +11771,15 @@ fn try_solve_polynomial_with_quartic_factor(
         let two = ctx.num(2);
         let plus = ctx.add(Expr::Add(neg_p, sqrt_disc));
         let minus = ctx.add(Expr::Sub(neg_p, sqrt_disc));
-        raw_roots.push(ctx.add(Expr::Div(plus, two)));
-        raw_roots.push(ctx.add(Expr::Div(minus, two)));
+        let r_plus = ctx.add(Expr::Div(plus, two));
+        let r_minus = ctx.add(Expr::Div(minus, two));
+        if disc < 0 {
+            exact_complex_roots.push(r_plus);
+            exact_complex_roots.push(r_minus);
+        } else {
+            raw_roots.push(r_plus);
+            raw_roots.push(r_minus);
+        }
     }
 
     // Distinct rational roots (with multiplicity from `find_rational_roots`).
@@ -11785,6 +11823,11 @@ fn try_solve_polynomial_with_quartic_factor(
             continue;
         }
         seen.push(xv);
+        roots.push(root);
+    }
+    // ComplexEnabled: append the disc<0 conjugate pairs (exact, no f64 verify).
+    for raw in exact_complex_roots {
+        let (root, _) = simplifier.simplify(raw);
         roots.push(root);
     }
     if roots.is_empty() {

@@ -29,6 +29,7 @@ use crate::solve_outcome::{
 /// Grouped kernel flags/options for power-isolation orchestration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowIsolationKernelConfig {
+    pub value_domain_real_only: bool,
     pub include_base_item: bool,
     pub shortcut_can_branch: bool,
     pub log_can_branch: bool,
@@ -45,6 +46,7 @@ pub struct PowIsolationKernelConfig {
 /// Input flags used to build [`PowIsolationKernelConfig`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PowIsolationKernelInputs {
+    pub value_domain_real_only: bool,
     pub shortcut_can_branch: bool,
     pub log_can_branch: bool,
     pub solve_tactic_enabled: bool,
@@ -63,6 +65,7 @@ where
     FCollectItem: FnMut() -> bool,
 {
     PowIsolationKernelConfig {
+        value_domain_real_only: inputs.value_domain_real_only,
         include_base_item: collect_item(),
         shortcut_can_branch: inputs.shortcut_can_branch,
         log_can_branch: inputs.log_can_branch,
@@ -369,6 +372,27 @@ where
     FSolveRewrite: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
 {
     let map_step = std::cell::RefCell::new(map_step);
+    // COMPLEX GATE (Eq only; inequalities keep real semantics — ℂ has no order):
+    // `B^n = RHS` with integer |n| >= 3 has n complex roots this isolation can
+    // never produce (n-th roots of unity are block-B machinery), and the even
+    // `n`-negative-RHS arm's "impossible" verdict is a REAL fact. Both decline
+    // to an honest residual instead of emitting a silent subset / wrong Empty
+    // (`x^5 = 1 -> {1}`, `x^4 = -1 -> No solution`).
+    if !kernel.value_domain_real_only && op == RelOp::Eq {
+        let ctx = context_mut(state);
+        let exponent_integer =
+            cas_math::numeric_eval::as_rational_const(ctx, exponent).filter(|r| r.is_integer());
+        if let Some(n) = exponent_integer {
+            let n_int = n.to_integer();
+            let magnitude_ge3 = n_int.magnitude() >= &3u32.into();
+            let even_negative_rhs =
+                (&n_int % 2) == 0.into() && crate::isolation_utils::is_known_negative(ctx, rhs);
+            if magnitude_ge3 || even_negative_rhs {
+                let residual = crate::solve_outcome::residual_solution_set(ctx, lhs, rhs, op, var);
+                return Ok((residual, existing_steps));
+            }
+        }
+    }
     execute_pow_isolation_with_default_kernels_for_var_with_state(
         state,
         lhs,
@@ -1364,6 +1388,7 @@ mod tests {
                 (calls & 1) == 0
             },
             PowIsolationKernelInputs {
+                value_domain_real_only: true,
                 shortcut_can_branch: true,
                 log_can_branch: false,
                 solve_tactic_enabled: true,

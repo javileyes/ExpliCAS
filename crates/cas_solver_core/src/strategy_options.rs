@@ -41,6 +41,7 @@ pub fn pow_kernel_inputs(
         shortcut_can_branch: shortcut_can_branch(budget),
         log_can_branch: log_can_branch(budget),
         solve_tactic_enabled: solve_tactic_enabled(mode, value_domain_real_only),
+        value_domain_real_only,
         mode,
         wildcard_scope,
     }

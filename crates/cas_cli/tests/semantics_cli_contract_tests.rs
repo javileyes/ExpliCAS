@@ -10424,3 +10424,95 @@ fn complex_principal_inv_trig_warning_surfaces_in_cli_wire() {
         assert_eq!(first_warning["rule"], "Principal Branch Inverse Trig");
     }
 }
+
+#[test]
+fn complex_solve_pow_isolation_declines_honestly() {
+    // T2-ciclo1 (pow-isolation domain-aware): over ℂ, `x^n = c` with integer
+    // n >= 3 has n roots the real n-th-root isolation cannot produce, and the
+    // "even power cannot be negative" verdict is a REAL fact. Both decline to
+    // an honest residual instead of a silent subset / wrong Empty.
+    for src in [
+        "solve(x^5 = 1, x)",
+        "solve(x^7 = 3, x)",
+        "solve(x^4 = -1, x)",
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        let result = wire["result"].as_str().unwrap_or_default();
+        assert!(
+            result.contains("solve("),
+            "complex `{src}` must stay an honest residual, got `{result}`"
+        );
+    }
+
+    // REAL mode keeps the real answers (subset semantics are correct over ℝ).
+    for (src, expected) in [
+        ("solve(x^5 = 1, x)", "{ 1 }"),
+        ("solve(x^4 = -1, x)", "No solution"),
+    ] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire["result"], expected,
+            "real `{src}` should keep its real-domain answer"
+        );
+    }
+}
+
+#[test]
+fn complex_solve_backend_twins_emit_conjugate_pairs() {
+    // T2-ciclo1: the backend quartic-factor and biquadratic helpers emit the
+    // disc<0 / z<0 conjugate pairs under ComplexEnabled instead of dropping
+    // them (x^6-1 -> ALL six 6th roots of unity).
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(x^6 - 1 = 0, x)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
+    let wire = parse_wire(&output);
+    let result = wire["result"].as_str().unwrap_or_default();
+    for root in ["1", "-1", "i·sqrt(3)"] {
+        assert!(
+            result.contains(root),
+            "complex x^6-1 should contain `{root}`, got `{result}`"
+        );
+    }
+    assert_eq!(
+        result.matches("sqrt(3)").count(),
+        4,
+        "complex x^6-1 should carry the four complex roots, got `{result}`"
+    );
+
+    // x^4+1 has NO rational quadratic factorization and complex z-roots: the
+    // biquadratic twin declines (honest residual), never Empty.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(x^4 + 1 = 0, x)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
+    let wire = parse_wire(&output);
+    let result = wire["result"].as_str().unwrap_or_default();
+    assert!(
+        result.contains("solve("),
+        "complex x^4+1 must decline honestly, got `{result}`"
+    );
+
+    // Real mode: both keep their real answers.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(x^6 - 1 = 0, x)",
+        "--format",
+        "json",
+        "--value-domain",
+        "real",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "{ -1, 1 }");
+}
