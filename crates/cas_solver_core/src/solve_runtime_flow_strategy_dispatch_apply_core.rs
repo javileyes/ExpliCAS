@@ -181,6 +181,7 @@ where
                 equation,
                 var,
                 |state| (collect_steps.borrow_mut())(state),
+                is_real_only,
                 |state| context_mut(state),
                 |state, expr| (simplify_expr.borrow_mut())(state, expr),
                 |state, expr| (expand_expr.borrow_mut())(state, expr),

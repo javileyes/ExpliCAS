@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 594 (newest first)
+Active entries: 595 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
 - 2026-07-17 | `retained` | `cas_engine/rules/` — `canonicalization.rs` (brazo `SqrtEvenPower` de Canonic... | SOUNDNESS (Fase 2 · P0 familia sqrt-square en complejo): `sqrt(x^2)` deja de fabricar `|x|` bajo ℂ
+- 2026-07-17 | `retained` | `cas_solver_core` — `rational_roots.rs` (kernels + 4 wrappers del chain con `... | CAPACIDAD (Fase 2 · A5: solve complejo grado ≥3 — kernel rational-roots domain-aware): `solve(x^4-1, x)` → `{i, -i, -1, 1}`
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20027,3 +20028,18 @@ Active entries: 594 (newest first)
   - **En una familia de N productores, busca el productor de CANONICALIZACIÓN primero**: las reglas "de valor" suelen partir del output del canonicalizador; gatear la canonicalización corta el árbol entero (aquí CanonicalizeRoot era la raíz y se encontró al FINAL — el orden correcto de caza es canonicalización → shortcuts → reglas).
   - **Un gate que "no funciona" con gates hermanos idénticos funcionando = el contexto llega distinto en ESA aplicación** — es diagnóstico de capa de pipeline, no de la regla; dejar de apilar gates y perseguir la construcción del ParentContext.
   - PRÓXIMO PELDAÑO: **A5** (solve grado≥3, ciclo 4/4 de la tanda); luego la capa RealOnly del pipeline (a)+(b); pulido C1/C2.
+
+## 2026-07-17 - CAPACIDAD (Fase 2 · A5: solve complejo grado ≥3 — kernel rational-roots domain-aware): `solve(x^4-1, x)` → `{i, -i, -1, 1}`
+
+- area: `cas_solver_core` — `rational_roots.rs` (kernels + 4 wrappers del chain con `is_real_only`), `solve_runtime_flow_strategy_kernels_core.rs`, `solve_runtime_flow_strategy_dispatch_apply_core.rs` (el dispatcher YA tenía el bool)
+- status: `retained`. Quinto y último ciclo de la tanda /auto-mejora 4 (A4→A2→P0-sqrt→**A5**). El bloque A del scoping queda COMPLETO.
+- capture:
+  - investment_class: capacidad Fase-2 (solve complejo por deflación racional + residuales exactos).
+  - cell: `x^4-1→{±1,±i}`, `x^3-1→{1,(-1±i√3)/2}`, `x^3+8→{-2,1±i√3}`, `x^4-16→{±2,±2i}`, `x^4+5x^2+4→{±i,±2i}` (biquadrático ambas-z-negativas), `2x^4-2→{±1,±i}`, `x^3+x=0→{0,±i}` (zero-product×A4), `x^4+2x^2+1→{±i}` (dobles colapsan). Modo real INTACTO en todos (incl. `x^5-1→{1}` con Sturm-0 y `x^4+5x^2+4→No solution`).
+  - diseño: threading `is_real_only` (idioma bool del chain existente) por las 6 firmas: dispatcher (ya lo tenía) → apply → execute×3 → solve_numeric_coeff_polynomial → `extract_candidate_roots` → residuales. Brazos nuevos: (a) cuadrático residual `Δ<0` → par conjugado vía `roots_from_a_b_delta` (el sticky de A4 pliega `√Δ` a forma-i); (b) biquadrático → `Option<Vec>`: z<0 emite `±√z`→`±i√|z|`, `Δ_z<0` → `None` (x=±√(a+bi) = bloque B → DECLINE); (c) **completitud grado≥3 en ℂ = SIEMPRE false** — Sturm cuenta raíces REALES; "Sturm==0 ⇒ completo" en ℂ sería la trampa F4 edición compleja (subset silencioso).
+  - validación: workspace 12377/0 (exit real); clippy limpio; engine-fast verde; pressure 0-delta, guardrail solo swaps de ranking por timing. 3 tests de kernel nuevos (por-dominio: cuadrático, biquadrático×2 regímenes, completitud).
+  - **P0 PRE-EXISTENTE nombrado (diagnóstico completo, ciclo siguiente): la familia POW-ISOLATION en complejo.** `x^4+1=0`→`No solution` ("potencia par no puede ser negativa" — real-only), `x^5-1`→`{1}` y `x^6-1`→`{±1}` (aislamiento raíz n-ésima biyectivo real → subset de las n raíces; `x^3=8`→`{2}` misma clase). Ruta: `plan_pow_base_isolation`/`solve_outcome.rs:2950` + zero-product con factores que caen a isolation. Fix futuro: threading del dominio a la cadena de isolation (mismo patrón que este ciclo) con DECLINE honesto en ℂ (emitir las n raíces = roots-of-unity, bloque B). NO son regresiones: pre-existentes, ahora con dueño y ruta exactos.
+  - retained learning:
+  - **"Completo" es una afirmación POR DOMINIO**: un verdicto de completitud calculado con maquinaria real (Sturm, conteo de raíces reales) NUNCA viaja gratis al dominio complejo — cada widening de dominio debe re-derivar sus verdictos de completitud, no heredarlos.
+  - **El patrón "threading del bool por el chain genérico" es mecánico y seguro** (2ª instancia tras A4): el compilador enumera los llamadores rotos; los tests del chain se re-pinnean con `true` (real) sin pérdida. Cuidado con regex de parcheo que alcanzan el sitio de producción ya editado (doble insert cazado por el compilador).
+  - PRÓXIMO PELDAÑO: **pow-isolation domain-aware** (cierra `x^4+1`/`x^5-1`/`x^3=8` en ℂ); luego el pipeline-layer RealOnly de sqrt-square (ciclo 3); luego re-scope bloque B (Euler/Log/evaluador — con A completo, toca decidir num-complex vs hand-rolled); C1 display.

@@ -99,7 +99,8 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 - **Depende:** nada duro (el `bool is_real_only` ya llega a la frontera de la estrategia).
 - **Retención:** los tests reales que esperan `Empty` en modo real siguen verdes — fix **gateado SOLO en `ComplexEnabled`**. (Nota de verificación: `solution_set.rs:1565` es en realidad un test `Δ>0`; no hay test dedicado que pinee `Empty` para `x²+1 ∧ Δ<0∧Eq` — cablear uno nuevo al graduar.)
 
-#### ☐ A5 — Solve complejo grado ≥3 (deflación + par conjugado) **[L]**
+#### ☑ A5 — Solve complejo grado ≥3 (deflación + par conjugado) **[L] — HECHO** *(2026-07-17, hash en el ledger)*
+- **Graduado:** `x^4-1→{±1,±i}`, `x^3-1→{1,(-1±i√3)/2}`, `x^3+8→{-2,1±i√3}`, `x^4-16→{±2,±2i}`, `x^4+5x^2+4→{±i,±2i}`, `x^3+x=0→{0,±i}`. Kernel rational-roots domain-aware (threading `is_real_only` 6 firmas); biquadrático `Option<Vec>` (Δ_z<0→None honesto); **completitud grado≥3 en ℂ = siempre false** (Sturm cuenta reales — trampa F4 edición compleja evitada). Real intacto. RESIDUAL NOMBRADO: familia pow-isolation (`x^4+1→No solution`, `x^5-1→{1}`, `x^3=8→{2}` — aislamiento n-ésimo real-only; pre-existente, dueño exacto en el ledger).
 - **Gradúa:** `solve(x^4-1, x) → {-1,1,-i,i}`, `solve(x^3-1, x) → {1, -1/2 ± √3/2·i}`.
 - **Inserción:** `rational_roots.rs:931/961` (`solve_residual_degree_leq_two`: `value_domain` + rama `Δ<0 → roots_from_a_b_delta`); `rational_roots.rs:851/857` (`solve_residual_biquadratic`: `z<0 → ±i√|z|`); `rational_roots.rs:810/835` (`extract_candidate_roots`: `value_domain` + **completitud contada por GRADO, no `count_real_roots` Sturm**); `cas_solver_core/src/solve_runtime_flow_strategy_kernels_equation.rs:28` (origen del enhebrado; `is_real_only` ya disponible); `solve_backend_local.rs:11724/:12354` (helpers cuártico/cúbico: emitir par conjugado o ceder a la ruta general).
 - **Reuso:** los cambios de kernel de A4 + `roots_from_a_b_delta`; render `±i`.

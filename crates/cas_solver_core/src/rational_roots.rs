@@ -557,6 +557,7 @@ pub(crate) fn solve_rational_roots_strategy_result_for_equation_with_default_ker
     max_degree: usize,
     max_candidates: usize,
     include_item: bool,
+    is_real_only: bool,
     context_mut: FContextMut,
     simplify_expr: FSimplifyExpr,
     expand_expr: FExpandExpr,
@@ -592,6 +593,7 @@ where
                 local_min_degree,
                 local_max_degree,
                 local_max_candidates,
+                is_real_only,
             )
         },
         sort_and_dedup_roots,
@@ -621,6 +623,7 @@ pub(crate) fn execute_rational_roots_strategy_with_default_limits_and_kernel_wit
     equation: &Equation,
     var: &str,
     include_item: bool,
+    is_real_only: bool,
     context_mut: FContextMut,
     simplify_expr: FSimplifyExpr,
     expand_expr: FExpandExpr,
@@ -644,6 +647,7 @@ where
         DEFAULT_RATIONAL_ROOTS_MAX_DEGREE,
         DEFAULT_RATIONAL_ROOTS_MAX_CANDIDATES,
         include_item,
+        is_real_only,
         |state| context_mut(state),
         simplify_expr,
         expand_expr,
@@ -669,6 +673,7 @@ pub(crate) fn execute_rational_roots_strategy_with_default_limits_and_kernel_and
     equation: &Equation,
     var: &str,
     include_item: bool,
+    is_real_only: bool,
     context_mut: FContextMut,
     simplify_expr: FSimplifyExpr,
     expand_expr: FExpandExpr,
@@ -688,6 +693,7 @@ where
         equation,
         var,
         include_item,
+        is_real_only,
         context_mut,
         simplify_expr,
         expand_expr,
@@ -711,6 +717,7 @@ pub(crate) fn execute_rational_roots_strategy_with_default_limits_and_default_ro
     equation: &Equation,
     var: &str,
     include_item: bool,
+    is_real_only: bool,
     context_mut: FContextMut,
     simplify_expr: FSimplifyExpr,
     expand_expr: FExpandExpr,
@@ -728,6 +735,7 @@ where
         equation,
         var,
         include_item,
+        is_real_only,
         context_mut,
         simplify_expr,
         expand_expr,
@@ -764,6 +772,7 @@ pub(crate) fn solve_numeric_coeff_polynomial(
     min_degree: usize,
     max_degree: usize,
     max_candidates: usize,
+    is_real_only: bool,
 ) -> Option<NumericPolynomialSolveOutcome> {
     if coeff_exprs.is_empty() {
         return None;
@@ -783,7 +792,7 @@ pub(crate) fn solve_numeric_coeff_polynomial(
         return Some(NumericPolynomialSolveOutcome::AllReals);
     }
 
-    let (roots, complete) = extract_candidate_roots(ctx, rat_coeffs, max_candidates);
+    let (roots, complete) = extract_candidate_roots(ctx, rat_coeffs, max_candidates, is_real_only);
     Some(NumericPolynomialSolveOutcome::CandidateRoots {
         degree,
         roots,
@@ -811,6 +820,7 @@ pub(crate) fn extract_candidate_roots(
     ctx: &mut Context,
     coeffs: Vec<BigRational>,
     max_candidates: usize,
+    is_real_only: bool,
 ) -> (Vec<ExprId>, bool) {
     let mut roots = Vec::new();
     let (rational_roots, residual_coeffs) = find_rational_roots(coeffs, max_candidates);
@@ -823,22 +833,38 @@ pub(crate) fn extract_candidate_roots(
         // Fully deflated to a constant.
         true
     } else if residual_coeffs.len() == 2 || residual_coeffs.len() == 3 {
-        roots.extend(solve_residual_degree_leq_two(ctx, &residual_coeffs));
+        roots.extend(solve_residual_degree_leq_two(
+            ctx,
+            &residual_coeffs,
+            is_real_only,
+        ));
         true
     } else if residual_coeffs.len() == 5
         && residual_coeffs[1].is_zero()
         && residual_coeffs[3].is_zero()
         && !residual_coeffs[4].is_zero()
     {
-        roots.extend(solve_residual_biquadratic(ctx, &residual_coeffs));
-        true
-    } else {
+        match solve_residual_biquadratic(ctx, &residual_coeffs, is_real_only) {
+            Some(biquad_roots) => {
+                roots.extend(biquad_roots);
+                true
+            }
+            None => false,
+        }
+    } else if is_real_only {
         // Degree >= 3 residual with no exact solver here: the found roots are the
         // complete real set IFF the residual provably has NO real roots (exact
         // Sturm count, never floats).
         let residual =
             cas_math::polynomial::Polynomial::new(residual_coeffs.clone(), "x".to_string());
         residual.count_real_roots() == 0
+    } else {
+        // ComplexEnabled: Sturm counts REAL roots only — a degree >= 3 residual
+        // ALWAYS has complex roots this kernel cannot produce, so the found
+        // roots are NEVER the complete ℂ set. Declining (incomplete) is the
+        // honest outcome; emitting the rational subset would silently drop the
+        // complex conjugates (the F4 completeness trap, complex edition).
+        false
     };
 
     (roots, complete)
@@ -848,13 +874,25 @@ pub(crate) fn extract_candidate_roots(
 /// terms) exactly: substitute `z = x²`, solve the rational z-quadratic, decide
 /// each z-root's sign with PURE RATIONAL arithmetic (Vieta: product `c/a`, sum
 /// `−b/a` — no oracle needed), and emit `x = ±√z` for the non-negative z-roots.
-fn solve_residual_biquadratic(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<ExprId> {
+/// Returns `Some(roots)` when the emitted roots are the COMPLETE solution set
+/// for the requested domain; `None` when the domain's full set cannot be
+/// produced (complex z-roots need `√(a+bi)` — block-B machinery), so the
+/// caller must mark the outcome incomplete and decline.
+fn solve_residual_biquadratic(
+    ctx: &mut Context,
+    coeffs: &[BigRational],
+    is_real_only: bool,
+) -> Option<Vec<ExprId>> {
     let a = coeffs[4].clone();
     let b = coeffs[2].clone();
     let c = coeffs[0].clone();
     let delta = discriminant(&a, &b, &c);
     if delta.is_negative() {
-        return vec![]; // no real z: no real x roots
+        return if is_real_only {
+            Some(vec![]) // no real z: no real x roots — complete over ℝ
+        } else {
+            None // complex-conjugate z pair: x = ±√z needs √(a+bi) — decline
+        };
     }
 
     // Push `x = ±√z` for a z-root given as an expression, using the KNOWN sign.
@@ -874,12 +912,14 @@ fn solve_residual_biquadratic(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<
         for z in [(-b.clone() + &sd) / &two_a, (-b.clone() - &sd) / &two_a] {
             if z.is_zero() {
                 out.push(rational_to_expr(ctx, &BigRational::zero()));
-            } else if z.is_positive() {
+            } else if z.is_positive() || !is_real_only {
+                // z < 0 under ComplexEnabled: `±√z` folds to `±i·√|z|`
+                // downstream (x⁴+5x²+4 → {±i, ±2i}).
                 let z_expr = rational_to_expr(ctx, &z);
                 push_pm_sqrt(ctx, &mut out, z_expr);
             }
         }
-        out
+        Some(out)
     } else {
         // Surd z-roots `(−b ± √Δ) / 2a`, Δ > 0 not a perfect square. Signs by
         // Vieta, all exact: product z₁·z₂ = c/a, sum z₁+z₂ = −b/a. With the
@@ -896,7 +936,12 @@ fn solve_residual_biquadratic(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<
         let b_expr = rational_to_expr(ctx, &b);
         let delta_expr = rational_to_expr(ctx, &delta);
         let (z_low, z_high) = roots_from_a_b_delta(ctx, a_expr, b_expr, delta_expr);
-        if prod.is_negative() {
+        if !is_real_only {
+            // ComplexEnabled: every z-root (real surd, any sign) yields a valid
+            // `±√z` pair — negative z folds to the pure-imaginary pair.
+            push_pm_sqrt(ctx, &mut out, z_high);
+            push_pm_sqrt(ctx, &mut out, z_low);
+        } else if prod.is_negative() {
             // Opposite signs: only the larger root z_high is positive.
             push_pm_sqrt(ctx, &mut out, z_high);
         } else if sum_pos {
@@ -904,8 +949,8 @@ fn solve_residual_biquadratic(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<
             push_pm_sqrt(ctx, &mut out, z_high);
             push_pm_sqrt(ctx, &mut out, z_low);
         }
-        // Both negative: no real x roots.
-        out
+        // Both negative (real-only): no real x roots.
+        Some(out)
     }
 }
 
@@ -931,6 +976,7 @@ fn rational_sqrt_exact(q: &BigRational) -> Option<BigRational> {
 pub(crate) fn solve_residual_degree_leq_two(
     ctx: &mut Context,
     coeffs: &[BigRational],
+    is_real_only: bool,
 ) -> Vec<ExprId> {
     if coeffs.len() == 3 {
         // Quadratic: a*x^2 + b*x + c = 0
@@ -953,6 +999,15 @@ pub(crate) fn solve_residual_degree_leq_two(
             let root = -b.clone() / (BigRational::from_integer(2.into()) * a.clone());
             vec![rational_to_expr(ctx, &root)]
         } else if discriminant.is_positive() {
+            let a_expr = rational_to_expr(ctx, a);
+            let b_expr = rational_to_expr(ctx, b);
+            let disc_expr = rational_to_expr(ctx, &discriminant);
+            let (r1, r2) = roots_from_a_b_delta(ctx, a_expr, b_expr, disc_expr);
+            vec![r1, r2]
+        } else if !is_real_only {
+            // Δ < 0: under ComplexEnabled the conjugate pair IS the answer —
+            // `√Δ` with negative Δ folds to `i·√|Δ|` downstream (A4's sticky
+            // domain drives the solver-internal simplify).
             let a_expr = rational_to_expr(ctx, a);
             let b_expr = rational_to_expr(ctx, b);
             let disc_expr = rational_to_expr(ctx, &discriminant);
@@ -1044,6 +1099,7 @@ mod tests {
                     min_degree,
                     max_degree,
                     max_candidates,
+                    true,
                 )
             },
             |hooks, roots| {
@@ -1085,6 +1141,7 @@ mod tests {
             &equation,
             "x",
             true,
+            true,
             |ctx| ctx,
             |_ctx, id| id,
             |_ctx, id| id,
@@ -1114,6 +1171,7 @@ mod tests {
             &mut context,
             &equation,
             "x",
+            true,
             true,
             |ctx| ctx,
             |_ctx, id| id,
@@ -1174,7 +1232,7 @@ mod tests {
             BigRational::from_integer(4.into()),
             BigRational::from_integer(2.into()),
         ];
-        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
+        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs, true);
         assert_eq!(roots.len(), 1);
         assert_eq!(
             get_rational(&ctx, roots[0]).expect("root should be numeric"),
@@ -1191,7 +1249,7 @@ mod tests {
             BigRational::zero(),
             BigRational::one(),
         ];
-        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
+        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs, true);
         assert_eq!(roots.len(), 2);
     }
 
@@ -1200,7 +1258,7 @@ mod tests {
         let mut ctx = Context::new();
         // x^2 + 1 = 0 (no real roots)
         let coeffs = vec![BigRational::one(), BigRational::zero(), BigRational::one()];
-        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
+        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs, true);
         assert!(roots.is_empty());
     }
 
@@ -1228,7 +1286,7 @@ mod tests {
             BigRational::one(),
         ];
         let mut ctx = Context::new();
-        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200, true);
         assert_eq!(roots.len(), 3);
         assert!(complete);
     }
@@ -1240,14 +1298,14 @@ mod tests {
         // BIQUADRATIC, so all 5 real roots are produced exactly (1 + 4 surds).
         let c = |n: i64| BigRational::from_integer(n.into());
         let coeffs = vec![c(-1), c(1), c(4), c(-4), c(-1), c(1)];
-        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200, true);
         assert!(complete);
         assert_eq!(roots.len(), 5, "1 rational + 4 biquadratic surd roots");
 
         // x^5 - 1 = (x-1)(x^4+x^3+x^2+x+1): the quartic residual has NO real
         // roots (exact Sturm count 0), so {1} IS the complete real set.
         let coeffs = vec![c(-1), c(0), c(0), c(0), c(0), c(1)];
-        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200, true);
         assert!(complete, "residual with Sturm count 0 keeps completeness");
         assert_eq!(roots.len(), 1);
 
@@ -1255,7 +1313,7 @@ mod tests {
         // has 4 real roots and no exact solver here -> INCOMPLETE (was silently
         // returned as {1}, dropping 4 real roots — 2026-07-13b F4).
         let coeffs = vec![c(-1), c(5), c(0), c(-5), c(0), c(1)];
-        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200);
+        let (roots, complete) = extract_candidate_roots(&mut ctx, coeffs, 200, true);
         assert!(!complete, "dropped real-rooted residual must be flagged");
         assert_eq!(roots.len(), 1);
     }
@@ -1264,7 +1322,7 @@ mod tests {
     fn solve_numeric_coeff_polynomial_all_reals_when_all_zero() {
         let mut ctx = Context::new();
         let coeffs = vec![ctx.num(0), ctx.num(0), ctx.num(0), ctx.num(0)];
-        let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200)
+        let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200, true)
             .expect("in-range degree with numeric coeffs should produce outcome");
         assert!(matches!(out, NumericPolynomialSolveOutcome::AllReals));
     }
@@ -1274,7 +1332,7 @@ mod tests {
         let mut ctx = Context::new();
         // x^3 - x
         let coeffs = vec![ctx.num(0), ctx.num(-1), ctx.num(0), ctx.num(1)];
-        let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200)
+        let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200, true)
             .expect("in-range degree with numeric coeffs should produce outcome");
         match out {
             NumericPolynomialSolveOutcome::CandidateRoots {
@@ -1296,7 +1354,7 @@ mod tests {
     fn solve_numeric_coeff_polynomial_rejects_degree_out_of_range() {
         let mut ctx = Context::new();
         let coeffs = vec![ctx.num(1), ctx.num(2), ctx.num(3)];
-        assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200).is_none());
+        assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200, true).is_none());
     }
 
     #[test]
@@ -1304,7 +1362,7 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let coeffs = vec![ctx.num(0), x, ctx.num(0), ctx.num(1)];
-        assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200).is_none());
+        assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200, true).is_none());
     }
 
     #[test]
@@ -1348,5 +1406,57 @@ mod tests {
         assert_eq!(step.equation_after.lhs, x);
         assert_eq!(step.equation_after.rhs, zero);
         assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
+    }
+
+    fn rat(n: i64) -> BigRational {
+        BigRational::from_integer(n.into())
+    }
+
+    #[test]
+    fn residual_quadratic_negative_delta_by_domain() {
+        // x^2 + x + 1: Δ = -3. RealOnly -> no roots; ComplexEnabled -> the
+        // conjugate pair (built via roots_from_a_b_delta; √Δ folds downstream).
+        let mut ctx = Context::new();
+        let coeffs = vec![rat(1), rat(1), rat(1)];
+        let real = solve_residual_degree_leq_two(&mut ctx, &coeffs, true);
+        assert!(real.is_empty());
+        let complex = solve_residual_degree_leq_two(&mut ctx, &coeffs, false);
+        assert_eq!(complex.len(), 2);
+    }
+
+    #[test]
+    fn residual_biquadratic_by_domain() {
+        let mut ctx = Context::new();
+        // x^4 + 5x^2 + 4: z-roots -1, -4 (both negative).
+        // RealOnly -> complete empty; ComplexEnabled -> 4 pure-imaginary roots.
+        let coeffs = vec![rat(4), rat(0), rat(5), rat(0), rat(1)];
+        let real = solve_residual_biquadratic(&mut ctx, &coeffs, true).expect("complete over R");
+        assert!(real.is_empty());
+        let complex =
+            solve_residual_biquadratic(&mut ctx, &coeffs, false).expect("complete over C");
+        assert_eq!(complex.len(), 4);
+
+        // x^4 + 1: Δ_z = -4 (complex z pair). RealOnly -> complete empty;
+        // ComplexEnabled -> None (x = ±√(a+bi) is block-B machinery: DECLINE).
+        let coeffs = vec![rat(1), rat(0), rat(0), rat(0), rat(1)];
+        let real = solve_residual_biquadratic(&mut ctx, &coeffs, true).expect("complete over R");
+        assert!(real.is_empty());
+        assert!(solve_residual_biquadratic(&mut ctx, &coeffs, false).is_none());
+    }
+
+    #[test]
+    fn candidate_roots_degree_ge3_residual_never_complete_in_complex() {
+        // x^5 - 1 deflates to {1} with a quartic residual. Sturm counts REAL
+        // roots (0 here), so RealOnly keeps completeness; over C the quartic
+        // has 4 roots this kernel cannot produce -> NEVER complete (the F4
+        // completeness trap, complex edition).
+        let mut ctx = Context::new();
+        let coeffs = vec![rat(-1), rat(0), rat(0), rat(0), rat(0), rat(1)];
+        let (real_roots, real_complete) =
+            extract_candidate_roots(&mut ctx, coeffs.clone(), 200, true);
+        assert_eq!(real_roots.len(), 1);
+        assert!(real_complete);
+        let (_, complex_complete) = extract_candidate_roots(&mut ctx, coeffs, 200, false);
+        assert!(!complex_complete);
     }
 }
