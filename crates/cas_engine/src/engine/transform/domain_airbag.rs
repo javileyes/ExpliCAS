@@ -66,6 +66,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     }
                     ImplicitCondition::LowerBound(_, _) => None,
                     ImplicitCondition::NonZero(_) => None, // Skip definability in Assume mode
+                    ImplicitCondition::PrincipalBranch { .. } => None,
                 },
             );
 

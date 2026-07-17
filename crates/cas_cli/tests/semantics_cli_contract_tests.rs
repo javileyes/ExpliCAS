@@ -10614,3 +10614,58 @@ fn complex_mode_computes_principal_log_and_arg() {
         );
     }
 }
+
+#[test]
+fn complex_principal_branch_condition_survives_to_output() {
+    // T4-ciclo1 (B4a): every principal-branch fold carries the structured
+    // condition, and it SURVIVES the triviality filter even though the
+    // witnesses are closed constants (the `!contains_variable` trap).
+    for (src, witness) in [("ln(-1)", "-1"), ("ln(1+i)", "1 + i"), ("arg(i)", "i")] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        let conds = wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions array");
+        assert_eq!(conds.len(), 1, "`{src}` should carry exactly one condition");
+        assert_eq!(conds[0]["kind"], "PrincipalBranch", "{src}");
+        assert_eq!(conds[0]["expr_display"], witness, "{src}");
+        let display = wire["required_display"][0].as_str().expect("display");
+        assert!(
+            display.contains("principal branch"),
+            "`{src}` display: {display}"
+        );
+    }
+
+    // An undefined verdict is not a branch choice: arg(0) emits none.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "arg(0)",
+        "--format",
+        "json",
+        "--value-domain",
+        "complex",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(
+        wire["required_conditions"].as_array().map(Vec::len),
+        Some(0)
+    );
+
+    // REAL mode: no complex fold, no branch condition — byte-identical.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "ln(-1)",
+        "--format",
+        "json",
+        "--value-domain",
+        "real",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(
+        wire["required_conditions"].as_array().map(Vec::len),
+        Some(0)
+    );
+}

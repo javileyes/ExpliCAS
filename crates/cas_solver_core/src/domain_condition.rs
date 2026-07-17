@@ -23,6 +23,12 @@ pub enum ImplicitCondition {
     Positive(ExprId),
     /// x ≠ 0 (from 1/x or Div(_, x))
     NonZero(ExprId),
+    /// The result uses the principal branch of a multivalued complex
+    /// function (Arg ∈ (-π, π]); `func` names it ("ln", "arg", "pow").
+    /// NEVER trivial: the common emitters (ln(-1), i^i) are closed
+    /// constants, and the `!contains_variable` fallback below would
+    /// silently swallow exactly those — see `is_trivial`.
+    PrincipalBranch { func: &'static str, arg: ExprId },
 }
 
 impl ImplicitCondition {
@@ -98,12 +104,26 @@ impl ImplicitCondition {
                     )
                 })
             }
+            Self::PrincipalBranch { func, arg } => {
+                format!(
+                    "{}({}) via principal branch (Arg ∈ (-π, π])",
+                    func,
+                    DisplayExpr {
+                        context: ctx,
+                        id: *arg
+                    }
+                )
+            }
         }
     }
 
     /// Check if this condition is trivial (always true or on a constant expression).
     pub fn is_trivial(&self, ctx: &Context) -> bool {
         let expr = match self {
+            // A branch-cut annotation is NEVER trivial: its witnesses are
+            // closed constants (ln(-1), i^i), and the `!contains_variable`
+            // fallback below would silently drop it.
+            Self::PrincipalBranch { .. } => return false,
             Self::NonNegative(e)
             | Self::LowerBound(e, _)
             | Self::Positive(e)
@@ -192,6 +212,9 @@ impl ImplicitCondition {
             Self::LowerBound(_, _) => false,
             Self::Positive(e) => witness_survives(ctx, *e, output, WitnessKind::Log),
             Self::NonZero(e) => witness_survives(ctx, *e, output, WitnessKind::Division),
+            // The branch choice is a property of the fold itself, not of a
+            // surviving sub-expression: always report it.
+            Self::PrincipalBranch { .. } => false,
         }
     }
 }
@@ -1060,6 +1083,9 @@ impl From<&ImplicitCondition> for cas_ast::ConditionPredicate {
             },
             ImplicitCondition::Positive(e) => cas_ast::ConditionPredicate::Positive(*e),
             ImplicitCondition::NonZero(e) => cas_ast::ConditionPredicate::NonZero(*e),
+            ImplicitCondition::PrincipalBranch { func, arg } => {
+                cas_ast::ConditionPredicate::PrincipalBranch { func, arg: *arg }
+            }
         }
     }
 }
@@ -1081,6 +1107,9 @@ impl TryFrom<&cas_ast::ConditionPredicate> for ImplicitCondition {
             }
             cas_ast::ConditionPredicate::Positive(e) => Ok(ImplicitCondition::Positive(*e)),
             cas_ast::ConditionPredicate::NonZero(e) => Ok(ImplicitCondition::NonZero(*e)),
+            cas_ast::ConditionPredicate::PrincipalBranch { func, arg } => {
+                Ok(ImplicitCondition::PrincipalBranch { func, arg: *arg })
+            }
             _ => Err(()),
         }
     }
@@ -1091,6 +1120,36 @@ mod tests {
     use super::ImplicitCondition;
     use cas_ast::Context;
     use cas_parser::parse;
+
+    #[test]
+    fn principal_branch_condition_is_never_trivial() {
+        // THE trap this variant was designed around: its witnesses are
+        // closed constants (ln(-1), i^i), and the `!contains_variable`
+        // fallback in `is_trivial` would silently swallow exactly those.
+        let mut ctx = Context::new();
+        let neg_one = parse("-1", &mut ctx).expect("parse -1");
+        let cond = ImplicitCondition::PrincipalBranch {
+            func: "ln",
+            arg: neg_one,
+        };
+        assert!(!cond.is_trivial(&ctx));
+        assert!(cond.display(&ctx).contains("principal branch"));
+    }
+
+    #[test]
+    fn principal_branch_condition_round_trips_through_predicate() {
+        // The TryFrom wildcard (`_ => Err(())`) silently drops unknown
+        // variants: pin the round-trip so the wire can't rot.
+        let mut ctx = Context::new();
+        let z = parse("1 + i", &mut ctx).expect("parse 1+i");
+        let cond = ImplicitCondition::PrincipalBranch {
+            func: "arg",
+            arg: z,
+        };
+        let pred: cas_ast::ConditionPredicate = (&cond).into();
+        let back = ImplicitCondition::try_from(&pred).expect("round trip");
+        assert_eq!(cond, back);
+    }
 
     #[test]
     fn nonzero_exponential_condition_is_trivial() {

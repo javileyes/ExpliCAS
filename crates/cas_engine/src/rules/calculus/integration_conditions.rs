@@ -63,6 +63,7 @@ impl IntegrationRequiredConditions {
                     .push(crate::ImplicitCondition::LowerBound(expr, lower)),
                 ConditionPredicate::Defined(_)
                 | ConditionPredicate::InvTrigPrincipalRange { .. }
+                | ConditionPredicate::PrincipalBranch { .. }
                 | ConditionPredicate::EqZero(_)
                 | ConditionPredicate::EqOne(_) => {}
             }

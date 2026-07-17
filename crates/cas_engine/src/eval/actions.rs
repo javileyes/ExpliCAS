@@ -133,6 +133,7 @@ fn finite_one_sided_domain_path_conflict(
             (*witness, lower_bound.clone(), false)
         }
         crate::ImplicitCondition::NonZero(_) => return false,
+        crate::ImplicitCondition::PrincipalBranch { .. } => return false,
     };
 
     let Some(poly) = shifted_domain_witness_polynomial(ctx, witness, var_name, &lower_bound) else {
@@ -316,6 +317,7 @@ fn limit_domain_path_warning(
                 | crate::ImplicitCondition::NonNegative(witness) => *witness,
                 crate::ImplicitCondition::LowerBound(_, _) => return None,
                 crate::ImplicitCondition::NonZero(_) => return None,
+                crate::ImplicitCondition::PrincipalBranch { .. } => return None,
             };
 
             is_simple_positive_var_affine_witness(ctx, witness, var, var_name)
@@ -327,6 +329,7 @@ fn limit_domain_path_warning(
                 | crate::ImplicitCondition::NonNegative(witness) => *witness,
                 crate::ImplicitCondition::LowerBound(_, _) => return None,
                 crate::ImplicitCondition::NonZero(_) => return None,
+                crate::ImplicitCondition::PrincipalBranch { .. } => return None,
             };
 
             is_simple_negative_var_affine_witness(ctx, witness, var, var_name)

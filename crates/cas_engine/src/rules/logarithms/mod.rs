@@ -72,9 +72,17 @@ impl crate::rule::Rule for ComplexLogRule {
             return None;
         }
         let rewrite = cas_math::complex_support::try_rewrite_complex_ln_expr(ctx, expr)?;
+        // The helper only fires on Function(ln, [z]): recover z for the
+        // structured branch-cut condition (guardrail #3 — the branch choice
+        // travels as a contract, not as prose).
+        let cas_ast::Expr::Function(_, args) = ctx.get(expr) else {
+            return None;
+        };
+        let arg = args[0];
         Some(
             crate::rule::Rewrite::new(rewrite.rewritten)
-                .desc("Principal logarithm: ln(z) = ln|z| + i·Arg(z)"),
+                .desc("Principal logarithm: ln(z) = ln|z| + i·Arg(z)")
+                .requires(crate::ImplicitCondition::PrincipalBranch { func: "ln", arg }),
         )
     }
 

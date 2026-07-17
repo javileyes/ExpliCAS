@@ -209,7 +209,21 @@ define_rule!(ArgRule, "Principal Argument", |ctx, expr, parent_ctx| {
     // `arg(a+bi)` (closed Gaussian) -> exact principal value in (-π, π] via
     // the 9-case sign table; `arg(0)` -> Undefined explicitly.
     let rewrite = try_rewrite_arg_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
+    let mut out = Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind));
+    // An undefined verdict is not a branch choice: only defined values
+    // carry the structured principal-branch condition.
+    if !matches!(
+        ctx.get(rewrite.rewritten),
+        cas_ast::Expr::Constant(cas_ast::Constant::Undefined)
+    ) {
+        if let cas_ast::Expr::Function(_, args) = ctx.get(expr) {
+            out = out.requires(crate::ImplicitCondition::PrincipalBranch {
+                func: "arg",
+                arg: args[0],
+            });
+        }
+    }
+    Some(out)
 });
 
 pub fn register(simplifier: &mut crate::Simplifier) {

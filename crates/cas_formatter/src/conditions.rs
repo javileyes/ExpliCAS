@@ -21,6 +21,9 @@ pub(crate) fn condition_predicate_to_display(pred: &ConditionPredicate, ctx: &Co
         ConditionPredicate::InvTrigPrincipalRange { func, .. } => {
             format!("{} in principal range of {}", expr_str, func)
         }
+        ConditionPredicate::PrincipalBranch { func, .. } => {
+            format!("{}({}) via principal branch", func, expr_str)
+        }
         ConditionPredicate::EqZero(_) => format!("{} = 0", expr_str),
         ConditionPredicate::EqOne(_) => format!("{} = 1", expr_str),
     }
@@ -44,6 +47,12 @@ pub(crate) fn condition_predicate_to_latex(pred: &ConditionPredicate, ctx: &Cont
         ConditionPredicate::Defined(_) => format!("\\text{{defined}}({})", expr_latex),
         ConditionPredicate::InvTrigPrincipalRange { func, .. } => {
             format!("{} \\in \\text{{principal range of }}{}", expr_latex, func)
+        }
+        ConditionPredicate::PrincipalBranch { func, .. } => {
+            format!(
+                "\\text{{{}}}({}) \\text{{ via principal branch}}",
+                func, expr_latex
+            )
         }
         ConditionPredicate::EqZero(_) => format!("{} = 0", expr_latex),
         ConditionPredicate::EqOne(_) => format!("{} = 1", expr_latex),

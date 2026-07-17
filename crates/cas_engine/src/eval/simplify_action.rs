@@ -6697,6 +6697,7 @@ mod tests {
                         },
                         bound
                     ),
+                    pb @ crate::ImplicitCondition::PrincipalBranch { .. } => pb.display(&ctx),
                 })
                 .collect();
 
@@ -6760,6 +6761,7 @@ mod tests {
                         },
                         bound
                     ),
+                    pb @ crate::ImplicitCondition::PrincipalBranch { .. } => pb.display(&ctx),
                 })
                 .collect();
 
@@ -7113,6 +7115,7 @@ mod tests {
                     },
                     bound
                 ),
+                pb @ crate::ImplicitCondition::PrincipalBranch { .. } => pb.display(&ctx),
             })
             .collect();
 
@@ -7199,6 +7202,7 @@ mod tests {
                     },
                     bound
                 ),
+                pb @ crate::ImplicitCondition::PrincipalBranch { .. } => pb.display(&ctx),
             })
             .collect();
 

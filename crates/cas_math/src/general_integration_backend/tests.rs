@@ -5635,6 +5635,7 @@ fn required_condition_counts(
                 ConditionPredicate::LowerBound { .. } => "lower_bound",
                 ConditionPredicate::Defined(_) => "defined",
                 ConditionPredicate::InvTrigPrincipalRange { .. } => "inv_trig_principal_range",
+                ConditionPredicate::PrincipalBranch { .. } => "principal_branch",
                 ConditionPredicate::EqZero(_) => "eq_zero",
                 ConditionPredicate::EqOne(_) => "eq_one",
             };

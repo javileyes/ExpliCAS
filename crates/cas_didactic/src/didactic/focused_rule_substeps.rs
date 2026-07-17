@@ -21462,6 +21462,9 @@ fn integral_residual_required_condition_substep(
     condition: &ImplicitCondition,
 ) -> Option<SubStep> {
     let (title, witness, after_latex) = match condition {
+        // Branch annotations belong to the complex frontier, not to the
+        // real-domain integral residual narration.
+        ImplicitCondition::PrincipalBranch { .. } => return None,
         ImplicitCondition::NonNegative(expr) => (
             "Registrar dominio real del residual",
             *expr,

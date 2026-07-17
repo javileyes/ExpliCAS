@@ -35,6 +35,9 @@ pub(crate) fn public_condition_wires(
             .into_iter()
             .map(|expr| ("NonZero", expr))
             .collect(),
+        crate::ImplicitCondition::PrincipalBranch { arg, .. } => {
+            vec![("PrincipalBranch", *arg)]
+        }
     }
 }
 

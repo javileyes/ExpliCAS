@@ -42,6 +42,12 @@ pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 /// Normalize a condition for display (applies normalization to the inner expression).
 pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> ImplicitCondition {
+    // Branch annotations carry the argument verbatim: normalizing it for
+    // display could hide which value the branch cut was taken on.
+    if let ImplicitCondition::PrincipalBranch { .. } = cond {
+        return cond.clone();
+    }
+
     if let ImplicitCondition::NonNegative(e) = cond {
         if let Some(compact) = compact_positive_sqrt_lower_bound_for_display(ctx, *e) {
             return normalize_condition(ctx, &ImplicitCondition::NonNegative(compact));
@@ -88,6 +94,7 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
             let stripped = strip_nonzero_scalar_factors_for_display(ctx, *e);
             normalize_nonzero_condition_expr_for_display(ctx, stripped)
         }
+        ImplicitCondition::PrincipalBranch { .. } => unreachable!("early return above"),
     };
 
     match cond {
@@ -101,6 +108,7 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
         ImplicitCondition::LowerBound(_, lower) => {
             ImplicitCondition::LowerBound(normalized_expr, lower.clone())
         }
+        ImplicitCondition::PrincipalBranch { .. } => unreachable!("early return above"),
         ImplicitCondition::Positive(_) => {
             if let Some(compact) = compact_positive_power_gap_for_display(ctx, normalized_expr) {
                 ImplicitCondition::Positive(compact)
@@ -1916,6 +1924,7 @@ fn rewrite_sign_quotients_with_positive_components(
             },
             ImplicitCondition::LowerBound(_, _) => None,
             ImplicitCondition::NonZero(_) => None,
+            ImplicitCondition::PrincipalBranch { .. } => None,
         };
 
         let Some((idx, is_positive, num, den)) = replacement else {
@@ -4257,6 +4266,9 @@ fn condition_is_intrinsically_satisfied(ctx: &mut Context, cond: &ImplicitCondit
                 || positive_quadratic_power_gap_is_intrinsic(ctx, *expr)
                 || unit_nonnegative_ratio_gap_is_intrinsic(ctx, *expr)
         }
+        // A branch annotation is informational: it is never "intrinsically
+        // satisfied" away — the user must always see it.
+        ImplicitCondition::PrincipalBranch { .. } => false,
         ImplicitCondition::LowerBound(expr, lower) => match ctx.get(*expr) {
             Expr::Number(value) => value >= lower,
             _ => false,
@@ -4643,6 +4655,7 @@ fn expand_condition_for_display(
                 vec![normalized]
             }
         }
+        ImplicitCondition::PrincipalBranch { .. } => vec![cond.clone()],
     }
 }
 

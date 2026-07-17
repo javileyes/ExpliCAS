@@ -148,6 +148,10 @@ where
 
             for cond in dropped {
                 let (target, kind, predicate_str, source_str) = match &cond {
+                    // A branch annotation is not an analytic-domain
+                    // predicate: it never comes from domain inference and
+                    // cannot be "unsatisfied" by a real-domain rewrite.
+                    ImplicitCondition::PrincipalBranch { .. } => continue,
                     ImplicitCondition::NonNegative(t) => {
                         let var_name = format_expr_short(ctx, *t);
                         (
@@ -364,6 +368,7 @@ fn is_covered_by_stronger_predicate(
         ImplicitCondition::LowerBound(_, _) => false,
         ImplicitCondition::Positive(_) => false,
         ImplicitCondition::NonZero(_) => false,
+        ImplicitCondition::PrincipalBranch { .. } => false,
     }
 }
 

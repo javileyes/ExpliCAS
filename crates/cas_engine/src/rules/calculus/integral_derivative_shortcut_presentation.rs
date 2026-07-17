@@ -288,6 +288,7 @@ fn backend_condition_to_implicit_condition(
         }
         ConditionPredicate::Defined(_)
         | ConditionPredicate::InvTrigPrincipalRange { .. }
+        | ConditionPredicate::PrincipalBranch { .. }
         | ConditionPredicate::EqZero(_)
         | ConditionPredicate::EqOne(_) => None,
     }

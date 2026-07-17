@@ -25,6 +25,7 @@ pub(super) fn map_required_conditions(
                 ImplicitCondition::LowerBound(e, _) => ("LowerBound", *e),
                 ImplicitCondition::Positive(e) => ("Positive", *e),
                 ImplicitCondition::NonZero(e) => ("NonZero", *e),
+                ImplicitCondition::PrincipalBranch { arg, .. } => ("PrincipalBranch", *arg),
             };
             let expr_display = display_expr(&normalized_ctx, expr_id);
             let display = apply_input_inverse_trig_alias_preferences(

@@ -2600,6 +2600,8 @@ fn implicit_cond_is_redundant(ctx: &Context, c: &ImplicitCondition) -> bool {
                 || (lower <= &num_rational::BigRational::zero()
                     && oracle.query(&Predicate::NonNegative(*e)).is_proven())
         }
+        // A branch annotation is informational, never redundant.
+        ImplicitCondition::PrincipalBranch { .. } => false,
     }
 }
 
@@ -4078,6 +4080,9 @@ fn render_required_signatures(ctx: &Context, required: &[ImplicitCondition]) -> 
                 },
                 lower
             ),
+            pb @ ImplicitCondition::PrincipalBranch { .. } => {
+                format!("principal_branch({})", pb.display(ctx))
+            }
         })
         .collect();
     items.sort();

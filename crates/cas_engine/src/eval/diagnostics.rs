@@ -87,6 +87,7 @@ fn present_calculus_required_condition(
         crate::ImplicitCondition::LowerBound(expr, bound) => {
             crate::ImplicitCondition::LowerBound(expr, bound)
         }
+        pb @ crate::ImplicitCondition::PrincipalBranch { .. } => pb,
     }
 }
 

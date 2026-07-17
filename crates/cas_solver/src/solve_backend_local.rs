@@ -400,6 +400,8 @@ fn root_violates_required_condition(
     let var_id = ctx.var(var);
     for cond in conds {
         let violates = match cond {
+            // A branch annotation is informational, never a root filter.
+            ImplicitCondition::PrincipalBranch { .. } => false,
             // ln(e)/log(e) require e > 0; e ≤ 0 at the root is a violation
             // (e = 0 makes the log undefined, so it is extraneous too).
             ImplicitCondition::Positive(e) => {
@@ -12585,6 +12587,8 @@ fn intersect_inequality_with_expression_domain(
             ImplicitCondition::LowerBound(arg, c) => (arg, Some(c), RelOp::Geq),
             // `arg ≠ 0` (pole) is excluded by the rational-inequality path, not a half-line.
             ImplicitCondition::NonZero(_) => continue,
+            // A branch annotation is not a real-domain constraint.
+            ImplicitCondition::PrincipalBranch { .. } => continue,
         };
         let rhs = match threshold {
             Some(c) => simplifier.context.add(Expr::Number(c)),

@@ -766,6 +766,8 @@ fn required_condition_is_eventually_true_on_infinity_tail(
             affine_slope_tends_positive_on_tail(&form.slope, approach)
                 || (form.slope.is_zero() && form.intercept >= *lower)
         }
+        // Branch annotations don't decay on an infinity tail.
+        crate::ImplicitCondition::PrincipalBranch { .. } => false,
         crate::ImplicitCondition::NonZero(expr) => {
             affine_form_in_limit_var(ctx, *expr, var).is_some_and(|form| !form.slope.is_zero())
                 || polynomial_in_limit_var_has_eventual_nonzero_tail(ctx, *expr, var)
