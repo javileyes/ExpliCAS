@@ -10,7 +10,7 @@ pub(crate) fn set_semantic_axis(
     value: &str,
 ) -> Option<String> {
     match axis {
-        "domain" | "value" | "branch" | "inv_trig" | "const_fold" => {
+        "domain" | "value" | "branch" | "inv_trig" | "const_fold" | "numeric" => {
             evaluation::set_evaluation_axis(state, axis, value)
         }
         "assumptions" | "assume_scope" | "hints" | "requires" => {
@@ -19,7 +19,7 @@ pub(crate) fn set_semantic_axis(
         "solve" => solve::set_solve_axis(value),
         _ => Some(format!(
             "ERROR: Unknown axis '{}'\n\
-             Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints, solve, requires",
+             Valid axes: domain, value, branch, inv_trig, const_fold, numeric, assumptions, assume_scope, hints, solve, requires",
             axis
         )),
     }

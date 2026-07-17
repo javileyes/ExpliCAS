@@ -77,6 +77,8 @@ mod tests {
             hints_enabled: true,
             domain_mode: crate::DomainMode::Generic,
             check_solutions: true,
+            numeric_display: crate::NumericDisplayMode::Exact,
+            value_domain: crate::ValueDomain::RealOnly,
         }
     }
 
@@ -89,6 +91,8 @@ mod tests {
             hints_enabled: true,
             domain_mode: crate::DomainMode::Generic,
             check_solutions: true,
+            numeric_display: crate::NumericDisplayMode::Exact,
+            value_domain: crate::ValueDomain::RealOnly,
         }
     }
 
@@ -101,6 +105,8 @@ mod tests {
             hints_enabled: true,
             domain_mode: crate::DomainMode::Generic,
             check_solutions: true,
+            numeric_display: crate::NumericDisplayMode::Exact,
+            value_domain: crate::ValueDomain::RealOnly,
         }
     }
 
@@ -113,6 +119,8 @@ mod tests {
             hints_enabled: false,
             domain_mode: crate::DomainMode::Generic,
             check_solutions: true,
+            numeric_display: crate::NumericDisplayMode::Exact,
+            value_domain: crate::ValueDomain::RealOnly,
         }
     }
 

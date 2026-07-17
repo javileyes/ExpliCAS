@@ -6,7 +6,7 @@ use crate::SemanticsViewState;
 /// Format one semantic axis description and values.
 pub(crate) fn format_semantics_axis_lines(state: &SemanticsViewState, axis: &str) -> Vec<String> {
     match axis {
-        "domain" | "value" | "branch" | "inv_trig" | "const_fold" => {
+        "domain" | "value" | "branch" | "inv_trig" | "const_fold" | "numeric" => {
             evaluation::format_evaluation_axis_lines(state, axis)
         }
         "assumptions" | "assume_scope" | "requires" => {

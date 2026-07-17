@@ -11,6 +11,7 @@ pub struct SemanticsSetState {
     pub hints_enabled: bool,
     pub check_solutions: bool,
     pub requires_display: crate::RequiresDisplayLevel,
+    pub numeric_display: crate::NumericDisplayMode,
 }
 
 /// Build a mutable semantics-set snapshot from simplifier + eval options.
@@ -29,5 +30,6 @@ pub(crate) fn semantics_set_state_from_options(
         hints_enabled: eval_options.hints_enabled,
         check_solutions: eval_options.check_solutions,
         requires_display: eval_options.requires_display,
+        numeric_display: eval_options.numeric_display,
     }
 }

@@ -2,6 +2,7 @@ mod branch;
 mod const_fold;
 mod domain;
 mod inv_trig;
+mod numeric;
 mod value;
 
 use crate::SemanticsViewState;
@@ -13,6 +14,7 @@ pub(super) fn format_evaluation_axis_lines(state: &SemanticsViewState, axis: &st
         "branch" => branch::format_branch_axis_lines(state),
         "inv_trig" => inv_trig::format_inv_trig_axis_lines(state),
         "const_fold" => const_fold::format_const_fold_axis_lines(state),
+        "numeric" => numeric::format_numeric_axis_lines(state),
         _ => unreachable!("unsupported evaluation axis: {axis}"),
     }
 }

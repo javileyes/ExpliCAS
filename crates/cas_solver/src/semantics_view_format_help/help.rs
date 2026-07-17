@@ -27,6 +27,12 @@ Axes:
               off:  No constant folding
               safe: Fold literals (2^3 → 8)
 
+  numeric     exact | decimal
+              exact:   Exact fractions and radicals (1/3 + 1/3 → 2/3)
+              decimal: Approximate results at the output boundary
+                       (1/3 + 1/3 → 0.666666666667); internally the
+                       engine stays exact and symbolic
+
   assume_scope real | wildcard
               real:     Assume for ℝ, error if ℂ needed
               wildcard: Assume for ℝ, residual+warning if ℂ needed

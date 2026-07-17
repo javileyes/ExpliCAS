@@ -17,6 +17,7 @@ mod tests {
             assume_scope: crate::AssumeScope::Real,
             hints_enabled: true,
             requires_display: crate::RequiresDisplayLevel::Essential,
+            numeric_display: crate::NumericDisplayMode::Exact,
         }
     }
 

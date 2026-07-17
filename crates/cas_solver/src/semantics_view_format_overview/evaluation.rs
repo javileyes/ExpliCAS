@@ -26,6 +26,11 @@ pub(super) fn format_evaluation_overview_lines(state: &SemanticsViewState) -> Ve
         crate::ConstFoldMode::Safe => "safe",
     };
 
+    let numeric = match state.numeric_display {
+        crate::NumericDisplayMode::Exact => "exact",
+        crate::NumericDisplayMode::Decimal => "decimal",
+    };
+
     let mut lines = vec![
         format!("  domain_mode: {}", domain),
         format!("  value_domain: {}", value),
@@ -42,5 +47,6 @@ pub(super) fn format_evaluation_overview_lines(state: &SemanticsViewState) -> Ve
 
     lines.push(format!("  inv_trig: {}", inv_trig));
     lines.push(format!("  const_fold: {}", const_fold));
+    lines.push(format!("  numeric: {}", numeric));
     lines
 }

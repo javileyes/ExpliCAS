@@ -25,6 +25,9 @@ pub struct EvalOptions {
     pub check_solutions: bool,
     /// Display level for required conditions.
     pub requires_display: crate::domain_condition::RequiresDisplayLevel,
+    /// Numeric display mode for results (presentation-only, outside
+    /// semantics — rules cannot see it).
+    pub numeric_display: crate::const_fold_types::NumericDisplayMode,
     /// Shared configuration (expand policy, semantics, context, etc.).
     pub shared: crate::simplify_options::SharedSemanticConfig,
     /// Optional wall-clock budget for cooperative simplification timeout.
@@ -109,6 +112,7 @@ impl Default for EvalOptions {
             budget: crate::solve_budget::SolveBudget::default(),
             check_solutions: false,
             requires_display: crate::domain_condition::RequiresDisplayLevel::Essential,
+            numeric_display: crate::const_fold_types::NumericDisplayMode::default(),
             shared: crate::simplify_options::SharedSemanticConfig::default(),
             time_budget_ms: None,
             language: Language::default(),

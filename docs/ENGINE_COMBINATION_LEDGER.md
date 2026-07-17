@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 609 (newest first)
+Active entries: 610 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -135,6 +135,7 @@ Active entries: 609 (newest first)
 - 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (walker `approx_closed_subtrees` + gat... | CAPACIDAD (T5·ciclo3 — approx sobre subárboles cerrados): `approx(sqrt(2)*pi*e*x)` → `x·12.0770079568`
 - 2026-07-17 | `retained` | `cas_math/numeric_presentation.rs` (NUEVO — walker movido de cas_engine + `pr... | CAPACIDAD (T5·ciclo4 — eje `--numeric-display`): el selector "number approx" del usuario, como pase de frontera de salida
 - 2026-07-17 | `retained` | `web/index.html` (selector "Números" 4º junto a Modo/Rama/Complejo + sessionS... | WEB (T5·web — selector NÚMEROS exact/decimal): el eje numeric-display llega a la UI
+- 2026-07-17 | `retained` | `cas_solver_core` (`NumericDisplayMode` en const_fold_types + campo `EvalOpti... | REPL (T5·repl — eje `numeric` en `semantics set`): paridad interactiva del numeric-display
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20255,3 +20256,15 @@ Active entries: 609 (newest first)
   - diseño: espejo EXACTO del patrón `complex_arithmetic` en las tres capas (coerce con default seguro, threading posicional/kwargs, flag condicional) — incluidas las llamadas equiv/derive internas para que los pasos derive muestren la misma preferencia. server_colab.py actualizado como gemelo (lección de gemelos). Edición por líneas-ancla completas, no multiline-replace (la lección de indentación 12⊂16⊂20 del server).
   - lección operativa: el primer intento de threading con multiline-replace abortó por ancla-contenida-en-ancla (12 espacios ⊂ 16 espacios) — el line-walker con `l.strip() ==` es la forma robusta para python indentado.
   - NOTA de despliegue: el server en marcha del usuario sirve el server.py VIEJO — recargar la página actualiza el frontend pero el campo nuevo requiere REINICIAR el server python.
+
+## 2026-07-17 - REPL (T5·repl — eje `numeric` en `semantics set`): paridad interactiva del numeric-display
+
+- area: `cas_solver_core` (`NumericDisplayMode` en const_fold_types + campo `EvalOptions.numeric_display` FUERA de shared.semantics) + `cas_solver` (SemanticsSetState/apply/parse/overview/getter-por-eje/help + hook en `eval_command_eval/output.rs` + `SolveCommandRenderConfig`+hook en `solve_display_lines/render.rs`) + `cas_cli/completer.rs` (3 listas)
+- status: `retained`. Cierra el residual "REPL parity" del eje T5c4 (petición directa del usuario).
+- capture:
+  - cell (probado contra el REPL vivo): `semantics set numeric decimal` → `1/3+1/3 → 0.666666666667`, `sqrt(2)·π·e → 12.0770079568`, `solve(x²<2,x) → (-1.41421356237, 1.41421356237)`, `solve(2x=1,x) → {0.5}`; `semantics` overview muestra `numeric: decimal`; `semantics numeric` (getter) describe el eje; `semantics help` documenta valores y contrato; valor inválido → "Allowed: exact, decimal"; vuelta a `exact` restaura formas exactas; STEPS siguen exactos (D10). Autocompletado: `numeric` en las 3 listas del completer (subcomandos, ejes de set, valores exact/decimal).
+  - diseño: el campo vive en `EvalOptions` PERO fuera de `shared.semantics` — el mismo guardrail por construcción del eje one-shot (ninguna regla recibe el valor; solo los output-builders lo consultan). DOS boundaries del REPL cubiertos: el output de eval (`build_eval_command_output`, que ya tenía `&mut Context`) y el render de solve (`format_solve_command_eval_lines` vía `SolveCommandRenderConfig` — el solve del REPL NO pasa por el output de eval, descubierto por probe: el primer intento dejaba `solve` exacto).
+  - validación: workspace 12418/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella IDÉNTICA ambos scorecards (default Exact aditivo).
+  - retained learning:
+  - **Cada superficie de render del REPL es su propio boundary**: eval y solve tienen builders distintos — al añadir un pase de presentación, enumerar los renders por PROBE (pedir el mismo contenido por cada comando), no asumir que un hook los cubre; el solve exacto tras el hook de eval fue el delator.
+  - PRÓXIMO PELDAÑO: comandos REPL restantes con render propio (integrate/diff results si emiten numéricos — verificar bajo demanda); contagio de literales (T5c5, diseño listo).

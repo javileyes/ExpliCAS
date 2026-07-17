@@ -7,6 +7,8 @@ pub struct SolveCommandRenderConfig {
     pub hints_enabled: bool,
     pub domain_mode: crate::DomainMode,
     pub check_solutions: bool,
+    pub numeric_display: crate::NumericDisplayMode,
+    pub value_domain: crate::ValueDomain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,5 +56,7 @@ pub(crate) fn solve_render_config_from_eval_options(
         hints_enabled: options.hints_enabled,
         domain_mode: options.shared.semantics.domain_mode,
         check_solutions: options.check_solutions,
+        numeric_display: options.numeric_display,
+        value_domain: options.shared.semantics.value_domain,
     }
 }

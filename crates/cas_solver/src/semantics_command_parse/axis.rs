@@ -6,6 +6,7 @@ pub(super) fn is_axis_subcommand(subcommand: &str) -> bool {
             | "branch"
             | "inv_trig"
             | "const_fold"
+            | "numeric"
             | "assumptions"
             | "assume_scope"
             | "requires"

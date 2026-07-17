@@ -18,6 +18,7 @@ mod tests {
             hints_enabled: true,
             check_solutions: true,
             requires_display: crate::RequiresDisplayLevel::Essential,
+            numeric_display: crate::NumericDisplayMode::Exact,
         }
     }
 
@@ -34,6 +35,20 @@ mod tests {
         let next =
             evaluate_semantics_set_args(&["solve", "check", "off"], state()).expect("should parse");
         assert!(!next.check_solutions);
+    }
+
+    #[test]
+    fn evaluate_semantics_set_args_sets_numeric_axis() {
+        // `semantics set numeric decimal` — the REPL face of the
+        // presentation-only numeric-display axis.
+        let next = evaluate_semantics_set_args(&["numeric", "decimal"], state()).expect("ok");
+        assert_eq!(next.numeric_display, crate::NumericDisplayMode::Decimal);
+        let back = evaluate_semantics_set_args(&["numeric", "exact"], next).expect("ok");
+        assert_eq!(back.numeric_display, crate::NumericDisplayMode::Exact);
+
+        let err =
+            evaluate_semantics_set_args(&["numeric", "bogus"], state()).expect_err("must fail");
+        assert!(err.contains("Allowed: exact, decimal"), "{err}");
     }
 
     #[test]
@@ -57,6 +72,7 @@ mod tests {
             hints_enabled: false,
             check_solutions: false,
             requires_display: crate::RequiresDisplayLevel::All,
+            numeric_display: crate::NumericDisplayMode::Decimal,
         };
         apply_semantics_set_state_to_options(next, &mut simplify_options, &mut eval_options);
 
@@ -70,6 +86,10 @@ mod tests {
         );
         assert_eq!(eval_options.const_fold, crate::ConstFoldMode::Safe);
         assert!(!eval_options.hints_enabled);
+        assert_eq!(
+            eval_options.numeric_display,
+            crate::NumericDisplayMode::Decimal
+        );
         assert_eq!(
             eval_options.requires_display,
             crate::RequiresDisplayLevel::All

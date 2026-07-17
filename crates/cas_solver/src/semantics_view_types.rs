@@ -10,6 +10,7 @@ pub struct SemanticsViewState {
     pub assume_scope: crate::AssumeScope,
     pub hints_enabled: bool,
     pub requires_display: crate::RequiresDisplayLevel,
+    pub numeric_display: crate::NumericDisplayMode,
 }
 
 /// Build a semantics view snapshot from simplifier + eval options.
@@ -27,5 +28,6 @@ pub(crate) fn semantics_view_state_from_options(
         assume_scope: simplify_options.shared.semantics.assume_scope,
         hints_enabled: eval_options.hints_enabled,
         requires_display: eval_options.requires_display,
+        numeric_display: eval_options.numeric_display,
     }
 }

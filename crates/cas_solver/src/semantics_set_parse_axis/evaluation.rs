@@ -56,6 +56,16 @@ pub(super) fn set_evaluation_axis(
                 ));
             }
         },
+        "numeric" => match value {
+            "exact" => state.numeric_display = crate::NumericDisplayMode::Exact,
+            "decimal" => state.numeric_display = crate::NumericDisplayMode::Decimal,
+            _ => {
+                return Some(format!(
+                    "ERROR: Invalid value '{}' for axis 'numeric'\nAllowed: exact, decimal",
+                    value
+                ));
+            }
+        },
         _ => unreachable!("unsupported evaluation axis: {axis}"),
     }
 

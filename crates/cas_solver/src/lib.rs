@@ -371,8 +371,8 @@ pub(crate) use crate::analysis_input_parse::parse_expr_pair;
 pub(crate) use crate::api::{
     infer_solve_variable, solve_with_display_steps, telescope, ConditionClass, ConstFoldMode,
     ConstFoldResult, Diagnostics, DomainDelta, DomainWarning, ImplicitCondition, ImplicitDomain,
-    Proof, RequireOrigin, RequiredItem, RequiresDisplayLevel, VerifyResult, VerifyStatus,
-    VerifySummary,
+    NumericDisplayMode, Proof, RequireOrigin, RequiredItem, RequiresDisplayLevel, VerifyResult,
+    VerifyStatus, VerifySummary,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::assignment_apply::{apply_assignment_with_context, AssignmentApplyContext};

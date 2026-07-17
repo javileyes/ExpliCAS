@@ -31,7 +31,7 @@ pub use cas_solver_core::{
     assume_scope::AssumeScope,
     assumption_model::{AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionKind},
     assumption_reporting::AssumptionReporting,
-    const_fold_types::{ConstFoldMode, ConstFoldResult},
+    const_fold_types::{ConstFoldMode, ConstFoldResult, NumericDisplayMode},
     diagnostics_model::RequireOrigin,
     domain_assumption_classification::classify_assumption,
     domain_condition::{ImplicitCondition, ImplicitDomain, RequiresDisplayLevel},

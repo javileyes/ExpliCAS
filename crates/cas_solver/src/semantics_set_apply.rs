@@ -25,6 +25,7 @@ pub(crate) fn apply_semantics_set_state_to_options(
     eval_options.hints_enabled = next.hints_enabled;
     eval_options.check_solutions = next.check_solutions;
     eval_options.requires_display = next.requires_display;
+    eval_options.numeric_display = next.numeric_display;
 }
 
 /// Parse `semantics set` args and apply the resulting state to runtime options.
