@@ -65,8 +65,16 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
     Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
 });
 
-define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
+define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr, parent_ctx| {
     let rewrite = try_rewrite_canonical_root_expr(ctx, expr)?;
+    // REAL-ONLY for the even-power arm: `sqrt(x^2k) → |x|^k` is a real-domain
+    // identity (over ℂ, `√(i²) = i ≠ 1 = |i|`). The pure-syntax arms
+    // (`sqrt(x) → x^(1/2)`, indexed roots) stay domain-neutral.
+    if rewrite.kind == CanonicalRootRewriteKind::SqrtEvenPower
+        && parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly
+    {
+        return None;
+    }
     Some(Rewrite::new(rewrite.rewritten).desc(format_canonical_root_desc(rewrite.kind)))
 });
 

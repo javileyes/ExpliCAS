@@ -13101,10 +13101,16 @@ fn format_standard_simplify_square_root_shortcut_desc(
 }
 
 fn try_standard_simplify_square_root_shortcut(
+    options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    // REAL-ONLY (mirrors SimplifySquareRootRule): the helper emits |·| forms of
+    // symbolic squares, a real-domain identity family (`√(i²) = i ≠ |i|`).
+    if options.shared.semantics.value_domain != crate::semantics::ValueDomain::RealOnly {
+        return None;
+    }
     let rewrite = try_rewrite_simplify_square_root_expr(ctx, expr)?;
     let rewrite = crate::rule::Rewrite::new(rewrite.rewritten).desc(
         format_standard_simplify_square_root_shortcut_desc(rewrite.kind),
@@ -28917,6 +28923,7 @@ impl Orchestrator {
                     collect_steps,
                 ));
                 return_root_shortcut_pair!(try_standard_simplify_square_root_shortcut(
+                    &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,

@@ -695,6 +695,12 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
+        // REAL-ONLY: every arm is a real-domain identity — the even-numerator
+        // arm emits `|u|` (`(x²)^(1/2) = |x|`, false over ℂ: `(i²)^(1/2) = i`),
+        // and the fallback cancels under a REAL positivity assumption.
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let strict_mode = matches!(parent_ctx.domain_mode(), crate::DomainMode::Strict);
         let vd = parent_ctx.value_domain();
         let rewrite =

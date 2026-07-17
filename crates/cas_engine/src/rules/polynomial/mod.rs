@@ -72,7 +72,12 @@ define_rule!(
     "Sqrt Perfect Square",
     Some(crate::target_kind::TargetKindSet::POW | crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::CORE,
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY: `√(A² ± 2AB + B²) = |A ± B|` is a real-domain identity
+        // (over ℂ the trinomial square can be any complex number).
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite =
             cas_math::perfect_square_support::try_rewrite_sqrt_perfect_square_expr(ctx, expr)?;
         Some(

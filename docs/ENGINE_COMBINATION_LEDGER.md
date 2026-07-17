@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 593 (newest first)
+Active entries: 594 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
+- 2026-07-17 | `retained` | `cas_engine/rules/` — `canonicalization.rs` (brazo `SqrtEvenPower` de Canonic... | SOUNDNESS (Fase 2 · P0 familia sqrt-square en complejo): `sqrt(x^2)` deja de fabricar `|x|` bajo ℂ
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20011,3 +20012,18 @@ Active entries: 593 (newest first)
   - **"Añadir un builtin" tiene un camino pavimentado de 5 sitios + gate automático**: si `from_name` resuelve, `is_known_eval_engine_function` pasa solo — el gotcha de wiring aplica a COMANDOS eval-engine, no a builtins de función. Al final del enum, jamás en medio (discriminantes = índices de `ALL_BUILTINS`).
   - **La composición de ciclos nuevos es un DETECTOR DE P0 latentes**: A1 (potencia) × A2 (módulo) destapó que toda la capa de abs/signo asume símbolos reales — cada apertura de dominio debe barrer las CAPAS DE DECISIÓN que consume (signo, abs, orden), no solo sus propias reglas. El bool de dominio que "ya llega" pero nadie consulta es el smell exacto (2ª instancia: el simplify del solver en A4).
   - PRÓXIMO PELDAÑO: **P0 sqrt-square restante** (helper 2-sitios, acotado — prioridad sobre A5); luego A5; pulidos: linealidad conjugate/Re/Im, divergencia steps-on/off + shortcuts que saltan traversal (clase A), `Arg` espera a B.
+
+## 2026-07-17 - SOUNDNESS (Fase 2 · P0 familia sqrt-square en complejo): `sqrt(x^2)` deja de fabricar `|x|` bajo ℂ
+
+- area: `cas_engine/rules/` — `canonicalization.rs` (brazo `SqrtEvenPower` de CanonicalizeRoot), `exponents/power_rules.rs` (PowerPowerRule: política ENTERO-only en complejo + brazo EvenRootAbs), `exponents/rationalization.rs` (PowPowCancelReciprocal), `algebra/roots.rs` (SimplifySquareRoot), `polynomial/mod.rs` (SqrtPerfectSquare trinomios), `orchestrator.rs` (shortcut simplify-square-root con options)
+- status: `retained`. Cuarto ciclo de la tanda (continuación directa del P0 destapado en A2).
+- capture:
+  - investment_class: soundness Fase-2 (la identidad real `√(X²)=|X|` fabricaba valores en ℂ: `√(i²)=i≠1=|i|`).
+  - cell: CERRADO en complejo (residual honesto, real byte-idéntico): `sqrt(x^2)`, `sqrt((x+1)^2)`, `sqrt(x^6)`, `sqrt(x^2+2x+1)` (trinomio), `(x^4)^(1/2)` (¡`(i⁴)^(1/2)=1≠i²=-1`!), `(x^(2/3))^(3/2)`. La política de PowerPower en ℂ es INTENCIÓN DECLARADA: solo exponente exterior ENTERO pliega (`(z^a)^n=z^(a·n)` ✓ — `(x^2)^3→x^6` sigue; `((1+i)^2)^2→-4` compone con A1); todo fraccionario declina (colapso de rama principal).
+  - diseño: la caza fue POR CAPAS — cada gate destapó al siguiente productor (6 en total: SimplifySqrtSquare→prove_sign (A2)→PowerPower EvenRootAbs→PowPowCancelReciprocal even-arm→PowerPower política-entero→CanonicalizeRoot SqrtEvenPower). El productor RAÍZ era la CANONICALIZACIÓN (`sqrt(x^2k)→|x|^k` en `try_rewrite_canonical_root_expr`): las demás rutas partían de su output. Gates a nivel de regla/brazo con `parent_ctx.value_domain()`; el shortcut del orquestador recibe `&self.options` como sus vecinos.
+  - validación: workspace 12374/0 (exit real); clippy limpio; engine-fast verde; **huella 0-delta EN AMBOS scorecards** (los gates solo actúan en complejo).
+  - **P0 RESTANTE (nombrado, evidencia completa):** (a) la forma EXACTA `(x^2)^(1/2)` aún pliega a `|x|` vía "Simplify Square Root of Square" A PESAR del gate — el parent_ctx de ESA aplicación llega RealOnly (los gates idénticos del mismo fichero SÍ funcionan: `abs(√x)`, `abs(x²+1)` honestos) → hay UNA capa del pipeline que pierde el dominio (candidatos: fase RATIONALIZE con config propio, o el pre-pass del wire; el fast-path cache de prepare.rs:9-40 requiere steps=off+hit y NO es — descartado); (b) las vías distribute (`sqrt(x²·y²)→√x²·√y²→|x|·|y|→|x·y|` y cociente) cuyos folds por-factor cabalgan la misma capa. Investigación de PIPELINE (dónde se construye ese ParentContext), no más gates de reglas.
+  - retained learning:
+  - **En una familia de N productores, busca el productor de CANONICALIZACIÓN primero**: las reglas "de valor" suelen partir del output del canonicalizador; gatear la canonicalización corta el árbol entero (aquí CanonicalizeRoot era la raíz y se encontró al FINAL — el orden correcto de caza es canonicalización → shortcuts → reglas).
+  - **Un gate que "no funciona" con gates hermanos idénticos funcionando = el contexto llega distinto en ESA aplicación** — es diagnóstico de capa de pipeline, no de la regla; dejar de apilar gates y perseguir la construcción del ParentContext.
+  - PRÓXIMO PELDAÑO: **A5** (solve grado≥3, ciclo 4/4 de la tanda); luego la capa RealOnly del pipeline (a)+(b); pulido C1/C2.

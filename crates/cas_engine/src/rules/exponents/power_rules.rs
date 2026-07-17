@@ -466,9 +466,26 @@ define_rule!(
     ),
     |ctx, expr, parent_ctx| {
     // (x^a)^b -> x^(a*b)
+    // COMPLEX GATE: over ℂ only an INTEGER outer exponent folds soundly
+    // ((z^a)^n = z^(a·n)); every fractional outer exponent risks a
+    // principal-branch collapse — (i²)^(1/2) = i ≠ |i| = 1 and
+    // (i⁴)^(1/2) = 1 ≠ i² = -1 — so all |·|-emitting and multiply arms
+    // decline and the expression stays an honest residual.
+    if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+        let outer_integer = matches!(ctx.get(expr), cas_ast::Expr::Pow(_, b)
+            if cas_math::numeric_eval::as_rational_const(ctx, *b).is_some_and(|r| r.is_integer()));
+        if !outer_integer {
+            return None;
+        }
+    }
     if let Some(pattern) = cas_math::root_power_canonical_support::classify_power_power_pattern(ctx, expr) {
         match pattern {
             cas_math::root_power_canonical_support::PowerPowerPattern::EvenRootAbs { rewritten } => {
+                // REAL-ONLY: `(x^2k)^(1/2) = |x|^k` is a real-domain identity —
+                // over ℂ, `(i²)^(1/2) = i ≠ 1 = |i|`.
+                if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+                    return None;
+                }
                 return Some(Rewrite::new(rewritten).desc(
                     "Power of power with even root: (x^2k)^(1/2) -> |x|^k",
                 ));

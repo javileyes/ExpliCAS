@@ -49,7 +49,14 @@ define_rule!(
     SimplifySquareRootRule,
     "Simplify Square Root",
     Some(crate::target_kind::TargetKindSet::FUNCTION | crate::target_kind::TargetKindSet::POW),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY: every arm of this helper emits an |·| form of a symbolic
+        // square (`√(X²) → |X|`), a real-domain identity — over ℂ,
+        // `√(i²) = √(-1) = i ≠ 1 = |i|`. Numeric folds (`√4 → 2`) have other
+        // owners and keep working in complex mode.
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = cas_math::root_forms::try_rewrite_simplify_square_root_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_simplify_square_root_desc(rewrite.kind)))
     }
