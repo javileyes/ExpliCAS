@@ -3769,11 +3769,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
-        // Must check BEFORE recursing into children to prevent binomial expansion
-        if let Some(plan) = try_plan_sqrt_square_pow_rewrite(self.context, base, exp) {
-            let (identity_desc, rule_name) = format_sqrt_square_pow_plan(plan.kind);
-            self.record_step(identity_desc, rule_name, id, plan.rewritten);
-            return self.transform_expr_recursive(plan.rewritten);
+        // Must check BEFORE recursing into children to prevent binomial expansion.
+        // REAL-ONLY: `√(u²) = |u|` is a real-domain identity — over ℂ,
+        // `√(i²) = √(-1) = i ≠ 1 = |i|`. This preorder transform runs BEFORE
+        // any (gated) rule, so it needs its own domain gate.
+        if self.initial_parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            if let Some(plan) = try_plan_sqrt_square_pow_rewrite(self.context, base, exp) {
+                let (identity_desc, rule_name) = format_sqrt_square_pow_plan(plan.kind);
+                self.record_step(identity_desc, rule_name, id, plan.rewritten);
+                return self.transform_expr_recursive(plan.rewritten);
+            }
         }
 
         // Check if this Pow is canonical before recursing into children

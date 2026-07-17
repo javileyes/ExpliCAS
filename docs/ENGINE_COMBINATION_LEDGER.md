@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 596 (newest first)
+Active entries: 597 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -122,6 +122,7 @@ Active entries: 596 (newest first)
 - 2026-07-17 | `retained` | `cas_engine/rules/` — `canonicalization.rs` (brazo `SqrtEvenPower` de Canonic... | SOUNDNESS (Fase 2 · P0 familia sqrt-square en complejo): `sqrt(x^2)` deja de fabricar `|x|` bajo ℂ
 - 2026-07-17 | `retained` | `cas_solver_core` — `rational_roots.rs` (kernels + 4 wrappers del chain con `... | CAPACIDAD (Fase 2 · A5: solve complejo grado ≥3 — kernel rational-roots domain-aware): `solve(x^4-1, x)` → `{i, -i, -1, 1}`
 - 2026-07-17 | `retained` | `cas_solver_core` (`isolation_power.rs`: campo `value_domain_real_only` en Ke... | SOUNDNESS+CAPACIDAD (Fase 2 · pow-isolation domain-aware + gemelos backend): `solve(x^6-1)` → las 6 raíces de la unidad
+- 2026-07-17 | `retained` | `cas_engine/engine/transform/transform_helpers.rs` (`transform_pow` — gate de... | SOUNDNESS (Fase 2 · el pipeline-layer que perdía el dominio ERA el traversal TRANSFORM): `(x^2)^(1/2)` honesto en ℂ
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20058,3 +20059,17 @@ Active entries: 596 (newest first)
   - **Un anchor de replace que casa 2 veces es un DETECTOR de gemelos**: la colisión textual reveló el segundo helper con la misma lógica real-only ANTES de que un probe lo hiciera — convertir el assert fallido en pregunta ("¿qué otra fn tiene este tail?") en vez de solo desambiguar.
   - **El bypass correcto de una verificación numérica es POR CONSTRUCCIÓN, no por relajación**: los pares complejos no pueden pasar eval_f64, pero no lo necesitan — son raíces exactas de factores exactos ya verificados; separar `exact_*` de `raw_*` mantiene la verificación f64 intacta para lo que sí la necesita.
   - PRÓXIMO PELDAÑO: pipeline-layer RealOnly (`(x^2)^(1/2)→|x|`, ciclo 2); roots-of-unity para los declines honestos (`x^5=1` → 5 raíces vía cos/sin — bloque B con Euler); re-scope B.
+
+## 2026-07-17 - SOUNDNESS (Fase 2 · el pipeline-layer que perdía el dominio ERA el traversal TRANSFORM): `(x^2)^(1/2)` honesto en ℂ
+
+- area: `cas_engine/engine/transform/transform_helpers.rs` (`transform_pow` — gate de dominio en el EARLY-DETECTION preorder `(u²)^(1/2)→|u|`) + test de contrato CLI
+- status: `retained`. Segundo ciclo tanda 2 — cierra el último miembro nombrado de la familia sqrt-square (ciclo 3 tanda 1).
+- capture:
+  - investment_class: soundness Fase-2 (última fabricación de `|·|` real-only en ℂ).
+  - cell: CERRADO en complejo (todo residual honesto, real byte-intacto): `(x^2)^(1/2)`, `sqrt(x^2)`, `sqrt(x^2*y^2)`, `sqrt(x^2)*sqrt(y^2)`, `sqrt(x^2/y^2)`, `sqrt((x+1)^2)` — la familia sqrt-square queda 100% cerrada (7º y último productor).
+  - diseño/diagnóstico: el "ParentContext que llega RealOnly" NO existía — el emisor era el TRAVERSAL TRANSFORM (`transform_pow`), que aplica un preorder-rewrite INCONDICIONAL antes de que ninguna regla corra, fabricando el step con EL MISMO display name que la regla gateada (colisión de nombres que desvió el diagnóstico un ciclo). Lo destapó un PANIC-TRAMPA condicional (`CAS_DIAG_SQRTSQ`) en la regla sospechosa: no disparó mientras el output seguía mal = prueba positiva de otra capa. El transformer TENÍA `initial_parent_ctx` a mano (lo consulta 20 líneas arriba para is_solve_context/domain_mode) — 5ª instancia del smell "el dominio llega y nadie lo consulta". Fix: un gate `value_domain()==RealOnly` alrededor del early-detection (las vías distribute caían solas: cada `√(x²)` post-split es el mismo shape).
+  - validación: workspace 12380/0 (exit real); clippy limpio; engine-fast verde; pressure 0-delta, guardrail solo slot[4] de ruido por timing. +1 test de contrato (4 formas ℂ sin `|·|` + 2 pins reales).
+  - retained learning:
+  - **Un step-name NO identifica al emisor**: reglas y transforms/shortcuts pueden fabricar steps con nombres idénticos; el diagnóstico correcto de "mi gate no funciona" es el PANIC-TRAMPA condicional en la regla sospechosa — si no dispara y el output sigue mal, el emisor es otra capa (2 minutos de coste, un ciclo de ahorro).
+  - **El pipeline tiene TRES capas de reescritura** (reglas gateables, root-shortcuts, y el TRAVERSAL con early-detections preorder) — un widening de dominio debe auditar las tres; los early-detections del transformer son los más invisibles (sin registro, sin nombre propio).
+  - PRÓXIMO PELDAÑO: re-scope bloque B (ciclo 3); quirk del traversal `abs((1+i)^2)` sin plegar interior (clase A, orquestador — honesto, no bloquea).

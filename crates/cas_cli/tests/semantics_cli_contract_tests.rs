@@ -10516,3 +10516,28 @@ fn complex_solve_backend_twins_emit_conjugate_pairs() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "{ -1, 1 }");
 }
+
+#[test]
+fn complex_mode_keeps_sqrt_of_square_symbolic() {
+    // T2-ciclo2 (transform-layer domain gate): `√(u²) = |u|` is a real-domain
+    // identity fabricated by the TRANSFORM preorder pass (transform_pow's
+    // early-detection), which runs BEFORE any gated rule. Over ℂ,
+    // `√(i²) = i ≠ 1 = |i|`, so the whole family stays symbolic.
+    for src in ["(x^2)^(1/2)", "sqrt(x^2)", "sqrt(x^2*y^2)", "sqrt((x+1)^2)"] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        let result = wire["result"].as_str().unwrap_or_default();
+        assert!(
+            !result.contains('|'),
+            "complex `{src}` must NOT fabricate an abs form, got `{result}`"
+        );
+    }
+
+    // Real mode keeps the classic identity.
+    for (src, expected) in [("sqrt(x^2)", "|x|"), ("(x^2)^(1/2)", "|x|")] {
+        let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "real `{src}` should fold to |x|");
+    }
+}
