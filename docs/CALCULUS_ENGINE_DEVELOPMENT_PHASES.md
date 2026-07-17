@@ -187,7 +187,10 @@ frente elegido primero es el **Complejo elemental**, re-validado con el scoping 
 prometido abajo: `docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (6 mappers + síntesis + doble
 verificación adversarial; secuencia de sub-ciclos A1→A4→A2→A5 + bloque B re-scopeable +
 C transversales). **A1 (potencia Gaussiana) ATERRIZADO 2026-07-16** (hash en el ledger).
-El frente vectorial multivariable queda pendiente de su propio scoping al llegarle el turno.
+**Frente complejo COMPLETO 2026-07-17** (A+B+C1+approx; residuales de pulido en el ledger).
+**El frente vectorial multivariable quedó SCOPEADO 2026-07-18** con su propio workflow:
+`docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (secuencia V0 soundness → V1‑V2 sustrato →
+V3‑V6 verbos → V7‑V8 transversales; greenlight V0+A+B).
 
 *Texto original (histórico):* **No se empieza hasta cruzar el umbral de Fase 1.**
 *Estimación de los audits, sin re-medir:*
@@ -207,13 +210,24 @@ duro fundado en audit es el scope-out de Riemann/multivaluado — ver final de F
   complejo la red de soundness numérica está ausente: hay que respaldarla.
 
 ### Cálculo vectorial multivariable (CABLEADO barato — ~60-70% ya existe)
+
+**⚑ SCOPEADO 2026-07-18** (workflow 6 mappers + síntesis + doble verificación adversarial, 90
+anclas verificadas): `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md`. La estimación de abajo
+se quedó CORTA (wronskian es el template exacto de verbo; el desugar de orden superior es
+target-agnóstico) y el barrido adversarial destapó un candidato P0 preexistente (capa métrica
+de `Matrix`: `norm` gaussiano/simbólico sin gate de dominio — sub-ciclo **V0**, va primero).
+Secuencia: `V0` soundness → `V1‑V2` sustrato (diff componentwise + P0-wire de narración) →
+`V3‑V6` los 6 verbos → `V7‑V8` transversales.
+
+*Estimación original (histórica):*
 - **Cables que faltan** — S: aridad lista-de-vars en extractores, y **diff componentwise
   sobre nodo `Matrix`** (`diff([x^2,x^3],x)`).
 - **Gradiente / Jacobiano / Hessiano / divergencia / rotacional / Laplaciano** — S-M cada uno:
   "registrar verbo + map sobre `[vars]` + ensamblar `Matrix`", reutilizando
   `differentiate_symbolic_expr` sin tocar. El tipo vector/campo ya existe (nodo `Matrix` n×1).
 - (Derivadas parciales, integrales iteradas/múltiples, álgebra multipoly, matrices, sistemas:
-  **YA funcionan**.)
+  **YA funcionan** — re-verificado 2026-07-18 contra el CLI vivo, con un matiz: `inverse`/
+  `rref`/`rank`/`eigen*` son numéricos-exactos; con entradas simbólicas declinan honestos.)
 
 ---
 

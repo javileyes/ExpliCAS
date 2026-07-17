@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 611 (newest first)
+Active entries: 612 (newest first)
 
+- 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20281,3 +20282,20 @@ Active entries: 611 (newest first)
   - retained learning:
   - **Antes de "arreglar el orden" de un árbol, pregunta quién lo canonicaliza al INTERNAR**: en un AST hash-consed, `ctx.add` es un normalizador — el orden de construcción es una ilusión; toda convención de orden que difiera de la canónica es, por definición, un problema de DISPLAY (el probe unitario del árbol delató el nivel exacto en 2 minutos: LEFT=x tras construir [decimal, x]).
   - PRÓXIMO PELDAÑO: pendientes de capa: contagio literales (T5c5), Pow-fold decimal (2b), echo JSON del eje.
+
+## 2026-07-18 - SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
+
+- area: `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGINE_DEVELOPMENT_PHASES.md` (Fase 2 estado-actual) — docs-only, sin huella
+- status: `retained` (ciclo de scoping; commit docs-only). Abre la segunda mitad de Fase 2 tras el cierre del frente complejo elemental.
+- capture:
+  - método: workflow READ-ONLY de 9 agentes (6 mappers de subsistema + síntesis + verificador de anclas + crítico de completitud), molde del scoping complejo. 90 anclas `file:line` verificadas en vivo, 7 correcciones aplicadas, 8 gaps del crítico integrados. Journal: `subagents/workflows/wf_37f6fb9f-a15/journal.jsonl`.
+  - hallazgo central: la estimación "~60-70% ya existe" del doc de fases se quedó CORTA — `wronskian([x^2,x^3],x)→x^4` es el template EXACTO de verbo(lista,var) (`factoring.rs:138-173` → `try_wronskian_expr`), el desugar de orden superior es target-agnóstico (orden superior vectorial gradúa gratis), y el álgebra matricial simbólica (det/trace/charpoly/norm/dot/cross/linsolve) ya está viva.
+  - **candidato P0 destapado por el barrido adversarial bajo `--value-domain complex` (hand-verificado): la capa métrica de `Matrix` es value-dependent SIN gate** — `norm([x,y])` complex emite la fórmula real `(x²+y²)^(1/2)` (con `x:=i,y:=1` daría 0; el valor es `sqrt(2)` — el contraejemplo está en el comentario del propio código, `matrix.rs:271-274`), y `norm([i,1])` pliega `sqrt(2)` TAMBIÉN en modo real (fold gaussiano `:275-279` incoherente con la decisión A2: en RealOnly `i` es símbolo ordinario). → sub-ciclo **V0**, PRIMERO (P0 antes que capacidad). Los ~45 probes REALES no hallaron ningún wrong-answer de valor; el otro WRONG es de wire didáctico (steps bajo `Matrix` descartados con valor correcto — `expr_path_rewrite.rs:115-119` trata Matrix como HOJA; V2).
+  - decisiones cerradas: NO-builtin (verbos string-matcheados estilo wronskian/dot — evita el 5-sitios y el hazard variable-hijack verificado `tg`→`tan`); nombres `gradient/jacobian/hessian/divergence/curl/laplacian` + alias `grad`/`rot` (EXCLUIDOS `div`/`del`/`nabla` por colisión); shapes fijados pre-fixture (gradient columna n×1, jacobian filas=funciones, curl 2D = ESCALAR); capa engine con `differentiate_symbolic_expr` INTACTO (brazo en DiffRule, no en cas_math); firma aridad-2 exacta (la variádica colisiona con la convención SymPy de diff); sin gate ValueDomain en los verbos (sintácticos — guardrail #1 sin ceremonia) PERO la métrica SÍ lo necesita (V0); metamórficos vía equiv bracket-aware ADELANTADO a V4 (no pins de string frágiles); budget_exempt acotado ≤8/≤8/≤64.
+  - orden: `V0 (soundness) → V1 (diff componentwise, el primitivo A1-análogo, zero-blast verificado: cero fixtures con `[` en los smoke) → V2 (P0-wire narración) → V3-V6 (verbos) → V7/V8 intercalables`. Greenlight V0+A+B; C se re-confirma con B aterrizado. 4 preguntas abiertas al usuario documentadas en el doc (steps-en-texto, verbo subs inline, ∂ global, V7-d dentro/fuera).
+  - validación: ciclo docs-only — cero código tocado, huella N/A (baselines copiadas por protocolo, scorecards intactos).
+  - retained learning:
+  - **El barrido de frontera de un frente NUEVO debe incluir el dominio del frente ANTERIOR**: los ~45 probes reales dieron "0 wrong-answers" y el claim era un punto ciego — nadie había sondeado los verbos matriz bajo `--value-domain complex`; el crítico de completitud lo cazó y el hand-verify lo confirmó. Un frente recién cerrado (complejo) redefine qué es "adversarial" para todo lo que toque sus tipos.
+  - **El "claim central" de un scoping es un deliverable a verificar, no un resumen**: "ningún wrong-answer de VALOR" era falso tal cual estaba escrito; la doble verificación (anclas + completitud) existe exactamente para eso — 7 correcciones y 8 gaps sobre un borrador que ya parecía sólido.
+  - **Un fold con su contraejemplo en el comentario es un P0 esperando dominio**: `Matrix::norm` documenta por qué `entry²` es incorrecto para complejos… y lo emite igual para símbolos; los comentarios que justifican un caso especial son el mejor detector de la mitad no cubierta (variante del "la reducción cubre el caso nombrado y pierde el hermano").
+  - SIGUIENTE ITERACIÓN RECOMENDADA: **V0** (coherencia de dominio de la capa métrica de Matrix, [S], soundness-primero) y de seguido V1 (el primitivo componentwise). El doc de scoping es la fuente de candidatos del frente.
