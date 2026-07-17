@@ -10541,3 +10541,35 @@ fn complex_mode_keeps_sqrt_of_square_symbolic() {
         assert_eq!(wire["result"], expected, "real `{src}` should fold to |x|");
     }
 }
+
+#[test]
+fn complex_mode_applies_euler_formula() {
+    // T3-ciclo1 (B2): e^(a+iθ) folds via Euler under ComplexEnabled; the
+    // trig of rational π folds downstream to the exact closed forms.
+    for (src, expected) in [
+        ("e^(i*pi)", "-1"),
+        ("e^(pi*i/2)", "i"),
+        ("e^(2*pi*i)", "1"),
+        ("exp(i*x)", "cos(x) + i·sin(x)"),
+    ] {
+        let (output, _code) =
+            run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire["result"], expected,
+            "complex `{src}` should fold via Euler to `{expected}`"
+        );
+    }
+
+    // REAL mode: Euler is gated off — e^(iπ) stays symbolic.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "e^(i*pi)",
+        "--format",
+        "json",
+        "--value-domain",
+        "real",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "e^(pi·i)");
+}

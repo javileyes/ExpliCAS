@@ -409,10 +409,18 @@ mod complex_refute_tests {
 
     #[test]
     fn complex_probe_never_confirms_true_identity() {
-        // e^(iπ) = -1 IS true, but a probe may never CONFIRM: stays Unknown
-        // until the exact B2 rule lands.
+        // B2 (Euler) landed: e^(iπ) = -1 now confirms via the EXACT fold —
+        // the intended graduation of the original pin.
         assert!(matches!(
             extended("e^(i*pi)", "-1", true),
+            EquivalenceResult::True | EquivalenceResult::ConditionalTrue { .. }
+        ));
+        // The never-confirm property lives on with a TRUE identity that has
+        // no exact fold yet: i^i = e^(-π/2) waits for B3+B4 — the probe sees
+        // a near-zero difference and must stay Unknown, never True. (ln(-1)
+        // is unsuitable here: it still collapses to `undefined` pre-B3.)
+        assert!(matches!(
+            extended("i^i", "e^(-pi/2)", true),
             EquivalenceResult::Unknown
         ));
     }

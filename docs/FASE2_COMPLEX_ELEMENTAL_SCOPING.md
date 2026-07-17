@@ -127,7 +127,7 @@ Orden por **dependencia + blast**: el más pequeño/zero-blast/reusable primero 
 - **⚠️ Trampa pow-convención:** `pow_real` (`evaluator_f64.rs:393‑413`) implementa raíz impar REAL (`(-8)^(1/3)=-2`) vs. powc principal (`1+i√3`) — mezclar convenciones en un probe = REFUTACIONES FALSAS; `eval_complex` corre solo bajo semántica compleja.
 - **Residual nombrado:** `approx()` de valores complejos cerrados (`approx(ln(i))`, `approx(e^i)`) queda SIN cablear en B1-B4 (requiere ensanchar el retorno de approx a `a+bi`; `meta_functions_support.rs:56‑66`) — sub-ciclo aparte post-B.
 
-#### ☐ B2 — `EulerRule`: `e^(i·θ)` y `e^(a+bi)` → forma trigonométrica **[M]**
+#### ☑ B2 — `EulerRule`: `e^(i·θ)` y `e^(a+bi)` → forma trigonométrica **[M] — HECHO** *(2026-07-17, hash en el ledger)*
 - **Gradúa:** `e^(i·π)→-1`, `e^(i·π/2)→i`, `e^(i·π/4)`, `e^(2πi)→1`, `exp(i·x)→cos(x)+i·sin(x)`, `e^(1+i)→e·(cos 1+i·sin 1)`.
 - **Inserción:** `complex.rs:186/:200` (13ª hermana, gate `==RealOnly→None`, target FUNCTION|POW); **`split_i_factor` NUEVO** en `complex_support.rs:~548` (el bloqueador real — ver decisión 2; `extract_gaussian` solo como fallback del exponente Gaussiano racional); template de construcción `cos+i·sin` en `power_rules.rs:435‑448`; `is_e_constant_expr` (`expr_predicates.rs:235`).
 - **Depende:** NINGUNA dura — red de retención exacta propia: **metamórfica ODE** (`diff(cos x+i·sin x, x) ≡ expand(i·(cos x+i·sin x))` — byte-idéntico HOY), pin `f(0)=1`, unimodularidad, pins en π-racionales (por equivalencia, NO string exacto: `sin(π/3)` imprime no-canónico).

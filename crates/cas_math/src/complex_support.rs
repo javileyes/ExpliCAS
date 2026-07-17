@@ -111,6 +111,7 @@ pub enum ComplexRewriteKind {
     Conjugate,
     RealPart,
     ImagPart,
+    Euler,
 }
 
 /// Extract `a + bi` from an expression when possible.
@@ -477,6 +478,128 @@ pub fn try_rewrite_gaussian_power_expr(ctx: &mut Context, expr: ExprId) -> Optio
     })
 }
 
+/// STRUCTURAL split of an exponent into `real_part + i·theta` — exact, no
+/// folding. Returns `(real_part, theta)` where `None` means "zero part";
+/// both components are guaranteed i-free. Declines (`None` overall) on any
+/// shape that is not a clean single-`i` split: `i` inside a function call,
+/// `i` in both factors of a product (`i·i·x`), `i` in a denominator, `i`
+/// under a `Pow`, etc. This is the piece `extract_gaussian` cannot do: it
+/// requires NUMERIC coefficients next to `i`, so `i·π` (Mul(Constant,I)),
+/// `π·i/2` (Div(Mul(Pi,I),2)) and `i·x` all need this symbolic splitter.
+#[allow(clippy::type_complexity)]
+fn split_i_factor(ctx: &mut Context, expr: ExprId) -> Option<(Option<ExprId>, Option<ExprId>)> {
+    use crate::numeric_eval::contains_i;
+
+    if !contains_i(ctx, expr) {
+        return Some((Some(expr), None));
+    }
+    match ctx.get(expr) {
+        Expr::Constant(Constant::I) => {
+            let one = ctx.num(1);
+            Some((None, Some(one)))
+        }
+        Expr::Neg(inner) => {
+            let inner = *inner;
+            let (re, im) = split_i_factor(ctx, inner)?;
+            let neg = |ctx: &mut Context, part: Option<ExprId>| part.map(|p| ctx.add(Expr::Neg(p)));
+            Some((neg(ctx, re), neg(ctx, im)))
+        }
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            let (with_i, pure) = match (contains_i(ctx, l), contains_i(ctx, r)) {
+                (true, false) => (l, r),
+                (false, true) => (r, l),
+                // `i` in both factors (i·i·x, (1+i)(…)) is not a clean split.
+                _ => return None,
+            };
+            let (re, im) = split_i_factor(ctx, with_i)?;
+            let scale =
+                |ctx: &mut Context, part: Option<ExprId>| part.map(|p| ctx.add(Expr::Mul(p, pure)));
+            Some((scale(ctx, re), scale(ctx, im)))
+        }
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            if contains_i(ctx, den) {
+                return None;
+            }
+            let (re, im) = split_i_factor(ctx, num)?;
+            let scale =
+                |ctx: &mut Context, part: Option<ExprId>| part.map(|p| ctx.add(Expr::Div(p, den)));
+            Some((scale(ctx, re), scale(ctx, im)))
+        }
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            let (re_l, im_l) = split_i_factor(ctx, l)?;
+            let (re_r, im_r) = split_i_factor(ctx, r)?;
+            let join = |ctx: &mut Context, a: Option<ExprId>, b: Option<ExprId>| match (a, b) {
+                (Some(a), Some(b)) => Some(ctx.add(Expr::Add(a, b))),
+                (Some(a), None) => Some(a),
+                (None, b) => b,
+            };
+            Some((join(ctx, re_l, re_r), join(ctx, im_l, im_r)))
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            let (re_l, im_l) = split_i_factor(ctx, l)?;
+            let (re_r, im_r) = split_i_factor(ctx, r)?;
+            let join = |ctx: &mut Context, a: Option<ExprId>, b: Option<ExprId>| match (a, b) {
+                (Some(a), Some(b)) => Some(ctx.add(Expr::Sub(a, b))),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(ctx.add(Expr::Neg(b))),
+                (None, None) => None,
+            };
+            Some((join(ctx, re_l, re_r), join(ctx, im_l, im_r)))
+        }
+        // `i` under Pow / inside a function call: not a clean linear split.
+        _ => None,
+    }
+}
+
+/// Euler's formula: rewrite `e^(a + i·θ)` (Pow(E,·) — the parser desugars
+/// `exp(x)` to this form at parse time — plus a defensive Function(exp,·)
+/// arm) into `e^a · (cos θ + i·sin θ)`. Pure-imaginary exponents give the
+/// classic `cos θ + i·sin θ`. ONE-DIRECTION by convention: there is
+/// deliberately no inverse `cos θ + i·sin θ → e^(iθ)` rule (ping-pong).
+pub fn try_rewrite_euler_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRewrite> {
+    let exponent = match ctx.get(expr) {
+        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(Constant::E)) => *exp,
+        Expr::Function(fn_id, args)
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Exp) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+
+    let (re_part, theta) = split_i_factor(ctx, exponent)?;
+    // Euler only fires on a genuine i-component; theta is i-free by
+    // construction of the splitter (defense in depth: decline otherwise).
+    let theta = theta?;
+    if crate::numeric_eval::contains_i(ctx, theta)
+        || re_part.is_some_and(|re| crate::numeric_eval::contains_i(ctx, re))
+    {
+        return None;
+    }
+
+    let cos = ctx.call_builtin(BuiltinFn::Cos, vec![theta]);
+    let sin = ctx.call_builtin(BuiltinFn::Sin, vec![theta]);
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let i_sin = ctx.add(Expr::Mul(i, sin));
+    let trig = ctx.add(Expr::Add(cos, i_sin));
+    let rewritten = match re_part {
+        None => trig,
+        Some(re) => {
+            let e = ctx.add(Expr::Constant(Constant::E));
+            let e_re = ctx.add(Expr::Pow(e, re));
+            ctx.add(Expr::Mul(e_re, trig))
+        }
+    };
+    Some(ComplexRewrite {
+        rewritten,
+        kind: ComplexRewriteKind::Euler,
+    })
+}
+
 /// Extract the single Gaussian argument of `Function(builtin, [arg])`.
 /// Declines (None) when the shape or the builtin does not match, or when the
 /// argument is not a closed Gaussian number (symbolic args stay symbolic —
@@ -550,12 +673,12 @@ pub fn try_rewrite_im_expr(ctx: &mut Context, expr: ExprId) -> Option<ComplexRew
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_gaussian, try_rewrite_conjugate_expr, try_rewrite_gaussian_abs_expr,
-        try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
-        try_rewrite_gaussian_mul_expr, try_rewrite_gaussian_power_expr,
-        try_rewrite_i_squared_mul_identity_expr, try_rewrite_im_expr,
-        try_rewrite_imaginary_power_expr, try_rewrite_re_expr, try_rewrite_sqrt_negative_expr,
-        ComplexRewriteKind, GaussianRational,
+        extract_gaussian, try_rewrite_conjugate_expr, try_rewrite_euler_expr,
+        try_rewrite_gaussian_abs_expr, try_rewrite_gaussian_add_expr,
+        try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
+        try_rewrite_gaussian_power_expr, try_rewrite_i_squared_mul_identity_expr,
+        try_rewrite_im_expr, try_rewrite_imaginary_power_expr, try_rewrite_re_expr,
+        try_rewrite_sqrt_negative_expr, ComplexRewriteKind, GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -849,6 +972,75 @@ mod tests {
         assert!(try_rewrite_conjugate_expr(&mut ctx, conj_sym).is_none());
         let re_sym = cas_parser::parse("Re(x)", &mut ctx).expect("parse");
         assert!(try_rewrite_re_expr(&mut ctx, re_sym).is_none());
+    }
+
+    #[test]
+    fn euler_rewrites_the_splitter_shapes() {
+        // The shapes extract_gaussian cannot split (the B2 blocker): i·π,
+        // π·i/2 (Div(Mul(Pi,I),2)), 2·π·i (3-factor chain), i·x (symbolic),
+        // and the mixed Gaussian-rational exponent 1+i.
+        for (src, must_contain) in [
+            ("e^(i*pi)", "cos(pi)"),
+            ("e^(pi*i/2)", "cos(pi / 2)"),
+            ("e^(2*pi*i)", "cos(2 * pi)"),
+            ("e^(i*x)", "cos(x)"),
+            ("e^(1+i)", "cos(1)"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let rewrite = try_rewrite_euler_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("euler should fire for {src}"));
+            assert_eq!(rewrite.kind, ComplexRewriteKind::Euler);
+            let shown = format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            );
+            assert!(
+                shown.contains(must_contain),
+                "{src} -> {shown} (expected to contain {must_contain})"
+            );
+        }
+    }
+
+    #[test]
+    fn euler_declines_unclean_splits_and_real_exponents() {
+        for src in [
+            "e^x",         // no i at all
+            "e^2",         // pure real
+            "e^(i*i*x)",   // i in both factors (not a clean linear split)
+            "e^(x/(2*i))", // i in a denominator
+            "e^(i^3)",     // i under a Pow
+            "x^(i*pi)",    // base is not E
+        ] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_euler_expr(&mut ctx, expr).is_none(),
+                "euler must decline {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn euler_output_matches_complex_evaluator_at_generic_angles() {
+        // Independent B1-net verification: at NON-special angles the rewrite
+        // must agree numerically with the principal-branch evaluator.
+        use crate::evaluator_complex::eval_complex;
+        use std::collections::HashMap;
+        for src in ["e^(i/5)", "e^(3*i)", "e^(2+5*i)"] {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(src, &mut ctx).expect("parse");
+            let before = eval_complex(&ctx, expr, &HashMap::new()).expect("eval before");
+            let rewrite = try_rewrite_euler_expr(&mut ctx, expr).expect("euler fires");
+            let after = eval_complex(&ctx, rewrite.rewritten, &HashMap::new()).expect("eval after");
+            assert!(
+                (before.re - after.re).abs() < 1e-12 && (before.im - after.im).abs() < 1e-12,
+                "{src}: rewrite changed the value {before:?} -> {after:?}"
+            );
+        }
     }
 
     #[test]

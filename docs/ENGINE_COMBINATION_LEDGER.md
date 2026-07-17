@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 598 (newest first)
+Active entries: 599 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -124,6 +124,7 @@ Active entries: 598 (newest first)
 - 2026-07-17 | `retained` | `cas_solver_core` (`isolation_power.rs`: campo `value_domain_real_only` en Ke... | SOUNDNESS+CAPACIDAD (Fase 2 · pow-isolation domain-aware + gemelos backend): `solve(x^6-1)` → las 6 raíces de la unidad
 - 2026-07-17 | `retained` | `cas_engine/engine/transform/transform_helpers.rs` (`transform_pow` — gate de... | SOUNDNESS (Fase 2 · el pipeline-layer que perdía el dominio ERA el traversal TRANSFORM): `(x^2)^(1/2)` honesto en ℂ
 - 2026-07-17 | `retained` | `cas_math/src/evaluator_complex.rs` (NUEVO — `Complex64` pub + walker) + `roo... | CAPACIDAD (Fase 2 · B1: eval_complex refute-only por EXTRACCIÓN): la red numérica del bloque transcendental
+- 2026-07-17 | `retained` | `cas_math/complex_support.rs` (`split_i_factor` NUEVO + `try_rewrite_euler_ex... | CAPACIDAD (Fase 2 · B2: fórmula de Euler): `e^(i·π)` → `-1` — el caso insignia del frente complejo
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20089,3 +20090,18 @@ Active entries: 598 (newest first)
   - **"Extraer-y-extender un primitivo probado" > "escribir el primitivo"**: el 100% del riesgo de rama de B1 (ln principal) venía resuelto y referencia-testeado de G1 — buscar SIEMPRE el núcleo existente antes de decidir una dep o una reescritura (el re-scope lo encontró porque se le preguntó explícitamente).
   - **Lint-hygiene de visibilidad**: promover un struct privado a pub activa lints nuevos (`should_implement_trait`) — la promoción incluye adecuar la API al idioma público (traits std::ops), no solo cambiar `pub`.
   - PRÓXIMO PELDAÑO: **B2 EulerRule** (con `split_i_factor` — el bloqueador real; red: metamórfica ODE + pins verificados contra ESTA red B1); luego B3 (Arg exacto 9-casos + PrincipalBranch condition) → B4. Residuales nombrados: `approx()` complejo sin cablear; unimodularidad `|e^(ix)|→1`.
+
+## 2026-07-17 - CAPACIDAD (Fase 2 · B2: fórmula de Euler): `e^(i·π)` → `-1` — el caso insignia del frente complejo
+
+- area: `cas_math/complex_support.rs` (`split_i_factor` NUEVO + `try_rewrite_euler_expr`) + `cas_engine/rules/complex.rs` (EulerRule, 13ª hermana) + contrato e2e + actualización del pin B1 graduado
+- status: `retained`. Primer ciclo de la tanda 3 (B2 del re-scope).
+- capture:
+  - investment_class: capacidad Fase-2 (transcendental complejo — primera regla del bloque B).
+  - cell: `e^(i·π)→-1` (INSIGNIA), `e^(π·i/2)→i`, `e^(i·π/4)→(1+i)/√2`, `e^(2πi)→1`, `e^(i·π/3)→1/2+i·√3/2`, `exp(i·x)→cos(x)+i·sin(x)` (**gradúa la fila 24 de `sin_implementar.csv`**), `e^(1+i)→e·(cos 1+i·sin 1)`. Real byte-idéntico (`e^(iπ)` simbólico en real; `e^x`/`e^2` intactos). Residual documentado: `e^(-i·x)→1/(cos x+i·sin x)` (recíproco pre-Euler, presentación).
+  - diseño: el trabajo real fue **`split_i_factor`** — el splitter ESTRUCTURAL exacto `exponente ≡ re + i·θ` que `extract_gaussian` no puede hacer (exige Number junto a I; `i·π` es Mul(Constant,I)): Mul anidado con un solo factor-i (ambos-con-i declina), Div por real, Add/Sub/Neg mixtos, con θ y re garantizados i-free por construcción + guard de defensa. EulerRule: `Pow(E,·)` primario (el parser desugariza exp en parse — decisión 4 del re-scope) + brazo Function defensivo; ONE-DIRECTION anotado (sin regla inversa → sin ping-pong; fixpoint estable verificado por probes). Aguas abajo pliega solo (cos/sin de π-racional).
+  - **CONTRATO GRADUADO EN CICLO (patrón del protocolo "juzga la intención"):** el pin B1 `equiv(e^(iπ),-1)→Unknown` decía literalmente "hasta que B2 aterrice" — B2 aterrizó y la vía EXACTA ahora confirma True. Actualizado: True esperado + la propiedad never-confirm re-anclada en `i^i ≡ e^(-π/2)` (espera B3+B4). 2º intento de fixture: `ln(-1)≡iπ` NO sirve (colapsa a `undefined` pre-B3 y contamina la diferencia) — el fixture de un never-confirm debe ser una identidad DEFINIDA sin fold.
+  - validación: workspace 12392/0 (exit real); clippy limpio; engine-fast verde; pressure 0-delta, guardrail solo slot[4] de ruido. Red TRIPLE: pins exactos π-racionales + declines unitarios (i·i·x, i-en-denominador, i-bajo-Pow, base≠E) + **verificación numérica independiente vs red B1** (el rewrite conserva el valor a 1e-12 en `e^(i/5)`, `e^(3i)`, `e^(2+5i)` — la red B1 pagó en su PRIMER ciclo de uso).
+  - retained learning:
+  - **El fixture de un test never-confirm debe ser una identidad TRUE, DEFINIDA y sin fold exacto** — una que colapse a `undefined` pre-graduación contamina la diferencia y el test mide otra cosa; y al elegirlo, anotar QUÉ ciclo lo graduará (auto-documenta la próxima actualización de contrato).
+  - **El splitter estructural es más general que el extractor numérico y lo subsume como fallback** — ante un extractor que "exige literal junto al átomo", la generalización correcta es un splitter recursivo con garantías por construcción (átomo-free en ambas partes), no ensanchar el extractor (lección widening-collector respetada).
+  - PRÓXIMO PELDAÑO: **B3** (Arg exacto 9-casos + ComplexLogRule + PrincipalBranch condition — graduará el fixture `ln(-1)`); luego B4 (`i^i` — graduará el nuevo fixture never-confirm, actualizar contrato otra vez).
