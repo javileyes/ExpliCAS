@@ -70,7 +70,7 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
                 return Some(rewrite);
             }
             if let Some(value) = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, arg) {
-                let rational = num_rational::BigRational::from_float(value)?;
+                let rational = cas_math::decimal_display::approx_display_rational(value)?;
                 let number = ctx.add(Expr::Number(rational));
                 let decimal_sym = ctx.intern_symbol("decimal");
                 let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
@@ -99,7 +99,7 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
                 return None;
             }
             let decimal_sym = ctx.intern_symbol("decimal");
-            let im_rational = num_rational::BigRational::from_float(z.im)?;
+            let im_rational = cas_math::decimal_display::approx_display_rational(z.im)?;
             let im_number = ctx.add(Expr::Number(im_rational));
             let im_decimal = ctx.add(Expr::Function(decimal_sym, vec![im_number]));
             let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
@@ -107,7 +107,7 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
             let rewritten = if z.re == 0.0 {
                 im_part
             } else {
-                let re_rational = num_rational::BigRational::from_float(z.re)?;
+                let re_rational = cas_math::decimal_display::approx_display_rational(z.re)?;
                 let re_number = ctx.add(Expr::Number(re_rational));
                 let re_decimal = ctx.add(Expr::Function(decimal_sym, vec![re_number]));
                 ctx.add(Expr::Add(re_decimal, im_part))
@@ -202,7 +202,7 @@ fn try_approx_definite_integral(ctx: &mut Context, arg: ExprId) -> Option<MetaFu
     if !value.is_finite() {
         return None;
     }
-    let rational = num_rational::BigRational::from_float(value)?;
+    let rational = cas_math::decimal_display::approx_display_rational(value)?;
     let number = ctx.add(Expr::Number(rational));
     let decimal_sym = ctx.intern_symbol("decimal");
     let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
@@ -217,6 +217,42 @@ mod tests {
     use super::*;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn approx_payload_is_the_displayed_rounded_rational() {
+        // WYSIWYG contract: decimal() wraps the ROUNDED 12-significant-digit
+        // rational — exactly the value the formatter shows and exactly the
+        // rational that typing the displayed string back would parse to.
+        // Without this, approx carried the raw f64 binary expansion with
+        // invisible phantom digits.
+        let mut ctx = Context::new();
+        let expr = parse("approx(3/7)", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("evaluates");
+        let payload = match ctx.get(rewrite.rewritten) {
+            Expr::Function(_, args) => match ctx.get(args[0]) {
+                Expr::Number(n) => n.clone(),
+                other => panic!("payload not a Number: {other:?}"),
+            },
+            other => panic!("not a decimal node: {other:?}"),
+        };
+        let typed_back =
+            num_rational::BigRational::new(428571428571i64.into(), 1_000_000_000_000i64.into());
+        assert_eq!(payload, typed_back);
+
+        // Exactly-representable values stay exact.
+        let expr = parse("approx(1/2)", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("evaluates");
+        let payload = match ctx.get(rewrite.rewritten) {
+            Expr::Function(_, args) => match ctx.get(args[0]) {
+                Expr::Number(n) => n.clone(),
+                _ => panic!("payload not a Number"),
+            },
+            _ => panic!("not a decimal node"),
+        };
+        assert_eq!(payload, num_rational::BigRational::new(1.into(), 2.into()));
+    }
 
     #[test]
     fn approx_complex_fallback_emits_cartesian_decimal() {

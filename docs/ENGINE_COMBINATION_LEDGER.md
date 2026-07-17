@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 604 (newest first)
+Active entries: 605 (newest first)
 
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
@@ -130,6 +130,7 @@ Active entries: 604 (newest first)
 - 2026-07-17 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_sqrt_expr` + `try_rewrit... | CAPACIDAD (Fase 2 · B4b: `z^w` + sqrt Gaussiano): `i^i` → `e^(-π/2)` — el bloque B transcendental queda COMPLETO
 - 2026-07-17 | `retained` | `cas_formatter/display/ordering.rs` (`cmp_term_for_display` + `term_mentions_... | PRESENTACIÓN (Fase 2 · C1: orden cartesiano `a+bi`): `-1 + 2·i`, nunca `2·i - 1`
 - 2026-07-17 | `retained` | `cas_engine/meta_functions_support.rs` (brazo approx: fallback complejo vía `... | CAPACIDAD (Fase 2 · approx() complejo): `approx(ln(i))` → `i·1.5707…` — la superficie numérica del frente complejo
+- 2026-07-17 | `retained` | `cas_math/src/decimal_display.rs` (NUEVO: `approx_display_rational` + `round_... | PRESENTACIÓN (T5·ciclo1 — capa numeric-display, WYSIWYG): el payload de `decimal()` ES el valor mostrado
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (módulo nuevo, wired-to-nothing) + ... | CAPACIDAD (G1 Cap. E-i: subresultant PRS + resultante sobre ℚ[t]): primitivo standalone del algoritmo LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i: `modular_inverse`, `... | CAPACIDAD (G1 Cap. E-iv-a: inverso modular ℚ[t] + w(t) del RootSum): primitivo del argumento logarítmico LRT
 - 2026-07-16 | `retained` | `crates/cas_math/src/subresultant_prs.rs` (extiende E-i/E-iv-a: `power_sums`,... | CAPACIDAD (G1 Cap. E-iv-b: trazas de Newton + verificador EXACTO del RootSum): la prueba de identidad que gateará la emisión
@@ -20187,3 +20188,16 @@ Active entries: 604 (newest first)
   - **Una superficie de presentación numérica puede ser legítimamente MÁS ancha que la capa exacta**: `approx(sin(i))` evalúa aunque ninguna regla pliegue `sin(i)` — el contrato "f64 por diseño, sin keep/drop" es lo que lo hace sound; la misma anchura sería un P0 en cualquier capa de decisión.
   - **El parámetro de dominio explícito en los call-sites de test (`…, false`) es documentación gratis**: cada test declara qué superficie fija, y la promoción a domain-aware no puede pasar desapercibida en el diff.
   - PRÓXIMO PELDAÑO (candidatos tanda 5): (a) el emisor del parcial `(z)^(-1)` (panic-trampa, diagnóstico listo en el ledger C1); (b) **re-scope del frente vectorial multivariable** (scoping workflow — abre la segunda mitad de Fase 2); (c) C2 localización es/en; (d) unimodularidad `|e^(ix)|→1` + `e^(-ix)` recíproco. Recomendación: (b) — el frente complejo elemental queda A+B+C1+approx COMPLETO salvo pulidos; el siguiente salto de valor es abrir el frente vectorial con su propio scoping multi-agente.
+
+## 2026-07-17 - PRESENTACIÓN (T5·ciclo1 — capa numeric-display, WYSIWYG): el payload de `decimal()` ES el valor mostrado
+
+- area: `cas_math/src/decimal_display.rs` (NUEVO: `approx_display_rational` + `round_rational_sig`, redondeo half-up a 12 dígitos significativos en BigInt puro) + 4 sitios de creación en `meta_functions_support.rs` + pin e2e magnitud-grande
+- status: `retained`. Primer ciclo de la tanda 5 (capa numeric-display, scopeada por workflow 6-mappers + verificador: 14/15 anclas exactas).
+- capture:
+  - investment_class: presentación/soundness-de-contrato — prerequisito de TODA la capa (los folds del ciclo 2 solo dan `approx(3/7) - 0.428571428571 = 0` EXACTO si el payload es el racional redondeado que se muestra, no la expansión binaria f64 con dígitos fantasma).
+  - cell: display byte-idéntico en todos los pins existentes (el formatter ya redondeaba a los mismos 12 dígitos — ahora es re-round no-op de un payload ya redondeado); ÚNICO cambio visible (D2, intencionado y pinneado): `approx(10^20/7)` → `14285714285700000000` (antes basura de cuantización f64 `…286592`). Tests: payload de `approx(3/7)` == el racional de parsear "0.428571428571" (la identidad WYSIWYG), exactos se preservan (`approx(1/2)` → 1/2), signo, no-finito declina, 12-significativos en valores pequeños (`1/70000`).
+  - diseño: el redondeo vive en la CREACIÓN (engine), no en el render — decisión D1 del scoping: WYSIWYG exige payload==mostrado; redondear solo al render dejaría los folds operando sobre dígitos ocultos. cas_math NO depende de cas_formatter (dirección de deps); el algoritmo es re-implementación directa sobre el racional (escalar 10^k → half-up entero → des-escalar), no port del bucle de dígitos del formatter. El sitio 4º de creación (shortcut a==b del integral definido) envuelve el 0 exacto — ya WYSIWYG, sin cambio.
+  - validación: workspace 12413/0 (exit real); clippy --all-targets limpio; engine-fast verde; huella: pressure idéntica, guardrail +1 filtered_out (unit test nuevo — clase intencionada).
+  - retained learning:
+  - **WYSIWYG es un contrato de IGUALDAD payload==display, y se testea como tal**: el unit test decisivo no compara strings — compara el racional interno contra el racional que produce PARSEAR el string mostrado; cualquier deriva futura formatter/payload lo rompe desde ambos lados.
+  - PRÓXIMO PELDAÑO: T5·ciclo2 — fold-through sticky en `try_rewrite_combine_constants_expr` (el chokepoint único de Add/Sub/Mul/Div; gradúa el headline `approx(3/7) - 0.428571428571 → 0`).

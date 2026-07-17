@@ -20,6 +20,7 @@ pub mod const_eval;
 pub mod const_sign;
 pub mod constants_support;
 pub mod cube_identity_support;
+pub mod decimal_display;
 pub mod difference_factor_support;
 pub mod difference_of_cubes_support;
 pub mod difference_of_squares_support;

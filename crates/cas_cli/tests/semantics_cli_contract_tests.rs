@@ -10794,6 +10794,13 @@ fn complex_mode_approximates_closed_complex_values() {
         assert_eq!(wire["result"], expected, "complex `{src}`");
     }
 
+    // WYSIWYG payload contract (T5-ciclo1): the decimal node wraps the
+    // ROUNDED 12-significant-digit rational. Large magnitudes round too —
+    // no raw f64 quantization junk in the display.
+    let (output, _code) = run_cli(&["eval", "approx(10^20/7)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "14285714285700000000");
+
     // REAL mode: the complex fallback never leaks — approx(ln(i)) stays
     // symbolic, approx(ln(-1)) keeps the honest real-domain undefined.
     for (src, expected) in [
