@@ -219,7 +219,11 @@ fn is_neg_infinity(ctx: &Context, e: ExprId) -> bool {
 }
 
 fn is_residual_limit(ctx: &Context, e: ExprId) -> bool {
-    matches!(ctx.get(e), Expr::Function(f, _) if ctx.sym_name(*f) == "limit")
+    let Expr::Function(f, _) = ctx.get(e) else {
+        return false;
+    };
+    let name = ctx.sym_name(*f);
+    name == "limit"
 }
 
 #[test]

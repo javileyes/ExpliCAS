@@ -1360,7 +1360,8 @@ fn contains_surd_or_root_sum(ctx: &Context, root: ExprId) -> bool {
     while let Some(expr) = stack.pop() {
         match ctx.get(expr) {
             Expr::Function(fn_id, args) => {
-                if ctx.sym_name(*fn_id) == "root_sum" {
+                let fn_name = ctx.sym_name(*fn_id);
+                if fn_name == "root_sum" {
                     return true;
                 }
                 match ctx.builtin_of(*fn_id) {
