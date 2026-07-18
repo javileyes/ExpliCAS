@@ -147,3 +147,6 @@
 "Verificación y equivalencia","integrate(diff(x^3, x), x) - x^3","Ida y vuelta derivada-integral de x³ → 0"
 "Verificación y equivalencia","equiv(tan(x), sin(x)/cos(x))","Verificar la definición de la tangente → true"
 "Verificación y equivalencia","diff(integrate(1/(x^3-2), x), x) - 1/(x^3-2)","Ida y vuelta sobre ℚ(∛2): la derivada de la antiderivada colapsa exactamente a 0"
+"Vectorial","gradient(x^2*y, [x,y])","Gradiente de un campo escalar: ∇f = [∂f/∂x, ∂f/∂y] como vector columna — [[2·x·y], [x²]]; alias grad(...)"
+"Vectorial","diff([x^2, sin(x)], x)","Derivada componente a componente de un vector de funciones → [[2·x], [cos(x)]]"
+"Vectorial","dot(gradient(x^2*y,[x,y]), [1,0])","Derivada direccional por composición: ∇f·u con u=[1,0] → 2·x·y"

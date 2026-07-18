@@ -180,6 +180,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Subtract Fractions" => "Restar fracciones",
         "Symbolic Differentiation" => "Calcular la derivada",
         "Symbolic Integration" => "Calcular la integral",
+        "Vector Gradient" => "Calcular el gradiente",
         "Present calculus result in compact form" => {
             "Presentar resultado de cálculo en forma compacta"
         }
@@ -629,6 +630,7 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Aplicar producto factorial" => "Apply the factorial product",
         "Calcular coeficiente binomial" => "Compute the binomial coefficient",
         "Calcular el logaritmo" => "Compute the logarithm",
+        "Calcular el gradiente" => "Compute the gradient",
         "Calcular la derivada" => "Compute the derivative",
         "Calcular la integral" => "Compute the integral",
         "Calcular potencia numérica" => "Compute the numeric power",

@@ -2367,6 +2367,95 @@ fn test_eval_componentwise_diff_over_matrix() {
 }
 
 #[test]
+fn test_eval_gradient_verb() {
+    // Fase 2 V3: `gradient(f, [vars])` / alias `grad` — the first vectorial verb. Output
+    // is an n×1 COLUMN (the parser's own [x,y] convention), re-enterable and composable.
+    // The list-of-vars arity is EXCLUSIVE to the verbs (arity-2 exact); `diff`'s 3+-arity
+    // SymPy convention keeps its own owner.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("gradient(x^2+y^2,[x,y])"), "[[2·x], [2·y]]");
+    assert_eq!(r("gradient(x^2*y,[x,y])"), "[[2·x·y], [x^2]]");
+    assert_eq!(r("grad(x*y*z,[x,y,z])"), "[[y·z], [x·z], [x·y]]");
+    assert_eq!(
+        r("gradient(sin(x*y),[x,y])"),
+        "[[y·cos(x·y)], [x·cos(x·y)]]"
+    );
+    // Composition (the result is a live Matrix): norm — pin THIS form, the engine does
+    // not extract the square factor from the radical — and the directional derivative.
+    assert_eq!(r("norm(gradient(x^2+y^2,[x,y]))"), "(4·x^2 + 4·y^2)^(1/2)");
+    assert_eq!(r("dot(gradient(x^2*y,[x,y]),[1,0])"), "2·x·y");
+    // Honest declines: non-variable list entry, Matrix field (jacobian territory, V4),
+    // over-cap var list (VERB_MAX_VARS=8).
+    assert_eq!(r("gradient(x^2,[x,2])"), "gradient(x^2, [[x], [2]])");
+    assert_eq!(
+        r("gradient([x,y],[x,y])"),
+        "gradient([[x], [y]], [[x], [y]])"
+    );
+    assert_eq!(
+        r("gradient(x^2, [a,b,c,d,e,f,g,h,k])"),
+        "gradient(x^2, [[a], [b], [c], [d], [e], [f], [g], [h], [k]])"
+    );
+    // Never-confirm fixture: the OTHER verbs stay unregistered until their cycle lands
+    // (detector of the gate-without-rule gotcha, in both directions).
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+    for probe in [
+        "jacobian([x*y],[x,y])",
+        "hessian(x^2,[x,y])",
+        "divergence([x,y],[x,y])",
+        "curl([y,-x,0],[x,y,z])",
+        "laplacian(x^2,[x,y])",
+        "rot([y,-x,0],[x,y,z])",
+    ] {
+        assert!(
+            err_of(probe).contains("no definida"),
+            "unregistered verb must stay 'función no definida': {probe}"
+        );
+    }
+    // Narration: rule name localizes es/en; one keyed substep per component.
+    let steps_json = |input: &str, lang: Option<&str>| -> Value {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+    let es = steps_json("gradient(x^2+y^2,[x,y])", None);
+    assert_eq!(
+        es["steps"][0]["rule"].as_str().unwrap(),
+        "Calcular el gradiente"
+    );
+    let subs = es["steps"][0]["substeps"].as_array().expect("substeps");
+    assert_eq!(subs.len(), 2, "one substep per component");
+    assert!(subs[0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("Derivar respecto de x"));
+    let en = steps_json("gradient(x^2+y^2,[x,y])", Some("en"));
+    assert_eq!(
+        en["steps"][0]["rule"].as_str().unwrap(),
+        "Compute the gradient"
+    );
+    assert!(en["steps"][0]["substeps"][0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("Differentiate with respect to x"));
+}
+
+#[test]
 fn test_eval_steps_under_matrix_literal() {
     // Fase 2 V2 (P0-wire): steps that fire UNDER a `Matrix` node used to be silently
     // discarded — `rewrite_at_expr_path_with` treated Matrix as a leaf, so the step's

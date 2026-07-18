@@ -111,6 +111,11 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "matmul" | "dot" | "cross" | "linsolve" | "proj" | "projection" | "angle" => arity == 2,
         "apart" | "partfrac" => matches!(arity, 1 | 2),
         "wronskian" => arity == 2,
+        // Vectorial verbs (Fase 2 V3+): verbo(f, [vars]) with a pure-variable list.
+        // Registering a verb needs TWO cables — this gate arm AND its engine rule —
+        // or it fails silently (gate-without-rule gotcha). jacobian/hessian/
+        // divergence/curl/laplacian/rot stay UNREGISTERED until their cycle lands.
+        "gradient" | "grad" => arity == 2,
         "arclength" | "arc_length" => arity == 4,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.

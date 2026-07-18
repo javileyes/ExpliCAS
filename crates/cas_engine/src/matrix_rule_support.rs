@@ -834,6 +834,40 @@ pub(crate) fn map_matrix_components(
     )
 }
 
+/// Var cap for the vectorial verbs (scoping D8: vars ≤ 8; output cells stay
+/// within `COMPONENTWISE_MAX_CELLS`). Beyond it a verb declines honestly.
+pub(crate) const VERB_MAX_VARS: usize = 8;
+
+/// Gradient of a SCALAR field: `∇f = [∂f/∂v₁, …, ∂f/∂vₙ]` as an n×1 COLUMN
+/// (Fase 2 V3 — the parser's own `[x,y]` convention). A Matrix field is
+/// jacobian territory (V4) and declines here; a component that cannot be
+/// differentiated declines the whole call (all-or-nothing).
+pub(crate) fn try_gradient_expr(
+    ctx: &mut Context,
+    field: ExprId,
+    var_names: &[String],
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    if var_names.is_empty() || var_names.len() > VERB_MAX_VARS {
+        return None;
+    }
+    if matches!(ctx.get(field), Expr::Matrix { .. }) {
+        return None;
+    }
+    let mut data = Vec::with_capacity(var_names.len());
+    for var in var_names {
+        data.push(differentiate_symbolic_expr(ctx, field, var)?);
+    }
+    Some(
+        Matrix {
+            rows: data.len(),
+            cols: 1,
+            data,
+        }
+        .to_expr(ctx),
+    )
+}
+
 /// Componentwise derivative of a vector/matrix target: `d/dx [f₁, …] = [f₁′, …]`
 /// (Fase 2 V1). A component that cannot be differentiated declines the WHOLE
 /// call (all-or-nothing), keeping `diff([...], x)` an honest residual.

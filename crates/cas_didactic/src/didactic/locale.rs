@@ -207,6 +207,7 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "series.count_equal_factors_in_product" => ("Contar factores iguales en el producto", "Count the equal factors in the product"),
         "fraction.common_denominator" => ("Llevar a denominador común", "Put over a common denominator"),
         "fraction.simplify_numerator_and_denominator" => ("Simplificar el numerador y el denominador", "Simplify the numerator and the denominator"),
+        "gradient.component" => ("Derivar respecto de {0}, tratando las demás variables como constantes", "Differentiate with respect to {0}, treating the other variables as constants"),
         "derivative.use_logarithmic_diff" => ("Usar derivación logarítmica", "Use logarithmic differentiation"),
         "derivative.product_rule" => ("Usar regla del producto", "Use the product rule"),
         "derivative.differentiate_first_factor" => ("Derivar el primer factor", "Differentiate the first factor"),

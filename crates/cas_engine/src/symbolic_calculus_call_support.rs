@@ -71,6 +71,50 @@ pub(crate) fn try_extract_integrate_call(ctx: &Context, expr: ExprId) -> Option<
     None
 }
 
+/// A vectorial-verb call `verbo(field, [v1, v2, …])` (Fase 2 V3+).
+pub(crate) struct FieldVarsCall {
+    pub target: ExprId,
+    pub var_names: Vec<String>,
+}
+
+/// Parse `name(field, [vars])` for the vectorial verbs: EXACT arity 2, and
+/// `args[1]` an n×1 or 1×n `Matrix` whose entries are PURE `Expr::Variable`s
+/// (`Matrix::from_expr` accepts anything, so the shape validation lives here).
+/// Anything else returns `None` and the call stays an honest residual. The
+/// list-of-vars arity is EXCLUSIVE to the verbs — `diff`'s 3+-arity SymPy
+/// convention (`diff(f, x, y)` = mixed partial) is a different owner and is
+/// never rerouted here.
+pub(crate) fn try_extract_field_vars_call(
+    ctx: &Context,
+    expr: ExprId,
+    names: &[&str],
+) -> Option<FieldVarsCall> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !names.contains(&ctx.sym_name(*fn_id)) {
+        return None;
+    }
+    if args.len() != 2 {
+        return None;
+    }
+    let target = args[0];
+    let Expr::Matrix { rows, cols, data } = ctx.get(args[1]) else {
+        return None;
+    };
+    if (*rows != 1 && *cols != 1) || data.is_empty() {
+        return None;
+    }
+    let mut var_names = Vec::with_capacity(data.len());
+    for &v in data {
+        let Expr::Variable(sym) = ctx.get(v) else {
+            return None;
+        };
+        var_names.push(ctx.sym_name(*sym).to_string());
+    }
+    Some(FieldVarsCall { target, var_names })
+}
+
 /// Parse `diff(target, var)` with explicit variable.
 pub(crate) fn try_extract_diff_call(ctx: &Context, expr: ExprId) -> Option<NamedVarCall> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {

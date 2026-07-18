@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 615 (newest first)
+Active entries: 616 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
 - 2026-07-18 | `retained` | `cas_math/expr_path_rewrite.rs` (brazo `Expr::Matrix` en `rewrite_at_expr_pat... | P0-WIRE (Fase 2 vectorial · V2): los steps bajo `Matrix` dejan de perderse — Matrix desciende como Function en el path-rewrite
+- 2026-07-18 | `retained` | `cas_engine` (NUEVO `rules/calculus/vector_calculus.rs` con `GradientRule`; e... | CAPACIDAD (Fase 2 vectorial · V3): `gradient`/`grad` — el primer verbo vectorial, con el esqueleto completo que V4-V6 clonan
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20346,3 +20347,18 @@ Active entries: 615 (newest first)
   - retained learning:
   - **Ante un dato que se pierde en un pipeline, busca la asimetría productor/consumidor**: `transform_expr_recursive` (productor de paths) ya sabía descender en Matrix; `rewrite_at_expr_path_with` (consumidor/reconstructor) no — dos walkers gemelos que divergen en UN nodo son un silencioso descarte de datos. Al añadir un tipo de nodo contenedor, greppear TODOS los walkers por el nombre de la variante.
   - PRÓXIMO PELDAÑO: **V3** (verbo `gradient` — estrena el esqueleto completo de registro: gate + regla molde WronskianRule + extractor var-lista + narración barra-alta es/en + completer; fixture direccional `dot(gradient(f,[x,y]),u)`; pin `verbos-never-confirm`). V2 queda ☑ (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - CAPACIDAD (Fase 2 vectorial · V3): `gradient`/`grad` — el primer verbo vectorial, con el esqueleto completo que V4-V6 clonan
+
+- area: `cas_engine` (NUEVO `rules/calculus/vector_calculus.rs` con `GradientRule`; extractor `try_extract_field_vars_call` en symbolic_calculus_call_support; assembler `try_gradient_expr` + `VERB_MAX_VARS=8` en matrix_rule_support) + `cas_session_core/eval.rs` (gate arm) + `cas_didactic` (visible_rule_names es/en + generador keyed `generate_vector_gradient_substeps` + clave locale `gradient.component`) + `cas_cli/completer.rs` + `web/examples.csv` (3 filas Vectorial) + allowlist budget_exempt + unit test + contract e2e
+- status: `retained`. Ciclo 4/8 de la tanda vectorial (V3 del scoping; V2 = hash del ciclo anterior en este ledger).
+- capture:
+  - investment_class: capacidad Fase-2 (primer verbo del frente; estrena el esqueleto de registro completo).
+  - cell: `gradient(x^2+y^2,[x,y])→[[2·x],[2·y]]` (COLUMNA n×1, la convención del parser), `grad(x*y*z,[x,y,z])→[[y·z],[x·z],[x·y]]`, `gradient(sin(x*y),[x,y])` con chain rule; **composición viva**: `norm(gradient(...))→(4·x²+4·y²)^(1/2)` (pineada ESTA forma — el engine no extrae el factor cuadrado del radical, corrección del verificador de anclas del scoping) y **derivada direccional por composición** `dot(gradient(x^2*y,[x,y]),[1,0])→2·x·y` (fixture oficial — camino documentado del ítem curricular). Declines honestos: entrada no-Variable en la lista, campo Matrix (territorio jacobian V4), >8 vars. Narración: "Calcular el gradiente"/"Compute the gradient" + UN substep keyed por componente es/en (`gradient.component`), con before/after latex poblados — el intermedio muestra `2·x^(2-1)`, el paso-de-libro de la power rule ANTES del fold (el resultado final pliega).
+  - diseño: firma aridad-2 EXACTA con `[vars]` de Variables puras (la validación vive en el extractor — `Matrix::from_expr` acepta cualquier cosa); la var-lista es EXCLUSIVA de los verbos (la aridad 3+ de diff conserva su dueño SymPy). DOS cables por nombre (gate + regla) con el gotcha documentado en ambos sitios. Los substeps de `Rewrite::substep()` NO llegan al wire didáctico — el canal real es el pipeline keyed de cas_didactic (`generate_focused_rule_substeps` + `SubStep::keyed` + locale es/en); la regla nace muda a nivel de metadata y la didáctica la narra donde corresponde.
+  - fixture `verbos-never-confirm`: jacobian/hessian/divergence/curl/laplacian/rot DEBEN seguir "función no definida" hasta su ciclo — detector bidireccional del gate-sin-regla, en el contract test.
+  - validación: workspace failed:0; clippy --all-targets limpio; engine-fast verde; make ci verde (fmt global + lint_string_compares — el extractor usa `names.contains(&sym_name(...))`, fuera del patrón cazado `== "..."`); huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **`Rewrite::substep()` NO es el canal didáctico de los steps top-level**: el wire construye substeps en cas_didactic (generadores por rule-name + `SubStep::keyed` + locale) — una regla nueva que quiera narración por componente añade su generador AHÍ, no metadata en la regla; probar el wire ANTES de asumir el canal (el metadata-substep murió silenciosamente).
+  - **El intermedio "sin plegar" del substep es narración de libro, no un bug**: `∂/∂x x² = 2·x^(2−1)` en el substep + `[[2·x],[2·y]]` en el resultado ES la secuencia pedagógica correcta — no perseguir el fold en la capa didáctica.
+  - PRÓXIMO PELDAÑO: **V4** (jacobian + hessian + micro-cable equiv bracket-aware adelantado — el esqueleto ya existe: extractor compartido, assembler nuevo por verbo, gate arms, visible_rule_names, generador keyed). V3 queda ☑ (hash en el ledger del ciclo siguiente).

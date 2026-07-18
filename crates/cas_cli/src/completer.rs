@@ -44,6 +44,8 @@ impl CasHelper {
                 "adjugate".to_string(),
                 "proj".to_string(),
                 "angle".to_string(),
+                "gradient".to_string(),
+                "grad".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

@@ -217,6 +217,7 @@ mod trig_odd_power_result_presentation;
 mod trig_power_integrand_presentation;
 mod trig_result_presentation;
 mod unary_function_presentation;
+mod vector_calculus;
 
 pub(crate) use arctan_sqrt_additive_derivative_presentation::{
     arctan_sqrt_additive_tan_polynomial_derivative_inline_presentation_with_domain,
@@ -306,4 +307,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(summation::SumRule));
     simplifier.add_rule(Box::new(summation::ProductRule));
     simplifier.add_rule(Box::new(taylor::TaylorRule));
+    simplifier.add_rule(Box::new(vector_calculus::GradientRule));
 }

@@ -52,6 +52,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return differentiation_substeps;
     }
 
+    let gradient_substeps = generate_vector_gradient_substeps(ctx, step);
+    if !gradient_substeps.is_empty() {
+        return gradient_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -11857,6 +11862,54 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
         .with_before_latex(latex_expr(ctx, matching_factor))
         .with_after_latex(latex_expr(ctx, remaining_factor)),
     ]
+}
+
+/// Per-component narration of `gradient(f, [vars]) → [∂f/∂v₁, …]` (Fase 2 V3):
+/// one keyed sub-step per variable, pairing the field with its partial derivative.
+fn generate_vector_gradient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Vector Gradient" | "Calcular el gradiente"
+    ) {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    let fn_name = ctx.sym_name(*fn_id);
+    if (fn_name != "gradient" && fn_name != "grad") || args.len() != 2 {
+        return Vec::new();
+    }
+    let field = args[0];
+    let Expr::Matrix { data: vars, .. } = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let Expr::Matrix { data: comps, .. } = ctx.get(after) else {
+        return Vec::new();
+    };
+    if vars.len() != comps.len() {
+        return Vec::new();
+    }
+    let vars = vars.clone();
+    let comps = comps.clone();
+    let field_display = display_expr(ctx, field);
+    vars.iter()
+        .zip(comps.iter())
+        .filter_map(|(&v, &c)| {
+            let Expr::Variable(sym) = ctx.get(v) else {
+                return None;
+            };
+            let var_name = ctx.sym_name(*sym).to_string();
+            Some(SubStep::keyed(
+                "gradient.component",
+                vec![var_name],
+                field_display.clone(),
+                display_expr(ctx, c),
+            ))
+        })
+        .collect()
 }
 
 fn generate_symbolic_differentiation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

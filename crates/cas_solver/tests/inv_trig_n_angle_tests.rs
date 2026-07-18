@@ -492,6 +492,7 @@ fn budget_exempt_allowlist() {
         "factoring.rs",        // WronskianRule (function count ≤ 6 ⇒ ≤6×6 determinant)
         "summation.rs", // SumRule (max_span=1000 cap; closed forms are fixed-size structural)
         "diff_rule.rs", // componentwise diff over Matrix (COMPONENTWISE_MAX_CELLS=64; output = same cell count)
+        "vector_calculus.rs", // vectorial verbs (VERB_MAX_VARS=8; output cells = var count ≤ 8)
     ];
 
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));

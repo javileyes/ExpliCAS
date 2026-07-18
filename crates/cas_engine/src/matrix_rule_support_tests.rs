@@ -227,3 +227,32 @@ fn matmul_dispatch_multiplies_and_declines_mismatch() {
     let bad = ctx.call("matmul", vec![a, c]);
     assert!(super::try_rewrite_matrix_binary_function_expr(&mut ctx, bad).is_none());
 }
+
+#[test]
+fn gradient_expr_assembles_column_and_declines_dishonest_shapes() {
+    // V3: gradient of a SCALAR field is an n×1 COLUMN; a Matrix field (jacobian
+    // territory) and an over-cap var list decline honestly.
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x2 = ctx.add(Expr::Pow(x, two));
+    let field = ctx.add(Expr::Mul(x2, y));
+    let vars: Vec<String> = vec!["x".into(), "y".into()];
+
+    let grad = super::try_gradient_expr(&mut ctx, field, &vars).expect("gradient");
+    let m = cas_math::matrix::Matrix::from_expr(&ctx, grad).expect("matrix");
+    assert_eq!((m.rows, m.cols), (2, 1), "gradient must be an n×1 column");
+
+    let mfield = ctx.matrix(2, 1, vec![x, y]).expect("vector field");
+    assert!(
+        super::try_gradient_expr(&mut ctx, mfield, &vars).is_none(),
+        "matrix field is jacobian territory (V4) — decline"
+    );
+
+    let too_many: Vec<String> = (0..9).map(|i| format!("v{i}")).collect();
+    assert!(
+        super::try_gradient_expr(&mut ctx, field, &too_many).is_none(),
+        "var cap (VERB_MAX_VARS=8) must decline honestly"
+    );
+}
