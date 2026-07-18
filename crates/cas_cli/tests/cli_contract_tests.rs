@@ -2349,6 +2349,55 @@ fn test_eval_gaussian_reciprocal_clean_form() {
 }
 
 #[test]
+fn test_eval_trig_of_imaginary_bridge() {
+    // Fase 2 · trig-de-i (residual B4b): el puente trig↔hiperbólico de argumento
+    // puro-imaginario — identidades ENTERAS (válidas para y complejo arbitrario, sin
+    // guard de realidad, a diferencia de la unimodularidad). ONE-DIRECTION.
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Los 6 brazos, literal y simbólico.
+    assert_eq!(rc("sin(i)"), "i·sinh(1)");
+    assert_eq!(rc("cos(i)"), "cosh(1)");
+    assert_eq!(rc("tan(i)"), "i·tanh(1)");
+    assert_eq!(rc("sin(i*x)"), "i·sinh(x)");
+    assert_eq!(rc("sinh(i)"), "i·sin(1)");
+    assert_eq!(rc("cosh(i*x)"), "cos(x)");
+    assert_eq!(rc("tanh(3*i)"), "i·tan(3)");
+    // Composición exacta a través del puente: cosh(iπ) = cos(π) = -1.
+    assert_eq!(rc("cosh(i*pi)"), "-1");
+    // Declines honestos: argumento mixto (suma de ángulos = residual), real mode.
+    assert_eq!(rc("sin(1+i)"), "sin(1 + i)");
+    assert_eq!(r("sin(i)"), "sin(i)");
+    // La red B1 con los brazos hiperbólicos nuevos del walker: refuta la identidad
+    // FALSA (jamás confirma la verdadera desde probe — el wire equiv es Bool
+    // exacto-solo, "false" = no-probado; residual nombrado).
+    assert_eq!(rc("equiv(sin(i), i*sinh(2))"), "false");
+    // approx compone con el puente (el walker evalúa sinh complejo).
+    assert_eq!(rc("approx(sin(i))"), "1.17520119364·i");
+}
+
+#[test]
 fn test_eval_unimodular_abs() {
     // Fase 2 · residual B2 cerrado con disciplina V0: `|cos θ ± i·sin θ| = 1` SOLO con
     // θ constante real DECIDIBLE (provable_const_sign). Una variable DEBE declinar:
@@ -2386,7 +2435,11 @@ fn test_eval_unimodular_abs() {
     // Declines V0-discipline: símbolo (puede ser complejo), θ distinto, θ=i, real mode.
     assert_eq!(rc("abs(cos(x)+i*sin(x))"), "|cos(x) + i·sin(x)|");
     assert_eq!(rc("abs(cos(2)+i*sin(3))"), "|cos(2) + i·sin(3)|");
-    assert_eq!(rc("abs(cos(i)+i*sin(i))"), "|cos(i) + i·sin(i)|");
+    // θ=i: la unimodularidad sigue DECLINANDO aquí, pero el puente trig-de-i
+    // (ciclo 3) compone |cosh(1) − sinh(1)| = 1/e — exactamente el contraejemplo
+    // |e^(i·i)| = 1/e que motiva el guard de realidad. El valor confirma la
+    // disciplina: NO es 1.
+    assert_eq!(rc("abs(cos(i)+i*sin(i))"), "1 / e");
     assert_eq!(r("abs(cos(2)+i*sin(2))"), "|cos(2) + i·sin(2)|");
 }
 

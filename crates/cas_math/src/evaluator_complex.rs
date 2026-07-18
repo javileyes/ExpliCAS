@@ -107,6 +107,20 @@ impl Complex64 {
             -self.re.sin() * self.im.sinh(),
         )
     }
+    /// Complex hyperbolic sine `sinh(a+bi) = sinh a cos b + i cosh a sin b`.
+    pub fn sinh(self) -> Complex64 {
+        Complex64::new(
+            self.re.sinh() * self.im.cos(),
+            self.re.cosh() * self.im.sin(),
+        )
+    }
+    /// Complex hyperbolic cosine `cosh(a+bi) = cosh a cos b + i sinh a sin b`.
+    pub fn cosh(self) -> Complex64 {
+        Complex64::new(
+            self.re.cosh() * self.im.cos(),
+            self.re.sinh() * self.im.sin(),
+        )
+    }
     /// Principal square root (`Re ≥ 0` half-plane; derived from `powc`).
     pub fn sqrt(self) -> Option<Complex64> {
         if self.re == 0.0 && self.im == 0.0 {
@@ -227,6 +241,9 @@ fn eval_complex_depth(
                 BuiltinFn::Sin => Some(a.sin()),
                 BuiltinFn::Cos => Some(a.cos()),
                 BuiltinFn::Tan => a.sin().checked_div(a.cos()),
+                BuiltinFn::Sinh => Some(a.sinh()),
+                BuiltinFn::Cosh => Some(a.cosh()),
+                BuiltinFn::Tanh => a.sinh().checked_div(a.cosh()),
                 BuiltinFn::Sqrt => a.sqrt(),
                 BuiltinFn::Abs => Some(Complex64::real(a.abs())),
                 // Real-argument atan only (what the exact Arg table emits);

@@ -215,6 +215,22 @@ define_rule!(
     }
 );
 
+define_rule!(
+    TrigOfImaginaryRule,
+    "Trig of Imaginary Argument",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+        // The entire-function bridge (sin(iy) = i·sinh(y) and 5 sisters): valid for
+        // ARBITRARY complex y — no realness guard needed, unlike UnimodularAbsRule.
+        // ONE-DIRECTION on purpose (no inverse rule: ping-pong).
+        let (rewritten, desc) =
+            cas_math::complex_support::try_rewrite_trig_of_imaginary(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc(desc))
+    }
+);
+
 define_rule!(EulerRule, "Euler Formula", |ctx, expr, parent_ctx| {
     if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
         return None;
@@ -321,6 +337,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RealPartRule));
     simplifier.add_rule(Box::new(ImagPartRule));
     simplifier.add_rule(Box::new(UnimodularAbsRule));
+    simplifier.add_rule(Box::new(TrigOfImaginaryRule));
     simplifier.add_rule(Box::new(EulerRule));
     simplifier.add_rule(Box::new(ArgRule));
     simplifier.add_rule(Box::new(GaussianSqrtRule));

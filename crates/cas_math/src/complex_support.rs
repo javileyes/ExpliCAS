@@ -661,6 +661,78 @@ pub fn try_rewrite_complex_ln_expr(ctx: &mut Context, expr: ExprId) -> Option<Co
     })
 }
 
+/// Pure-imaginary view of an expression: `Some(θ)` iff `expr = i·θ` exactly
+/// (no real part), with `θ` i-free. Built on `split_i_factor`. Used by the
+/// trig↔hyperbolic bridge (`sin(i·y) = i·sinh(y)` and sisters — ENTIRE-function
+/// identities, valid for arbitrary complex `y`, so symbolic arguments are fine).
+pub fn split_pure_imaginary(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    match split_i_factor(ctx, expr)? {
+        (None, Some(theta)) => Some(theta),
+        _ => None,
+    }
+}
+
+/// Trig/hyperbolic of a PURE-IMAGINARY argument: the entire-function bridge.
+/// `sin(iy) = i·sinh(y)`, `cos(iy) = cosh(y)`, `tan(iy) = i·tanh(y)`,
+/// `sinh(iy) = i·sin(y)`, `cosh(iy) = cos(y)`, `tanh(iy) = i·tan(y)`.
+/// ONE-DIRECTION (imaginary argument → i-free argument); no inverse rule may
+/// exist (ping-pong). Returns the rewritten node plus a Spanish description.
+pub fn try_rewrite_trig_of_imaginary(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, &'static str)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(*fn_id)?;
+    let arg = args[0];
+    let theta = split_pure_imaginary(ctx, arg)?;
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let out = match builtin {
+        BuiltinFn::Sin => {
+            let h = ctx.call_builtin(BuiltinFn::Sinh, vec![theta]);
+            (
+                ctx.add(Expr::Mul(i, h)),
+                "seno de argumento imaginario: sin(i·y) = i·senh(y)",
+            )
+        }
+        BuiltinFn::Cos => (
+            ctx.call_builtin(BuiltinFn::Cosh, vec![theta]),
+            "coseno de argumento imaginario: cos(i·y) = cosh(y)",
+        ),
+        BuiltinFn::Tan => {
+            let h = ctx.call_builtin(BuiltinFn::Tanh, vec![theta]);
+            (
+                ctx.add(Expr::Mul(i, h)),
+                "tangente de argumento imaginario: tan(i·y) = i·tanh(y)",
+            )
+        }
+        BuiltinFn::Sinh => {
+            let t = ctx.call_builtin(BuiltinFn::Sin, vec![theta]);
+            (
+                ctx.add(Expr::Mul(i, t)),
+                "seno hiperbólico de argumento imaginario: senh(i·y) = i·sen(y)",
+            )
+        }
+        BuiltinFn::Cosh => (
+            ctx.call_builtin(BuiltinFn::Cos, vec![theta]),
+            "coseno hiperbólico de argumento imaginario: cosh(i·y) = cos(y)",
+        ),
+        BuiltinFn::Tanh => {
+            let t = ctx.call_builtin(BuiltinFn::Tan, vec![theta]);
+            (
+                ctx.add(Expr::Mul(i, t)),
+                "tangente hiperbólica de argumento imaginario: tanh(i·y) = i·tan(y)",
+            )
+        }
+        _ => return None,
+    };
+    Some(out)
+}
+
 /// STRUCTURAL split of an exponent into `real_part + i·theta` — exact, no
 /// folding. Returns `(real_part, theta)` where `None` means "zero part";
 /// both components are guaranteed i-free. Declines (`None` overall) on any

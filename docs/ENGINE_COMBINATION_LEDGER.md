@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 622 (newest first)
+Active entries: 623 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -127,6 +127,7 @@ Active entries: 622 (newest first)
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (brazo `abs` en el dispatch unario, SOLO ... | CAPACIDAD (Fase 2 vectorial · V7a+b): `abs(vector)→norm` heredando V0, e `integrate` componentwise condiciones-conservador
 - 2026-07-18 | `retained` | `cas_math/fraction_add_build_support.rs` (`mul2_fold_numeric` en los 3 sitios... | PRESENTACIÓN-SOUNDNESS (tanda-2 · ciclo 1: el parcial `(z)^(-1)`): AddFractions pliega Number×Number en la emisión — el mangle `(1/2·2 - i)/(2)` muere en su origen
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher `try_match_unimodular_abs`: Add/Sub am... | CAPACIDAD (tanda-2 · ciclo 2: unimodularidad): `|cos θ ± i·sin θ| = 1` SOLO con θ real decidible — el residual B2 re-scopeado por la disciplina V0
+- 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`split_pure_imaginary` público sobre split_i_f... | CAPACIDAD (tanda-2 · ciclo 3: trig-de-i): el puente entero trig↔hiperbólico de argumento imaginario + brazos sinh/cosh/tanh en el walker complejo
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20455,3 +20456,18 @@ Active entries: 622 (newest first)
   - retained learning:
   - **Los residuales nombrados ANTES de una lección de soundness se re-scopean al ejecutarlos, no se implementan tal cual**: el enunciado "|e^(ix)|→1" era pre-V0; ejecutarlo literal habría introducido el mismo P0 que V0 cerró. Al tomar un residual viejo, re-derivar su condición de soundness con las lecciones posteriores.
   - PRÓXIMO PELDAÑO: tanda-2 ciclo 3 — **trig-de-i** (`sin(i)→i·sinh(1)`, puente hiperbólico; gradúa el fixture never-confirm `sin(i)` re-anclado en B4b).
+
+## 2026-07-18 - CAPACIDAD (tanda-2 · ciclo 3: trig-de-i): el puente entero trig↔hiperbólico de argumento imaginario + brazos sinh/cosh/tanh en el walker complejo
+
+- area: `cas_math/complex_support.rs` (`split_pure_imaginary` público sobre split_i_factor + `try_rewrite_trig_of_imaginary`, 6 brazos) + `cas_engine/rules/complex.rs` (`TrigOfImaginaryRule`, 19ª hermana gateada) + `cas_math/evaluator_complex.rs` (métodos `sinh`/`cosh` Complex64 + 3 brazos del walker — la hermana del gap-atan de B3) + contract e2e
+- status: `retained`. Tanda-2 ciclo 3/6 (residual nombrado en B4b; el fixture never-confirm `sin(i)` SOBREVIVE — ver captura).
+- capture:
+  - investment_class: capacidad Fase-2 (frente complejo) + red de verificación (walker).
+  - cell: `sin(i)→i·sinh(1)`, `cos(i)→cosh(1)`, `tan(i)→i·tanh(1)`, `sin(i·x)→i·sinh(x)` (SIMBÓLICO válido — identidades ENTERAS en ℂ, sin guard de realidad: el contraste deliberado con la unimodularidad del ciclo anterior), inversas `sinh(i)→i·sin(1)`, `cosh(i·x)→cos(x)`, `tanh(3i)→i·tan(3)`; composición exacta `cosh(i·π)→-1` (puente → cos(π)). Declines: argumento mixto `sin(1+i)` (suma de ángulos = residual honesto), real mode byte-idéntico. Walker: `approx(sin(i))→1.1752…·i`, la red refuta `sin(i)=i·sinh(2)` FALSA.
+  - **hallazgo colateral investigado a fondo (NO era P0):** `equiv(sinh(1),(e−1/e)/2)→"false"` en AMBOS dominios parecía refutación de identidad verdadera; el test-sonda directo del enum reveló que `are_equivalent_extended` devuelve **Unknown honesto** — el "false" es la superficie BOOL de la función `equiv(...)` en eval (deliberada y documentada: true solo con prueba exacta; false = no-probado). Conflación unknown/false en el wire = **residual nombrado** (candidato: tri-estado en EvalResult — decisión de producto/wire, no un fix de ciclo). El fixture never-confirm `extended(sin(i), i(e−1/e)/2) == Unknown` sigue VÁLIDO: el puente emite sinh(1) pero nada pliega sinh↔exp, y el walker da diff≈2e-16 < eps (no refuta, jamás confirma).
+  - validación: workspace failed:0 (tras UNA graduación de pin propia: el decline `abs(cos(i)+i·sin(i))` del ciclo anterior ahora COMPONE vía el puente a `1/e` — exactamente el contraejemplo `|e^(i·i)|=1/e` que el guard de realidad citaba; el pin pasó de residual a valor con el porqué en comentario); clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - **la composición inter-ciclo como confirmación**: el ciclo 2 declinó θ=i por soundness; el ciclo 3 le dio el VALOR por otra vía (puente) — y el valor confirma numéricamente la decisión del ciclo 2 (1/e ≠ 1). Dos reglas honestas componen mejor que una regla ancha.
+  - retained learning:
+  - **Antes de declarar P0 un "false" de equiv, sondea el ENUM, no el string**: el wire Bool colapsa Unknown→"false" por diseño documentado — el test-sonda de 6 líneas (panic con el variant) distingue en un minuto la refutación real de la conflación de superficie.
+  - **Las identidades enteras no llevan guard de realidad; las condicionales sí** — el par unimodularidad (guard `provable_const_sign`) / puente-imaginario (sin guard) es el ejemplo canónico de cuándo cada disciplina aplica: preguntar siempre "¿la identidad vale en TODO ℂ o solo en ℝ?".
+  - PRÓXIMO PELDAÑO: tanda-2 ciclo 4 — **C2 localización es/en de las descs complejas** (la barra baja del frente: inglés hardcodeado en format_complex_rewrite_desc; elevar al patrón visible_rule_names/locale). Residuales nuevos nombrados: sinh↔exp fold (graduaría el fixture), suma-de-ángulos compleja, tri-estado del wire equiv.
