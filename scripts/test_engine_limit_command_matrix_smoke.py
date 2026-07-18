@@ -300,14 +300,14 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 22, "supported": 178, "undefined": 9},
+            {"residual": 21, "supported": 178, "undefined": 10},
         )
         self.assertEqual(
             SMOKE.count_residual_causes(cases),
             {
                 "finite_endpoint_empty_punctured_domain_policy": 4,
                 "finite_endpoint_or_boundary_policy": 7,
-                "finite_oscillatory_no_infinitesimal": 2,
+                "finite_oscillatory_no_infinitesimal": 1,
                 "finite_trig_symbolic_orientation_policy": 1,
                 "infinity_domain_path_conflict": 2,
                 "one_sided_domain_path_conflict": 6,
@@ -318,7 +318,6 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "binary_log_domain_policy": 3,
                 "bounded_domain_policy": 1,
-                "even_saturating_composition": 1,
                 "finite_squeeze_bounded_product": 1,
                 "fixed_base_log_domain_policy": 1,
                 "inverse_hyperbolic": 2,
@@ -345,7 +344,6 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "finite_endpoint_or_boundary_policy/fixed_base_log_domain_policy": 1,
                 "finite_endpoint_or_boundary_policy/log_domain_policy": 1,
                 "finite_endpoint_or_boundary_policy/root": 2,
-                "finite_oscillatory_no_infinitesimal/even_saturating_composition": 1,
                 "finite_oscillatory_no_infinitesimal/finite_squeeze_bounded_product": 1,
                 "finite_trig_symbolic_orientation_policy/trig_ratio": 1,
                 "infinity_domain_path_conflict/bounded_domain_policy": 1,
@@ -384,8 +382,8 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "didactic_trace_and_limit_policy": 80,
                 "domain_conditions_and_limit_policy": 98,
-                "explicit_undefined_domain_policy": 9,
-                "safe_residual_policy": 22,
+                "explicit_undefined_domain_policy": 10,
+                "safe_residual_policy": 21,
             },
         )
         self.assertEqual(

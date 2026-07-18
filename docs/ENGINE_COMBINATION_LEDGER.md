@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 628 (newest first)
+Active entries: 629 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -133,6 +133,7 @@ Active entries: 628 (newest first)
 - 2026-07-18 | `retained` | docs-only (sin huella): `CALCULUS_FRONTIER_AUDIT.md` (6 anotaciones + 1 check... | META-MANTENIMIENTO A (tanda-2 · ciclo 6: audit de veracidad de docs): 20 claims stale corregidos en 4 fuentes de verdad — incl. una familia P0 graduada en silencio
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_trig_complex_angle_sum`: 4 brazos... | CAPACIDAD (tanda-3 · ciclo 1: suma de ángulos compleja): `sin(1+i)` → forma cartesiana exacta — el trig complejo elemental queda completo
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_surd_abs` sobre `split_i... | CAPACIDAD (tanda-3 · ciclo 2: módulo Gaussiano-surd): `|1/2 + i·√3/2| → 1` — la familia π-racional cierra por la vía surd
+- 2026-07-18 | `retained` | `cas_math/limits_support.rs` (`try_dne_by_oscillation`: sin/cos/tan(g) desnud... | HONESTIDAD+EDUCATIVO (tanda-3 · ciclo 3: oscilación en límites): `limit(sin(1/x), x, 0)` → no-existencia CON MOTIVO — el item del frontier-audit queda completo
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20539,3 +20540,16 @@ Active entries: 628 (newest first)
   - **Cuando el guard de tu regla decide el SIGNO, emite el valor con el signo — no el `√(x²)` que "alguien plegará"**: el brazo puro-imaginario con `provable_const_sign` en mano emite `±b` directo; la forma cuadrática-bajo-raíz de radicando solitario es exactamente la clase que se atasca (gemelos `sqrt(pi²)`, `sqrt(|pi|²)`).
   - **Un fix que el pipeline preempta es superficie muerta, no robustez**: si otra regla reescribe la forma antes de que la tuya la vea, tu brazo extra jamás corre — probar el fix EN EL PIPELINE (no solo el helper) antes de retenerlo, y si muere, revertir y nombrar al dueño real.
   - PRÓXIMO PELDAÑO: tanda-3 ciclo 3 — **diagnóstico de oscilación en límites** (`limit(sin(1/x),x,0)` → no-existencia con motivo; el item del frontier-audit estrechado a exactamente esto). Residual re-confirmado con dueño: `|i|` anidado en Mul no pliega (split multiplicativo de abs).
+
+## 2026-07-18 - HONESTIDAD+EDUCATIVO (tanda-3 · ciclo 3: oscilación en límites): `limit(sin(1/x), x, 0)` → no-existencia CON MOTIVO — el item del frontier-audit queda completo
+
+- area: `cas_math/limits_support.rs` (`try_dne_by_oscillation`: sin/cos/tan(g) desnudo + laterales del ARGUMENTO clasificados ±∞ via la maquinaria existente `try_limit_rules_at_finite_one_sided`/`classify_lateral_limit_result`; cableado tras el combinador de laterales) + contract e2e + marca `[x]` graduado en el frontier-audit
+- status: `retained`. Tanda-3 ciclo 3/4 (Fase-1 pulido de honestidad/educativo — alterna frente tras 2 ciclos complejos; el item lo estrechó el meta-audit a exactamente esto).
+- capture:
+  - investment_class: honestidad de diagnóstico + educativo (el residual genérico "not supported safely yet" era un under-answer para una NO-existencia demostrable).
+  - cell: `limit(sin(1/x), x, 0)` → `undefined` + "the limit does not exist: sin(u) OSCILLATES — its inner argument diverges to ±∞ on both sides of the point, and sin has no limit at ±∞"; hermanos cos/tan; punto desplazado `sin(1/(x-2))` en 2; argumento par `cos(1/x²)`. PINS intactos: sandwich `x·sin(1/x)→0`, notable `sin(x)/x→1`, laterales discrepantes con SU motivo propio, `sin(1/x)` en ∞ → 0, continuo `sin(x)→0`.
+  - diseño de soundness: la regla decide por el ARGUMENTO, no por el trig — los laterales del trig jamás computan (por eso el combinador declinaba), pero la divergencia del argumento interior es PROBADA por la maquinaria existente de laterales, y "sin/cos/tan no tienen límite en ±∞" es incondicional. Conservador: sin lateral infinito probado → residual (jamás fabricar DNE). Un solo lado infinito basta (sin límite lateral ⇒ sin límite bilateral).
+  - validación: workspace failed:0; clippy limpio (el doc-comment nuevo se recolocó — la inserción inicial partió el doc de la función vecina, doc_lazy_continuation lo delató); engine-fast verde; make ci verde; huella: pressure idéntica; guardrail con UN delta INTENCIONADO — la lane limit-smoke cazó la graduación (`finite_oscillating_outer_even_pole_residual`: `cos(1/x²)` pineaba el residual genérico como mejor-answer-de-entonces y su propia metadata ya decía `oscillatory_no_limit` — caso migrado a `undefined`+OSCILLATES con el porqué en comentario; contadores outcome 22/178/9 → 21/178/10 y familias residuales ajustados). El test del combinador actualizado (su propiedad — el combinador declina — sigue fijada; el dueño nuevo es el checker).
+  - retained learning:
+  - **Cuando el veredicto del compuesto no computa, pregunta por el veredicto del ARGUMENTO**: la no-existencia de sin(g) es decidible desde la divergencia de g — reutilizar el clasificador de laterales sobre el subárbol convierte un residual genérico en un diagnóstico probado, sin maquinaria nueva.
+  - PRÓXIMO PELDAÑO: tanda-3 ciclo 4 — decidir entre `e^(-ix)` recíproco (presentación compleja) y sinh↔exp (graduaría el fixture never-confirm) con sondeo.

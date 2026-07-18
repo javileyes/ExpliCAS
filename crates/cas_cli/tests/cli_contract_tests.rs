@@ -2436,6 +2436,54 @@ fn test_eval_complex_rule_names_localized() {
 }
 
 #[test]
+fn test_eval_limit_oscillation_dne() {
+    // Tanda-3 ciclo 3 (item del frontier-audit estrechado a exactamente esto por el
+    // meta-audit): sin/cos/tan(g) con lateral de g probadamente ±∞ → el límite NO
+    // EXISTE por oscilación, con motivo educativo — como ya hacían los laterales
+    // discrepantes. Conservador: sin divergencia probada del argumento, residual.
+    let eval_full = |input: &str| -> (String, String) {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        let warnings = wire["warnings"]
+            .as_array()
+            .map(|w| {
+                w.iter()
+                    .filter_map(|x| x["assumption"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            })
+            .unwrap_or_default();
+        (wire["result"].as_str().unwrap_or("").to_string(), warnings)
+    };
+    for probe in [
+        "limit(sin(1/x), x, 0)",
+        "limit(cos(1/x), x, 0)",
+        "limit(tan(1/x), x, 0)",
+        "limit(sin(1/(x-2)), x, 2)",
+        "limit(cos(1/x^2), x, 0)",
+    ] {
+        let (result, warnings) = eval_full(probe);
+        assert_eq!(result, "undefined", "{probe}");
+        assert!(
+            warnings.contains("OSCILLATES"),
+            "{probe} debe llevar el motivo de oscilación, got: {warnings}"
+        );
+    }
+    // Pins: el sandwich, el notable, los laterales discrepantes (SU motivo propio),
+    // el infinito y el continuo quedan intactos.
+    assert_eq!(eval_full("limit(x*sin(1/x), x, 0)").0, "0");
+    assert_eq!(eval_full("limit(sin(x)/x, x, 0)").0, "1");
+    let (r, w) = eval_full("limit(abs(x)/x, x, 0)");
+    assert_eq!(r, "undefined");
+    assert!(w.contains("one-sided limits disagree"));
+    assert_eq!(eval_full("limit(sin(1/x), x, infinity)").0, "0");
+    assert_eq!(eval_full("limit(sin(x), x, 0)").0, "0");
+}
+
+#[test]
 fn test_eval_gaussian_surd_modulus() {
     // Tanda-3 ciclo 2: |a+b·i| con componentes reales DECIDIBLES (provable_const_sign
     // — surds, e/π; la disciplina V0 hace declinar los símbolos). Cierra la familia

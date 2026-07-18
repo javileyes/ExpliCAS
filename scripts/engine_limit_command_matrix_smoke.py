@@ -2643,20 +2643,23 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
         presentation_regime="infinity",
     ),
     LimitCommandMatrixCase(
+        # GRADUADO 2026-07-18 (tanda-3, oscilación): la no-existencia ahora se
+        # PRUEBA desde la divergencia del argumento interior — undefined con
+        # motivo de oscilación, en vez del residual genérico que este caso
+        # pineaba como mejor-answer-de-entonces.
         name="finite_oscillating_outer_even_pole_residual",
         expr="limit(cos(1/x^2), x, 0)",
-        expected_result="limit(cos(1 / x^2), x, 0)",
+        expected_result="undefined",
         expected_required_display=("x ≠ 0",),
-        expected_warning_substrings=("Finite point limits are not supported safely yet",),
+        expected_warning_substrings=("OSCILLATES",),
         expected_step_substrings=("Conservar límite residual",),
         family="even_saturating_composition",
         point_regime="finite",
-        domain_regime="oscillatory_no_limit_residual",
+        domain_regime="oscillatory_no_limit_dne",
         required_condition_regime="finite_source_definedness",
-        outcome="residual",
-        residual_cause="finite_oscillatory_no_infinitesimal",
+        outcome="undefined",
         trace_regime="finite_residual_policy",
-        presentation_regime="residual",
+        presentation_regime="undefined",
     ),
     LimitCommandMatrixCase(
         name="infinity_bounded_over_divergent_domain_conflict_residual",

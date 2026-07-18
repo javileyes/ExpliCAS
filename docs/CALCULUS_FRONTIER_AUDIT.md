@@ -1363,7 +1363,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   funciones desconocidas; necesita soporte de funciones simbólicas)*
 - [ ] **(F) Diagnóstico de no-existencia en límites**: `sin(1/x)` en 0
   y laterales discrepantes deberían reportar "no existe" con motivo,
-  *(re-audit 2026-07-18: la mitad de laterales discrepantes YA reporta 'does not exist' con ambos valores como motivo (`abs(x)/x`, `1/x`, `e^(1/x)` en 0); VIVO solo el diagnóstico de oscilación (`sin(1/x)`))*
+  *(re-audit 2026-07-18: la mitad de laterales discrepantes YA reporta 'does not exist' con ambos valores como motivo (`abs(x)/x`, `1/x`, `e^(1/x)` en 0); VIVO solo el diagnóstico de oscilación (`sin(1/x)`))* *(graduado 2026-07-18, hash en el ledger: sin/cos/tan(g) con lateral de g probadamente ±∞ → undefined + motivo de OSCILACIÓN; el item queda COMPLETO)*
   no un residual genérico.
 
 ### P3 — educativo transversal

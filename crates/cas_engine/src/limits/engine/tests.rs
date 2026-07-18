@@ -368,7 +368,17 @@ fn bilateral_combiner_never_touches_domain_boundaries_or_oscillation() {
     );
     let ln = bilateral(&mut ctx, "ln(x)", "0");
     assert!(is_residual_limit(&ctx, ln.expr));
-    // Oscillation: neither lateral exists.
+    // Oscillation: neither TRIG lateral exists, so the combiner still declines —
+    // but the dedicated oscillation checker (tanda-3) now proves DNE from the
+    // inner argument's divergence: undefined with the oscillation motive, no
+    // longer the generic residual.
     let osc = bilateral(&mut ctx, "sin(1/x)", "0");
-    assert!(is_residual_limit(&ctx, osc.expr));
+    assert!(matches!(
+        ctx.get(osc.expr),
+        cas_ast::Expr::Constant(cas_ast::Constant::Undefined)
+    ));
+    assert!(osc
+        .warning
+        .as_deref()
+        .is_some_and(|w| w.contains("OSCILLATES")));
 }

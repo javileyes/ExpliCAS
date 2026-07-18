@@ -10259,6 +10259,54 @@ fn classify_lateral_limit_result(ctx: &Context, expr: ExprId) -> Option<LateralL
     }
     Some(LateralLimitClass::Finite(expr))
 }
+/// DNE by OSCILLATION: the WHOLE limit target is a bare `sin/cos/tan(g)` and a
+/// lateral limit of the inner `g` at the point classifies as ±∞ — the trig of an
+/// argument racing to ±∞ oscillates forever on that side (bounded for sin/cos,
+/// pole-riddled for tan), so no lateral limit exists there and the bilateral
+/// limit DOES NOT EXIST, unconditionally. Only the bare composition: a
+/// bounded-oscillating FACTOR (`x·sin(1/x)`) belongs to the squeeze machinery
+/// and resolves before this. Conservative: if neither lateral of `g` proves
+/// infinite, decline — never fabricate a DNE from an unproven divergence.
+fn try_dne_by_oscillation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<LimitEvalOutcome> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(*fn_id)?;
+    let fname = match builtin {
+        BuiltinFn::Sin => "sin",
+        BuiltinFn::Cos => "cos",
+        BuiltinFn::Tan => "tan",
+        _ => return None,
+    };
+    let inner = args[0];
+    let classify_side = |ctx: &mut Context, side: FiniteLimitSide| {
+        try_limit_rules_at_finite_one_sided(ctx, inner, var, point, side)
+            .and_then(|l| classify_lateral_limit_result(ctx, l))
+    };
+    let left = classify_side(ctx, FiniteLimitSide::Left);
+    let right = classify_side(ctx, FiniteLimitSide::Right);
+    use LateralLimitClass::{NegInfinity, PosInfinity};
+    let side = match (left, right) {
+        (Some(PosInfinity | NegInfinity), Some(PosInfinity | NegInfinity)) => "both sides",
+        (Some(PosInfinity | NegInfinity), _) => "the left side",
+        (_, Some(PosInfinity | NegInfinity)) => "the right side",
+        _ => return None,
+    };
+    Some(LimitEvalOutcome {
+        expr: ctx.add(Expr::Constant(Constant::Undefined)),
+        warning: Some(format!(
+            "the limit does not exist: {fname}(u) OSCILLATES — its inner argument diverges to ±∞ on {side} of the point, and {fname} has no limit at ±∞"
+        )),
+    })
+}
 
 /// Try to settle a BILATERAL finite-point limit from its two one-sided
 /// limits. Returns `Some` only when both laterals compute to classifiable
@@ -10394,6 +10442,13 @@ pub fn eval_limit_at_infinity(
         if let Some(outcome) =
             try_bilateral_limit_from_lateral_agreement(ctx, simplified_expr, var, point)
         {
+            return outcome;
+        }
+        // DNE by oscillation (the frontier-audit item narrowed 2026-07-18 to
+        // exactly this): the laterals combiner above declines on `sin(1/x)`
+        // because the trig lateral itself never computes — but the INNER
+        // argument's divergence is provable, and that alone decides.
+        if let Some(outcome) = try_dne_by_oscillation(ctx, simplified_expr, var, point) {
             return outcome;
         }
     }
