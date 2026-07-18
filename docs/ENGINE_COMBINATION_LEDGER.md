@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 629 (newest first)
+Active entries: 630 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -134,6 +134,7 @@ Active entries: 629 (newest first)
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_trig_complex_angle_sum`: 4 brazos... | CAPACIDAD (tanda-3 · ciclo 1: suma de ángulos compleja): `sin(1+i)` → forma cartesiana exacta — el trig complejo elemental queda completo
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_surd_abs` sobre `split_i... | CAPACIDAD (tanda-3 · ciclo 2: módulo Gaussiano-surd): `|1/2 + i·√3/2| → 1` — la familia π-racional cierra por la vía surd
 - 2026-07-18 | `retained` | `cas_math/limits_support.rs` (`try_dne_by_oscillation`: sin/cos/tan(g) desnud... | HONESTIDAD+EDUCATIVO (tanda-3 · ciclo 3: oscilación en límites): `limit(sin(1/x), x, 0)` → no-existencia CON MOTIVO — el item del frontier-audit queda completo
+- 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher compartido `match_cis` EXTRAÍDO de try... | CAPACIDAD (tanda-3 · ciclo 4: recíproco cis): `e^(-i·x)` → `cos(x) − i·sin(x)` — el último residual nombrado de B2 cierra
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20553,3 +20554,17 @@ Active entries: 629 (newest first)
   - retained learning:
   - **Cuando el veredicto del compuesto no computa, pregunta por el veredicto del ARGUMENTO**: la no-existencia de sin(g) es decidible desde la divergencia de g — reutilizar el clasificador de laterales sobre el subárbol convierte un residual genérico en un diagnóstico probado, sin maquinaria nueva.
   - PRÓXIMO PELDAÑO: tanda-3 ciclo 4 — decidir entre `e^(-ix)` recíproco (presentación compleja) y sinh↔exp (graduaría el fixture never-confirm) con sondeo.
+
+## 2026-07-18 - CAPACIDAD (tanda-3 · ciclo 4: recíproco cis): `e^(-i·x)` → `cos(x) − i·sin(x)` — el último residual nombrado de B2 cierra
+
+- area: `cas_math/complex_support.rs` (matcher compartido `match_cis` EXTRAÍDO de try_match_unimodular_abs — ahora con signo — + `try_rewrite_reciprocal_cis`) + `cas_engine/rules/complex.rs` (`ReciprocalCisRule`, 22ª hermana gateada) + visible names es/en + contract e2e
+- status: `retained`. Tanda-3 ciclo 4/4 (residual B2 `963ce8656`: "e^(-i·x) queda 1/(cos x+i·sin x) — recíproco pre-Euler").
+- capture:
+  - investment_class: capacidad Fase-2 (frente complejo — la forma cartesiana del exponencial imaginario negativo, textbook).
+  - cell: `e^(-i·x)→cos(x)−i·sin(x)` (y `exp(-i·x)`); numeradores generales `2/(cos+i·sin)→2·cos−2i·sin`; denominador conjugado voltea el signo (`1/(cos−i·sin)→cos+i·sin`); constantes conservan sus dueños (`e^(-iπ/3)` cartesiano exacto, `e^(-2i)` vía Euler+match). Identidad ENTERA (cis·cis̄ = cos²+sin² = 1 en TODO ℂ — la pitagórica es entera): u simbólica sin guard, el mismo criterio puente/suma-de-ángulos. Pins: Euler directo, unimodularidad (sobre el matcher REFACTORIZADO — cero regresión), denominador no-cis intacto, real mode gated.
+  - diagnóstico de la causa raíz (2 min de traza): la canonicalización de exponente negativo convierte `e^(-ix)` en `1/e^(ix)` ANTES de que Euler dispare — Euler expandía solo el denominador y el recíproco quedaba varado; el fix vive en el CONSUMIDOR del cociente (regla nueva), no en re-ordenar Euler vs canonicalización (ping-pong garantizado).
+  - refactor extraer-antes-de-duplicar: el matcher cis de la unimodularidad se generalizó a `match_cis(→ (θ, signo))` y ambas consumidoras comparten — el segundo consumidor pagó la extracción exactamente como manda la estrategia de cohesión.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Cuando una canonicalización re-forma el input antes de tu regla insignia, añade el consumidor de la forma canonicalizada — no pelees el orden**: `1/e^(ix)` era la forma REAL que llegaba al pipeline; una regla para ESA forma cierra el residual sin tocar Euler ni la canonicalización (cero riesgo de churn).
+  - **TANDA-3 COMPLETA (4/4, 0 rechazos).** Frente complejo: los residuales nombrados de B2/B4b quedan TODOS cerrados (suma-de-ángulos, módulo surd, recíproco cis; el trig complejo elemental completo). RESIDUALES vivos con dueño: sinh↔exp con argumento CONSTANTE en equiv (el simbólico ya confirma — graduaría el fixture sin(i)), `|i|` anidado en Mul (split multiplicativo de abs), tri-estado wire equiv, quirk sqrt-radicando-solitario, roots-of-unity solve, y las 4 preguntas abiertas del scoping vectorial al usuario.

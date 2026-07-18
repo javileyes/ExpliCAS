@@ -132,8 +132,18 @@ pub fn try_match_unimodular_abs(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if ctx.builtin_of(*fn_id) != Some(BuiltinFn::Abs) || args.len() != 1 {
         return None;
     }
-    let (l, r) = match ctx.get(args[0]) {
-        Expr::Add(l, r) | Expr::Sub(l, r) => (*l, *r),
+    match_cis(ctx, args[0]).map(|(theta, _)| theta)
+}
+
+/// Match the cis form `cos θ ± i·sin θ` and return `(θ, imag_sign)` with
+/// `imag_sign = +1` for `+i·sin θ` and `-1` for the conjugate. θ must be the
+/// SAME node in both trig arguments (hash-consing ⇒ ExprId equality). Accepts
+/// either Add order, `i` on either side of the Mul, Sub, and a Neg-wrapped
+/// imaginary term. Shared by the unimodular-abs and reciprocal-cis rules.
+pub fn match_cis(ctx: &Context, expr: ExprId) -> Option<(ExprId, i8)> {
+    let (l, r, base_sign) = match ctx.get(expr) {
+        Expr::Add(l, r) => (*l, *r, 1i8),
+        Expr::Sub(l, r) => (*l, *r, -1i8),
         _ => return None,
     };
 
@@ -145,12 +155,12 @@ pub fn try_match_unimodular_abs(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             _ => None,
         }
     }
-    fn i_sin_arg(ctx: &Context, e: ExprId) -> Option<ExprId> {
-        // The sign of the imaginary term is irrelevant for the modulus
-        // (`|cos θ − i·sin θ| = |cos θ + i·sin θ|`): peel a Neg wrapper.
-        let e = match ctx.get(e) {
-            Expr::Neg(inner) => *inner,
-            _ => e,
+    fn i_sin_arg(ctx: &Context, e: ExprId) -> Option<(ExprId, bool)> {
+        // Report a Neg wrapper as a sign flip (the unimodular consumer ignores it —
+        // the modulus is sign-blind — but the reciprocal-cis consumer needs it).
+        let (e, negated) = match ctx.get(e) {
+            Expr::Neg(inner) => (*inner, true),
+            _ => (e, false),
         };
         let Expr::Mul(x, y) = ctx.get(e) else {
             return None;
@@ -164,21 +174,26 @@ pub fn try_match_unimodular_abs(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         };
         let is_i = |ctx: &Context, e: ExprId| matches!(ctx.get(e), Expr::Constant(Constant::I));
         if is_i(ctx, x) {
-            return sin_of(ctx, y);
+            return sin_of(ctx, y).map(|t| (t, negated));
         }
         if is_i(ctx, y) {
-            return sin_of(ctx, x);
+            return sin_of(ctx, x).map(|t| (t, negated));
         }
         None
     }
 
-    let (theta_cos, theta_sin) = if let Some(tc) = cos_arg(ctx, l) {
-        (tc, i_sin_arg(ctx, r)?)
+    let (theta_cos, theta_sin, sign) = if let Some(tc) = cos_arg(ctx, l) {
+        let (ts, neg) = i_sin_arg(ctx, r)?;
+        (tc, ts, if neg { -base_sign } else { base_sign })
     } else {
-        let ts = i_sin_arg(ctx, l)?;
-        (cos_arg(ctx, r)?, ts)
+        // sin-term first only occurs in the Add order (Sub keeps cos on the left).
+        if base_sign < 0 {
+            return None;
+        }
+        let (ts, neg) = i_sin_arg(ctx, l)?;
+        (cos_arg(ctx, r)?, ts, if neg { -1 } else { 1 })
     };
-    (theta_cos == theta_sin).then_some(theta_cos)
+    (theta_cos == theta_sin).then_some((theta_cos, sign))
 }
 
 pub fn extract_gaussian(ctx: &Context, expr: ExprId) -> Option<GaussianRational> {
@@ -865,6 +880,41 @@ pub fn try_rewrite_gaussian_surd_abs(
     Some((
         ctx.call_builtin(BuiltinFn::Sqrt, vec![sum]),
         "módulo del gaussiano con componentes reales decidibles: |a+b·i| = √(a²+b²)",
+    ))
+}
+
+/// Reciprocal of a cis form: `n / (cos u ± i·sin u) → n·(cos u ∓ i·sin u)` — an
+/// ENTIRE identity for arbitrary complex `u` ((cos z + i·sin z)(cos z − i·sin z)
+/// = cos²z + sin²z = 1 identically, the Pythagorean identity is entire), so no
+/// realness guard. Closes the `e^(-i·x)` residual: the negative-exponent
+/// canonicalization turns it into `1/e^(ix)` BEFORE Euler fires, and Euler then
+/// expands only the denominator. ONE-DIRECTION.
+pub fn try_rewrite_reciprocal_cis(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, &'static str)> {
+    let (numer, denom) = match ctx.get(expr) {
+        Expr::Div(n, d) => (*n, *d),
+        _ => return None,
+    };
+    let (theta, sign) = match_cis(ctx, denom)?;
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let cos_t = ctx.call_builtin(BuiltinFn::Cos, vec![theta]);
+    let sin_t = ctx.call_builtin(BuiltinFn::Sin, vec![theta]);
+    let i_sin = ctx.add(Expr::Mul(i, sin_t));
+    let conj = if sign > 0 {
+        ctx.add(Expr::Sub(cos_t, i_sin))
+    } else {
+        ctx.add(Expr::Add(cos_t, i_sin))
+    };
+    let out = if crate::expr_predicates::is_one_expr(ctx, numer) {
+        conj
+    } else {
+        ctx.add(Expr::Mul(numer, conj))
+    };
+    Some((
+        out,
+        "recíproco de cis: 1/(cos u ± i·sen u) = cos u ∓ i·sen u (módulo cis·cis̄ = 1, identidad entera)",
     ))
 }
 

@@ -2484,6 +2484,48 @@ fn test_eval_limit_oscillation_dne() {
 }
 
 #[test]
+fn test_eval_reciprocal_cis() {
+    // Tanda-3 ciclo 4: n/(cos u ± i·sin u) → n·(cos u ∓ i·sin u) — identidad ENTERA
+    // (cis·cis̄ = cos²+sin² = 1 en todo ℂ), sin guard de realidad. Cierra el residual
+    // B2: la canonicalización de exponente negativo convertía e^(-ix) en 1/e^(ix)
+    // ANTES de Euler, y Euler expandía solo el denominador.
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(rc("e^(-i*x)"), "cos(x) - i·sin(x)");
+    assert_eq!(rc("exp(-i*x)"), "cos(x) - i·sin(x)");
+    assert_eq!(rc("1/(cos(x)+i*sin(x))"), "cos(x) - i·sin(x)");
+    assert_eq!(rc("2/(cos(x)+i*sin(x))"), "2·cos(x) - 2·i·sin(x)");
+    assert_eq!(rc("1/(cos(x)-i*sin(x))"), "cos(x) + i·sin(x)");
+    // Pins: Euler directo intacto; la unimodularidad sigue viva sobre el matcher
+    // compartido refactorizado; denominador no-cis intacto; real mode gated.
+    assert_eq!(rc("e^(i*x)"), "cos(x) + i·sin(x)");
+    assert_eq!(rc("abs(e^(2*i))"), "1");
+    assert_eq!(rc("1/(cos(x)+sin(x))"), "1 / (sin(x) + cos(x))");
+    assert_eq!(r("e^(-i*x)"), "1 / e^(i·x)");
+}
+
+#[test]
 fn test_eval_gaussian_surd_modulus() {
     // Tanda-3 ciclo 2: |a+b·i| con componentes reales DECIDIBLES (provable_const_sign
     // — surds, e/π; la disciplina V0 hace declinar los símbolos). Cierra la familia
