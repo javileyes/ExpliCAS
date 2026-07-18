@@ -13,6 +13,7 @@ Abrir este frente gradúa la mitad **vectorial** de la Fase 2 (la mitad compleja
 ---
 
 ## La frontera exacta (probes verificados en vivo, HEAD `d709006d8`)
+*(re-audit 2026-07-18: TABLA sustancialmente CERRADA por la tanda V0-V7a/b (norm-complex, diff/integrate componentwise, steps-bajo-Matrix, los 6 verbos, matmul, abs-vector, equiv-brackets — ver ☑ por sub-ciclo); las filas SCOPE-OUT siguen declinando como exige el contrato, verificado)*
 
 > Cada fila sondeada con `./target/release/cas_cli eval "…"`. Los ✅ son la máquina reusable; cada ❌ lleva su **punto de decline** exacto.
 
@@ -167,6 +168,7 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 
 #### ☐ V8 — pulido narración/display **[S]**
 - **Gradúa:** substeps de los verbos con notación ∂ (`\partial` NUEVO en el formatter, SOLO dentro de la narración de verbos — el render global de `diff` no cambia sin decisión del usuario, ver Preguntas abiertas); fix del display `diff` 3+ args (hoy `input_latex` de `diff(f,x,y)` muestra `\frac{d}{dx}(f)` dropeando la `y` — engañoso); localización es/en repasada; `help_topics` con los 6 verbos.
+*(re-audit 2026-07-18: display 3+ args ARREGLADO tanda-2 ciclo 5 (forma neutral `d^n`, denominador derecha-a-izquierda, 2-args byte-idéntico) + help_topics con los 6 verbos; V8 queda reducido a la decisión ∂ (pregunta abierta #3) y repaso de localización)*
 - **Justificación del deferral del display 3-args (decisión explícita, no omisión):** es un WRONG de display sobre capacidad ya en producción, pero (1) ninguna capacidad del frente depende de él, (2) el fix toca los dos sitios duplicados de `latex_core` — la MISMA zona que la decisión ∂ pendiente del usuario — y hacerlo en V8 evita abrir `latex_core` dos veces con la decisión a medias, y (3) el valor emitido es correcto (el engaño es solo del eco LaTeX del input). Si la decisión ∂ se resolviera antes, el fix puede adelantarse a cualquier ciclo B sin dependencias.
 - **Inserción:** `latex_core.rs:882‑886` **Y su DUPLICADO `:2482‑2486`** (mover JUNTOS o divergen); claves locale; `help_topics.rs`.
 - **Blast:** **BAJO** (display/didáctica; huella NONE sobre resultados). Trampa: los dos sitios duplicados.

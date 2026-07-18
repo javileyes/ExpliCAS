@@ -116,6 +116,7 @@ Phase status (2026-06-10):
   `general_integration_backend/verification*.rs`)
 - Phase 3: done (rational/Hermite/heurisch probes via shared probe runner)
 - Phase 4: in progress (Hermite positive-quadratic regime grid and two
+*(re-audit 2026-07-18: el workstream RACIONAL de Phase 4 está COMPLETO con la clausura universal LRT/root_sum (G1 cerrado); lo restante de Phase 4, si algo, es heurística transcendental)*
   rational families promoted 2026-06-10: multi-quadratic partial fractions,
   then general-degree rational integration via Ostrogradsky-Horowitz reduction
   with rational-root/biquadratic splitting — denominators of degree 3..=8,
@@ -144,7 +145,9 @@ Phase status (2026-06-10):
   standalone subresultant-PRS + Rothstein-Trager resultant primitive over Q[t]
   (`subresultant_prs.rs`), pinned against SymPy; E-ii (driver + Rioboo real
   render) and E-iii (wiring/gating) remain, with non-solvable factors (S_5)
+  *(re-audit 2026-07-18: SUPERADO — Cap.E cerró 2026-07-16 (E-i…E-iv): `1/(x^3-x-1)`, `1/(x^4+x+1)`, `1/(x^7-1)` devuelven root_sum cerrados aceptados con approx()/definidas operativas)*
   gated to honest residual)
+  *(re-audit 2026-07-18: las quínticas S_5 ya NO se gatean a residual: root_sum evita la resolubilidad por radicales — `1/(x^5-x-1)` recibe antiderivada cerrada)*
 - Phase 5: partial (mode-boundary lane exists; trace policy summarized)
 - Phase 6: started 2026-06-11 (didactic elevation; first candidate Hermite positive
   quadratic)

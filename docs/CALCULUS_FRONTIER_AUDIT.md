@@ -979,11 +979,13 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [ ] **(A) Pre-simplificador vs integrador**: reescribe
   `1/(sqrt(x)*(1+x))` a `(x^(3/2)-x^(1/2))/(x^3-x)` y `cos(5x)` a
   Chebyshev en cos(x), destruyendo la sustitución obvia
+  *(re-audit 2026-07-18: estrechado — Fourier `sin(3x)cos(5x)[-π,π]=0` y `cos(5x)` resueltos; la indefinida `1/(√x(1+x))→2·arctan(√x)` funciona; VIVO solo la definida `∫₀^∞ 1/(√x(1+x))=π` (residualiza en forma pre-simplificada))*
   (`[0,∞) = π`) y la ortogonalidad de Fourier `sin(3x)cos(5x)
   [-π,π] = 0`. Integrar sobre la forma original primero, o enseñar al
   integrador las formas reescritas (precedente: reconocedor Chebyshev
   del ledger 2026-06-12). Ejemplo vivo adicional:
   `integrate(sec(x)^2 + 1, x)` se vuelve residual porque el
+  *(re-audit 2026-07-18: ya NO residual — resuelve vía Weierstrass aunque en forma no-canónica (wart cosmético, no residual))*
   pre-simplificador lo machaca a `(2cos²−1+3)/(2cos²)`.
 - [~] **(F) Detección estructural sin antiderivada**: imparidad en
   `[-a,a]` para integrandos no elementales (`sin(x)/(1+x^2) [-1,1] =
@@ -1098,6 +1100,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
 - [ ] **(F) Residuales con motivo**: 'Conservar integral residual' no
   distingue "no elemental (necesitaría erf/Si/Ei)" de "el motor aún
   no lo soporta" (`sqrt(1-x²)`, `|x|`, `1/(x⁴+1)` son elementales y
+  *(re-audit 2026-07-18: los 3 ejemplos integran hoy; el item sigue vivo por su núcleo — el paso 'Conservar integral residual' aún no distingue motivo (soportable-pendiente vs no-elemental); ejemplos vigentes: `∫|eˣ−2|` vs `e^(-x²)`)*
   quedan igual que `e^(-x²)`). Campo de motivo como el warning de
   límites.
 - [~] **(F) Cuárticas+ irreducibles**: `1/(x^4+1)`, `1/(x^6-1)` —
@@ -1360,6 +1363,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   funciones desconocidas; necesita soporte de funciones simbólicas)*
 - [ ] **(F) Diagnóstico de no-existencia en límites**: `sin(1/x)` en 0
   y laterales discrepantes deberían reportar "no existe" con motivo,
+  *(re-audit 2026-07-18: la mitad de laterales discrepantes YA reporta 'does not exist' con ambos valores como motivo (`abs(x)/x`, `1/x`, `e^(1/x)` en 0); VIVO solo el diagnóstico de oscilación (`sin(1/x)`))*
   no un residual genérico.
 
 ### P3 — educativo transversal
@@ -1412,6 +1416,7 @@ Clase I = grado investigación / Deferred Horizons (no es un ciclo).
   los OTROS sub-items: `--steps` en modo texto, `+C` en antiderivadas, y los artefactos
   `ln(e)`/`x^(2-1)` en substeps de derivadas anidadas.)*
 - [ ] **(F) Etiquetas legibles en pre-cálculo**: `factor(x^2-9)` narra
+*(re-audit 2026-07-18: las etiquetas citadas ya están localizadas ('Factorizar el polinomio', 'Evaluar la operación solicitada'); el item sigue vivo por su ask real: nombrar la TÉCNICA concreta (diferencia de cuadrados, cubo de binomio))*
   "Factor Polynomial" sin diferencia de cuadrados;
   `expand((x+2)^3)` narra "Evaluate Meta Functions".
 - [~] **(F) Cosmético diff**: `e^(3x^2)/e^(4x^2)` no se combina a
@@ -1457,6 +1462,7 @@ verificadas + integración definida racional/valor-absoluto). Ordenados por valo
 
 - [ ] **(F) Inecuación racional con bordes surd de orden ≥3** (`1/x⁴ > 1/4 → ±4^(1/4)`,
   `2/x³ > -1 → −2^(1/3)`): hoy el hook verificado del ciclo 1 DECLINA estos (su certificador
+  *(re-audit 2026-07-18: GRADUADO en silencio — 5/5 probes de inecuaciones recíprocas con bordes surd de orden ≥3 correctos y exactos (`solve(1/x^4>1/4)`, `solve(2/x^3>-1)`, …); el claim de wrong-answer ya no dirige selección)*
   solo ordena racionales y surds cuadráticos) y caen al fallback pre-existente, que da
   wrong-answer. Necesita extender `compare_values` (cas_solver_core) a la ordenación exacta
   de `q·p^(e)` (raíces k-ésimas) y enhebrar la misma comparación en el verificador del hook.

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 625 (newest first)
+Active entries: 626 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -130,6 +130,7 @@ Active entries: 625 (newest first)
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`split_pure_imaginary` público sobre split_i_f... | CAPACIDAD (tanda-2 · ciclo 3: trig-de-i): el puente entero trig↔hiperbólico de argumento imaginario + brazos sinh/cosh/tanh en el walker complejo
 - 2026-07-18 | `retained` | `cas_didactic/visible_rule_names.rs` (21 entradas es + 21 en: las 19 hermanas... | EDUCATIVO (tanda-2 · ciclo 4: C2 localización): los 21 nombres de regla del frente complejo llegan al wire en es/en — la barra baja elevada
 - 2026-07-18 | `retained` | `cas_formatter/latex_core.rs` (helper compartido `diff_operator_latex` + pars... | PRESENTACIÓN (tanda-2 · ciclo 5: display diff multi-var + help): el input_latex de `diff(f,x,y)` deja de DROPEAR variables — forma neutral que no prejuzga ∂
+- 2026-07-18 | `retained` | docs-only (sin huella): `CALCULUS_FRONTIER_AUDIT.md` (6 anotaciones + 1 check... | META-MANTENIMIENTO A (tanda-2 · ciclo 6: audit de veracidad de docs): 20 claims stale corregidos en 4 fuentes de verdad — incl. una familia P0 graduada en silencio
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20498,3 +20499,14 @@ Active entries: 625 (newest first)
   - retained learning:
   - **Dos brazos duplicados se protegen con UNA lógica y render inyectado**: `diff_tail_pairs` recibe el renderer como closure — los brazos no pueden divergir en el parsing aunque cada uno renderice con su mecanismo (expr_to_latex vs render_with_path); la versión display del "chokepoint > parche por caso".
   - PRÓXIMO PELDAÑO: tanda-2 ciclo 6 — **meta-mantenimiento A** (audit de veracidad de docs tras ~13 ciclos de graduaciones: CALCULUS_FRONTIER_AUDIT / roadmap items secretamente graduados, workflow READ-ONLY, docs-only).
+
+## 2026-07-18 - META-MANTENIMIENTO A (tanda-2 · ciclo 6: audit de veracidad de docs): 20 claims stale corregidos en 4 fuentes de verdad — incl. una familia P0 graduada en silencio
+
+- area: docs-only (sin huella): `CALCULUS_FRONTIER_AUDIT.md` (6 anotaciones + 1 checkbox [x]), `GENERAL_INTEGRATION_BACKEND_ROADMAP.md` (3), `FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (9), `FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (2) — todas como `*(re-audit 2026-07-18: …)*` aditivas; logs históricos INTACTOS
+- status: `retained` (meta-ciclo de higiene, workflow READ-ONLY de 3 auditores probando el CLI; journal `wf_0dc4d156-41c`). Disparador: ~14 ciclos de graduaciones desde el último barrido (2026-07-15).
+- capture:
+  - hallazgos mayores: (1) **familia de inecuaciones recíprocas con bordes surd ≥3 GRADUADA EN SILENCIO** (5/5 probes correctos; el claim de wrong-answer del frontier-audit llevaba muerto desde la tanda radicales+recíprocos 2026-07-08 — un P0 fantasma que habría podido dirigir un ciclo entero); (2) el roadmap aún decía "E-ii/E-iii remain, S_5 gated to residual" — Cap.E cerró 2026-07-16 y las quínticas S_5 reciben root_sum cerrado; (3) el probe emblemático del CHOKEPOINT-B complejo (`(x+i)(x-i)≡x²+1`) YA confirma en vivo — A3 queda casi vacío; (4) 3 items del frontier-audit con TODOS sus ejemplos resueltos pero el núcleo vivo (residual-sin-motivo, oscilación, técnica-sin-nombre) — estrechados, no cerrados; (5) los residuales de la tanda de HOY reflejados el mismo día (los scopings no acumulan deuda).
+  - retained learning:
+  - **Un P0 fantasma en la cola es tan caro como un P0 real**: el claim de inecuaciones recíprocas habría ganado la selección de candidato por precedencia P0 y quemado un ciclo en redescubrir que ya funciona — el barrido periódico ES parte del pipeline de selección, no cosmética.
+  - **Estrechar ≠ cerrar**: 3 items sobrevivieron con todos sus ejemplos falsificados porque su NÚCLEO (el ask real) sigue vivo — el audit reescribe los ejemplos y conserva el item; cerrar por "los ejemplos pasan" habría perdido el gap real.
+  - TANDA-2 COMPLETA (6/6, 0 rechazos). PRÓXIMO PELDAÑO recomendado: los residuales frescos con dueño — `e^(-ix)` recíproco, suma-de-ángulos compleja (`sin(1+i)`), sinh↔exp fold (graduaría el fixture `sin(i)`), oscilación en límites, módulo Gaussiano-surd; o resolver con el usuario las 4 preguntas abiertas del scoping vectorial (desbloquean V8/V7d y el cierre formal del frente).
