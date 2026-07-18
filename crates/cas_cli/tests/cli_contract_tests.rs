@@ -2484,6 +2484,51 @@ fn test_eval_limit_oscillation_dne() {
 }
 
 #[test]
+fn test_eval_solve_critical_points() {
+    // Cierre vectorial · V7d (decisión del usuario): los diff inline se pre-evalúan
+    // en el path de solve_system (con fold numérico de los artefactos x^(2-1)), así
+    // que el flujo de puntos críticos con gradiente LINEAL resuelve one-shot; el
+    // no-lineal sigue declinando honesto (scope-out: Gröbner = mate-nueva).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve([diff(x^2+y^2-2*x-4*y, x)=0, diff(x^2+y^2-2*x-4*y, y)=0], [x,y])"),
+        "{ x = 1, y = 2 }"
+    );
+    // Sistema acoplado (parciales cruzadas): ∇(x²+xy+y²−3x) = 0 → (2, −1).
+    assert_eq!(
+        r("solve([diff(x^2+x*y+y^2-3*x, x)=0, diff(x^2+x*y+y^2-3*x, y)=0], [x,y])"),
+        "{ x = 2, y = -1 }"
+    );
+    // El flujo curricular COMPLETO compone: clasificación en el crítico hallado.
+    assert_eq!(
+        r("subs(subs(det(hessian(x^2+y^2-2*x-4*y,[x,y])), x, 1), y, 2)"),
+        "4"
+    );
+    // Pins: lineal puro intacto; gradiente NO-lineal declina honesto.
+    assert_eq!(r("solve([x+y=3, x-y=1], [x,y])"), "{ x = 2, y = 1 }");
+    let out = cli()
+        .args([
+            "eval",
+            "solve([diff(x^3+y^3-3*x*y, x)=0, diff(x^3+y^3-3*x*y, y)=0], [x,y])",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let text =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    assert!(
+        text.contains("non-linear") || text.contains("degree > 1"),
+        "el gradiente no-lineal debe declinar honesto, got: {text}"
+    );
+}
+
+#[test]
 fn test_eval_subs_inline() {
     // Cierre vectorial · pregunta abierta #2 (decisión del usuario): subs(expr, x, v)
     // — evaluación-en-punto inline, ORDER-SAFE por construcción (declina mientras el

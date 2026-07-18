@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 631 (newest first)
+Active entries: 632 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -136,6 +136,7 @@ Active entries: 631 (newest first)
 - 2026-07-18 | `retained` | `cas_math/limits_support.rs` (`try_dne_by_oscillation`: sin/cos/tan(g) desnud... | HONESTIDAD+EDUCATIVO (tanda-3 · ciclo 3: oscilación en límites): `limit(sin(1/x), x, 0)` → no-existencia CON MOTIVO — el item del frontier-audit queda completo
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher compartido `match_cis` EXTRAÍDO de try... | CAPACIDAD (tanda-3 · ciclo 4: recíproco cis): `e^(-i·x)` → `cos(x) − i·sin(x)` — el último residual nombrado de B2 cierra
 - 2026-07-18 | `retained` | `cas_engine/rules/functions.rs` (`SubsRule` en la familia meta + guard `conta... | CAPACIDAD (cierre vectorial · A: verbo `subs`): evaluación-en-punto inline ORDER-SAFE — plano tangente y clasificación de críticos one-shot
+- 2026-07-18 | `retained` | `cas_solver/linear_system_command_parse.rs` (pre-pass `pre_evaluate_inline_di... | CAPACIDAD (cierre vectorial · B: V7d): `solve([diff(f,x)=0, diff(f,y)=0], [x,y])` — el flujo de puntos críticos resuelve one-shot
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20582,3 +20583,17 @@ Active entries: 631 (newest first)
   - retained learning:
   - **Un guard de "espera a que el interior evalúe" convierte un orden-de-operaciones frágil en un invariante**: la trampa derivar/ligar no se documenta — se hace inexpresable; el mismo patrón (declinar mientras contenga X sin evaluar) sirvió en integrate componentwise y aquí.
   - PRÓXIMO PELDAÑO: cierre B — **V7d** (pre-evaluar diff en solve_system → flujo de puntos críticos con solve; decidido por el usuario: dentro del frente).
+
+## 2026-07-18 - CAPACIDAD (cierre vectorial · B: V7d): `solve([diff(f,x)=0, diff(f,y)=0], [x,y])` — el flujo de puntos críticos resuelve one-shot
+
+- area: `cas_solver/linear_system_command_parse.rs` (pre-pass `pre_evaluate_inline_diff_calls` bottom-up sobre las ecuaciones del spec + `fold_numeric_subtrees` vía `as_rational_const`) + contract e2e + fila examples.csv
+- status: `retained`. Ciclo B del cierre del frente vectorial (V7d, DECIDIDO por el usuario 2026-07-18: dentro del frente).
+- capture:
+  - investment_class: capacidad curricular (el flujo de puntos críticos era el único ítem del currículo elemental sin camino one-shot).
+  - cell: `solve([diff(x²+y²−2x−4y,x)=0, diff(...,y)=0],[x,y]) → {x=1, y=2}` (verificado: ∇f=(2x−2,2y−4)); sistema ACOPLADO `x²+xy+y²−3x → {x=2, y=−1}` (parciales cruzadas); **el flujo completo compone**: crítico por solve + clasificación por `subs(subs(det(hessian(f)),…))→4>0` ⇒ mínimo — los tres verbos del cierre (subs, V7d, hessian) juntos. Pins: lineal puro intacto, gradiente NO-lineal declina honesto con su mensaje propio ("degree > 1" — scope-out Gröbner respetado), 3-var intacto.
+  - **diagnóstico en 2 saltos con las lecciones de memoria**: (1) el primer error ("not a polynomial over Q") murió con el pre-pass del diff… y mutó a "non-integer or negative exponent" — la derivada CRUDA lleva `x^(2−1)` y multipoly rechaza exponentes no-literales; (2) la lección "`numeric_value` solo casa literales → `as_rational_const` para `x^(2-1)`" era EXACTAMENTE este caso: `fold_numeric_subtrees` pliega todo subárbol numéricamente cerrado a su racional exacto. Sin Simplifier en el path — ni falta: derivador y fold son funciones puras de cas_math.
+  - residual nombrado honesto: 3+-arg diff dentro de solve_system (orden superior/mixtas) sigue sin pre-evaluar; let-refs (`fx` de sesión) tampoco se expanden en este path — ambos con dueño en backlog (el segundo exige acceso al session store desde el parser del comando).
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Un pipeline sin Simplifier no está incompleto si las primitivas son funciones puras**: derivar + plegar constantes bastó — antes de enhebrar el Simplifier por N capas de firmas, pregunta si las funciones de cas_math ya cubren la transformación que el path necesita.
+  - PRÓXIMO PELDAÑO: cierre C — **∂ global multivariable** (decisión del usuario) + cierre FORMAL del frente (scoping ☑ completo, phases doc, contrato steps JSON/REPL-only documentado).

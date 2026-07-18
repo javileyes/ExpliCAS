@@ -44,8 +44,136 @@ pub(crate) fn parse_linear_system_spec(
     let var_parts = &parts[n..2 * n];
     let vars = vars::parse_linear_system_vars(var_parts)?;
     let exprs = equations::parse_linear_system_exprs(ctx, eq_parts)?;
+    // V7d (cierre vectorial, decisión del usuario 2026-07-18): pre-evaluate inline
+    // `diff(f, x)` calls BEFORE the multipoly conversion — the critical-points flow
+    // `solve([diff(f,x)=0, diff(f,y)=0], [x,y])` otherwise dies at "expression is
+    // not a polynomial over Q". A diff the support differentiator declines stays in
+    // place and fails conversion exactly as today (honest). Non-linear gradients
+    // keep declining downstream (scope-out).
+    let exprs = exprs
+        .into_iter()
+        .map(|e| pre_evaluate_inline_diff_calls(ctx, e))
+        .collect();
 
     Ok(LinearSystemSpec { exprs, vars })
+}
+
+/// Fold every numerically-closed subtree to a single exact `Number` node
+/// (`2-1` → `1`, `6-3·2` → `0`) via `as_rational_const` — the raw support
+/// derivative keeps power-rule artifacts whose non-literal exponents the
+/// multipoly conversion rejects (memoria: `numeric_value` solo casa literales).
+fn fold_numeric_subtrees(ctx: &mut Context, expr: ExprId) -> ExprId {
+    use cas_ast::Expr;
+    if !matches!(ctx.get(expr), Expr::Number(_)) {
+        if let Some(q) = cas_math::numeric_eval::as_rational_const(ctx, expr) {
+            return ctx.add(Expr::Number(q));
+        }
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(a, b) => {
+            let (a, b) = (fold_numeric_subtrees(ctx, a), fold_numeric_subtrees(ctx, b));
+            ctx.add(Expr::Add(a, b))
+        }
+        Expr::Sub(a, b) => {
+            let (a, b) = (fold_numeric_subtrees(ctx, a), fold_numeric_subtrees(ctx, b));
+            ctx.add(Expr::Sub(a, b))
+        }
+        Expr::Mul(a, b) => {
+            let (a, b) = (fold_numeric_subtrees(ctx, a), fold_numeric_subtrees(ctx, b));
+            ctx.add(Expr::Mul(a, b))
+        }
+        Expr::Div(a, b) => {
+            let (a, b) = (fold_numeric_subtrees(ctx, a), fold_numeric_subtrees(ctx, b));
+            ctx.add(Expr::Div(a, b))
+        }
+        Expr::Pow(a, b) => {
+            let (a, b) = (fold_numeric_subtrees(ctx, a), fold_numeric_subtrees(ctx, b));
+            ctx.add(Expr::Pow(a, b))
+        }
+        Expr::Neg(inner) => {
+            let inner = fold_numeric_subtrees(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Function(fn_id, args) => {
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|&a| fold_numeric_subtrees(ctx, a))
+                .collect();
+            ctx.add(Expr::Function(fn_id, new_args))
+        }
+        _ => expr,
+    }
+}
+
+/// Bottom-up rewrite of every 2-arg `diff(target, var)` node into its computed
+/// derivative via the shared support differentiator (no Simplifier available on
+/// this path — and none needed: the derivative machinery is a pure function).
+/// 3+-arg diff (higher-order/mixed) stays untouched — a named residual.
+fn pre_evaluate_inline_diff_calls(ctx: &mut Context, expr: ExprId) -> ExprId {
+    use cas_ast::Expr;
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) => {
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|&a| pre_evaluate_inline_diff_calls(ctx, a))
+                .collect();
+            let fn_name = ctx.sym_name(fn_id).to_string();
+            if fn_name == "diff" && new_args.len() == 2 {
+                if let Expr::Variable(v) = ctx.get(new_args[1]) {
+                    let var_name = ctx.sym_name(*v).to_string();
+                    if let Some(derived) = differentiate_symbolic_expr(ctx, new_args[0], &var_name)
+                    {
+                        // The raw derivative carries power-rule artifacts (`x^(2-1)`)
+                        // whose non-literal exponents the multipoly conversion rejects —
+                        // fold every numerically-closed subtree to its exact rational.
+                        return fold_numeric_subtrees(ctx, derived);
+                    }
+                }
+            }
+            ctx.add(Expr::Function(fn_id, new_args))
+        }
+        Expr::Add(a, b) => {
+            let (a, b) = (
+                pre_evaluate_inline_diff_calls(ctx, a),
+                pre_evaluate_inline_diff_calls(ctx, b),
+            );
+            ctx.add(Expr::Add(a, b))
+        }
+        Expr::Sub(a, b) => {
+            let (a, b) = (
+                pre_evaluate_inline_diff_calls(ctx, a),
+                pre_evaluate_inline_diff_calls(ctx, b),
+            );
+            ctx.add(Expr::Sub(a, b))
+        }
+        Expr::Mul(a, b) => {
+            let (a, b) = (
+                pre_evaluate_inline_diff_calls(ctx, a),
+                pre_evaluate_inline_diff_calls(ctx, b),
+            );
+            ctx.add(Expr::Mul(a, b))
+        }
+        Expr::Div(a, b) => {
+            let (a, b) = (
+                pre_evaluate_inline_diff_calls(ctx, a),
+                pre_evaluate_inline_diff_calls(ctx, b),
+            );
+            ctx.add(Expr::Div(a, b))
+        }
+        Expr::Pow(a, b) => {
+            let (a, b) = (
+                pre_evaluate_inline_diff_calls(ctx, a),
+                pre_evaluate_inline_diff_calls(ctx, b),
+            );
+            ctx.add(Expr::Pow(a, b))
+        }
+        Expr::Neg(inner) => {
+            let inner = pre_evaluate_inline_diff_calls(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        _ => expr,
+    }
 }
 
 pub(crate) fn parse_linear_system_invocation_input(line: &str) -> String {

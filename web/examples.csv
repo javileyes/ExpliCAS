@@ -181,3 +181,4 @@
 "Vectorial","diff([x^2, x^3], x, 2)","Derivada segunda componente a componente de un vector → [[2], [6·x]]"
 "Vectorial","subs(subs(diff(x^2*y,x), x, 1), y, 2)","Evaluación en punto SIN trampa de orden: subs deriva primero y liga después — ∂f/∂x en (1,2) → 4"
 "Vectorial","subs(subs(det(hessian(x^3+y^3-3*x*y,[x,y])), x, 1), y, 1)","Clasificación de puntos críticos one-shot: det(H) en (1,1) → 27 > 0 (mínimo local)"
+"Vectorial","solve([diff(x^2+y^2-2*x-4*y, x)=0, diff(x^2+y^2-2*x-4*y, y)=0], [x,y])","Puntos críticos one-shot: resolver ∇f = 0 como sistema → { x = 1, y = 2 }"
