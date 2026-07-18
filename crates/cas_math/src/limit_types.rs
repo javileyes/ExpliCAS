@@ -75,6 +75,11 @@ pub struct LimitOptions {
     pub aggressive: bool,
     /// Pre-simplification mode (default: Off).
     pub presimplify: PreSimplifyMode,
+    /// Whether the ambient value domain admits complex values. Every limit rule
+    /// reasons with the REAL order (signed infinities, laterals, monotone
+    /// saturation), which fabricates values in the complex plane, so a complex
+    /// domain declines at entry instead of running the rules.
+    pub complex_enabled: bool,
 }
 
 /// Result produced by pure limit evaluation.

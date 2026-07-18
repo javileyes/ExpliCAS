@@ -292,9 +292,9 @@ fn limit_domain_path_warning(
     var: ExprId,
     var_name: &str,
     approach: crate::limits::Approach,
+    value_domain: crate::semantics::ValueDomain,
 ) -> Option<DomainWarning> {
-    let input_domain =
-        crate::infer_implicit_domain(ctx, expr, crate::semantics::ValueDomain::RealOnly);
+    let input_domain = crate::infer_implicit_domain(ctx, expr, value_domain);
 
     let required = match approach {
         crate::limits::Approach::FiniteOneSided(point, side) => {
@@ -519,7 +519,11 @@ impl Engine {
         use crate::limits::{limit, LimitOptions};
 
         let var_id = self.simplifier.context.var(var);
-        let opts = LimitOptions::default();
+        let value_domain = options.shared.semantics.value_domain;
+        let opts = LimitOptions {
+            complex_enabled: value_domain != crate::semantics::ValueDomain::RealOnly,
+            ..LimitOptions::default()
+        };
         let mut budget = crate::budget::Budget::preset_cli();
 
         match limit(
@@ -596,8 +600,36 @@ impl Engine {
                         var_id,
                         var,
                         approach,
+                        value_domain,
                     ) {
                         warnings.push(warning);
+                    }
+                }
+                // A real-domain approach point containing the imaginary unit
+                // just declined at the engine's entry guard; surface the same
+                // escape hatch the simplify pipeline offers for `i` usage.
+                if value_domain == crate::semantics::ValueDomain::RealOnly {
+                    let approach_point = match approach {
+                        crate::limits::Approach::Finite(point)
+                        | crate::limits::Approach::FiniteOneSided(point, _) => Some(point),
+                        crate::limits::Approach::PosInfinity
+                        | crate::limits::Approach::NegInfinity => None,
+                    };
+                    if let Some(point) = approach_point {
+                        if cas_math::numeric_eval::expr_contains_imaginary(
+                            &self.simplifier.context,
+                            point,
+                        ) {
+                            let i_warning = DomainWarning {
+                                message:
+                                    "To use complex arithmetic (i² = -1), run: semantics set value complex"
+                                        .to_string(),
+                                rule_name: "Imaginary Usage Warning".to_string(),
+                            };
+                            if !warnings.iter().any(|w| w.message == i_warning.message) {
+                                warnings.push(i_warning);
+                            }
+                        }
                     }
                 }
                 Ok((

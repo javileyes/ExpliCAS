@@ -10078,6 +10078,18 @@ fn bounded_noise_rational_limit_at_infinity(
     Some(mk_infinity(ctx, sign))
 }
 
+/// Emitted by the entry kill-switch when the ambient value domain is complex:
+/// the rules below reason with the real order, which does not decide complex
+/// limits (`e^(-1/z²)` has no limit at 0 in ℂ although every real-order rule
+/// concludes 0).
+pub const COMPLEX_DOMAIN_LIMIT_UNSUPPORTED_WARNING: &str =
+    "Limits under the complex value domain are not supported safely yet";
+/// Emitted when the approach point contains the imaginary unit while the value
+/// domain is real: no rule's real-neighbourhood reasoning applies at such a
+/// point, so substituting it would fabricate a value (e.g. `tanh` at `iπ/2` is
+/// a pole).
+pub const IMAGINARY_POINT_LIMIT_UNSUPPORTED_WARNING: &str =
+    "Limit points containing the imaginary unit are not supported in the real value domain";
 const FINITE_POINT_LIMIT_UNSUPPORTED_WARNING: &str =
     "Finite point limits are not supported safely yet";
 const FINITE_EMPTY_PUNCTURED_REAL_NEIGHBORHOOD_WARNING_DETAIL: &str =
@@ -10418,6 +10430,31 @@ pub fn eval_limit_at_infinity(
     approach: Approach,
     opts: &LimitOptions,
 ) -> LimitEvalOutcome {
+    // Domain kill-switch (Fase 3 · F0): every rule below reasons with the real
+    // order, so it must not run at all outside the real domain — under a
+    // complex value domain it FABRICATES (`e^(-1/z²) → 0`, `z·sin(1/z) → 0`,
+    // both nonexistent in ℂ), and a real-domain point containing the imaginary
+    // unit has no real neighbourhood to reason about (`tanh` at `iπ/2` is a
+    // pole that direct substitution turns into a value). Both cases decline to
+    // the honest residual BEFORE any rule sees the expression; complex-domain
+    // capability is re-granted selectively with analytic justification (F10/F11).
+    if opts.complex_enabled {
+        let residual = mk_limit_for_approach(ctx, expr, var, approach);
+        return LimitEvalOutcome {
+            expr: residual,
+            warning: Some(COMPLEX_DOMAIN_LIMIT_UNSUPPORTED_WARNING.to_string()),
+        };
+    }
+    if let Approach::Finite(point) | Approach::FiniteOneSided(point, _) = approach {
+        if crate::numeric_eval::expr_contains_imaginary(ctx, point) {
+            let residual = mk_limit_for_approach(ctx, expr, var, approach);
+            return LimitEvalOutcome {
+                expr: residual,
+                warning: Some(IMAGINARY_POINT_LIMIT_UNSUPPORTED_WARNING.to_string()),
+            };
+        }
+    }
+
     let simplified_expr = match opts.presimplify {
         PreSimplifyMode::Off => expr,
         PreSimplifyMode::Safe => presimplify_safe_for_limit(ctx, expr),
@@ -17815,5 +17852,101 @@ mod tests {
             ),
             "4"
         );
+    }
+
+    #[test]
+    fn complex_domain_kill_switch_declines_every_approach() {
+        // F0 (Fase 3): under a complex value domain no rule may run — the same
+        // inputs that COMPUTE in the real domain must return the residual call
+        // with the complex-domain warning, for every approach shape.
+        let mut ctx = Context::new();
+        let opts = LimitOptions {
+            complex_enabled: true,
+            ..LimitOptions::default()
+        };
+        let var = ctx.var("z");
+        let zero = ctx.num(0);
+        let cases = [
+            ("e^(-1/z^2)", Approach::Finite(zero)),
+            ("1/z^2", Approach::Finite(zero)),
+            ("z^2", Approach::PosInfinity),
+            (
+                "1/z",
+                Approach::FiniteOneSided(zero, FiniteLimitSide::Right),
+            ),
+        ];
+        for (source, approach) in cases {
+            let expr = cas_parser::parse(source, &mut ctx).expect(source);
+            let outcome = eval_limit_at_infinity(&mut ctx, expr, var, approach, &opts);
+            assert_eq!(
+                outcome.warning.as_deref(),
+                Some(COMPLEX_DOMAIN_LIMIT_UNSUPPORTED_WARNING),
+                "must decline with the complex-domain warning: {source}"
+            );
+            let rendered = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: outcome.expr
+                }
+            );
+            assert!(
+                rendered.starts_with("limit("),
+                "must stay a residual limit call: {source} -> {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn real_domain_imaginary_point_declines_to_residual() {
+        // F0 (Fase 3): a real-domain approach point containing the imaginary
+        // unit has no real neighbourhood — substitution would fabricate a value
+        // at e.g. the tanh pole iπ/2.
+        let mut ctx = Context::new();
+        let opts = LimitOptions::default();
+        let var = ctx.var("z");
+        for (source, point_src) in [("tanh(z)", "i*pi/2"), ("1/(z^2+1)", "i*1")] {
+            let expr = cas_parser::parse(source, &mut ctx).expect(source);
+            let point = cas_parser::parse(point_src, &mut ctx).expect(point_src);
+            let outcome =
+                eval_limit_at_infinity(&mut ctx, expr, var, Approach::Finite(point), &opts);
+            assert_eq!(
+                outcome.warning.as_deref(),
+                Some(IMAGINARY_POINT_LIMIT_UNSUPPORTED_WARNING),
+                "must decline with the imaginary-point warning: {source}"
+            );
+            let rendered = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &ctx,
+                    id: outcome.expr
+                }
+            );
+            assert!(
+                rendered.starts_with("limit("),
+                "must stay a residual limit call: {source} -> {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn real_domain_real_point_is_untouched_by_the_domain_guard() {
+        // Pin: the guard must be invisible in the real domain — the same case
+        // that computes today keeps computing (no warning, no residual).
+        let mut ctx = Context::new();
+        let opts = LimitOptions::default();
+        let var = ctx.var("x");
+        let zero = ctx.num(0);
+        let expr = cas_parser::parse("1/x^2", &mut ctx).expect("1/x^2");
+        let outcome = eval_limit_at_infinity(&mut ctx, expr, var, Approach::Finite(zero), &opts);
+        assert!(outcome.warning.is_none(), "real domain must stay resolved");
+        let rendered = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: outcome.expr
+            }
+        );
+        assert_eq!(rendered, "infinity");
     }
 }

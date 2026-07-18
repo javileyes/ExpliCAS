@@ -120,7 +120,7 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 
 ### F0 — soundness (antes que capacidad)
 
-#### F0 — Gate de dominio del motor de límites (kill-switch de entrada) **[S/M]**
+#### F0 — Gate de dominio del motor de límites (kill-switch de entrada) **[S/M]** ☑ GRADUADO 2026-07-19 (hash en el ledger; guard de ~20 líneas en el chokepoint `eval_limit_at_infinity` — los 7 WRONG cerrados, pins never-fabricate contractuales, huella contadores-idéntica)
 - **Gradúa:** bajo `--value-domain complex`, TODO límite declina a residual honesto (cierra de golpe los 7 WRONG: `e^(-1/z²)`, `z·sin(1/z)`, `tanh(iπ/2)`, `atan(2i)`, `1/(z²+1)` en `i`, `1/z²`, `e^z` at-infinity); en `RealOnly`, punto conteniendo `Constant::I` → residual honesto + el Imaginary Usage Warning estándar (cierra el agujero del gate léxico: `2*i`, `i*pi`, `i*1` pasan hoy). Los ✅-por-coincidencia bajo complex REGRESAN a residual (deliberado, documentado en el commit; F11 re-otorga).
 - **Inserción:** campo de dominio en `LimitOptions` (`limit_types.rs:71`); `eval_limit` deja de descartar `options.shared.semantics` (`actions.rs:512`); guard de entrada en `eval_limit_at_infinity` (`limits_support.rs:10414‑10426`) + chequeo de punto-con-I; el hint didáctico `limit_domain_path_warning` deja de hardcodear RealOnly (`actions.rs:297`).
 - **Reuso:** patrón de canal `SharedSemanticConfig.semantics` (`simplify_options.rs:16` — la información YA llega hasta el call site); molde de los 21 gates de `complex.rs:50`.

@@ -2489,6 +2489,126 @@ fn test_eval_limit_oscillation_dne() {
 }
 
 #[test]
+fn test_eval_limit_complex_domain_kill_switch() {
+    // Fase 3 · F0 (P0): el motor de límites razona con el ORDEN REAL — bajo
+    // `--value-domain complex` fabricaba valores (`e^(-1/z²)→0` y `z·sin(1/z)→0`
+    // cuando en ℂ NINGUNO existe: singularidad esencial). El kill-switch de
+    // entrada declina TODO límite complejo a residual honesto; F10/F11 re-otorgan
+    // selectivamente con justificación analítica. Los 7 WRONG del scoping:
+    let eval_complex = |input: &str| -> (String, String) {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        let warnings = wire["warnings"]
+            .as_array()
+            .map(|w| {
+                w.iter()
+                    .filter_map(|x| x["assumption"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            })
+            .unwrap_or_default();
+        (wire["result"].as_str().unwrap_or("").to_string(), warnings)
+    };
+    for probe in [
+        "limit(e^(-1/z^2), z, 0)",
+        "limit(z*sin(1/z), z, 0)",
+        "limit(tanh(z), z, i*pi/2)",
+        "limit(atan(z), z, 2*i)",
+        "limit(1/(z^2+1), z, i*1)",
+        "limit(1/z^2, z, 0)",
+        "limit(e^z, z, infinity)",
+    ] {
+        let (result, warnings) = eval_complex(probe);
+        assert!(
+            result.starts_with("limit("),
+            "{probe} debe declinar a residual bajo complex, got: {result}"
+        );
+        assert!(
+            warnings.contains("complex value domain"),
+            "{probe} debe llevar el motivo del kill-switch, got: {warnings}"
+        );
+    }
+    // Never-fabricate (cuerpo-con-I): la protección era coincidental (declinaban
+    // por Polynomial-sobre-ℚ); estos pins la vuelven CONTRATO — F11 los hereda.
+    for probe in ["limit(e^(i*x), x, infinity)", "limit(i*sin(x)/x, x, 0)"] {
+        let (result, _) = eval_complex(probe);
+        assert!(
+            result.starts_with("limit("),
+            "{probe} jamás fabrica bajo complex, got: {result}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_limit_imaginary_point_real_domain_residual() {
+    // Fase 3 · F0, mitad real: el gate léxico del wire es un colador (`i` desnudo
+    // rechaza pero `2*i`/`i*pi`/`i*1` PASAN) y el motor sustituía el punto — en el
+    // polo de tanh en iπ/2 emitía el VALOR `tanh(pi·i/2)`. Punto-con-I en dominio
+    // real → residual honesto + el Imaginary Usage Warning estándar (el mismo
+    // escape-hatch que ofrece simplify).
+    let eval_full = |input: &str| -> (String, String) {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        let warnings = wire["warnings"]
+            .as_array()
+            .map(|w| {
+                w.iter()
+                    .filter_map(|x| x["assumption"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            })
+            .unwrap_or_default();
+        (wire["result"].as_str().unwrap_or("").to_string(), warnings)
+    };
+    for probe in [
+        "limit(tanh(z), z, i*pi/2)",
+        "limit(1/(z^2+1), z, i*1)",
+        "limit(atan(z), z, 2*i)",
+    ] {
+        let (result, warnings) = eval_full(probe);
+        assert!(
+            result.starts_with("limit("),
+            "{probe} debe declinar a residual con punto imaginario, got: {result}"
+        );
+        assert!(
+            warnings.contains("imaginary unit"),
+            "{probe} debe llevar el motivo del punto imaginario, got: {warnings}"
+        );
+        assert!(
+            warnings.contains("semantics set value complex"),
+            "{probe} debe ofrecer el escape-hatch estándar, got: {warnings}"
+        );
+    }
+    // Never-fabricate en real (cuerpo-con-I, punto real): siguen residual.
+    for probe in ["limit(e^(i*x), x, infinity)", "limit(i*sin(x)/x, x, 0)"] {
+        let (result, _) = eval_full(probe);
+        assert!(
+            result.starts_with("limit("),
+            "{probe} jamás fabrica en real, got: {result}"
+        );
+    }
+    // Pins real byte-idénticos: el guard es invisible sin `i` en el punto.
+    assert_eq!(eval_full("limit(sin(x)/x, x, 0)").0, "1");
+    assert_eq!(eval_full("limit(e^z, z, 2)").0, "exp(2)");
+    let (r, w) = eval_full("limit(1/x, x, 0)");
+    assert_eq!(r, "undefined");
+    assert!(w.contains("one-sided limits disagree"));
+}
+
+#[test]
 fn test_eval_solve_critical_points() {
     // Cierre vectorial · V7d (decisión del usuario): los diff inline se pre-evalúan
     // en el path de solve_system (con fold numérico de los artefactos x^(2-1)), así

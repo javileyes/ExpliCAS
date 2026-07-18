@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 634 (newest first)
+Active entries: 635 (newest first)
 
+- 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20629,3 +20630,21 @@ Active entries: 634 (newest first)
   - **Un subsistema maduro en real puede ser el P0 de la fase siguiente sin cambiar una línea**: limits es MADURO univariable-real y a la vez domain-blind — la fabricación no está en reglas nuevas sino en aplicar reglas CORRECTAS fuera de su dominio de validez. Al abrir un dominio nuevo, audita primero qué subsistemas legacy quedan alcanzables desde el flag.
   - **El gate léxico parcial es peor que ninguno**: `wire_types.rs` rechaza `i` como dirección pero deja pasar `2*i` — da sensación de protección mientras el motor fabrica detrás. Un kill-switch va en el CHOKEPOINT semántico (dispatcher), no en el léxico.
 - PRÓXIMO PELDAÑO: ejecutar F0 (P0 kill-switch) como primer ciclo de la Fase 3 — o /auto-mejora N para la tanda F0→F2.
+
+## 2026-07-19 - SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
+
+- area: `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits_support.rs` (guard de entrada en `eval_limit_at_infinity` ANTES de toda regla: complex → residual + warning propio; punto-con-I en real → residual + warning propio; 2 consts pub) + `cas_engine/eval/actions.rs` (threading `options.shared.semantics.value_domain` → `complex_enabled`; Imaginary Usage Warning estándar para punto-con-I; `limit_domain_path_warning` deja de hardcodear RealOnly) + 3 unit tests cas_math + 2 e2e contract
+- status: `retained`. Primer ciclo de la Fase 3 (P0 del scoping — la regla "soundness antes que capacidad" del proceso maestro).
+- capture:
+  - investment_class: soundness P0 (wrong-answers activos confirmados a mano).
+  - **Los 7 WRONG del scoping cerrados de golpe**: `limit(e^(-1/z^2),z,0)` y `limit(z*sin(1/z),z,0)` fabricaban `0` bajo `--value-domain complex` (en ℂ NO existen — singularidad esencial; la cadena real era total-real-unary brazo `Pow(E,·)` + saturación exp(−∞)→0); `tanh(z)` en `iπ/2` emitía el VALOR sustituido en un polo TAMBIÉN en real default (el gate léxico del wire es un colador: `i` desnudo rechaza pero `2*i`/`i*pi`/`i*1` pasan); `atan(2i)`, `1/(z²+1)` en `i` (→ 1/0), `1/z²→infinity` (en ℂ el camino imaginario da −∞ real: signo fabricado), `e^z→infinity` at-infinity (oscila en el eje imaginario). TODOS ahora residual honesto con motivo.
+  - Diseño: el gate vive en el CHOKEPOINT semántico (`eval_limit_at_infinity`, por donde pasan las 4 formas de approach), NUNCA en el léxico; patrón `complex_enabled: bool` de cas_math (V0 métrica) — cas_math no depende de solver_core; el engine traduce `value_domain != RealOnly` una vez. Re-otorgo selectivo DESPUÉS (F10/F11) con justificación analítica por regla.
+  - Regresión DELIBERADA documentada: los ✅-por-coincidencia bajo complex (`limit(x^2,x,2)` etc.) regresan a residual hasta F11 — secuencia soundness-primero del scoping; en real, byte-idéntico (pins `sin(x)/x→1`, `1/x→undefined+laterales`, `e^z` en 2, sandwich, oscilación-DNE — verificados por probe y por lane).
+  - Pins never-fabricate AHORA CONTRATO (antes protección coincidental por Polynomial-sobre-ℚ): `limit(e^(i*x),x,infinity)` y `limit(i*sin(x)/x,x,0)` residual en AMBOS dominios — F11 los hereda.
+  - Los call sites internos (`definite_integration` ×2, comando REPL `limit`) conservan `LimitOptions::default()` (complex_enabled=false): CORRECTO — su variable de integración/aproximación es real por construcción; el comando REPL además hereda gratis el guard de punto-con-I.
+  - **Residual NUEVO nombrado (dueño: bloque D o F-extra de soundness)**: la integración DEFINIDA es domain-blind con extremos complejos — `integrate(z,z,0,i)→-1/2` computa vía FTC (correcto para ENTERAS por independencia de camino, pero la maquinaria no distingue: con integrando no-holomorfo o corte de rama entre extremos fabricaría). `integrate(1/z,z,1,i)` declina residual hoy. Auditar en el bloque D.
+  - huella: contadores idénticos en guardrail y pressure (el limit-matrix no usa `--value-domain` — auditado en el scoping; drift real: cero).
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast verde; scorecards idénticos.
+- retained learning:
+  - **El kill-switch de dominio es un guard de ENTRADA de un solo punto cuando el subsistema tiene chokepoint**: las ~10.000 líneas de reglas de límites quedaron gateadas con ~20 líneas porque TODA forma de approach pasa por `eval_limit_at_infinity` — buscar el cuello del embudo antes de gatear regla a regla (contraste: los 21 gates de complex.rs son por-regla porque el Simplifier no tiene cuello único).
+  - PRÓXIMO PELDAÑO: F1 (sustrato Taylor: cap de orden + política singular + singularidad evitable `sin(x)/x`).
