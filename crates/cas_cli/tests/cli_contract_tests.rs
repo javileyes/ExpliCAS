@@ -2317,6 +2317,38 @@ fn test_eval_vector_norm() {
 }
 
 #[test]
+fn test_eval_gaussian_reciprocal_clean_form() {
+    // Fase 2 · residual C1 del frente complejo, cerrado: `(z)^(-1)` llegaba mangled
+    // (`(1/2·2 - i)/(2)`) SOLO por la ruta Pow(z,-1) — AddFractions construía el
+    // numerador cruzado con `Mul(Number, Number)` crudo (mul2_raw) y el pipeline
+    // abandonaba el ciclo combina↔separa en el lado sin plegar (los gemelos reales
+    // se limpiaban vía factor-out, que declina con `i`). El builder ahora pliega
+    // Number×Number exacto en la emisión.
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(rc("(1+i)^(-1)"), "1/2 - 1/2·i");
+    assert_eq!(rc("(2+i)^(-1)"), "2/5 - 1/5·i");
+    assert_eq!(rc("(1-i)^(-1)"), "1/2 + 1/2·i");
+    assert_eq!(rc("(3+4i)^(-1)"), "3/25 - 4/25·i");
+    // Verificación de valor: z·z^(-1) = 1 exacto.
+    assert_eq!(rc("(1+i)*(1+i)^(-1)"), "1");
+    assert_eq!(rc("(2+i)*(2+i)^(-1)"), "1");
+}
+
+#[test]
 fn test_eval_componentwise_diff_over_matrix() {
     // Fase 2 V1: `diff` distributes componentwise over a `Matrix` target, ALL-OR-NOTHING
     // (a non-differentiable component keeps the whole call an honest residual), and the

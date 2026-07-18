@@ -3031,7 +3031,10 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="rational_improper_partial_fraction_polynomial_division",
         expr="integrate((x^2+1)/(x^2-1), x)",
         expected_result="ln(|x - 1|) + x - ln(|x + 1|)",
-        expected_derivative_result="2 / (x^2 - 1) + 1",
+        # The diff-back now recombines to the ORIGINAL integrand verbatim (the
+        # AddFractions builder folds literal Number products at emission, tanda-2
+        # ciclo 1) — a strictly tighter round-trip than the old split display.
+        expected_derivative_result="(x^2 + 1) / (x^2 - 1)",
         expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
         expected_direct_diff_integrate_result="(x^2 + 1) / (x^2 - 1)",
         expected_direct_diff_integrate_required_display=("x ≠ -1", "x ≠ 1"),

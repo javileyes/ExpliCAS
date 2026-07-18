@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 620 (newest first)
+Active entries: 621 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -125,6 +125,7 @@ Active entries: 620 (newest first)
 - 2026-07-18 | `retained` | `cas_engine` (assemblers `try_divergence_expr`/`try_laplacian_expr`; `Diverge... | CAPACIDAD (Fase 2 vectorial · V5): `divergence` + `laplacian` — y el falso-residual del budget cazado por barrido adversarial
 - 2026-07-18 | `retained` | `cas_engine` (assembler con signos `try_curl_expr`; `CurlRule` con alias rot;... | CAPACIDAD (Fase 2 vectorial · V6): `curl`/`rot` 3D columna + 2D ESCALAR — el bloque B de verbos queda COMPLETO
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (brazo `abs` en el dispatch unario, SOLO ... | CAPACIDAD (Fase 2 vectorial · V7a+b): `abs(vector)→norm` heredando V0, e `integrate` componentwise condiciones-conservador
+- 2026-07-18 | `retained` | `cas_math/fraction_add_build_support.rs` (`mul2_fold_numeric` en los 3 sitios... | PRESENTACIÓN-SOUNDNESS (tanda-2 · ciclo 1: el parcial `(z)^(-1)`): AddFractions pliega Number×Number en la emisión — el mangle `(1/2·2 - i)/(2)` muere en su origen
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20424,3 +20425,18 @@ Active entries: 620 (newest first)
   - **"Heredar la decisión de dominio" = delegar en la función decidida, no copiar su lógica**: el brazo abs es 8 líneas porque `norm_in_domain` ES la decisión V0; duplicar el fold habría creado el segundo sitio que V0 existía para eliminar.
   - **TANDA COMPLETA (8/8, 0 rechazos):** V0→V7a+b aterrizados; el frente vectorial queda con los 6 verbos vivos + sustrato + bordes. RESIDUALES del frente: V7d (pregunta abierta #4), V8 (pulido ∂/display 3-args/help — depende de pregunta abierta #3), quirk `sqrt(|pi|²)` radicando solitario, `2·|i|` display real-mode, vector-laplacian, preguntas abiertas 1-4 del scoping al usuario.
   - PRÓXIMO PELDAÑO RECOMENDADO: resolver con el usuario las 4 preguntas abiertas del scoping (steps-en-texto, verbo subs inline, ∂ global, V7d) — desbloquean V8 y el cierre formal del frente; alternativa sin usuario: V8 parcial (help_topics + localización) o re-audit de frontera.
+
+## 2026-07-18 - PRESENTACIÓN-SOUNDNESS (tanda-2 · ciclo 1: el parcial `(z)^(-1)`): AddFractions pliega Number×Number en la emisión — el mangle `(1/2·2 - i)/(2)` muere en su origen
+
+- area: `cas_math/fraction_add_build_support.rs` (`mul2_fold_numeric` en los 3 sitios del builder: numeradores cruzados + denominador) + contract e2e (familia `(z)^(-1)` + verificación de valor `z·z^(-1)=1`) + 1 pin migrado en la lane integrate-smoke (delta INTENCIONADO documentado)
+- status: `retained`. Tanda-2 ciclo 1/6 (residual C1 del frente complejo, diagnóstico del ledger C1 `872c3dcc9`).
+- capture:
+  - investment_class: presentación-soundness (el valor era correcto; el ÁRBOL mostrado era ilegible — la primera cara del frente complejo que un usuario ve al invertir un Gaussiano).
+  - cell: `(1+i)^(-1)→1/2 - 1/2·i` (antes `(1/2·2 - i)/(2)`), `(2+i)^(-1)→2/5 - 1/5·i` (antes `(2/5·5 - i)/(5)`), `(1-i)^(-1)`, verificación `z·z^(-1)=1` exacta; gemelos reales byte-idénticos (`1/2 - x/2 → 1/2·(1-x)`, `1/2+1/3→5/6`). Colateral benigno: `1/(1+i)` ahora resuelve a la MISMA forma factor-out que los gemelos reales (`1/2·(1-i)`) — consistencia inter-dominio, cero pins rotos.
+  - **diagnóstico (2 capas, la trampa la cazó en minutos):** (1) la traza `--steps` mostró que Gaussian Division emitía LIMPIO (`1/2 - i/2`) — el mangle era POSTERIOR y sin step; (2) el run debug reveló `depth_overflow` + `cycle_detected` (Core y PostCleanup): un ping-pong combina↔separa fracciones donde el simplifier abandona en el lado sin plegar — los gemelos REALES escapan por el factor-out (`1/2·(1-x)`) que DECLINA con `i`; (3) panic-trampa condicional en `Context::add` NO saltó → el emisor usaba `add_raw` → segunda trampa en `add_raw` dio el backtrace exacto: `AddFractionsRule → plan_add_fraction_rewrite_with → build_add_fraction_rewrite → mul2_raw`.
+  - fix de chokepoint: `mul2_fold_numeric` (Number×Number → Number, BigRational exacto, simbólicos intactos) en el builder compartido — no un parche complejo-específico: TODA emisión de suma-de-fracciones queda pre-plegada donde ambos operandos son literales.
+  - validación: workspace failed:0; clippy limpio; make ci verde; huella: pressure idéntica; guardrail con UN delta INTENCIONADO — la lane integrate-smoke cazó el cambio (1 caso de 313: `rational_improper_partial_fraction_polynomial_division`, el diff-back de `ln|x-1|+x-ln|x+1|` ahora RECOMBINA al integrando VERBATIM `(x²+1)/(x²-1)` en vez de la forma partida pineada `2/(x²-1)+1` — round-trip estrictamente más ceñido; pin migrado con el porqué en comentario). El resto de la lane byte-idéntico; smoke re-verificado 313/313.
+  - retained learning:
+  - **La escalera de diagnóstico barato-a-caro pagó en orden**: traza de steps (absolvió al productor visible) → run DEBUG con warnings del orquestador (reveló el ciclo y el bail — los WARN de `depth_overflow`/`cycle_detected` son diagnóstico gratis que el release silencia) → panic-trampa en `add` (descartó la vía canónica) → trampa en `add_raw` (backtrace exacto). Cada peldaño acotó el siguiente.
+  - **Un builder compartido que emite productos crudos apuesta a que "alguien plegará después" — y el pipeline no siempre llega**: cuando un ciclo de rewrite abandona, la forma cruda ES el resultado final; plegar literales EN la emisión hace la forma limpia incondicional (independiente de qué lado del churn gane).
+  - PRÓXIMO PELDAÑO: tanda-2 ciclo 2 — **unimodularidad `|e^(ix)|→1`** (residual B2 sin dueño). El churn combina↔separa con `i` queda como residual de ORQUESTACIÓN nombrado (clase A, no apresurar — memoria [[c5-diff-fold-rootcause]]): las formas visibles ya son limpias en ambos lados.
