@@ -115,7 +115,8 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         // Registering a verb needs TWO cables — this gate arm AND its engine rule —
         // or it fails silently (gate-without-rule gotcha). jacobian/hessian/
         // divergence/curl/laplacian/rot stay UNREGISTERED until their cycle lands.
-        "gradient" | "grad" | "jacobian" | "hessian" | "divergence" | "laplacian" => arity == 2,
+        "gradient" | "grad" | "jacobian" | "hessian" | "divergence" | "laplacian" | "curl"
+        | "rot" => arity == 2,
         "arclength" | "arc_length" => arity == 4,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.

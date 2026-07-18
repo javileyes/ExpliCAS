@@ -50,6 +50,8 @@ impl CasHelper {
                 "hessian".to_string(),
                 "divergence".to_string(),
                 "laplacian".to_string(),
+                "curl".to_string(),
+                "rot".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

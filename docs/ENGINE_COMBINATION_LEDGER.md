@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 618 (newest first)
+Active entries: 619 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -123,6 +123,7 @@ Active entries: 618 (newest first)
 - 2026-07-18 | `retained` | `cas_engine` (NUEVO `rules/calculus/vector_calculus.rs` con `GradientRule`; e... | CAPACIDAD (Fase 2 vectorial · V3): `gradient`/`grad` — el primer verbo vectorial, con el esqueleto completo que V4-V6 clonan
 - 2026-07-18 | `retained` | `cas_engine` (assemblers `try_jacobian_expr`/`try_hessian_expr` en matrix_rul... | CAPACIDAD (Fase 2 vectorial · V4): `jacobian` + `hessian` con orientación pineada, y el equiv bracket-aware que ata los metamórficos
 - 2026-07-18 | `retained` | `cas_engine` (assemblers `try_divergence_expr`/`try_laplacian_expr`; `Diverge... | CAPACIDAD (Fase 2 vectorial · V5): `divergence` + `laplacian` — y el falso-residual del budget cazado por barrido adversarial
+- 2026-07-18 | `retained` | `cas_engine` (assembler con signos `try_curl_expr`; `CurlRule` con alias rot;... | CAPACIDAD (Fase 2 vectorial · V6): `curl`/`rot` 3D columna + 2D ESCALAR — el bloque B de verbos queda COMPLETO
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20393,3 +20394,17 @@ Active entries: 618 (newest first)
   - **El anti-worsen budget compara NODOS, no formas**: "salida escalar" NO exime del budget — una suma cruda de cocientes puede superar 1.5x aunque colapse a 0 después; TODA regla que ensambla derivadas sin plegar lleva la exención acotada, sea cual sea su shape de salida.
   - **Para diagnosticar un decline, busca el GEMELO que funciona**: `hessian(ln)` verde con las mismas celdas absolvió al diferenciador en un probe — el diferencial mínimo entre dos rutas casi idénticas señala la capa culpable sin instrumentar nada.
   - PRÓXIMO PELDAÑO: **V6** (curl 3D columna + 2D ESCALAR + alias rot + metamórficos conservatividad `curl∘grad=0` y `div∘curl=0` vía equiv — el ensamblador con signos, precedente matrix_cross). V5 queda ☑ (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - CAPACIDAD (Fase 2 vectorial · V6): `curl`/`rot` 3D columna + 2D ESCALAR — el bloque B de verbos queda COMPLETO
+
+- area: `cas_engine` (assembler con signos `try_curl_expr`; `CurlRule` con alias rot; gate arms) + `cas_didactic` (visible names + claves `curl.formula3d`/`curl.formula2d` con selección por SHAPE del after) + completer + examples.csv + unit test + contract e2e
+- status: `retained`. Ciclo 7/8 de la tanda vectorial (V6 del scoping; V5 = `3973d9ee2`). **Con V6, los 6 verbos del frente están vivos: el bloque B queda completo.**
+- capture:
+  - investment_class: capacidad Fase-2 (verbo 6º y último).
+  - cell: `curl([y,-x,0],[x,y,z])→[[0],[0],[-2]]` (convención de signos estándar, pin celda-a-celda); **2D = ESCALAR** `curl([y,-x],[x,y])→-2` (pin de TIPO: jamás rellenado a 3×1 con ceros — afirmaría un shape que el input no tiene); `rot(...)` alias; vórtice `curl([-y/(x²+y²), x/(x²+y²)])→0` (irrotacional fuera del origen — gratis del barrido). **Metamórficos de cierre del bloque**: `curl(gradient(x·y·z))→[[0],[0],[0]]` DIRECTO (test de conservatividad — la mitad elemental del ítem curricular potencial) y `equiv(divergence(curl(F)),0)→true` (div∘curl≡0). Declines: 2 comps/3 vars, 4D (curl no existe), escalar. Narración es/en con clave POR SHAPE (formula3d si el after es Matrix, formula2d si escalar).
+  - fixture never-confirm MIGRADO a los nombres scope-out de Fase 3 (`lineintegral`/`surface_integral`/`potential` deben SEGUIR "no definida" — su decline es parte del contrato de frontera): el detector sobrevive a la graduación de los 6 verbos.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Un fixture-detector no muere al graduarse su presa: MIGRA a la siguiente frontera** — never-confirm pasó de "verbos aún no cableados" a "nombres Fase-3 que deben declinar por contrato"; el mismo test guarda ahora el scope-out en vez del gate-sin-regla.
+  - **La clave de locale elegida por SHAPE del resultado (Matrix vs escalar) resuelve la narración de un verbo con dos formas de salida** sin duplicar reglas ni generadores — el selector vive en el generador didáctico, no en la regla.
+  - PRÓXIMO PELDAÑO: **V7 restante** (a: `abs(vector)→norm` heredando la decisión de dominio V0; b: `integrate` componentwise todo-o-nada con la lane integrate-smoke como pin; d: pre-evaluar diff en solve_system — pregunta abierta #4 del usuario, puede diferirse). V6 queda ☑ (hash en el ledger del ciclo siguiente).

@@ -2411,10 +2411,16 @@ fn test_eval_gradient_verb() {
             .expect("Failed to run CLI");
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
     };
-    for probe in ["curl([y,-x,0],[x,y,z])", "rot([y,-x,0],[x,y,z])"] {
+    // The six verbs are all registered now; the detector moves to the Fase-3
+    // scope-out names, whose "función no definida" decline is part of the contract.
+    for probe in [
+        "lineintegral(x^2, [x,y])",
+        "surface_integral(x*y, [x,y,z])",
+        "potential([2*x*y, x^2], [x,y])",
+    ] {
         assert!(
             err_of(probe).contains("no definida"),
-            "unregistered verb must stay 'función no definida': {probe}"
+            "Fase-3 scope-out name must stay 'función no definida': {probe}"
         );
     }
     // Narration: rule name localizes es/en; one keyed substep per component.
@@ -2576,6 +2582,65 @@ fn test_eval_divergence_laplacian_verbs() {
         .as_str()
         .unwrap()
         .contains("second derivatives"));
+}
+
+#[test]
+fn test_eval_curl_verb() {
+    // Fase 2 V6: curl 3D (3×1 column, standard sign convention) and 2D (SCALAR
+    // ∂Q/∂x − ∂P/∂y — never zero-padded), alias rot, and the conservativity
+    // metamorphics that tie the verbs together.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("curl([y,-x,0],[x,y,z])"), "[[0], [0], [-2]]");
+    assert_eq!(r("curl([y,-x],[x,y])"), "-2"); // 2D = SCALAR (pinned convention)
+    assert_eq!(r("rot([x*y, y*z, z*x],[x,y,z])"), "[[-y], [-z], [-x]]");
+    // Conservativity test (the elemental half of the potential-field item): a gradient
+    // field is irrotational — and div∘curl vanishes identically.
+    assert_eq!(
+        r("curl(gradient(x*y*z,[x,y,z]),[x,y,z])"),
+        "[[0], [0], [0]]"
+    );
+    assert_eq!(r("curl([y,x],[x,y])"), "0");
+    assert_eq!(
+        r("equiv(divergence(curl([x*y, y*z, z*x],[x,y,z]),[x,y,z]), 0)"),
+        "true"
+    );
+    // Honest declines: 2 components with 3 vars, 4D, scalar target.
+    assert_eq!(
+        r("curl([x,y],[x,y,z])"),
+        "curl([[x], [y]], [[x], [y], [z]])"
+    );
+    assert_eq!(r("curl(x^2,[x,y])"), "curl(x^2, [[x], [y]])");
+    // Narration: localized rule name + shape-aware formula substep (3D vs 2D).
+    let steps_json = |input: &str, lang: Option<&str>| -> Value {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+    let es = steps_json("curl([y,-x,0],[x,y,z])", None);
+    assert_eq!(
+        es["steps"][0]["rule"].as_str().unwrap(),
+        "Calcular el rotacional"
+    );
+    assert!(es["steps"][0]["substeps"][0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("∇×F"));
+    let en = steps_json("curl([y,-x],[x,y])", Some("en"));
+    assert_eq!(en["steps"][0]["rule"].as_str().unwrap(), "Compute the curl");
+    assert!(en["steps"][0]["substeps"][0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("2D curl (scalar)"));
 }
 
 #[test]

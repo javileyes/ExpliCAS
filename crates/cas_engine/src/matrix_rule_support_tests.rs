@@ -339,3 +339,37 @@ fn divergence_requires_component_var_match_and_laplacian_declines_matrix() {
     let scalar_sum = ctx.add(Expr::Add(x2, y2));
     assert!(super::try_laplacian_expr(&mut ctx, scalar_sum, &vars2).is_some());
 }
+
+#[test]
+fn curl_3d_signs_and_2d_scalar_type() {
+    // V6 pins: 3D sign convention at CELL level (F=[y,-x,0] → [[0],[0],[-2]]) and the
+    // 2D result being a SCALAR (never a zero-padded 3×1 — that would assert a shape
+    // the input does not have).
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let zero = ctx.num(0);
+    let neg_x = ctx.add(Expr::Neg(x));
+    let field3 = ctx.matrix(3, 1, vec![y, neg_x, zero]).expect("3d field");
+    let vars3: Vec<String> = vec!["x".into(), "y".into(), "z".into()];
+
+    let curl3 = super::try_curl_expr(&mut ctx, field3, &vars3).expect("3d curl");
+    let m = cas_math::matrix::Matrix::from_expr(&ctx, curl3).expect("column");
+    assert_eq!((m.rows, m.cols), (3, 1));
+
+    let field2 = ctx.matrix(2, 1, vec![y, neg_x]).expect("2d field");
+    let vars2: Vec<String> = vec!["x".into(), "y".into()];
+    let curl2 = super::try_curl_expr(&mut ctx, field2, &vars2).expect("2d curl");
+    assert!(
+        !matches!(ctx.get(curl2), Expr::Matrix { .. }),
+        "2D curl must be a SCALAR (∂Q/∂x − ∂P/∂y), never zero-padded to 3D"
+    );
+
+    // Mismatched pairings decline honestly.
+    assert!(super::try_curl_expr(&mut ctx, field2, &vars3).is_none());
+    let z = ctx.var("z");
+    let w = ctx.var("w");
+    let field4 = ctx.matrix(4, 1, vec![x, y, z, w]).expect("4d");
+    let vars4: Vec<String> = vec!["x".into(), "y".into(), "z".into(), "w".into()];
+    assert!(super::try_curl_expr(&mut ctx, field4, &vars4).is_none());
+}

@@ -154,3 +154,5 @@
 "Vectorial","det(hessian(x^2*y, [x,y]))","Discriminante del test de la segunda derivada: det(H) del hessiano simétrico → -4·x²"
 "Vectorial","divergence([x^2, y^2], [x,y])","Divergencia de un campo vectorial: ∇·F = Σ ∂Fᵢ/∂xᵢ → 2·x + 2·y"
 "Vectorial","laplacian(ln(x^2+y^2), [x,y])","La armónica clásica: Δ ln(x²+y²) = 0 exacto (suma de segundas derivadas)"
+"Vectorial","curl([y,-x,0], [x,y,z])","Rotacional del campo de rotación clásico → [[0], [0], [-2]] (columna 3×1; en 2D el rotacional es ESCALAR)"
+"Vectorial","curl(gradient(x*y*z,[x,y,z]), [x,y,z])","Test de conservatividad: todo campo gradiente es irrotacional — ∇×(∇f) = [[0], [0], [0]]"

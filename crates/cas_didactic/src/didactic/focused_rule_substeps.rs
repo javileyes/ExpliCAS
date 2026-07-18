@@ -11966,6 +11966,14 @@ fn generate_divergence_laplacian_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     let key = match step.rule_name.as_str() {
         "Vector Divergence" | "Calcular la divergencia" => "divergence.formula",
         "Vector Laplacian" | "Calcular el laplaciano" => "laplacian.formula",
+        "Vector Curl" | "Calcular el rotacional" => {
+            let after = step.after_local().unwrap_or(step.after);
+            if matches!(ctx.get(after), Expr::Matrix { .. }) {
+                "curl.formula3d"
+            } else {
+                "curl.formula2d"
+            }
+        }
         _ => return Vec::new(),
     };
     let before = step.before_local().unwrap_or(step.before);

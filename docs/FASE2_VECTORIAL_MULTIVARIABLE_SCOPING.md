@@ -136,7 +136,7 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 - **Depende:** V3.
 - **Retención (pins):** `jacobian-filas-funciones` (orientación); `hessian-simetrica`; `hessian≡jac∘grad` (metamórfico vía equiv); `equiv(diff(x^2,x),2·x)→true` (equiv escalar intacto); pins V3.
 
-#### ☑ V5 — `divergence` + `laplacian` **[S] — HECHO** *(2026-07-18, hash en el ledger)*
+#### ☑ V5 — `divergence` + `laplacian` **[S] — HECHO** *(2026-07-18 `3973d9ee2`)*
 - **Graduado:** los graduates del scoping + la armónica `laplacian(ln(x²+y²))→0` EXACTO. CAZADO adversarialmente el falso-residual del chokepoint-D: "salida escalar" NO exime del anti-worsen budget (la suma cruda de derivadas-cociente crece en nodos aunque colapse a 0) — exención acotada añadida; el gemelo verde `hessian(ln)` absolvió al diferenciador en el diagnóstico. Mismatch → residual honesto pineado; vector-laplacian scope-out.
 - **Gradúa:** `divergence([x^2,y^2],[x,y]) → 2·x+2·y`; `laplacian(x^2+y^2,[x,y]) → 4`; `laplacian(x^2+y^2+z^2,[x,y,z]) → 6`; mismatch n componentes ≠ n vars → **residual honesto** (eco; `undefined` queda reservado al álgebra malformada del ShapeGuard); `laplacian` de campo vectorial → residual honesto (vector-laplacian = peldaño futuro nombrado, scope-out).
 - **Inserción:** mismos sitios; `divergence` suma la diagonal computada directa (sin ensamblar el jacobiano completo); `laplacian` = `div∘grad` interno.
@@ -145,7 +145,8 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 - **Depende:** V3.
 - **Retención (pins):** `divergence-mismatch-residual` (shape inválido NO da undefined ni wrong); pins V3/V4.
 
-#### ☐ V6 — `curl` (3D columna + 2D escalar) + alias `rot` **[S/M]**
+#### ☑ V6 — `curl` (3D columna + 2D escalar) + alias `rot` **[S/M] — HECHO** *(2026-07-18, hash en el ledger)* — **BLOQUE B COMPLETO: los 6 verbos vivos**
+- **Graduado:** signos 3D pineados (`[y,-x,0]→[[0],[0],[-2]]`); 2D ESCALAR con pin de TIPO (jamás relleno a 3D); alias rot; conservatividad `curl(gradient)→0` DIRECTA + `div∘curl≡0` vía equiv; vórtice→0; narración por-shape (formula3d/formula2d). Never-confirm MIGRADO a los nombres scope-out Fase-3 (lineintegral/surface_integral/potential — su decline es contrato).
 - **Gradúa:** `curl([y,-x,0],[x,y,z]) → [[0], [0], [-2]]`; `curl([y,-x],[x,y]) → -2` (**2D = ESCALAR** `Qx−Py`, decisión D4); `rot(...)` alias; identidades como fixtures metamórficos vía equiv: `curl(gradient(f,[x,y,z]),[x,y,z]) → [[0],[0],[0]]` — **nombrado explícitamente como TEST DE CONSERVATIVIDAD** (la mitad elemental del ítem curricular "potencial de campo conservativo"; la reconstrucción del potencial por composición `integrate`+resta+`integrate` ya funciona hoy y queda documentada como camino interim; `potential()` como verbo = Fase 3) — y `divergence(curl(F,[x,y,z]),[x,y,z]) → 0` (ambas ya verificadas por composición manual); 2 componentes con 3 vars (o viceversa) → residual honesto.
 - **Inserción:** mismos sitios; **ensamblador con signos** NUEVO en `matrix_rule_support` (precedente estructural: `matrix_cross` `:915`).
 - **Reuso:** extractor, map, patrón cross.

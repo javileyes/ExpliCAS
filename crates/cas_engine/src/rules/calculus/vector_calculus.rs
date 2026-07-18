@@ -112,3 +112,22 @@ define_rule!(
         )
     }
 );
+
+define_rule!(
+    CurlRule,
+    "Vector Curl",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        let call = try_extract_field_vars_call(ctx, expr, &["curl", "rot"])?;
+        let result = crate::matrix_rule_support::try_curl_expr(ctx, call.target, &call.var_names)?;
+        // 3D → 3×1 column; 2D → SCALAR ∂Q/∂x − ∂P/∂y (never zero-padded). Bounded
+        // exemption: ≤6 raw derivative differences assembled (see DivergenceRule note —
+        // the anti-worsen budget counts nodes, not shapes).
+        Some(
+            Rewrite::new(result)
+                .desc("Calcular el rotacional del campo vectorial")
+                .budget_exempt(),
+        )
+    }
+);

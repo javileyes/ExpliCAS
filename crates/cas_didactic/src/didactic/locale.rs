@@ -210,6 +210,8 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "gradient.component" => ("Derivar respecto de {0}, tratando las demás variables como constantes", "Differentiate with respect to {0}, treating the other variables as constants"),
         "divergence.formula" => ("∇·F = Σ ∂Fᵢ/∂xᵢ: derivar cada componente respecto de su propia variable y sumar", "∇·F = Σ ∂Fᵢ/∂xᵢ: differentiate each component with respect to its own variable and add"),
         "laplacian.formula" => ("Δf = Σ ∂²f/∂xᵢ²: sumar las segundas derivadas respecto de cada variable", "Δf = Σ ∂²f/∂xᵢ²: add the second derivatives with respect to each variable"),
+        "curl.formula3d" => ("∇×F por filas: [∂F₃/∂y − ∂F₂/∂z, ∂F₁/∂z − ∂F₃/∂x, ∂F₂/∂x − ∂F₁/∂y]", "∇×F row by row: [∂F₃/∂y − ∂F₂/∂z, ∂F₁/∂z − ∂F₃/∂x, ∂F₂/∂x − ∂F₁/∂y]"),
+        "curl.formula2d" => ("Rotacional 2D (escalar): ∂Q/∂x − ∂P/∂y", "2D curl (scalar): ∂Q/∂x − ∂P/∂y"),
         "jacobian.row" => ("Fila {0}: derivar la componente respecto de cada variable", "Row {0}: differentiate the component with respect to each variable"),
         "hessian.row" => ("Fila {0}: derivar ∂f/∂{1} respecto de cada variable", "Row {0}: differentiate ∂f/∂{1} with respect to each variable"),
         "derivative.use_logarithmic_diff" => ("Usar derivación logarítmica", "Use logarithmic differentiation"),

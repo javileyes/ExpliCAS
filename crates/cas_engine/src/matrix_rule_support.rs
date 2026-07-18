@@ -996,6 +996,51 @@ pub(crate) fn try_laplacian_expr(
     Some(sum)
 }
 
+/// Curl of a vector field (Fase 2 V6). With `F = [F₀,F₁,F₂]` over `[v₀,v₁,v₂]`:
+/// `∇×F = [∂F₂/∂v₁ − ∂F₁/∂v₂, ∂F₀/∂v₂ − ∂F₂/∂v₀, ∂F₁/∂v₀ − ∂F₀/∂v₁]` as a 3×1
+/// COLUMN. The 2D case is the SCALAR `∂Q/∂v₀ − ∂P/∂v₁` (curriculum convention —
+/// NEVER zero-padded to 3D: that would assert a shape the input does not have).
+/// Any other component/var pairing declines honestly; all-or-nothing.
+pub(crate) fn try_curl_expr(
+    ctx: &mut Context,
+    fields: ExprId,
+    var_names: &[String],
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    let m = Matrix::from_expr(ctx, fields)?;
+    if m.rows != 1 && m.cols != 1 {
+        return None;
+    }
+    let f = m.data.clone();
+    match (f.len(), var_names.len()) {
+        (2, 2) => {
+            let dq_dx = differentiate_symbolic_expr(ctx, f[1], &var_names[0])?;
+            let dp_dy = differentiate_symbolic_expr(ctx, f[0], &var_names[1])?;
+            Some(ctx.add(Expr::Sub(dq_dx, dp_dy)))
+        }
+        (3, 3) => {
+            let a = differentiate_symbolic_expr(ctx, f[2], &var_names[1])?;
+            let b = differentiate_symbolic_expr(ctx, f[1], &var_names[2])?;
+            let c1 = ctx.add(Expr::Sub(a, b));
+            let a = differentiate_symbolic_expr(ctx, f[0], &var_names[2])?;
+            let b = differentiate_symbolic_expr(ctx, f[2], &var_names[0])?;
+            let c2 = ctx.add(Expr::Sub(a, b));
+            let a = differentiate_symbolic_expr(ctx, f[1], &var_names[0])?;
+            let b = differentiate_symbolic_expr(ctx, f[0], &var_names[1])?;
+            let c3 = ctx.add(Expr::Sub(a, b));
+            Some(
+                Matrix {
+                    rows: 3,
+                    cols: 1,
+                    data: vec![c1, c2, c3],
+                }
+                .to_expr(ctx),
+            )
+        }
+        _ => None,
+    }
+}
+
 /// Componentwise derivative of a vector/matrix target: `d/dx [f₁, …] = [f₁′, …]`
 /// (Fase 2 V1). A component that cannot be differentiated declines the WHOLE
 /// call (all-or-nothing), keeping `diff([...], x)` an honest residual.

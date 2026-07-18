@@ -185,6 +185,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Vector Hessian" => "Calcular el hessiano",
         "Vector Divergence" => "Calcular la divergencia",
         "Vector Laplacian" => "Calcular el laplaciano",
+        "Vector Curl" => "Calcular el rotacional",
         "Present calculus result in compact form" => {
             "Presentar resultado de cálculo en forma compacta"
         }
@@ -637,6 +638,7 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Calcular el gradiente" => "Compute the gradient",
         "Calcular el hessiano" => "Compute the Hessian",
         "Calcular el laplaciano" => "Compute the Laplacian",
+        "Calcular el rotacional" => "Compute the curl",
         "Calcular la divergencia" => "Compute the divergence",
         "Calcular el jacobiano" => "Compute the Jacobian",
         "Calcular la derivada" => "Compute the derivative",
