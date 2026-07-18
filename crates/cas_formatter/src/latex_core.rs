@@ -10,6 +10,60 @@ use crate::{Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use regex::Regex;
+
+/// Multi-variable derivative operator `\frac{d^n}{dv_k^{c_k} \, … \, dv_1^{c_1}}`.
+/// `pairs` come in APPLICATION order (first-differentiated first); the denominator
+/// lists them right-to-left per the standard mixed-partial convention. Neutral `d`
+/// notation on purpose: whether multivariable `diff` should render `∂` globally is
+/// an OPEN user decision (Fase-2 vectorial scoping, pregunta abierta #3) — this fix
+/// only stops the 3+-arg display from DROPPING variables.
+fn diff_operator_latex(pairs: &[(String, u64)]) -> String {
+    let total: u64 = pairs.iter().map(|(_, c)| c).sum();
+    let numer = if total == 1 {
+        "d".to_string()
+    } else {
+        format!("d^{{{total}}}")
+    };
+    let denom = pairs
+        .iter()
+        .rev()
+        .map(|(v, c)| {
+            if *c == 1 {
+                format!("d{v}")
+            } else {
+                format!("d{v}^{{{c}}}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" \\, ");
+    format!("\\frac{{{numer}}}{{{denom}}}")
+}
+
+/// Parse the SymPy-convention diff tail `v1 [n1] v2 [n2] …` (a count binds to the
+/// PRECEDING variable) into `(rendered_var, count)` pairs via `render`. `None` on
+/// any malformed tail — the caller falls back to the legacy first-var render.
+fn diff_tail_pairs(
+    ctx: &Context,
+    tail: &[ExprId],
+    mut render: impl FnMut(ExprId) -> String,
+) -> Option<Vec<(String, u64)>> {
+    use num_traits::ToPrimitive;
+    let mut pairs: Vec<(String, u64)> = Vec::new();
+    for &a in tail {
+        match ctx.get(a) {
+            Expr::Number(n) if n.is_integer() && !pairs.is_empty() => {
+                let c = n.to_integer().to_u64()?;
+                if c == 0 {
+                    return None;
+                }
+                pairs.last_mut()?.1 = c;
+            }
+            Expr::Variable(_) => pairs.push((render(a), 1)),
+            _ => return None,
+        }
+    }
+    (!pairs.is_empty()).then_some(pairs)
+}
 use std::sync::LazyLock;
 
 // ── Static regex constants for LaTeX negative-sign cleanup ──────────────────
@@ -881,8 +935,14 @@ pub trait LaTeXRenderer {
             "ceil" => format!("\\lceil {} \\rceil", self.expr_to_latex(args[0], false)),
             "diff" if args.len() >= 2 => {
                 let expr = self.expr_to_latex(args[0], false);
-                let var = self.expr_to_latex(args[1], false);
-                format!("\\frac{{d}}{{d{}}}({})", var, expr)
+                if let Some(pairs) =
+                    diff_tail_pairs(self.context(), &args[1..], |a| self.expr_to_latex(a, false))
+                {
+                    format!("{}({})", diff_operator_latex(&pairs), expr)
+                } else {
+                    let var = self.expr_to_latex(args[1], false);
+                    format!("\\frac{{d}}{{d{}}}({})", var, expr)
+                }
             }
             "integrate" if args.len() == 4 => {
                 let expr = self.expr_to_latex(args[0], false);
@@ -2481,8 +2541,15 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             ),
             "diff" if args.len() >= 2 => {
                 let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));
-                let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
-                format!("\\frac{{d}}{{d{}}}({})", var, expr)
+                if let Some(pairs) = diff_tail_pairs(self.context, &args[1..], |a| {
+                    let idx = 1 + args[1..].iter().position(|&x| x == a).unwrap_or(0);
+                    self.render_with_path(a, false, &self.child_path(path, idx as u8))
+                }) {
+                    format!("{}({})", diff_operator_latex(&pairs), expr)
+                } else {
+                    let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
+                    format!("\\frac{{d}}{{d{}}}({})", var, expr)
+                }
             }
             "integrate" if args.len() == 4 => {
                 let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 624 (newest first)
+Active entries: 625 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -129,6 +129,7 @@ Active entries: 624 (newest first)
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher `try_match_unimodular_abs`: Add/Sub am... | CAPACIDAD (tanda-2 · ciclo 2: unimodularidad): `|cos θ ± i·sin θ| = 1` SOLO con θ real decidible — el residual B2 re-scopeado por la disciplina V0
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`split_pure_imaginary` público sobre split_i_f... | CAPACIDAD (tanda-2 · ciclo 3: trig-de-i): el puente entero trig↔hiperbólico de argumento imaginario + brazos sinh/cosh/tanh en el walker complejo
 - 2026-07-18 | `retained` | `cas_didactic/visible_rule_names.rs` (21 entradas es + 21 en: las 19 hermanas... | EDUCATIVO (tanda-2 · ciclo 4: C2 localización): los 21 nombres de regla del frente complejo llegan al wire en es/en — la barra baja elevada
+- 2026-07-18 | `retained` | `cas_formatter/latex_core.rs` (helper compartido `diff_operator_latex` + pars... | PRESENTACIÓN (tanda-2 · ciclo 5: display diff multi-var + help): el input_latex de `diff(f,x,y)` deja de DROPEAR variables — forma neutral que no prejuzga ∂
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20485,3 +20486,15 @@ Active entries: 624 (newest first)
   - retained learning:
   - **La traza de un probe cualquiera es el detector de huecos i18n más barato**: pedir los steps de 3 inputs del frente en ambos idiomas enumeró las claves faltantes (incluida una regla de OTRO archivo que el listado estático no daba) más rápido que cualquier grep del registro de reglas.
   - PRÓXIMO PELDAÑO: tanda-2 ciclo 5 — **display diff 3-args** (WRONG de display: input_latex de `diff(f,x,y)` dropea la `y`; forma neutral que no prejuzga la pregunta ∂) + help_topics con los 6 verbos vectoriales.
+
+## 2026-07-18 - PRESENTACIÓN (tanda-2 · ciclo 5: display diff multi-var + help): el input_latex de `diff(f,x,y)` deja de DROPEAR variables — forma neutral que no prejuzga ∂
+
+- area: `cas_formatter/latex_core.rs` (helper compartido `diff_operator_latex` + parser de cola SymPy `diff_tail_pairs`, cableado en LOS DOS brazos duplicados — la trampa "mover juntos o divergen" del scoping, resuelta con lógica única y render por-brazo) + `cas_cli/repl/help_topics.rs` (topic de los 6 verbos vectoriales con alias) + contract e2e
+- status: `retained`. Tanda-2 ciclo 5/6 (el WRONG de display nombrado en el scoping vectorial V8, ejecutado en su mitad NEUTRAL; el residual ∂ queda gated por la pregunta abierta #3).
+- capture:
+  - investment_class: presentación-honestidad (display engañoso de capacidad VIVA: las mixtas funcionan desde 2026-06-21 y su eco LaTeX mentía) + educativo (help).
+  - cell: `diff(x²y³,x,y)` → `\frac{d^{2}}{dy \, dx}(…)` (antes `\frac{d}{dx}(…)` — la y INVISIBLE); `diff(x^5,x,2)` → `\frac{d^{2}}{dx^{2}}`; conteos mixtos `diff(f,x,2,y)` → `\frac{d^{3}}{dy \, dx^{2}}`; denominador derecha-a-izquierda (convención estándar de parciales mixtas); **2-args BYTE-IDÉNTICO en ambos renderers** (`\frac{d}{dx}` intacto, pin anidado `sqrt(diff)` incluido); cola malformada → fallback al render legado (no peor que hoy). Notación `d` NEUTRAL deliberada — la elección global de ∂ es la pregunta abierta #3 del usuario; este fix solo elimina el drop. Help: topic único para los 8 nombres (6 verbos + 2 alias) con la direccional, conservatividad y armónica como ejemplos.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Dos brazos duplicados se protegen con UNA lógica y render inyectado**: `diff_tail_pairs` recibe el renderer como closure — los brazos no pueden divergir en el parsing aunque cada uno renderice con su mecanismo (expr_to_latex vs render_with_path); la versión display del "chokepoint > parche por caso".
+  - PRÓXIMO PELDAÑO: tanda-2 ciclo 6 — **meta-mantenimiento A** (audit de veracidad de docs tras ~13 ciclos de graduaciones: CALCULUS_FRONTIER_AUDIT / roadmap items secretamente graduados, workflow READ-ONLY, docs-only).

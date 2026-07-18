@@ -2349,6 +2349,40 @@ fn test_eval_gaussian_reciprocal_clean_form() {
 }
 
 #[test]
+fn test_eval_diff_multivar_input_latex() {
+    // Tanda-2 ciclo 5: el input_latex de diff 3+ args DROPEABA las variables extra
+    // (`diff(f,x,y)` mostraba \frac{d}{dx}(f) — display engañoso de capacidad viva).
+    // Forma NEUTRAL con `d` (la elección global de ∂ es pregunta abierta del usuario);
+    // denominador derecha-a-izquierda (convención estándar de parciales mixtas).
+    let latex_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["input_latex"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        latex_of("diff(x^2*y^3, x, y)"),
+        "\\frac{d^{2}}{dy \\, dx}({x}^{2}\\cdot {y}^{3})"
+    );
+    assert_eq!(
+        latex_of("diff(x^5, x, 2)"),
+        "\\frac{d^{2}}{dx^{2}}({x}^{5})"
+    );
+    assert_eq!(
+        latex_of("diff(x^2*y^2, x, 2, y)"),
+        "\\frac{d^{3}}{dy \\, dx^{2}}({x}^{2}\\cdot {y}^{2})"
+    );
+    // El 2-args queda BYTE-IDÉNTICO (ambos renderers).
+    assert_eq!(latex_of("diff(x^2, x)"), "\\frac{d}{dx}({x}^{2})");
+    assert_eq!(
+        latex_of("sqrt(diff(x^2,x))"),
+        "\\sqrt{\\frac{d}{dx}({x}^{2})}"
+    );
+}
+
+#[test]
 fn test_eval_complex_rule_names_localized() {
     // Fase 2 · C2: los nombres de regla del frente complejo llegan al wire
     // LOCALIZADOS (es fuente, en vía tabla) — la "barra baja" del frente elevada al

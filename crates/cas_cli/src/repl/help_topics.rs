@@ -204,6 +204,27 @@ Examples:
   explain gcd(2*x^2 + 7*x + 3, 2*x^2 + 5*x + 2)"
             .to_string(),
 
+        "gradient" | "grad" | "jacobian" | "hessian" | "divergence" | "curl" | "rot"
+        | "laplacian" => "\
+Vectorial calculus verbs (Fase 2): verbo(campo, [vars])
+Description: Derivadas vectoriales sobre el nodo matriz. La lista de variables
+             es un vector de variables puras ([x,y] o [x,y,z]); la salida del
+             gradiente es COLUMNA n×1, el jacobiano es m×n (filas = funciones),
+             el rotacional 2D es ESCALAR (∂Q/∂x − ∂P/∂y).
+Verbos:
+  gradient(f, [x,y])          ∇f — alias: grad
+  jacobian([f,g], [x,y])      matriz m×n de parciales
+  hessian(f, [x,y])           n×n simétrica de segundas derivadas
+  divergence([P,Q], [x,y])    ∇·F (exige #componentes == #variables)
+  curl([P,Q,R], [x,y,z])      ∇×F columna 3×1 — alias: rot; en 2D, escalar
+  laplacian(f, [x,y])         Δf = Σ ∂²f/∂xᵢ²
+Examples:
+  gradient(x^2+y^2, [x,y])            → [[2·x], [2·y]]
+  dot(gradient(x^2*y,[x,y]), [1,0])   → 2·x·y   (derivada direccional)
+  curl(gradient(x*y*z,[x,y,z]), [x,y,z]) → [[0],[0],[0]]  (conservatividad)
+  laplacian(ln(x^2+y^2), [x,y])       → 0       (armónica)"
+            .to_string(),
+
         "det" => "\
 Command: det <matrix>
 Description: Compute the determinant of a square matrix.
