@@ -2349,6 +2349,59 @@ fn test_eval_gaussian_reciprocal_clean_form() {
 }
 
 #[test]
+fn test_eval_complex_rule_names_localized() {
+    // Fase 2 · C2: los nombres de regla del frente complejo llegan al wire
+    // LOCALIZADOS (es fuente, en vía tabla) — la "barra baja" del frente elevada al
+    // patrón de los verbos vectoriales. Solo AÑADIR claves, jamás editar existentes.
+    let rules_of = |input: &str, lang: Option<&str>| -> Vec<String> {
+        let mut args = vec![
+            "eval",
+            input,
+            "--value-domain",
+            "complex",
+            "--steps",
+            "on",
+            "--format",
+            "json",
+        ];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["steps"]
+            .as_array()
+            .map(|steps| {
+                steps
+                    .iter()
+                    .map(|s| s["rule"].as_str().unwrap_or("").to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        rules_of("(3+4i)/(1-2i)", None),
+        vec!["Dividir números complejos"]
+    );
+    assert_eq!(
+        rules_of("(3+4i)/(1-2i)", Some("en")),
+        vec!["Divide complex numbers"]
+    );
+    assert_eq!(
+        rules_of("sin(i)", None),
+        vec!["Aplicar trigonometría de argumento imaginario"]
+    );
+    let euler_unimodular = rules_of("abs(e^(2*i))", Some("en"));
+    assert_eq!(
+        euler_unimodular,
+        vec![
+            "Apply Euler's formula",
+            "Apply the unimodular absolute value"
+        ]
+    );
+}
+
+#[test]
 fn test_eval_trig_of_imaginary_bridge() {
     // Fase 2 · trig-de-i (residual B4b): el puente trig↔hiperbólico de argumento
     // puro-imaginario — identidades ENTERAS (válidas para y complejo arbitrario, sin

@@ -186,6 +186,26 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Vector Divergence" => "Calcular la divergencia",
         "Vector Laplacian" => "Calcular el laplaciano",
         "Vector Curl" => "Calcular el rotacional",
+        "i * i = -1" => "Aplicar i·i = -1",
+        "Complex Negative Base Root" => "Calcular la raíz principal de base negativa",
+        "Imaginary Power" => "Calcular la potencia de i",
+        "Gaussian Multiplication" => "Multiplicar números complejos",
+        "Gaussian Addition" => "Sumar números complejos",
+        "Gaussian Division" => "Dividir números complejos",
+        "Gaussian Power" => "Elevar el número complejo a la potencia entera",
+        "Square Root of Negative" => "Calcular la raíz cuadrada del negativo",
+        "Negative Base Square Root Power" => "Calcular la potencia fraccionaria de base negativa",
+        "Complex Modulus" => "Calcular el módulo del número complejo",
+        "Complex Conjugate" => "Calcular el conjugado",
+        "Real Part" => "Tomar la parte real",
+        "Imaginary Part" => "Tomar la parte imaginaria",
+        "Euler Formula" => "Aplicar la fórmula de Euler",
+        "Principal Argument" => "Calcular el argumento principal",
+        "Gaussian Square Root" => "Calcular la raíz cuadrada del número complejo",
+        "Complex General Power" => "Calcular la potencia compleja general",
+        "Principal Complex Logarithm" => "Calcular el logaritmo complejo principal",
+        "Unimodular Absolute Value" => "Aplicar el valor absoluto unimodular",
+        "Trig of Imaginary Argument" => "Aplicar trigonometría de argumento imaginario",
         "Present calculus result in compact form" => {
             "Presentar resultado de cálculo en forma compacta"
         }
@@ -635,7 +655,35 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Aplicar producto factorial" => "Apply the factorial product",
         "Calcular coeficiente binomial" => "Compute the binomial coefficient",
         "Calcular el logaritmo" => "Compute the logarithm",
+        "Aplicar el valor absoluto unimodular" => "Apply the unimodular absolute value",
+        "Aplicar i·i = -1" => "Apply i·i = -1",
+        "Aplicar la fórmula de Euler" => "Apply Euler's formula",
+        "Aplicar trigonometría de argumento imaginario" => "Apply trig of an imaginary argument",
+        "Calcular el argumento principal" => "Compute the principal argument",
+        "Calcular el conjugado" => "Compute the conjugate",
         "Calcular el gradiente" => "Compute the gradient",
+        "Calcular el logaritmo complejo principal" => "Compute the principal complex logarithm",
+        "Calcular el módulo del número complejo" => "Compute the modulus of the complex number",
+        "Calcular la potencia compleja general" => "Compute the general complex power",
+        "Calcular la potencia de i" => "Compute the power of i",
+        "Calcular la potencia fraccionaria de base negativa" => {
+            "Compute the fractional power of a negative base"
+        }
+        "Calcular la raíz cuadrada del negativo" => "Compute the square root of the negative",
+        "Calcular la raíz principal de base negativa" => {
+            "Compute the principal root of the negative base"
+        }
+        "Calcular la raíz cuadrada del número complejo" => {
+            "Compute the square root of the complex number"
+        }
+        "Dividir números complejos" => "Divide complex numbers",
+        "Elevar el número complejo a la potencia entera" => {
+            "Raise the complex number to the integer power"
+        }
+        "Multiplicar números complejos" => "Multiply complex numbers",
+        "Sumar números complejos" => "Add complex numbers",
+        "Tomar la parte imaginaria" => "Take the imaginary part",
+        "Tomar la parte real" => "Take the real part",
         "Calcular el hessiano" => "Compute the Hessian",
         "Calcular el laplaciano" => "Compute the Laplacian",
         "Calcular el rotacional" => "Compute the curl",

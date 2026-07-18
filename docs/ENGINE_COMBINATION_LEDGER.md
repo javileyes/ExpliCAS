@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 623 (newest first)
+Active entries: 624 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -128,6 +128,7 @@ Active entries: 623 (newest first)
 - 2026-07-18 | `retained` | `cas_math/fraction_add_build_support.rs` (`mul2_fold_numeric` en los 3 sitios... | PRESENTACIÓN-SOUNDNESS (tanda-2 · ciclo 1: el parcial `(z)^(-1)`): AddFractions pliega Number×Number en la emisión — el mangle `(1/2·2 - i)/(2)` muere en su origen
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher `try_match_unimodular_abs`: Add/Sub am... | CAPACIDAD (tanda-2 · ciclo 2: unimodularidad): `|cos θ ± i·sin θ| = 1` SOLO con θ real decidible — el residual B2 re-scopeado por la disciplina V0
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`split_pure_imaginary` público sobre split_i_f... | CAPACIDAD (tanda-2 · ciclo 3: trig-de-i): el puente entero trig↔hiperbólico de argumento imaginario + brazos sinh/cosh/tanh en el walker complejo
+- 2026-07-18 | `retained` | `cas_didactic/visible_rule_names.rs` (21 entradas es + 21 en: las 19 hermanas... | EDUCATIVO (tanda-2 · ciclo 4: C2 localización): los 21 nombres de regla del frente complejo llegan al wire en es/en — la barra baja elevada
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20471,3 +20472,16 @@ Active entries: 623 (newest first)
   - **Antes de declarar P0 un "false" de equiv, sondea el ENUM, no el string**: el wire Bool colapsa Unknown→"false" por diseño documentado — el test-sonda de 6 líneas (panic con el variant) distingue en un minuto la refutación real de la conflación de superficie.
   - **Las identidades enteras no llevan guard de realidad; las condicionales sí** — el par unimodularidad (guard `provable_const_sign`) / puente-imaginario (sin guard) es el ejemplo canónico de cuándo cada disciplina aplica: preguntar siempre "¿la identidad vale en TODO ℂ o solo en ℝ?".
   - PRÓXIMO PELDAÑO: tanda-2 ciclo 4 — **C2 localización es/en de las descs complejas** (la barra baja del frente: inglés hardcodeado en format_complex_rewrite_desc; elevar al patrón visible_rule_names/locale). Residuales nuevos nombrados: sinh↔exp fold (graduaría el fixture), suma-de-ángulos compleja, tri-estado del wire equiv.
+
+## 2026-07-18 - EDUCATIVO (tanda-2 · ciclo 4: C2 localización): los 21 nombres de regla del frente complejo llegan al wire en es/en — la barra baja elevada
+
+- area: `cas_didactic/visible_rule_names.rs` (21 entradas es + 21 en: las 19 hermanas Gaussianas/transcendentales + ComplexNegativeBaseRoot + PrincipalComplexLogarithm) + contract e2e dual-idioma
+- status: `retained`. Tanda-2 ciclo 4/6 (C2 del scoping complejo, reducido en la revisión 2026-07-16 a localización/pulido — la mitad educativa alterna frente tras 3 ciclos universales).
+- capture:
+  - investment_class: educativo (el `rule` del wire es LA etiqueta que el usuario ve por paso; "Gaussian Division" en salida española era la barra-baja documentada del frente).
+  - cell: `(3+4i)/(1-2i)` → step "Dividir números complejos"/"Divide complex numbers"; `sin(i)` → "Aplicar trigonometría de argumento imaginario"; `abs(e^(2i))` en → ["Apply Euler's formula", "Apply the unimodular absolute value"]; `(-8)^(1/3)` en → "Compute the principal root of the negative base". Solo claves AÑADIDAS (jamás editadas — el smoke pin-ea substrings de las existentes).
+  - residual honesto nombrado: la i18n GENERAL de reglas no-complejas sigue incompleta ("Cancel Power Fraction" apareció sin traducir en la traza de `(-8)^(1/3)`) — fuera del alcance C2 (frente complejo); candidato a barrido i18n propio.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards (capa didáctica pura, cero cambio de resultados).
+  - retained learning:
+  - **La traza de un probe cualquiera es el detector de huecos i18n más barato**: pedir los steps de 3 inputs del frente en ambos idiomas enumeró las claves faltantes (incluida una regla de OTRO archivo que el listado estático no daba) más rápido que cualquier grep del registro de reglas.
+  - PRÓXIMO PELDAÑO: tanda-2 ciclo 5 — **display diff 3-args** (WRONG de display: input_latex de `diff(f,x,y)` dropea la `y`; forma neutral que no prejuzga la pregunta ∂) + help_topics con los 6 verbos vectoriales.
