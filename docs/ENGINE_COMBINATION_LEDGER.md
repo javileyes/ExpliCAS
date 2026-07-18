@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 613 (newest first)
+Active entries: 614 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
+- 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20316,3 +20317,18 @@ Active entries: 613 (newest first)
   - **`apply_with_context` es el canal de dominio BARATO para las SimpleRule legacy**: el hook existía sin usuarios en la familia matrix; enhebrar `ValueDomain` a una regla vieja no exige migrarla a `define_rule!` — override de 8 líneas y el `apply_simple` queda como vista real-mode explícita.
   - **Un fold "conveniente" fuera de su dominio es deuda que el modo estricto convierte en P0**: norm plegaba `i` en real "porque el valor era útil" — exactamente el tipo de excepción que A2 eliminó para abs; alinearlo costó 5 pins migrados y CERO capacidad perdida (el valor útil vive en complex, a un flag de distancia).
   - PRÓXIMO PELDAÑO: **V1** (diff componentwise sobre Matrix + cierre matmul — el primitivo `map_matrix_components` que estrena la mecánica de los 6 verbos). El scoping es la fuente; V0 queda ☑ (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
+
+- area: `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_componentwise_diff_matrix`, cap `COMPONENTWISE_MAX_CELLS=64`; brazo `matmul` en el dispatch binario) + `rules/calculus/diff_rule.rs` (brazo Matrix TEMPRANO en DiffRule, antes de la cascada escalar de ~20 rutas) + allowlist de gobernanza budget_exempt + 3 unit tests + 2 bloques contract e2e
+- status: `retained`. Ciclo 2/8 de la tanda vectorial (V1 del scoping; V0 = `682b33a3d`).
+- capture:
+  - investment_class: capacidad Fase-2 (el cable nombrado por el doc de fases líneas 210-211) + cierre de residual silencioso preexistente (matmul).
+  - cell: `diff([x^2,x^3],x)→[[2·x],[3·x^2]]`, `diff([x^2*y,sin(x)],x)→[[2·x·y],[cos(x)]]`, **orden superior GRATIS** vía desugar target-agnóstico (`diff([x^2,x^3],x,2)→[[2],[6·x]]` — la predicción del scoping, verificada), **todo-o-nada** (`diff([x,sign(x)],x)` → eco íntegro, jamás matriz medio-derivada), narración visible (`--steps` → "Calcular la derivada"; el diff call es RAÍZ, así que el chokepoint-C de wire no lo traga — eso queda para V2 con el literal anidado). matmul: `matmul([[1,2],[3,4]],[[5,6],[7,8]])→[[19,22],[43,50]]`, mismatch → residual honesto. Pins intactos: wronskian x^4, mixta-sympy 6·x·y², var-lista `diff(f,[x,y])` sigue declinando (dueña V3), escalar byte-idéntico.
+  - diseño: `map_matrix_components` es EL primitivo reusable (closure + all-or-nothing + cap) — wronskian ya iteraba así inline; ahora la forma con nombre queda para V3-V7. El brazo va temprano en DiffRule porque toda la cascada asume target escalar; `differentiate_symbolic_expr` INTACTO (decisión D3 del scoping — cero contaminación de los ~30 call-sites escalares).
+  - gobernanza: el test-centinela `budget_exempt_allowlist` (cas_solver/tests/inv_trig_n_angle_tests.rs) cazó el `.budget_exempt()` nuevo — su mensaje documenta el camino de actualización (añadir el archivo SI hay caps); diff_rule.rs entra a la lista con su cap de 64 celdas, el mismo patrón que matrix_ops (256) y factoring (6×6).
+  - validación: workspace re-run failed:0 tras la allowlist; clippy --all-targets limpio; engine-fast verde; huella: CONTADORES idénticos ambos scorecards (solo ruido timing-slots).
+  - retained learning:
+  - **Los tests de gobernanza son contratos con instrucciones de actualización**: el allowlist-sentinel no "falló" — funcionó exactamente como sus autores querían (forzar la justificación de caps por escrito en el punto de uso). Leer el mensaje del test antes de tocar el código productivo.
+  - **El primitivo con nombre paga aunque la lógica exista inline**: wronskian ya mapeaba componentes; extraer `map_matrix_components` convierte los 6 verbos siguientes en one-liners y concentra all-or-nothing + cap en UN sitio auditable.
+  - PRÓXIMO PELDAÑO: **V2** (P0-wire: narración bajo Matrix — brazo `Expr::Matrix` en `rewrite_at_expr_path_with` clonando el patrón Function; verificación empírica con `diff-smoke-85` como red). V1 queda ☑ en el scoping (hash en el ledger del ciclo siguiente).

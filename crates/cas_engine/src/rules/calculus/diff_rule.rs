@@ -67,6 +67,20 @@ define_rule!(
 define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     let call = try_extract_diff_call(ctx, expr)?;
     let target = unwrap_internal_hold_for_calculus(ctx, call.target);
+    // Vector/matrix target: differentiate componentwise (Fase 2 V1) — early, because the
+    // whole scalar cascade below assumes a scalar target. All-or-nothing inside the helper
+    // (a non-differentiable component keeps the call an honest residual); cell cap + exemption
+    // mirror the wronskian/matmul bounded-budget precedent (assembling the result matrix
+    // transiently exceeds the anti-worsen node budget).
+    if matches!(ctx.get(target), cas_ast::Expr::Matrix { .. }) {
+        let rewritten =
+            crate::matrix_rule_support::try_componentwise_diff_matrix(ctx, target, &call.var_name)?;
+        return Some(
+            Rewrite::new(rewritten)
+                .desc("Derivar cada componente del vector")
+                .budget_exempt(),
+        );
+    }
     if diff_target_known_undefined_or_empty_domain_over_reals(ctx, target, &call.var_name) {
         return Some(undefined_diff_rewrite(ctx, &call));
     }

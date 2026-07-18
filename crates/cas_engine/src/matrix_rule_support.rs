@@ -801,6 +801,53 @@ pub(crate) fn try_wronskian_expr(
     .determinant(ctx)
 }
 
+/// Cell cap for componentwise maps over a `Matrix` node (jacobian precedent:
+/// 8×8 = 64). Beyond it the map declines to an honest residual instead of
+/// requesting an unbounded budget exemption.
+pub(crate) const COMPONENTWISE_MAX_CELLS: usize = 64;
+
+/// Map `f` over every component of a `Matrix` expression, ALL-OR-NOTHING: if any
+/// component maps to `None` the whole map declines (honest residual — never a
+/// half-transformed matrix). This is the reusable primitive of the vectorial
+/// verbs (Fase 2 V1): componentwise diff/integrate and the verb assemblers all
+/// build on it.
+pub(crate) fn map_matrix_components(
+    ctx: &mut Context,
+    matrix_expr: ExprId,
+    mut f: impl FnMut(&mut Context, ExprId) -> Option<ExprId>,
+) -> Option<ExprId> {
+    let m = Matrix::from_expr(ctx, matrix_expr)?;
+    if m.data.is_empty() || m.data.len() > COMPONENTWISE_MAX_CELLS {
+        return None;
+    }
+    let mut data = Vec::with_capacity(m.data.len());
+    for &entry in &m.data {
+        data.push(f(ctx, entry)?);
+    }
+    Some(
+        Matrix {
+            rows: m.rows,
+            cols: m.cols,
+            data,
+        }
+        .to_expr(ctx),
+    )
+}
+
+/// Componentwise derivative of a vector/matrix target: `d/dx [f₁, …] = [f₁′, …]`
+/// (Fase 2 V1). A component that cannot be differentiated declines the WHOLE
+/// call (all-or-nothing), keeping `diff([...], x)` an honest residual.
+pub(crate) fn try_componentwise_diff_matrix(
+    ctx: &mut Context,
+    matrix_expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    map_matrix_components(ctx, matrix_expr, |ctx, entry| {
+        differentiate_symbolic_expr(ctx, entry, var)
+    })
+}
+
 /// Binary (2-argument) matrix/vector operations: `dot`, `cross`, `linsolve`.
 /// Returns the result expression plus a description, or `None` to leave the call
 /// as an honest residual (mismatched shapes, a singular/inconsistent system, etc.).
@@ -821,6 +868,19 @@ pub(crate) fn try_rewrite_matrix_binary_function_expr(
     let (rewritten, desc) = match name.as_str() {
         "dot" => (matrix_dot(ctx, &u, &v)?, "dot product".to_string()),
         "cross" => (matrix_cross(ctx, &u, &v)?, "cross product".to_string()),
+        // `matmul` sat in the eval gate with no dispatch arm (silent residual while `A*B`
+        // evaluated) — the live reproduction of the gate-without-rule gotcha. Same math as
+        // the `*` operator; mismatched shapes decline to an honest residual.
+        "matmul" => {
+            let product = u.multiply(&v, ctx)?;
+            (
+                product.to_expr(ctx),
+                format!(
+                    "matrix multiplication ({}×{} · {}×{})",
+                    u.rows, u.cols, v.rows, v.cols
+                ),
+            )
+        }
         "linsolve" => (
             matrix_linsolve(ctx, &u, &v)?,
             "solve linear system A·x = b".to_string(),

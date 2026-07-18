@@ -157,3 +157,73 @@ fn description_builders_include_shapes() {
         try_eval_matrix_function_expr(&mut ctx, transposed, false).expect("transpose");
     assert!(format_matrix_function_desc(&function_eval).contains("transpose(2"));
 }
+
+#[test]
+fn map_matrix_components_is_all_or_nothing() {
+    // The V1 primitive: one failing component declines the WHOLE map — a half-transformed
+    // matrix is never emitted.
+    let mut ctx = cas_ast::Context::new();
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let v = ctx.matrix(2, 1, vec![one, two]).expect("vector");
+
+    let doubled = super::map_matrix_components(&mut ctx, v, |ctx, e| {
+        let two = ctx.num(2);
+        Some(ctx.add(Expr::Mul(two, e)))
+    })
+    .expect("total map succeeds");
+    let m = cas_math::matrix::Matrix::from_expr(&ctx, doubled).expect("matrix result");
+    assert_eq!((m.rows, m.cols), (2, 1));
+
+    let partial = super::map_matrix_components(&mut ctx, v, |ctx, e| {
+        // Fail exactly on the `2` entry.
+        if cas_math::numeric_eval::as_rational_const(ctx, e)
+            .is_some_and(|r| r == num_rational::BigRational::from_integer(2.into()))
+        {
+            None
+        } else {
+            Some(e)
+        }
+    });
+    assert!(partial.is_none(), "partial map must decline entirely");
+}
+
+#[test]
+fn componentwise_diff_matrix_derives_each_entry() {
+    // diff([x^2, x^3], x) → [2x, 3x^2] via the shared support differentiator.
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let x2 = ctx.add(Expr::Pow(x, two));
+    let x3 = ctx.add(Expr::Pow(x, three));
+    let v = ctx.matrix(2, 1, vec![x2, x3]).expect("vector");
+
+    let derived = super::try_componentwise_diff_matrix(&mut ctx, v, "x").expect("derives");
+    let m = cas_math::matrix::Matrix::from_expr(&ctx, derived).expect("matrix result");
+    assert_eq!((m.rows, m.cols), (2, 1));
+    // Sanity on the first entry: d/dx x² must mention x and be a product/power form,
+    // not the untouched x².
+    assert_ne!(m.data[0], x2);
+}
+
+#[test]
+fn matmul_dispatch_multiplies_and_declines_mismatch() {
+    // `matmul` was in the eval gate but missing from the dispatch (silent-residual gotcha).
+    let mut ctx = cas_ast::Context::new();
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let four = ctx.num(4);
+    let a = ctx.matrix(1, 2, vec![one, two]).expect("a");
+    let b = ctx.matrix(2, 1, vec![three, four]).expect("b");
+    let call = ctx.call("matmul", vec![a, b]);
+    let rewrite =
+        super::try_rewrite_matrix_binary_function_expr(&mut ctx, call).expect("matmul evaluates");
+    assert!(rewrite.desc.contains("matrix multiplication"));
+
+    // 1×2 · 1×2 is dimension-mismatched → decline (honest residual), not undefined.
+    let c = ctx.matrix(1, 2, vec![three, four]).expect("c");
+    let bad = ctx.call("matmul", vec![a, c]);
+    assert!(super::try_rewrite_matrix_binary_function_expr(&mut ctx, bad).is_none());
+}

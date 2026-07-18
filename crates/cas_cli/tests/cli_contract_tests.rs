@@ -2317,6 +2317,77 @@ fn test_eval_vector_norm() {
 }
 
 #[test]
+fn test_eval_componentwise_diff_over_matrix() {
+    // Fase 2 V1: `diff` distributes componentwise over a `Matrix` target, ALL-OR-NOTHING
+    // (a non-differentiable component keeps the whole call an honest residual), and the
+    // higher-order desugar composes for free (`diff(M, x, 2)` = nested componentwise diffs).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("diff([x^2,x^3],x)"), "[[2·x], [3·x^2]]");
+    assert_eq!(r("diff([x^2*y, sin(x)],x)"), "[[2·x·y], [cos(x)]]");
+    // Higher-order rides the target-agnostic desugar: diff(M,x,2) → diff(diff(M,x),x).
+    assert_eq!(r("diff([x^2,x^3],x,2)"), "[[2], [6·x]]");
+    // All-or-nothing: sign(x) has no derivative here, so NOTHING is derived (never a
+    // half-differentiated matrix).
+    assert_eq!(r("diff([x, sign(x)],x)"), "diff([[x], [sign(x)]], x)");
+    // Var-list stays a decline (the list-of-vars arity belongs to the vectorial verbs, V3+).
+    assert_eq!(r("diff(x^2+y^2,[x,y])"), "diff(x^2 + y^2, [[x], [y]])");
+    // Scalar pins: the componentwise arm must not disturb the scalar cascade.
+    assert_eq!(r("diff(x^2*y^3,x,y)"), "6·x·y^2");
+    assert_eq!(r("wronskian([x^2,x^3],x)"), "x^4");
+    // Narration: the componentwise arm emits a visible step (the diff call is the root, so
+    // the Matrix-as-leaf wire gap does not swallow it).
+    let out = cli()
+        .args([
+            "eval",
+            "diff([x^2,x^3],x)",
+            "--steps",
+            "on",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        !steps.is_empty(),
+        "componentwise diff at the root must narrate"
+    );
+    assert_eq!(
+        steps[0]["rule"].as_str().unwrap_or(""),
+        "Calcular la derivada"
+    );
+}
+
+#[test]
+fn test_eval_matmul_function() {
+    // `matmul` sat in the eval gate with NO dispatch arm — the live gate-without-rule
+    // gotcha (silent residual while `A*B` evaluated). Now it shares the `*` math; a
+    // dimension mismatch declines to an honest residual (not undefined).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("matmul([[1,2],[3,4]],[[5,6],[7,8]])"),
+        "[[19, 22], [43, 50]]"
+    );
+    assert_eq!(r("matmul([[1,2]],[[3],[4]])"), "[11]");
+    assert_eq!(r("matmul([[1,2]],[[3,4]])"), "matmul([1, 2], [3, 4])");
+}
+
+#[test]
 fn test_eval_matrix_nullspace() {
     // `nullspace(A)` (aliases `null`/`kernel`) returns a basis of {x : A·x = 0} by exact rational
     // RREF, rows = basis vectors. Verified elsewhere by A·v = 0. A trivial kernel is the zero vector;
