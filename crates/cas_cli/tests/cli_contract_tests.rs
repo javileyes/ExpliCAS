@@ -2644,6 +2644,62 @@ fn test_eval_curl_verb() {
 }
 
 #[test]
+fn test_eval_abs_vector_and_componentwise_integrate() {
+    // Fase 2 V7: (a) |v| of a VECTOR is its Euclidean norm, inheriting V0's domain
+    // decision wholesale (never re-deciding it); a general matrix stays residual.
+    // (b) integrate distributes componentwise, ALL-OR-NOTHING and conditions-
+    // conservative: a non-elementary component (or one whose antiderivative carries
+    // required conditions) declines the WHOLE call — the north star's protected
+    // residuals never end up half-integrated inside a matrix.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // V7a — abs of a vector is the norm, in BOTH domains (V0 inheritance).
+    assert_eq!(r("abs([3,4])"), "5");
+    assert_eq!(r("abs([x,y])"), "(x^2 + y^2)^(1/2)");
+    assert_eq!(rc("abs([x,y])"), "(|x|^2 + |y|^2)^(1/2)");
+    assert_eq!(rc("abs([1,i])"), "sqrt(2)");
+    // General matrix: honest residual (matrix modulus ≠ Frobenius norm); scalar abs
+    // untouched (the abs family is 4-historic-P0 territory).
+    assert_eq!(r("abs([[1,2],[3,4]])"), "|[[1, 2], [3, 4]]|");
+    assert_eq!(r("abs(-3)"), "3");
+    // V7b — componentwise antiderivatives.
+    assert_eq!(r("integrate([x, x^2], x)"), "[[1/2·x^2], [1/3·x^3]]");
+    assert_eq!(r("integrate([cos(x), e^x], x)"), "[[sin(x)], [e^x]]");
+    assert_eq!(r("integrate([1/x, x], x)"), "[[ln(|x|)], [1/2·x^2]]");
+    // ALL-OR-NOTHING: e^(-x²) has no elementary antiderivative — the whole call echoes.
+    assert_eq!(
+        r("integrate([x, e^(-x^2)], x)"),
+        "integrate([[x], [1 / e^(x^2)]], x)"
+    );
+    // Definite integrals over a Matrix stay an honest residual (indefinite-only scope).
+    assert_eq!(
+        r("integrate([x,x^2], x, 0, 1)"),
+        "integrate([[x], [x^2]], x, 0, 1)"
+    );
+}
+
+#[test]
 fn test_eval_steps_under_matrix_literal() {
     // Fase 2 V2 (P0-wire): steps that fire UNDER a `Matrix` node used to be silently
     // discarded — `rewrite_at_expr_path_with` treated Matrix as a leaf, so the step's

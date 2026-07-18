@@ -1297,6 +1297,19 @@ pub(crate) fn try_eval_matrix_function_expr(
         "norm" => matrix
             .norm_in_domain(ctx, complex_enabled)
             .map(|value| MatrixFunctionEval::Norm { shape, value }),
+        // |v| of a VECTOR is its Euclidean norm (Fase 2 V7a) — inheriting V0's domain
+        // decision wholesale via `norm_in_domain` (never re-deciding it). A general
+        // matrix keeps the honest residual: the matrix modulus is NOT the Frobenius
+        // norm, and claiming it would assert semantics we do not have.
+        "abs" => {
+            if shape.rows == 1 || shape.cols == 1 {
+                matrix
+                    .norm_in_domain(ctx, complex_enabled)
+                    .map(|value| MatrixFunctionEval::Norm { shape, value })
+            } else {
+                None
+            }
+        }
         "adjugate" | "adj" => matrix
             .adjugate(ctx)
             .map(|value| MatrixFunctionEval::Adjugate { shape, value }),

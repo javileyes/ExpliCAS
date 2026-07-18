@@ -373,3 +373,24 @@ fn curl_3d_signs_and_2d_scalar_type() {
     let vars4: Vec<String> = vec!["x".into(), "y".into(), "z".into(), "w".into()];
     assert!(super::try_curl_expr(&mut ctx, field4, &vars4).is_none());
 }
+
+#[test]
+fn abs_of_vector_is_norm_and_general_matrix_declines() {
+    // V7a: |v| = Euclidean norm for VECTORS only, inheriting V0's domain decision via
+    // norm_in_domain; a general matrix declines (matrix modulus ≠ Frobenius norm).
+    let mut ctx = cas_ast::Context::new();
+    let three = ctx.num(3);
+    let four = ctx.num(4);
+    let v = ctx.matrix(2, 1, vec![three, four]).expect("vector");
+    let call = ctx.call("abs", vec![v]);
+    let eval = super::try_eval_matrix_function_expr(&mut ctx, call, false).expect("abs of vector");
+    assert!(matches!(eval, super::MatrixFunctionEval::Norm { .. }));
+
+    let one = ctx.num(1);
+    let sq = ctx.matrix(2, 2, vec![one, three, four, one]).expect("2x2");
+    let call2 = ctx.call("abs", vec![sq]);
+    assert!(
+        super::try_eval_matrix_function_expr(&mut ctx, call2, false).is_none(),
+        "general-matrix abs must stay an honest residual"
+    );
+}

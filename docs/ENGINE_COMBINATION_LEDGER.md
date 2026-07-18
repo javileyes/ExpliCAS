@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 619 (newest first)
+Active entries: 620 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -124,6 +124,7 @@ Active entries: 619 (newest first)
 - 2026-07-18 | `retained` | `cas_engine` (assemblers `try_jacobian_expr`/`try_hessian_expr` en matrix_rul... | CAPACIDAD (Fase 2 vectorial · V4): `jacobian` + `hessian` con orientación pineada, y el equiv bracket-aware que ata los metamórficos
 - 2026-07-18 | `retained` | `cas_engine` (assemblers `try_divergence_expr`/`try_laplacian_expr`; `Diverge... | CAPACIDAD (Fase 2 vectorial · V5): `divergence` + `laplacian` — y el falso-residual del budget cazado por barrido adversarial
 - 2026-07-18 | `retained` | `cas_engine` (assembler con signos `try_curl_expr`; `CurlRule` con alias rot;... | CAPACIDAD (Fase 2 vectorial · V6): `curl`/`rot` 3D columna + 2D ESCALAR — el bloque B de verbos queda COMPLETO
+- 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (brazo `abs` en el dispatch unario, SOLO ... | CAPACIDAD (Fase 2 vectorial · V7a+b): `abs(vector)→norm` heredando V0, e `integrate` componentwise condiciones-conservador
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20408,3 +20409,18 @@ Active entries: 619 (newest first)
   - **Un fixture-detector no muere al graduarse su presa: MIGRA a la siguiente frontera** — never-confirm pasó de "verbos aún no cableados" a "nombres Fase-3 que deben declinar por contrato"; el mismo test guarda ahora el scope-out en vez del gate-sin-regla.
   - **La clave de locale elegida por SHAPE del resultado (Matrix vs escalar) resuelve la narración de un verbo con dos formas de salida** sin duplicar reglas ni generadores — el selector vive en el generador didáctico, no en la regla.
   - PRÓXIMO PELDAÑO: **V7 restante** (a: `abs(vector)→norm` heredando la decisión de dominio V0; b: `integrate` componentwise todo-o-nada con la lane integrate-smoke como pin; d: pre-evaluar diff en solve_system — pregunta abierta #4 del usuario, puede diferirse). V6 queda ☑ (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - CAPACIDAD (Fase 2 vectorial · V7a+b): `abs(vector)→norm` heredando V0, e `integrate` componentwise condiciones-conservador
+
+- area: `cas_engine/matrix_rule_support.rs` (brazo `abs` en el dispatch unario, SOLO shape vector, delegando `norm_in_domain`) + `rules/calculus/integrate_rule.rs` (brazo Matrix en IntegrateRule sobre `map_matrix_components` + `integrate_with_trace` + walker `contains_integrate_call`) + unit tests + contract e2e + examples.csv
+- status: `retained`. Ciclo 8/8 de la tanda vectorial (V7a+b del scoping; V6 = `88402a448`). V7c se adelantó a V4; **V7d (pre-evaluar diff en solve_system) queda DIFERIDO — es la pregunta abierta #4 del scoping, decisión del usuario** (toca superficie compartida del solver y su valor es curricular, no de cableado vectorial).
+- capture:
+  - investment_class: capacidad Fase-2 (bordes del ecosistema — los dos cables restantes del bloque C que no dependen del usuario).
+  - cell: **V7a**: `abs([3,4])→5`, `abs([x,y])→(x²+y²)^(1/2)` real y `(|x|²+|y|²)^(1/2)` complex, `abs([1,i])` complex → `sqrt(2)` — **herencia TOTAL de la decisión de dominio V0** (delega en `norm_in_domain`, jamás re-decide); matriz general → residual honesto (módulo matricial ≠ Frobenius); abs escalar intacto (territorio de 4 P0 históricas). **V7b**: `integrate([x,x^2],x)→[[x²/2],[x³/3]]`, `[[sin x],[e^x]]`, `[[ln|x|],[x²/2]]`; **todo-o-nada verificado**: `integrate([x, e^(-x^2)],x)` → eco ÍNTEGRO (el residual no-elemental protegido del norte jamás queda medio-integrado); definidas sobre Matrix → residual (alcance indefinida); narración "Calcular la integral".
+  - diseño de soundness V7b: el gate por celda es TRIPLE — fallo del integrador, `required_conditions` no vacías (jamás dropear una condición de dominio en silencio), o resultado que aún CONTIENE un nodo `integrate` (el backend residual-fallback emite el residual como "resultado" — sin el walker, una matriz medio-integrada saldría en silencio). El walker usa la forma pre-lookup del lint.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards (lane integrate-smoke incluida). El centinela budget_exempt cazó la exención nueva de integrate_rule.rs (2ª vez en la tanda — funciona) → allowlist con el cap por escrito.
+  - retained learning:
+  - **Un backend con residual-fallback convierte "Some(resultado)" en una afirmación DÉBIL**: el resultado puede ser el propio residual empaquetado — todo consumidor componentwise/agregador debe re-verificar que el resultado no contiene el nodo original antes de ensamblar (el equivalente integración del never-confirm).
+  - **"Heredar la decisión de dominio" = delegar en la función decidida, no copiar su lógica**: el brazo abs es 8 líneas porque `norm_in_domain` ES la decisión V0; duplicar el fold habría creado el segundo sitio que V0 existía para eliminar.
+  - **TANDA COMPLETA (8/8, 0 rechazos):** V0→V7a+b aterrizados; el frente vectorial queda con los 6 verbos vivos + sustrato + bordes. RESIDUALES del frente: V7d (pregunta abierta #4), V8 (pulido ∂/display 3-args/help — depende de pregunta abierta #3), quirk `sqrt(|pi|²)` radicando solitario, `2·|i|` display real-mode, vector-laplacian, preguntas abiertas 1-4 del scoping al usuario.
+  - PRÓXIMO PELDAÑO RECOMENDADO: resolver con el usuario las 4 preguntas abiertas del scoping (steps-en-texto, verbo subs inline, ∂ global, V7d) — desbloquean V8 y el cierre formal del frente; alternativa sin usuario: V8 parcial (help_topics + localización) o re-audit de frontera.

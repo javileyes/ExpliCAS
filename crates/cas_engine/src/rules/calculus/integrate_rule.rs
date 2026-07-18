@@ -17,6 +17,29 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         return super::definite_integration::definite_integration_rewrite(ctx, &definite_call);
     }
     let mut call = try_extract_integrate_call(ctx, expr)?;
+    // Vector/matrix target: integrate componentwise (Fase 2 V7b), ALL-OR-NOTHING and
+    // conditions-conservative: a component whose antiderivative carries required
+    // conditions, still contains an integrate node (residual fallback), or fails
+    // outright declines the WHOLE call — never a half-integrated matrix, and never a
+    // silently dropped domain condition.
+    if matches!(ctx.get(call.target), cas_ast::Expr::Matrix { .. }) {
+        let var = call.var_name.clone();
+        let rewritten =
+            crate::matrix_rule_support::map_matrix_components(ctx, call.target, |ctx, entry| {
+                let outcome = super::integration::integrate_with_trace(ctx, entry, &var)?;
+                if !outcome.required_conditions.is_empty()
+                    || contains_integrate_call(ctx, outcome.result)
+                {
+                    return None;
+                }
+                Some(outcome.result)
+            })?;
+        return Some(
+            crate::rule::Rewrite::new(rewritten)
+                .desc("Integrar cada componente del vector")
+                .budget_exempt(),
+        );
+    }
     // The simplifier RATIONALIZES a fractional reciprocal power — `1/x^(1/3)`
     // becomes `x^(2/3)/x`, not `x^(-1/3)` — so the power-rule integrand matcher
     // (which recognizes `x^n`) missed it and `∫1/x^(1/3)` leaked. Fold a
@@ -96,4 +119,35 @@ fn fold_var_power_quotient(ctx: &mut Context, target: ExprId, var: &str) -> Opti
         let scale_expr = ctx.add(Expr::Number(scale));
         Some(ctx.add(Expr::Mul(scale_expr, power)))
     }
+}
+
+/// True when any node of `expr` is an `integrate(...)` call — the all-or-nothing
+/// gate of the componentwise arm (a residual-fallback antiderivative must decline,
+/// never ship inside a half-integrated matrix).
+fn contains_integrate_call(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    use cas_ast::Expr;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Function(f, args) => {
+                let name = ctx.sym_name(*f);
+                if name == "integrate" {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
 }

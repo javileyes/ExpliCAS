@@ -156,3 +156,5 @@
 "Vectorial","laplacian(ln(x^2+y^2), [x,y])","La armónica clásica: Δ ln(x²+y²) = 0 exacto (suma de segundas derivadas)"
 "Vectorial","curl([y,-x,0], [x,y,z])","Rotacional del campo de rotación clásico → [[0], [0], [-2]] (columna 3×1; en 2D el rotacional es ESCALAR)"
 "Vectorial","curl(gradient(x*y*z,[x,y,z]), [x,y,z])","Test de conservatividad: todo campo gradiente es irrotacional — ∇×(∇f) = [[0], [0], [0]]"
+"Vectorial","integrate([cos(x), e^x], x)","Antiderivada componente a componente de un vector de funciones → [[sin(x)], [eˣ]] (todo-o-nada: un componente no elemental declina entero)"
+"Vectorial","abs([3,4])","El módulo de un vector es su norma euclídea → 5 (en dominio complejo, |v| usa |·|² por componente)"
