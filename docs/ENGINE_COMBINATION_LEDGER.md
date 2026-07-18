@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 626 (newest first)
+Active entries: 627 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -131,6 +131,7 @@ Active entries: 626 (newest first)
 - 2026-07-18 | `retained` | `cas_didactic/visible_rule_names.rs` (21 entradas es + 21 en: las 19 hermanas... | EDUCATIVO (tanda-2 · ciclo 4: C2 localización): los 21 nombres de regla del frente complejo llegan al wire en es/en — la barra baja elevada
 - 2026-07-18 | `retained` | `cas_formatter/latex_core.rs` (helper compartido `diff_operator_latex` + pars... | PRESENTACIÓN (tanda-2 · ciclo 5: display diff multi-var + help): el input_latex de `diff(f,x,y)` deja de DROPEAR variables — forma neutral que no prejuzga ∂
 - 2026-07-18 | `retained` | docs-only (sin huella): `CALCULUS_FRONTIER_AUDIT.md` (6 anotaciones + 1 check... | META-MANTENIMIENTO A (tanda-2 · ciclo 6: audit de veracidad de docs): 20 claims stale corregidos en 4 fuentes de verdad — incl. una familia P0 graduada en silencio
+- 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_trig_complex_angle_sum`: 4 brazos... | CAPACIDAD (tanda-3 · ciclo 1: suma de ángulos compleja): `sin(1+i)` → forma cartesiana exacta — el trig complejo elemental queda completo
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20510,3 +20511,16 @@ Active entries: 626 (newest first)
   - **Un P0 fantasma en la cola es tan caro como un P0 real**: el claim de inecuaciones recíprocas habría ganado la selección de candidato por precedencia P0 y quemado un ciclo en redescubrir que ya funciona — el barrido periódico ES parte del pipeline de selección, no cosmética.
   - **Estrechar ≠ cerrar**: 3 items sobrevivieron con todos sus ejemplos falsificados porque su NÚCLEO (el ask real) sigue vivo — el audit reescribe los ejemplos y conserva el item; cerrar por "los ejemplos pasan" habría perdido el gap real.
   - TANDA-2 COMPLETA (6/6, 0 rechazos). PRÓXIMO PELDAÑO recomendado: los residuales frescos con dueño — `e^(-ix)` recíproco, suma-de-ángulos compleja (`sin(1+i)`), sinh↔exp fold (graduaría el fixture `sin(i)`), oscilación en límites, módulo Gaussiano-surd; o resolver con el usuario las 4 preguntas abiertas del scoping vectorial (desbloquean V8/V7d y el cierre formal del frente).
+
+## 2026-07-18 - CAPACIDAD (tanda-3 · ciclo 1: suma de ángulos compleja): `sin(1+i)` → forma cartesiana exacta — el trig complejo elemental queda completo
+
+- area: `cas_math/complex_support.rs` (`try_rewrite_trig_complex_angle_sum`: 4 brazos sin/cos/sinh/cosh sobre `split_i_factor`, tan/tanh declinan) + `cas_engine/rules/complex.rs` (`ComplexAngleSumRule`, 20ª hermana gateada) + visible names es/en + contract e2e
+- status: `retained`. Tanda-3 ciclo 1/4 (residual "suma-de-ángulos compleja" nombrado al aterrizar el puente trig-de-i).
+- capture:
+  - investment_class: capacidad Fase-2 (frente complejo — cierra la familia trig elemental de argumento complejo: puro-real ✓, puro-imaginario ✓ [puente], MIXTO ✓ [este ciclo]).
+  - cell: `sin(1+i)→sin(1)·cosh(1)+i·cos(1)·sinh(1)`, `cos(1+i)` con el signo −, simbólico `sin(x+i)` (identidad ENTERA ∀ re,θ ∈ ℂ — sin guard de realidad, mismo criterio que el puente), `sin(2+3i)`, `sinh/cosh(1+i)`. **BONUS composicional**: `tan(1+i)` emite el cociente expandido honesto vía Tan→Sin/Cos + esta regla (esperaba decline; la composición lo superó). Ownership intacto: puro-imaginario del puente, `sin(2)` sin tocar, real mode gated. **Verificación cruzada dígito-a-dígito**: `approx(sin(1+i))` (walker, independiente) = `1.29845758142 + 0.634963914785·i` y `approx(sin(1)·cosh(1))` (parte real de la regla) = `1.29845758142` — dos rutas, un valor; la red refuta la identidad FALSA con cosh(2).
+  - diseño anti-ping-pong verificado ANTES de codificar: las contracciones trig casan pares cos/sin del MISMO argumento — mi salida lleva cosh/sinh del componente θ, patrón que ningún contractor reconoce; no existe el lado inverso del churn.
+  - validación: workspace failed:0 (tras migrar el pin propio del puente — 'argumento mixto = residual' documentaba su obsolescencia programada y graduó); clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **El decline planificado puede graduarse por COMPOSICIÓN sin código extra**: tan(1+i) estaba scopeado como residual y salió cociente-expandido porque una regla previa (Tan→Sin/Cos) alimenta a la nueva — al cerrar una familia, sondear también los vecinos que COMPONEN antes de anotar residuales.
+  - PRÓXIMO PELDAÑO: tanda-3 ciclo 2 — **módulo Gaussiano-surd** (`abs(1/2+i·√3/2)→1`: componentes reales decidibles, a²+b² exacto — cierra la familia π-racional del ciclo unimodularidad).

@@ -231,6 +231,24 @@ define_rule!(
     }
 );
 
+define_rule!(
+    ComplexAngleSumRule,
+    "Complex Angle Sum",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+        // Mixed argument `re + i·θ`: the entire angle-sum bridge (sin(1+i) →
+        // sin(1)·cosh(1) + i·cos(1)·sinh(1)). Pure-imaginary stays with
+        // TrigOfImaginaryRule; tan/tanh decline honestly. ONE-DIRECTION — the trig
+        // contraction rules pattern-match cos/sin pairs, never cosh/sinh, so no
+        // ping-pong side exists.
+        let (rewritten, desc) =
+            cas_math::complex_support::try_rewrite_trig_complex_angle_sum(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc(desc))
+    }
+);
+
 define_rule!(EulerRule, "Euler Formula", |ctx, expr, parent_ctx| {
     if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
         return None;
@@ -338,6 +356,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ImagPartRule));
     simplifier.add_rule(Box::new(UnimodularAbsRule));
     simplifier.add_rule(Box::new(TrigOfImaginaryRule));
+    simplifier.add_rule(Box::new(ComplexAngleSumRule));
     simplifier.add_rule(Box::new(EulerRule));
     simplifier.add_rule(Box::new(ArgRule));
     simplifier.add_rule(Box::new(GaussianSqrtRule));

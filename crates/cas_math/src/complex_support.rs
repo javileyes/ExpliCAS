@@ -733,6 +733,80 @@ pub fn try_rewrite_trig_of_imaginary(
     Some(out)
 }
 
+/// Trig/hyperbolic of a MIXED complex argument `re + i·θ` (both parts nonzero):
+/// the entire angle-sum bridge, composing the real-argument factor with the
+/// imaginary-argument one. Valid for ARBITRARY complex `re`/`θ` (sin(z+w) is an
+/// entire identity, and cos(iθ)=cosh(θ) holds on all of ℂ) — no realness guard.
+/// `sin(re+iθ) = sin(re)·cosh(θ) + i·cos(re)·sinh(θ)`
+/// `cos(re+iθ) = cos(re)·cosh(θ) − i·sin(re)·sinh(θ)`
+/// `sinh(re+iθ) = sinh(re)·cos(θ) + i·cosh(re)·sin(θ)`
+/// `cosh(re+iθ) = cosh(re)·cos(θ) + i·sinh(re)·sin(θ)`
+/// `tan`/`tanh` decline (the quotient form is an honest residual). ONE-DIRECTION.
+pub fn try_rewrite_trig_complex_angle_sum(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, &'static str)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(*fn_id)?;
+    if !matches!(
+        builtin,
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Sinh | BuiltinFn::Cosh
+    ) {
+        return None;
+    }
+    let arg = args[0];
+    let (re, theta) = match split_i_factor(ctx, arg)? {
+        (Some(re), Some(theta)) => (re, theta),
+        // Pure-imaginary is TrigOfImaginaryRule's; i-free is not ours at all.
+        _ => return None,
+    };
+    let i = ctx.add(Expr::Constant(Constant::I));
+    let build = |ctx: &mut Context,
+                 f_re: BuiltinFn,
+                 g_re: BuiltinFn,
+                 f_th: BuiltinFn,
+                 g_th: BuiltinFn,
+                 subtract: bool| {
+        let a = ctx.call_builtin(f_re, vec![re]);
+        let b = ctx.call_builtin(f_th, vec![theta]);
+        let first = ctx.add(Expr::Mul(a, b));
+        let c = ctx.call_builtin(g_re, vec![re]);
+        let d = ctx.call_builtin(g_th, vec![theta]);
+        let cd = ctx.add(Expr::Mul(c, d));
+        let second = ctx.add(Expr::Mul(i, cd));
+        if subtract {
+            ctx.add(Expr::Sub(first, second))
+        } else {
+            ctx.add(Expr::Add(first, second))
+        }
+    };
+    let out = match builtin {
+        BuiltinFn::Sin => (
+            build(ctx, BuiltinFn::Sin, BuiltinFn::Cos, BuiltinFn::Cosh, BuiltinFn::Sinh, false),
+            "seno de argumento complejo: sin(a+ib) = sin(a)·cosh(b) + i·cos(a)·senh(b)",
+        ),
+        BuiltinFn::Cos => (
+            build(ctx, BuiltinFn::Cos, BuiltinFn::Sin, BuiltinFn::Cosh, BuiltinFn::Sinh, true),
+            "coseno de argumento complejo: cos(a+ib) = cos(a)·cosh(b) - i·sen(a)·senh(b)",
+        ),
+        BuiltinFn::Sinh => (
+            build(ctx, BuiltinFn::Sinh, BuiltinFn::Cosh, BuiltinFn::Cos, BuiltinFn::Sin, false),
+            "seno hiperbólico de argumento complejo: senh(a+ib) = senh(a)·cos(b) + i·cosh(a)·sen(b)",
+        ),
+        BuiltinFn::Cosh => (
+            build(ctx, BuiltinFn::Cosh, BuiltinFn::Sinh, BuiltinFn::Cos, BuiltinFn::Sin, false),
+            "coseno hiperbólico de argumento complejo: cosh(a+ib) = cosh(a)·cos(b) + i·senh(a)·sen(b)",
+        ),
+        _ => return None,
+    };
+    Some(out)
+}
+
 /// STRUCTURAL split of an exponent into `real_part + i·theta` — exact, no
 /// folding. Returns `(real_part, theta)` where `None` means "zero part";
 /// both components are guaranteed i-free. Declines (`None` overall) on any

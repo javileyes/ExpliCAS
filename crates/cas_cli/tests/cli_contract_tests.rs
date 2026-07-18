@@ -2436,6 +2436,54 @@ fn test_eval_complex_rule_names_localized() {
 }
 
 #[test]
+fn test_eval_complex_angle_sum() {
+    // Tanda-3 ciclo 1: argumento complejo MIXTO re+iθ — la suma de ángulos entera
+    // (válida ∀ re,θ ∈ ℂ, sin guard, como el puente). Puro-imaginario sigue siendo
+    // del puente; real mode intacto. ONE-DIRECTION (la contracción trig casa
+    // cos/sin, jamás cosh/sinh — no existe lado de ping-pong).
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(rc("sin(1+i)"), "sin(1)·cosh(1) + i·cos(1)·sinh(1)");
+    assert_eq!(rc("cos(1+i)"), "cos(1)·cosh(1) - i·sin(1)·sinh(1)");
+    assert_eq!(rc("sin(x+i)"), "sin(x)·cosh(1) + i·cos(x)·sinh(1)");
+    assert_eq!(rc("sin(2+3*i)"), "sin(2)·cosh(3) + i·cos(2)·sinh(3)");
+    assert_eq!(rc("sinh(1+i)"), "cos(1)·sinh(1) + i·sin(1)·cosh(1)");
+    assert_eq!(rc("cosh(1+i)"), "cos(1)·cosh(1) + i·sin(1)·sinh(1)");
+    // tan compone vía Tan→Sin/Cos + esta regla: cociente honesto expandido.
+    assert_eq!(
+        rc("tan(1+i)"),
+        "(sin(1)·cosh(1) + i·cos(1)·sinh(1)) / (cos(1)·cosh(1) - i·sin(1)·sinh(1))"
+    );
+    // Ownership intacto: puro-imaginario del puente, real sin i, real mode gated.
+    assert_eq!(rc("sin(i)"), "i·sinh(1)");
+    assert_eq!(rc("sin(2)"), "sin(2)");
+    assert_eq!(r("sin(1+i)"), "sin(1 + i)");
+    // Verificación cruzada con el walker (independiente de la regla).
+    assert_eq!(rc("approx(sin(1+i))"), "1.29845758142 + 0.634963914785·i");
+}
+
+#[test]
 fn test_eval_trig_of_imaginary_bridge() {
     // Fase 2 · trig-de-i (residual B4b): el puente trig↔hiperbólico de argumento
     // puro-imaginario — identidades ENTERAS (válidas para y complejo arbitrario, sin
@@ -2473,8 +2521,10 @@ fn test_eval_trig_of_imaginary_bridge() {
     assert_eq!(rc("tanh(3*i)"), "i·tan(3)");
     // Composición exacta a través del puente: cosh(iπ) = cos(π) = -1.
     assert_eq!(rc("cosh(i*pi)"), "-1");
-    // Declines honestos: argumento mixto (suma de ángulos = residual), real mode.
-    assert_eq!(rc("sin(1+i)"), "sin(1 + i)");
+    // El decline de argumento mixto GRADUÓ en tanda-3 ciclo 1 (ComplexAngleSumRule);
+    // el pin migra a la forma expandida — la propiedad de ESTE test (puro-imaginario
+    // es del puente) se conserva en los asserts de arriba.
+    assert_eq!(rc("sin(1+i)"), "sin(1)·cosh(1) + i·cos(1)·sinh(1)");
     assert_eq!(r("sin(i)"), "sin(i)");
     // La red B1 con los brazos hiperbólicos nuevos del walker: refuta la identidad
     // FALSA (jamás confirma la verdadera desde probe — el wire equiv es Bool
