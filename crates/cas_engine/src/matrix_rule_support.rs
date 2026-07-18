@@ -943,6 +943,59 @@ pub(crate) fn try_hessian_expr(
     )
 }
 
+/// Divergence of a vector field: `∇·F = Σ ∂Fᵢ/∂vᵢ` — REQUIRES #components ==
+/// #vars (a mismatch is an honest residual, never `undefined`: that verdict is
+/// reserved for malformed ALGEBRA, Fase 2 V5 policy). Scalar output, computed
+/// directly (no jacobian assembly); all-or-nothing.
+pub(crate) fn try_divergence_expr(
+    ctx: &mut Context,
+    fields: ExprId,
+    var_names: &[String],
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    if var_names.is_empty() || var_names.len() > VERB_MAX_VARS {
+        return None;
+    }
+    let m = Matrix::from_expr(ctx, fields)?;
+    if m.rows != 1 && m.cols != 1 {
+        return None;
+    }
+    if m.data.len() != var_names.len() {
+        return None;
+    }
+    let comps = m.data.clone();
+    let mut sum = ctx.num(0);
+    for (f, var) in comps.iter().zip(var_names) {
+        let d = differentiate_symbolic_expr(ctx, *f, var)?;
+        sum = ctx.add(Expr::Add(sum, d));
+    }
+    Some(sum)
+}
+
+/// Laplacian of a SCALAR field: `Δf = Σ ∂²f/∂vᵢ²` (div ∘ grad computed
+/// internally, no pipeline re-entry). A vector field declines — the
+/// vector-laplacian is a named future rung (scope-out), not an error.
+pub(crate) fn try_laplacian_expr(
+    ctx: &mut Context,
+    field: ExprId,
+    var_names: &[String],
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    if var_names.is_empty() || var_names.len() > VERB_MAX_VARS {
+        return None;
+    }
+    if matches!(ctx.get(field), Expr::Matrix { .. }) {
+        return None;
+    }
+    let mut sum = ctx.num(0);
+    for var in var_names {
+        let d1 = differentiate_symbolic_expr(ctx, field, var)?;
+        let d2 = differentiate_symbolic_expr(ctx, d1, var)?;
+        sum = ctx.add(Expr::Add(sum, d2));
+    }
+    Some(sum)
+}
+
 /// Componentwise derivative of a vector/matrix target: `d/dx [f₁, …] = [f₁′, …]`
 /// (Fase 2 V1). A component that cannot be differentiated declines the WHOLE
 /// call (all-or-nothing), keeping `diff([...], x)` an honest residual.

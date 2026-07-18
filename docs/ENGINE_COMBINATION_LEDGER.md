@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 617 (newest first)
+Active entries: 618 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -122,6 +122,7 @@ Active entries: 617 (newest first)
 - 2026-07-18 | `retained` | `cas_math/expr_path_rewrite.rs` (brazo `Expr::Matrix` en `rewrite_at_expr_pat... | P0-WIRE (Fase 2 vectorial · V2): los steps bajo `Matrix` dejan de perderse — Matrix desciende como Function en el path-rewrite
 - 2026-07-18 | `retained` | `cas_engine` (NUEVO `rules/calculus/vector_calculus.rs` con `GradientRule`; e... | CAPACIDAD (Fase 2 vectorial · V3): `gradient`/`grad` — el primer verbo vectorial, con el esqueleto completo que V4-V6 clonan
 - 2026-07-18 | `retained` | `cas_engine` (assemblers `try_jacobian_expr`/`try_hessian_expr` en matrix_rul... | CAPACIDAD (Fase 2 vectorial · V4): `jacobian` + `hessian` con orientación pineada, y el equiv bracket-aware que ata los metamórficos
+- 2026-07-18 | `retained` | `cas_engine` (assemblers `try_divergence_expr`/`try_laplacian_expr`; `Diverge... | CAPACIDAD (Fase 2 vectorial · V5): `divergence` + `laplacian` — y el falso-residual del budget cazado por barrido adversarial
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20378,3 +20379,17 @@ Active entries: 617 (newest first)
   - **El pin de orientación a nivel de CELDA por ExprId (hash-consing) es gratis y más fuerte que el string**: `m.data[1] == differentiate(f0,"y")` fija la convención filas/columnas sin depender del display — la forma canónica de pinear shapes de ensambladores.
   - **Un splitter compartido que aprende un delimitador nuevo mejora a TODOS sus consumidores a la vez** — y el riesgo se acota probando los pins de cada consumidor (equiv escalar, solve, algebra command), no re-derivando cada caso.
   - PRÓXIMO PELDAÑO: **V5** (divergence + laplacian — salida escalar, sin exención grande; mismatch → residual honesto). V4 queda ☑ (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - CAPACIDAD (Fase 2 vectorial · V5): `divergence` + `laplacian` — y el falso-residual del budget cazado por barrido adversarial
+
+- area: `cas_engine` (assemblers `try_divergence_expr`/`try_laplacian_expr`; `DivergenceRule`/`LaplacianRule`; gate arms) + `cas_didactic` (visible names es/en + generador de fórmula + claves `divergence.formula`/`laplacian.formula`) + completer + examples.csv + unit test + contract e2e
+- status: `retained`. Ciclo 6/8 de la tanda vectorial (V5 del scoping; V4 = `c9144a13d`).
+- capture:
+  - investment_class: capacidad Fase-2 (verbos 4º y 5º — salida escalar).
+  - cell: `divergence([x^2,y^2],[x,y])→2·x+2·y` (3D también); `laplacian(x^2+y^2,[x,y])→4`, `laplacian(x²+y²+z²)→6`, `laplacian(sin(x)·cos(y))→-2·sin(x)·cos(y)`; **la armónica clásica `laplacian(ln(x²+y²),[x,y])→0` EXACTO** — el mejor check de soundness del ciclo (estructura completa: derivar dos veces, sumar, cancelar a cero). Declines honestos: mismatch componentes/vars (pin `divergence-mismatch-residual` — jamás undefined), escalar→divergence, vector-laplacian (scope-out nombrado). Narración: nombres es/en + substep de fórmula definitoria (`∇·F = Σ ∂Fᵢ/∂xᵢ` / `Δf = Σ ∂²f/∂xᵢ²`).
+  - **CAZADO EN BARRIDO ADVERSARIAL — el falso-residual del anti-worsen budget (chokepoint-D del scoping, reproducido en vivo):** la primera versión SIN `budget_exempt` (con la lógica "salida escalar = pequeña") daba residual FALSO en `laplacian(ln(x²+y²))` y `laplacian(1/(x+y))` — la suma CRUDA de derivadas-cociente crece transitoriamente en NODOS aunque el resultado final sea `0`. El diagnóstico requirió descartar primero al sospechoso obvio (el diferenciador de soporte: `hessian(ln(x²+y²))` SÍ funcionaba con las mismas celdas → el diferenciador era inocente; era el budget rechazando el rewrite). Exención ACOTADA añadida a ambos (≤8 derivadas sumadas).
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **El anti-worsen budget compara NODOS, no formas**: "salida escalar" NO exime del budget — una suma cruda de cocientes puede superar 1.5x aunque colapse a 0 después; TODA regla que ensambla derivadas sin plegar lleva la exención acotada, sea cual sea su shape de salida.
+  - **Para diagnosticar un decline, busca el GEMELO que funciona**: `hessian(ln)` verde con las mismas celdas absolvió al diferenciador en un probe — el diferencial mínimo entre dos rutas casi idénticas señala la capa culpable sin instrumentar nada.
+  - PRÓXIMO PELDAÑO: **V6** (curl 3D columna + 2D ESCALAR + alias rot + metamórficos conservatividad `curl∘grad=0` y `div∘curl=0` vía equiv — el ensamblador con signos, precedente matrix_cross). V5 queda ☑ (hash en el ledger del ciclo siguiente).

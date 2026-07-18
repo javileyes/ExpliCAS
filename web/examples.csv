@@ -152,3 +152,5 @@
 "Vectorial","dot(gradient(x^2*y,[x,y]), [1,0])","Derivada direccional por composición: ∇f·u con u=[1,0] → 2·x·y"
 "Vectorial","jacobian([x^2*y, x+y], [x,y])","Jacobiano de un campo vectorial: filas = funciones, columnas = variables — [[2·x·y, x²], [1, 1]]"
 "Vectorial","det(hessian(x^2*y, [x,y]))","Discriminante del test de la segunda derivada: det(H) del hessiano simétrico → -4·x²"
+"Vectorial","divergence([x^2, y^2], [x,y])","Divergencia de un campo vectorial: ∇·F = Σ ∂Fᵢ/∂xᵢ → 2·x + 2·y"
+"Vectorial","laplacian(ln(x^2+y^2), [x,y])","La armónica clásica: Δ ln(x²+y²) = 0 exacto (suma de segundas derivadas)"

@@ -310,4 +310,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(vector_calculus::GradientRule));
     simplifier.add_rule(Box::new(vector_calculus::JacobianRule));
     simplifier.add_rule(Box::new(vector_calculus::HessianRule));
+    simplifier.add_rule(Box::new(vector_calculus::DivergenceRule));
+    simplifier.add_rule(Box::new(vector_calculus::LaplacianRule));
 }

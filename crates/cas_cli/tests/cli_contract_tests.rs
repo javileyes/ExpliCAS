@@ -2411,12 +2411,7 @@ fn test_eval_gradient_verb() {
             .expect("Failed to run CLI");
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
     };
-    for probe in [
-        "divergence([x,y],[x,y])",
-        "curl([y,-x,0],[x,y,z])",
-        "laplacian(x^2,[x,y])",
-        "rot([y,-x,0],[x,y,z])",
-    ] {
+    for probe in ["curl([y,-x,0],[x,y,z])", "rot([y,-x,0],[x,y,z])"] {
         assert!(
             err_of(probe).contains("no definida"),
             "unregistered verb must stay 'función no definida': {probe}"
@@ -2518,6 +2513,69 @@ fn test_eval_jacobian_hessian_verbs() {
         .as_str()
         .unwrap()
         .contains("Row 1"));
+}
+
+#[test]
+fn test_eval_divergence_laplacian_verbs() {
+    // Fase 2 V5: the scalar-output verbs. divergence REQUIRES #components == #vars
+    // (mismatch → honest residual, never undefined); laplacian = div∘grad computed
+    // internally; vector-laplacian stays a named scope-out. Both carry the bounded
+    // budget exemption — without it a raw sum of quotient derivatives was a FALSE
+    // residual (laplacian(ln(x²+y²)) hit the anti-worsen budget).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("divergence([x^2,y^2],[x,y])"), "2·x + 2·y");
+    assert_eq!(r("divergence([x*y, y*z, z*x],[x,y,z])"), "x + y + z");
+    assert_eq!(r("laplacian(x^2+y^2,[x,y])"), "4");
+    assert_eq!(r("laplacian(x^2+y^2+z^2,[x,y,z])"), "6");
+    assert_eq!(r("laplacian(sin(x)*cos(y),[x,y])"), "-2·sin(x)·cos(y)");
+    // The classic HARMONIC check: Δ ln(x²+y²) = 0 exactly (this was a false residual
+    // before the bounded exemption — the budget-rejection class, chokepoint-D).
+    assert_eq!(r("laplacian(ln(x^2+y^2),[x,y])"), "0");
+    // Honest declines: component/var mismatch, scalar target for divergence,
+    // vector-laplacian scope-out.
+    assert_eq!(
+        r("divergence([x^2,y^2],[x,y,z])"),
+        "divergence([[x^2], [y^2]], [[x], [y], [z]])"
+    );
+    assert_eq!(r("divergence(x^2,[x,y])"), "divergence(x^2, [[x], [y]])");
+    assert_eq!(
+        r("laplacian([x,y],[x,y])"),
+        "laplacian([[x], [y]], [[x], [y]])"
+    );
+    // Narration: localized rule names + the defining-formula keyed substep.
+    let steps_json = |input: &str, lang: Option<&str>| -> Value {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+    let es = steps_json("divergence([x^2,y^2],[x,y])", None);
+    assert_eq!(
+        es["steps"][0]["rule"].as_str().unwrap(),
+        "Calcular la divergencia"
+    );
+    assert!(es["steps"][0]["substeps"][0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("∇·F"));
+    let en = steps_json("laplacian(x^2+y^2,[x,y])", Some("en"));
+    assert_eq!(
+        en["steps"][0]["rule"].as_str().unwrap(),
+        "Compute the Laplacian"
+    );
+    assert!(en["steps"][0]["substeps"][0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("second derivatives"));
 }
 
 #[test]

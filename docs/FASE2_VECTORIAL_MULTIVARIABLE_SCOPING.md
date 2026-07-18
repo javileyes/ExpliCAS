@@ -127,7 +127,7 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 - **Depende:** V1 (helper). V2 recomendado antes (no duro: la regla emite la Matrix terminada con narración propia — decisión D5).
 - **Retención (pins):** `verbos-never-confirm` (jacobian/hessian/divergence/curl/laplacian siguen "no definida"); `gradient-columna` (shape n×1 pineado); `direccional-composicion` (el fixture dot∘gradient); V1/V2 pins.
 
-#### ☑ V4 — `jacobian` + `hessian` (+ micro-cable equiv bracket-aware, adelantado de V7c) **[M] — HECHO** *(2026-07-18, hash en el ledger)*
+#### ☑ V4 — `jacobian` + `hessian` (+ micro-cable equiv bracket-aware, adelantado de V7c) **[M] — HECHO** *(2026-07-18 `c9144a13d`)*
 - **Graduado:** orientación filas=funciones pineada A NIVEL DE CELDA por ExprId (hash-consing) antes de los fixtures; hessian simétrica (pin Clairaut celda-a-celda); `det(hessian)→-4·x²`; metamórfico `hessian≡jac∘grad` VERDE vía equiv bracket-aware (`rsplit_ignoring_parens` balancea `[`/`]` — los 3 consumidores mejoran, pins escalares intactos); narración row-wise keyed es/en; make ci verde.
 - **Gradúa:** `jacobian([x^2*y, x+y],[x,y]) → [[2·x·y, x^2], [1, 1]]` (**filas=funciones, cols=vars** — pineado); `hessian(x^2*y,[x,y]) → [[2·y, 2·x], [2·x, 0]]` (simétrica); **prerequisito nombrado dentro del ciclo (patrón nivel-2 de G1)**: `equiv` bracket-aware (`analysis_input_parse.rs:15‑16` / `input_parse_common.rs:4‑20` — `rsplit_ignoring_parens` trackeando `[`) para que `equiv(jacobian(gradient(f,[x,y]),[x,y]), hessian(f,[x,y])) → true` sea el fixture metamórfico (no un pin de string frágil); `det(hessian(...))` simbólico compone (`det([[2·y,2·x],[2·x,0]])→-4·x^2` ya verificado); narración con título propio por verbo.
 - **Inserción:** mismos sitios que V3 (gate arms, reglas hermanas, títulos/claves) + el splitter de equiv. `hessian` computa DIRECTO (jacobiano del gradiente interno, sin re-entrar al pipeline).
@@ -136,7 +136,8 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 - **Depende:** V3.
 - **Retención (pins):** `jacobian-filas-funciones` (orientación); `hessian-simetrica`; `hessian≡jac∘grad` (metamórfico vía equiv); `equiv(diff(x^2,x),2·x)→true` (equiv escalar intacto); pins V3.
 
-#### ☐ V5 — `divergence` + `laplacian` **[S]**
+#### ☑ V5 — `divergence` + `laplacian` **[S] — HECHO** *(2026-07-18, hash en el ledger)*
+- **Graduado:** los graduates del scoping + la armónica `laplacian(ln(x²+y²))→0` EXACTO. CAZADO adversarialmente el falso-residual del chokepoint-D: "salida escalar" NO exime del anti-worsen budget (la suma cruda de derivadas-cociente crece en nodos aunque colapse a 0) — exención acotada añadida; el gemelo verde `hessian(ln)` absolvió al diferenciador en el diagnóstico. Mismatch → residual honesto pineado; vector-laplacian scope-out.
 - **Gradúa:** `divergence([x^2,y^2],[x,y]) → 2·x+2·y`; `laplacian(x^2+y^2,[x,y]) → 4`; `laplacian(x^2+y^2+z^2,[x,y,z]) → 6`; mismatch n componentes ≠ n vars → **residual honesto** (eco; `undefined` queda reservado al álgebra malformada del ShapeGuard); `laplacian` de campo vectorial → residual honesto (vector-laplacian = peldaño futuro nombrado, scope-out).
 - **Inserción:** mismos sitios; `divergence` suma la diagonal computada directa (sin ensamblar el jacobiano completo); `laplacian` = `div∘grad` interno.
 - **Reuso:** extractor + map V1/V3.

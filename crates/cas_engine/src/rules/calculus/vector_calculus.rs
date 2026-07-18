@@ -72,3 +72,43 @@ define_rule!(
         )
     }
 );
+
+define_rule!(
+    DivergenceRule,
+    "Vector Divergence",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        let call = try_extract_field_vars_call(ctx, expr, &["divergence"])?;
+        let result =
+            crate::matrix_rule_support::try_divergence_expr(ctx, call.target, &call.var_names)?;
+        // Bounded exemption (≤8 component derivatives summed): the anti-worsen budget
+        // compares NODES, not shape — a scalar sum of raw quotient derivatives can
+        // transiently exceed it (laplacian(ln(x²+y²)) was a false residual without it).
+        Some(
+            Rewrite::new(result)
+                .desc("Calcular la divergencia del campo vectorial")
+                .budget_exempt(),
+        )
+    }
+);
+
+define_rule!(
+    LaplacianRule,
+    "Vector Laplacian",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        let call = try_extract_field_vars_call(ctx, expr, &["laplacian"])?;
+        let result =
+            crate::matrix_rule_support::try_laplacian_expr(ctx, call.target, &call.var_names)?;
+        // Δf = Σ ∂²f/∂vᵢ² computed internally (div ∘ grad without pipeline re-entry);
+        // vector-laplacian stays a named scope-out (Matrix target declines). Bounded
+        // exemption: ≤8 second derivatives summed (see DivergenceRule note).
+        Some(
+            Rewrite::new(result)
+                .desc("Calcular el laplaciano del campo escalar")
+                .budget_exempt(),
+        )
+    }
+);

@@ -48,6 +48,8 @@ impl CasHelper {
                 "grad".to_string(),
                 "jacobian".to_string(),
                 "hessian".to_string(),
+                "divergence".to_string(),
+                "laplacian".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

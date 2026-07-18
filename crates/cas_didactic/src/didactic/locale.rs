@@ -208,6 +208,8 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "fraction.common_denominator" => ("Llevar a denominador común", "Put over a common denominator"),
         "fraction.simplify_numerator_and_denominator" => ("Simplificar el numerador y el denominador", "Simplify the numerator and the denominator"),
         "gradient.component" => ("Derivar respecto de {0}, tratando las demás variables como constantes", "Differentiate with respect to {0}, treating the other variables as constants"),
+        "divergence.formula" => ("∇·F = Σ ∂Fᵢ/∂xᵢ: derivar cada componente respecto de su propia variable y sumar", "∇·F = Σ ∂Fᵢ/∂xᵢ: differentiate each component with respect to its own variable and add"),
+        "laplacian.formula" => ("Δf = Σ ∂²f/∂xᵢ²: sumar las segundas derivadas respecto de cada variable", "Δf = Σ ∂²f/∂xᵢ²: add the second derivatives with respect to each variable"),
         "jacobian.row" => ("Fila {0}: derivar la componente respecto de cada variable", "Row {0}: differentiate the component with respect to each variable"),
         "hessian.row" => ("Fila {0}: derivar ∂f/∂{1} respecto de cada variable", "Row {0}: differentiate ∂f/∂{1} with respect to each variable"),
         "derivative.use_logarithmic_diff" => ("Usar derivación logarítmica", "Use logarithmic differentiation"),

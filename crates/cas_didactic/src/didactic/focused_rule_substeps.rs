@@ -62,6 +62,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return jacobian_hessian_substeps;
     }
 
+    let div_lap_substeps = generate_divergence_laplacian_substeps(ctx, step);
+    if !div_lap_substeps.is_empty() {
+        return div_lap_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -11952,6 +11957,32 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
             }
         })
         .collect()
+}
+
+/// Formula-level narration for the scalar-output verbs `divergence` and
+/// `laplacian` (Fase 2 V5): one keyed sub-step stating the defining sum, pairing
+/// the field with the final scalar.
+fn generate_divergence_laplacian_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let key = match step.rule_name.as_str() {
+        "Vector Divergence" | "Calcular la divergencia" => "divergence.formula",
+        "Vector Laplacian" | "Calcular el laplaciano" => "laplacian.formula",
+        _ => return Vec::new(),
+    };
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(_, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if args.len() != 2 {
+        return Vec::new();
+    }
+    let target = args[0];
+    vec![SubStep::keyed(
+        key,
+        vec![],
+        display_expr(ctx, target),
+        display_expr(ctx, after),
+    )]
 }
 
 /// Per-component narration of `gradient(f, [vars]) → [∂f/∂v₁, …]` (Fase 2 V3):

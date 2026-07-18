@@ -312,3 +312,30 @@ fn hessian_is_symmetric_and_declines_matrix_field() {
     let mfield = ctx.matrix(2, 1, vec![x, y]).expect("vector");
     assert!(super::try_hessian_expr(&mut ctx, mfield, &vars).is_none());
 }
+
+#[test]
+fn divergence_requires_component_var_match_and_laplacian_declines_matrix() {
+    // V5: ∇·F needs #components == #vars (mismatch → honest residual); Δ of a vector
+    // field is a named scope-out (vector-laplacian), not an error.
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x2 = ctx.add(Expr::Pow(x, two));
+    let y2 = ctx.add(Expr::Pow(y, two));
+    let field = ctx.matrix(2, 1, vec![x2, y2]).expect("vector");
+    let vars2: Vec<String> = vec!["x".into(), "y".into()];
+    let vars3: Vec<String> = vec!["x".into(), "y".into(), "z".into()];
+
+    assert!(super::try_divergence_expr(&mut ctx, field, &vars2).is_some());
+    assert!(
+        super::try_divergence_expr(&mut ctx, field, &vars3).is_none(),
+        "2 components with 3 vars must decline"
+    );
+    assert!(
+        super::try_laplacian_expr(&mut ctx, field, &vars2).is_none(),
+        "vector-laplacian is a scope-out: Matrix target declines"
+    );
+    let scalar_sum = ctx.add(Expr::Add(x2, y2));
+    assert!(super::try_laplacian_expr(&mut ctx, scalar_sum, &vars2).is_some());
+}
