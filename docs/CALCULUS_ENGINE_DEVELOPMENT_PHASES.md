@@ -257,9 +257,12 @@ de dominio en el chokepoint del dispatcher, molde de los 21 gates de `complex.rs
 bloque A Taylor (F1 sustrato univar, F2 multi-índice grado-total), bloque B ensambladores
 (F3 subs no-op + integrate definido componentwise, F4 lineintegral, F5 surface_integral,
 F6 potential), bloque C límites multivar (F7 superficie+continuidad probada, F8 DNE-por-caminos
-con testigos citados — JAMÁS existencia desde finitos caminos, F9 iterados), bloque D re-otorgo
-complejo selectivo (F10 fold de output, F11 sustitución compleja entera con combinador bilateral
-gateado, F12 opcional π/√2). Estimación original de abajo (histórica) superada por el scoping:
+con testigos citados — JAMÁS existencia desde finitos caminos, F8b squeeze-positivo, F9
+iterados), bloque D re-otorgo complejo selectivo (F10 fold de output, F11 sustitución compleja
+entera con combinador bilateral gateado, F11b DNE-por-caminos complejo, F12 opcional π/√2).
+Las 4 preguntas abiertas del scoping RESUELTAS por el usuario 2026-07-19: F8b/F11b entran;
+residuos FUERA del norte (punt documentado, π/e con dueño); case-split paramétrico = frente
+propio post-Fase 3. Estimación original de abajo (histórica) superada por el scoping:
 
 - **Series/Taylor**: motor de series univariable (si no aterrizó en Fase 1) → **Taylor
   multivariable** vía book-keeping multi-índice (`∂^α/α!`).

@@ -245,11 +245,11 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 
 **Bloque C (F7→F9) tras F0**, porque hereda su canal de dominio; **bloque D (F10→F11) al final** — F11 contiene el único wire sin precedente (semantics hasta la validación de parse) y la relajación del kill-switch exige el frente maduro y los never-fabricate en su sitio. F12 opcional al cierre.
 
-**Orden global:** `F0 → F1 → F2 → F3 → F4 → F5 → F6 → F7 → F8 → F9 → F10 → F11 (→ F12)`, con A y B intercambiables entre sí tras F0. Dependencias netas: F2←F1; F5←F4; F7←F0; F8←F7; F9←F7; F10←F0; F11←F0+F10. F1, F3, F4, F6 independientes de F0.
+**Orden global (actualizado 2026-07-19 con las decisiones del usuario):** `F0 → F1 → F2 → F3 → F4 → F5 → F6 → F7 → F8 (→ F8b squeeze-positivo) → F9 → F10 → F11 (→ F11b DNE-complejo) (→ F12)`, con A y B intercambiables entre sí tras F0. Dependencias netas: F2←F1; F5←F4; F7←F0; F8←F7; F8b←F8 (scoping fino propio); F9←F7; F10←F0; F11←F0+F10; F11b←F11+F8. F1, F3, F4, F6 independientes de F0.
 
 **Narración didáctica PER-CICLO, no batch** (lección de los dos frentes anteriores): cada sub-ciclo incluye su traza `--steps` keyed es/en en el graduates — las reglas no nacen mudas; taylor deja de ser mudo en F2, los motivos DNE nacen keyed en F8.
 
-**Compromiso por bloques:** el greenlight cubre F0+A+B. El bloque C se re-confirma con A/B aterrizados; el bloque D (F11) se re-confirma con C aterrizado y las preguntas abiertas resueltas.
+**Compromiso por bloques:** el greenlight cubre F0+A+B. El bloque C se re-confirma con A/B aterrizados; el bloque D (F11) se re-confirma con C aterrizado. Las 4 preguntas abiertas quedaron RESUELTAS por el usuario 2026-07-19 (ver sección final): F8b y F11b ENTRAN en la secuencia; residuos FUERA del norte (punt documentado con dueño); case-split paramétrico = frente propio post-Fase 3.
 
 ---
 
@@ -279,12 +279,16 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 
 ---
 
-## Preguntas abiertas (decisión del usuario)
+## Preguntas abiertas — RESUELTAS por el usuario 2026-07-19
 
 1. **Mini-frente de residuos para el kernel trig** (`∫cos(x)/(x²+1) = π/e`): es el ÚNICO caso curricular confirmado por el barrido donde la vía real NO llega y los residuos son el método legítimo (las demás impropias curriculares salen por fracciones parciales, y π/√2 sale por F12 sin residuos). El doc de fases exige "no planificar sin caso curricular" — el caso existe, pero abrirlo es contornos net-new [L]. ¿Se abre como frente propio tras el bloque D, o punt permanente documentado?
+   **→ DECIDIDO: FUERA DEL NORTE — punt permanente documentado.** El caso curricular π/e existe pero no justifica contornos net-new [L]; `∫cos(x)/(x²+1)` queda residual honesto CON DUEÑO NOMBRADO (este punto). Re-abrible solo por decisión explícita futura del usuario; F12 opcional queda como único representante de impropias por salto interior.
 2. **Case-split paramétrico en límites univariados** (`limit(y/(x²+y²),x,0)` → resultado condicional "0 si y≠0; DNE si y=0"): el solver ya tiene paramétricos tri-estado, limits no. Es superficie de producto nueva (límites con respuesta por-casos en el wire). ¿Entra como sub-ciclo del bloque C o queda punt honesto permanente?
+   **→ DECIDIDO: FRENTE PROPIO POST-FASE 3.** Durante la fase queda punt honesto; al cerrarla se scopea como frente propio reutilizando el molde tri-estado de los solve paramétricos. No entra en la secuencia F0-F12 (eje ortogonal: es maquinaria de solve, no de límites).
 3. **DNE-por-caminos COMPLEJO** (`conjugate(z)/z`, `Re(z)/z` — DNE por `z=t` vs `z=i·t`): reutilizaría el driver F8 bajo complex con dos testigos exactos citados, mismas reglas de soundness. ¿Entra como F-extra del bloque D tras F11, o los clásicos direccionales quedan residual honesto?
+   **→ DECIDIDO: SÍ — entra como F11b (F-extra del bloque D tras F11).** Reutiliza el driver de caminos de F8 bajo complex con DOS testigos fijos exactos (`z=t` y `z=i·t`); cierra en DNE-probado el hueco que F0 abre honesto. Mismas reglas de soundness que F8 (testigos citados, jamás existencia desde finitos caminos).
 4. **Lado positivo de los límites multivariables** (squeeze 2-var exacto / cota polar probada: `x²y/(x²+y²)→0`): sin él, el bloque C prueba existencia solo por continuidad y no-existencia por caminos — los clásicos "demuestre que el límite ES 0" quedan residual honesto. Es mate-nueva de prover (cota `|f| ≤ g·r^p` exacta). ¿Entra como F-extra de varianza alta o el frente queda continuidad+DNE?
+   **→ DECIDIDO: SÍ — entra como F8b (F-extra del bloque C tras F8), con scoping fino propio al llegar** (varianza alta reconocida): cota polar `|f| ≤ g(r)·r^p → 0` con prover EXACTO (`provable_const_sign`/`BigRational` como red — guardrail #4). Gradúa el caso de libro central `x²y/(x²+y²)→0`; hasta que aterrice, el pin residual de F8 se mantiene.
 
 ---
 
