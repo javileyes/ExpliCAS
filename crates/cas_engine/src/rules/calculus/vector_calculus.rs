@@ -33,3 +33,42 @@ define_rule!(
         )
     }
 );
+
+define_rule!(
+    JacobianRule,
+    "Vector Jacobian",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        let call = try_extract_field_vars_call(ctx, expr, &["jacobian"])?;
+        let result =
+            crate::matrix_rule_support::try_jacobian_expr(ctx, call.target, &call.var_names)?;
+        // ROWS = functions, COLUMNS = variables (the standard orientation, pinned in
+        // fixtures). Caps: ≤8 functions × ≤8 vars = ≤64 cells under the exemption.
+        Some(
+            Rewrite::new(result)
+                .desc("Calcular el jacobiano del campo vectorial")
+                .budget_exempt(),
+        )
+    }
+);
+
+define_rule!(
+    HessianRule,
+    "Vector Hessian",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        let call = try_extract_field_vars_call(ctx, expr, &["hessian"])?;
+        let result =
+            crate::matrix_rule_support::try_hessian_expr(ctx, call.target, &call.var_names)?;
+        // Computed directly as the jacobian of the internal gradient (no pipeline
+        // re-entry); n×n symmetric for C² fields — the metamorphic fixture ties it to
+        // jacobian(gradient(f)) through `equiv`.
+        Some(
+            Rewrite::new(result)
+                .desc("Calcular el hessiano del campo escalar")
+                .budget_exempt(),
+        )
+    }
+);

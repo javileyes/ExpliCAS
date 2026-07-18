@@ -308,4 +308,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(summation::ProductRule));
     simplifier.add_rule(Box::new(taylor::TaylorRule));
     simplifier.add_rule(Box::new(vector_calculus::GradientRule));
+    simplifier.add_rule(Box::new(vector_calculus::JacobianRule));
+    simplifier.add_rule(Box::new(vector_calculus::HessianRule));
 }

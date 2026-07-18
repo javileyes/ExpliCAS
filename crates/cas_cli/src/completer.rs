@@ -46,6 +46,8 @@ impl CasHelper {
                 "angle".to_string(),
                 "gradient".to_string(),
                 "grad".to_string(),
+                "jacobian".to_string(),
+                "hessian".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),

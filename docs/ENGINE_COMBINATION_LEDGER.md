@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 616 (newest first)
+Active entries: 617 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
 - 2026-07-18 | `retained` | `cas_math/expr_path_rewrite.rs` (brazo `Expr::Matrix` en `rewrite_at_expr_pat... | P0-WIRE (Fase 2 vectorial · V2): los steps bajo `Matrix` dejan de perderse — Matrix desciende como Function en el path-rewrite
 - 2026-07-18 | `retained` | `cas_engine` (NUEVO `rules/calculus/vector_calculus.rs` con `GradientRule`; e... | CAPACIDAD (Fase 2 vectorial · V3): `gradient`/`grad` — el primer verbo vectorial, con el esqueleto completo que V4-V6 clonan
+- 2026-07-18 | `retained` | `cas_engine` (assemblers `try_jacobian_expr`/`try_hessian_expr` en matrix_rul... | CAPACIDAD (Fase 2 vectorial · V4): `jacobian` + `hessian` con orientación pineada, y el equiv bracket-aware que ata los metamórficos
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20362,3 +20363,18 @@ Active entries: 616 (newest first)
   - **`Rewrite::substep()` NO es el canal didáctico de los steps top-level**: el wire construye substeps en cas_didactic (generadores por rule-name + `SubStep::keyed` + locale) — una regla nueva que quiera narración por componente añade su generador AHÍ, no metadata en la regla; probar el wire ANTES de asumir el canal (el metadata-substep murió silenciosamente).
   - **El intermedio "sin plegar" del substep es narración de libro, no un bug**: `∂/∂x x² = 2·x^(2−1)` en el substep + `[[2·x],[2·y]]` en el resultado ES la secuencia pedagógica correcta — no perseguir el fold en la capa didáctica.
   - PRÓXIMO PELDAÑO: **V4** (jacobian + hessian + micro-cable equiv bracket-aware adelantado — el esqueleto ya existe: extractor compartido, assembler nuevo por verbo, gate arms, visible_rule_names, generador keyed). V3 queda ☑ (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - CAPACIDAD (Fase 2 vectorial · V4): `jacobian` + `hessian` con orientación pineada, y el equiv bracket-aware que ata los metamórficos
+
+- area: `cas_engine` (assemblers `try_jacobian_expr`/`try_hessian_expr` en matrix_rule_support; `JacobianRule`/`HessianRule` en vector_calculus.rs; gate arms) + `cas_solver/input_parse_common.rs` (**micro-cable adelantado de V7c**: `rsplit_ignoring_parens` trackea `[`/`]`) + `cas_didactic` (visible names es/en + generador row-wise `generate_vector_jacobian_hessian_substeps` + claves `jacobian.row`/`hessian.row`) + completer + examples.csv + 2 unit tests + contract e2e
+- status: `retained`. Ciclo 5/8 de la tanda vectorial (V4 del scoping; V3 = `011924a1f`).
+- capture:
+  - investment_class: capacidad Fase-2 (verbos 2º y 3º) + infraestructura de verificación (equiv sobre matrices).
+  - cell: `jacobian([x^2*y, x+y],[x,y])→[[2·x·y, x^2],[1,1]]` (**filas=funciones, cols=vars** — pin de orientación a nivel de celda por ExprId ANTES de los fixtures, el antídoto del riesgo n.º1); no-cuadrado `3×2` OK; `hessian(x^2*y,[x,y])→[[2·y,2·x],[2·x,0]]` simétrica (pin celda-a-celda Clairaut); `det(hessian(...))→-4·x^2` (el discriminante del test de la 2ª derivada compone); **metamórfico vía equiv**: `equiv(jacobian(gradient(f,[x,y]),[x,y]), hessian(f,[x,y]))→true` y `equiv([x,y],[y,x])→false`. Declines: escalar→jacobian (gradient es el dueño), Matrix→hessian, matriz general→jacobian. Narración: "Calcular el jacobiano/hessiano" es/en + substep keyed POR FILA con la fila renderizada (`y·x² → [y·2·x^(2-1), x^2]` — intermedio de libro).
+  - **equiv bracket-aware (adelantado de V7c, decisión del crítico de completitud):** `rsplit_ignoring_parens` ahora balancea `[`/`]` además de `(`/`)` — los 3 consumidores (equiv, solve input, algebra command) mejoran a la vez; inputs sin brackets byte-idénticos; la capa de equivalencia YA comparaba matrices (estructural post-simplify) — solo el splitter cortaba dentro del literal. Pins escalares de equiv y solve intactos.
+  - diseño: hessian computa DIRECTO (jacobiano del gradiente interno, sin re-entrar al pipeline — cero churn de fixpoint); el esqueleto V3 se clonó sin fricción (2 verbos + narración + wiring en un ciclo — la predicción "S/M" del scoping se cumple).
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci VERDE; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **El pin de orientación a nivel de CELDA por ExprId (hash-consing) es gratis y más fuerte que el string**: `m.data[1] == differentiate(f0,"y")` fija la convención filas/columnas sin depender del display — la forma canónica de pinear shapes de ensambladores.
+  - **Un splitter compartido que aprende un delimitador nuevo mejora a TODOS sus consumidores a la vez** — y el riesgo se acota probando los pins de cada consumidor (equiv escalar, solve, algebra command), no re-derivando cada caso.
+  - PRÓXIMO PELDAÑO: **V5** (divergence + laplacian — salida escalar, sin exención grande; mismatch → residual honesto). V4 queda ☑ (hash en el ledger del ciclo siguiente).

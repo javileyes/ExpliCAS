@@ -256,3 +256,59 @@ fn gradient_expr_assembles_column_and_declines_dishonest_shapes() {
         "var cap (VERB_MAX_VARS=8) must decline honestly"
     );
 }
+
+#[test]
+fn jacobian_orientation_rows_are_functions() {
+    // V4 orientation pin (BEFORE the fixtures existed): J[i][j] = ∂fᵢ/∂vⱼ —
+    // rows = functions, columns = variables. Hash-consing makes ExprId equality
+    // a sound cell-level check.
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x2 = ctx.add(Expr::Pow(x, two));
+    let f0 = ctx.add(Expr::Mul(x2, y));
+    let f1 = ctx.add(Expr::Add(x, y));
+    let fields = ctx.matrix(2, 1, vec![f0, f1]).expect("vector");
+    let vars: Vec<String> = vec!["x".into(), "y".into()];
+
+    let jac = super::try_jacobian_expr(&mut ctx, fields, &vars).expect("jacobian");
+    let m = cas_math::matrix::Matrix::from_expr(&ctx, jac).expect("matrix");
+    assert_eq!((m.rows, m.cols), (2, 2));
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    let df0_dy = differentiate_symbolic_expr(&mut ctx, f0, "y").unwrap();
+    let df1_dx = differentiate_symbolic_expr(&mut ctx, f1, "x").unwrap();
+    assert_eq!(
+        m.data[1], df0_dy,
+        "cell (0,1) must be ∂f₀/∂y (rows=functions)"
+    );
+    assert_eq!(m.data[2], df1_dx, "cell (1,0) must be ∂f₁/∂x");
+
+    // Scalar target declines (gradient owns scalars); 2×2 matrix target declines.
+    assert!(super::try_jacobian_expr(&mut ctx, f0, &vars).is_none());
+    let one = ctx.num(1);
+    let sq = ctx.matrix(2, 2, vec![one, one, one, one]).expect("2x2");
+    assert!(super::try_jacobian_expr(&mut ctx, sq, &vars).is_none());
+}
+
+#[test]
+fn hessian_is_symmetric_and_declines_matrix_field() {
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two = ctx.num(2);
+    let x2 = ctx.add(Expr::Pow(x, two));
+    let field = ctx.add(Expr::Mul(x2, y));
+    let vars: Vec<String> = vec!["x".into(), "y".into()];
+
+    let hes = super::try_hessian_expr(&mut ctx, field, &vars).expect("hessian");
+    let m = cas_math::matrix::Matrix::from_expr(&ctx, hes).expect("matrix");
+    assert_eq!((m.rows, m.cols), (2, 2));
+    assert_eq!(
+        m.data[1], m.data[2],
+        "H must be symmetric (Clairaut) cell-for-cell"
+    );
+
+    let mfield = ctx.matrix(2, 1, vec![x, y]).expect("vector");
+    assert!(super::try_hessian_expr(&mut ctx, mfield, &vars).is_none());
+}

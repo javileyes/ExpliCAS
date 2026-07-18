@@ -1,14 +1,17 @@
 //! Shared parsing helpers used across session command handlers.
 
-/// Split string by delimiter, ignoring delimiters inside parentheses.
+/// Split string by delimiter, ignoring delimiters inside parentheses or
+/// square brackets (matrix/vector literals: `equiv([x,y], [x,y])` must split at
+/// the TOP-level comma, not inside `[x,y]` — Fase 2 V4). Bracket-free inputs
+/// behave byte-identically.
 pub(crate) fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
     let mut balance = 0;
     let mut split_idx = None;
 
     for (i, c) in s.char_indices().rev() {
-        if c == ')' {
+        if c == ')' || c == ']' {
             balance += 1;
-        } else if c == '(' {
+        } else if c == '(' || c == '[' {
             balance -= 1;
         } else if c == delimiter && balance == 0 {
             split_idx = Some(i);

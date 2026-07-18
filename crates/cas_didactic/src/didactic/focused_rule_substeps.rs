@@ -57,6 +57,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return gradient_substeps;
     }
 
+    let jacobian_hessian_substeps = generate_vector_jacobian_hessian_substeps(ctx, step);
+    if !jacobian_hessian_substeps.is_empty() {
+        return jacobian_hessian_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -11862,6 +11867,91 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
         .with_before_latex(latex_expr(ctx, matching_factor))
         .with_after_latex(latex_expr(ctx, remaining_factor)),
     ]
+}
+
+/// Row-wise narration for `jacobian([f₁,…],[vars])` and `hessian(f,[vars])`
+/// (Fase 2 V4): one keyed sub-step per output ROW, pairing its source with the
+/// rendered row of partial derivatives.
+fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let is_jacobian = matches!(
+        step.rule_name.as_str(),
+        "Vector Jacobian" | "Calcular el jacobiano"
+    );
+    let is_hessian = matches!(
+        step.rule_name.as_str(),
+        "Vector Hessian" | "Calcular el hessiano"
+    );
+    if !is_jacobian && !is_hessian {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(_, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if args.len() != 2 {
+        return Vec::new();
+    }
+    let target = args[0];
+    let Expr::Matrix { data: vars, .. } = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_names: Vec<String> = vars
+        .iter()
+        .filter_map(|&v| match ctx.get(v) {
+            Expr::Variable(sym) => Some(ctx.sym_name(*sym).to_string()),
+            _ => None,
+        })
+        .collect();
+    let Expr::Matrix {
+        rows,
+        cols,
+        data: cells,
+    } = ctx.get(after)
+    else {
+        return Vec::new();
+    };
+    let (rows, cols) = (*rows, *cols);
+    let cells = cells.clone();
+    // Row sources: jacobian rows come from the target vector's components; hessian
+    // rows are indexed by the variable of the first derivative.
+    let row_sources: Vec<String> = if is_jacobian {
+        match ctx.get(target) {
+            Expr::Matrix { data, .. } => {
+                let data = data.clone();
+                data.iter().map(|&f| display_expr(ctx, f)).collect()
+            }
+            _ => return Vec::new(),
+        }
+    } else {
+        var_names.clone()
+    };
+    if row_sources.len() != rows {
+        return Vec::new();
+    }
+    (0..rows)
+        .map(|i| {
+            let row_display = (0..cols)
+                .map(|j| display_expr(ctx, cells[i * cols + j]))
+                .collect::<Vec<_>>()
+                .join(", ");
+            if is_jacobian {
+                SubStep::keyed(
+                    "jacobian.row",
+                    vec![(i + 1).to_string()],
+                    row_sources[i].clone(),
+                    format!("[{row_display}]"),
+                )
+            } else {
+                SubStep::keyed(
+                    "hessian.row",
+                    vec![(i + 1).to_string(), row_sources[i].clone()],
+                    display_expr(ctx, target),
+                    format!("[{row_display}]"),
+                )
+            }
+        })
+        .collect()
 }
 
 /// Per-component narration of `gradient(f, [vars]) → [∂f/∂v₁, …]` (Fase 2 V3):

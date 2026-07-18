@@ -150,3 +150,5 @@
 "Vectorial","gradient(x^2*y, [x,y])","Gradiente de un campo escalar: ∇f = [∂f/∂x, ∂f/∂y] como vector columna — [[2·x·y], [x²]]; alias grad(...)"
 "Vectorial","diff([x^2, sin(x)], x)","Derivada componente a componente de un vector de funciones → [[2·x], [cos(x)]]"
 "Vectorial","dot(gradient(x^2*y,[x,y]), [1,0])","Derivada direccional por composición: ∇f·u con u=[1,0] → 2·x·y"
+"Vectorial","jacobian([x^2*y, x+y], [x,y])","Jacobiano de un campo vectorial: filas = funciones, columnas = variables — [[2·x·y, x²], [1, 1]]"
+"Vectorial","det(hessian(x^2*y, [x,y]))","Discriminante del test de la segunda derivada: det(H) del hessiano simétrico → -4·x²"

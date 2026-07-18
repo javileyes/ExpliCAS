@@ -2412,8 +2412,6 @@ fn test_eval_gradient_verb() {
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
     };
     for probe in [
-        "jacobian([x*y],[x,y])",
-        "hessian(x^2,[x,y])",
         "divergence([x,y],[x,y])",
         "curl([y,-x,0],[x,y,z])",
         "laplacian(x^2,[x,y])",
@@ -2453,6 +2451,73 @@ fn test_eval_gradient_verb() {
         .as_str()
         .unwrap()
         .contains("Differentiate with respect to x"));
+}
+
+#[test]
+fn test_eval_jacobian_hessian_verbs() {
+    // Fase 2 V4: jacobian (ROWS = functions, COLUMNS = variables — the orientation pin)
+    // and hessian (n×n symmetric, computed as the jacobian of the internal gradient),
+    // plus the bracket-aware `equiv` micro-cable that powers the metamorphic fixture.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("jacobian([x^2*y, x+y],[x,y])"), "[[2·x·y, x^2], [1, 1]]");
+    assert_eq!(
+        r("jacobian([x*y, x+y, sin(x)],[x,y])"),
+        "[[y, x], [1, 1], [cos(x), 0]]"
+    );
+    assert_eq!(r("hessian(x^2*y,[x,y])"), "[[2·y, 2·x], [2·x, 0]]");
+    assert_eq!(r("hessian(x^2+y^2,[x,y])"), "[[2, 0], [0, 2]]");
+    // det(hessian) composes — the second-derivative-test discriminant.
+    assert_eq!(r("det(hessian(x^2*y,[x,y]))"), "-4·x^2");
+    // Metamorphic fixture via bracket-aware equiv: hessian ≡ jacobian ∘ gradient.
+    assert_eq!(
+        r("equiv(jacobian(gradient(x^3*y^2,[x,y]),[x,y]), hessian(x^3*y^2,[x,y]))"),
+        "true"
+    );
+    assert_eq!(r("equiv([x,y],[y,x])"), "false");
+    // Scalar equiv pins intact (the shared splitter now tracks brackets).
+    assert_eq!(r("equiv(diff(x^2,x), 2*x)"), "true");
+    assert_eq!(r("equiv(x+1, x+2)"), "false");
+    // Honest declines: scalar target for jacobian (gradient owns scalars), matrix field
+    // for hessian, general matrix target for jacobian.
+    assert_eq!(r("jacobian(x^2,[x,y])"), "jacobian(x^2, [[x], [y]])");
+    assert_eq!(r("hessian([x,y],[x,y])"), "hessian([[x], [y]], [[x], [y]])");
+    assert_eq!(
+        r("jacobian([[1,2],[3,4]],[x,y])"),
+        "jacobian([[1, 2], [3, 4]], [[x], [y]])"
+    );
+    // Narration: localized rule names + one keyed substep per row.
+    let steps_json = |input: &str, lang: Option<&str>| -> Value {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+    let es = steps_json("jacobian([x^2*y, x+y],[x,y])", None);
+    assert_eq!(
+        es["steps"][0]["rule"].as_str().unwrap(),
+        "Calcular el jacobiano"
+    );
+    let subs = es["steps"][0]["substeps"].as_array().expect("substeps");
+    assert_eq!(subs.len(), 2, "one substep per row");
+    assert!(subs[0]["title"].as_str().unwrap().contains("Fila 1"));
+    let en = steps_json("hessian(x^2*y,[x,y])", Some("en"));
+    assert_eq!(
+        en["steps"][0]["rule"].as_str().unwrap(),
+        "Compute the Hessian"
+    );
+    assert!(en["steps"][0]["substeps"][0]["title"]
+        .as_str()
+        .unwrap()
+        .contains("Row 1"));
 }
 
 #[test]

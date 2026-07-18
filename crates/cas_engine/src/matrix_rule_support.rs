@@ -868,6 +868,81 @@ pub(crate) fn try_gradient_expr(
     )
 }
 
+/// Jacobian of a VECTOR field `[f₁,…,f_m]` w.r.t. `[v₁,…,v_n]`: the m×n matrix
+/// with ROWS = functions and COLUMNS = variables — `J[i][j] = ∂fᵢ/∂vⱼ` (Fase 2
+/// V4, the standard orientation, pinned in fixtures BEFORE coding). A scalar
+/// target declines (gradient owns scalars); a general matrix target declines;
+/// all-or-nothing; caps: functions ≤ 8, vars ≤ `VERB_MAX_VARS` (≤ 64 cells).
+pub(crate) fn try_jacobian_expr(
+    ctx: &mut Context,
+    fields: ExprId,
+    var_names: &[String],
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    if var_names.is_empty() || var_names.len() > VERB_MAX_VARS {
+        return None;
+    }
+    let m = Matrix::from_expr(ctx, fields)?;
+    if m.rows != 1 && m.cols != 1 {
+        return None;
+    }
+    let funcs = m.data.clone();
+    if funcs.is_empty() || funcs.len() > VERB_MAX_VARS {
+        return None;
+    }
+    let mut data = Vec::with_capacity(funcs.len() * var_names.len());
+    for &f in &funcs {
+        for var in var_names {
+            data.push(differentiate_symbolic_expr(ctx, f, var)?);
+        }
+    }
+    Some(
+        Matrix {
+            rows: funcs.len(),
+            cols: var_names.len(),
+            data,
+        }
+        .to_expr(ctx),
+    )
+}
+
+/// Hessian of a SCALAR field: the n×n matrix `H[i][j] = ∂²f/∂vᵢ∂vⱼ` (Fase 2
+/// V4) — computed DIRECTLY as the jacobian of the internal gradient, without
+/// re-entering the rewrite pipeline. Matrix targets decline (vector fields have
+/// no curriculum hessian here); all-or-nothing.
+pub(crate) fn try_hessian_expr(
+    ctx: &mut Context,
+    field: ExprId,
+    var_names: &[String],
+) -> Option<ExprId> {
+    use cas_math::symbolic_differentiation_support::differentiate_symbolic_expr;
+    if var_names.is_empty() || var_names.len() > VERB_MAX_VARS {
+        return None;
+    }
+    if matches!(ctx.get(field), Expr::Matrix { .. }) {
+        return None;
+    }
+    let mut gradient = Vec::with_capacity(var_names.len());
+    for var in var_names {
+        gradient.push(differentiate_symbolic_expr(ctx, field, var)?);
+    }
+    let n = var_names.len();
+    let mut data = Vec::with_capacity(n * n);
+    for &g in &gradient {
+        for var in var_names {
+            data.push(differentiate_symbolic_expr(ctx, g, var)?);
+        }
+    }
+    Some(
+        Matrix {
+            rows: n,
+            cols: n,
+            data,
+        }
+        .to_expr(ctx),
+    )
+}
+
 /// Componentwise derivative of a vector/matrix target: `d/dx [f₁, …] = [f₁′, …]`
 /// (Fase 2 V1). A component that cannot be differentiated declines the WHOLE
 /// call (all-or-nothing), keeping `diff([...], x)` an honest residual.

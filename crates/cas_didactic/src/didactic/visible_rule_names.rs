@@ -181,6 +181,8 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Symbolic Differentiation" => "Calcular la derivada",
         "Symbolic Integration" => "Calcular la integral",
         "Vector Gradient" => "Calcular el gradiente",
+        "Vector Jacobian" => "Calcular el jacobiano",
+        "Vector Hessian" => "Calcular el hessiano",
         "Present calculus result in compact form" => {
             "Presentar resultado de cálculo en forma compacta"
         }
@@ -631,6 +633,8 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Calcular coeficiente binomial" => "Compute the binomial coefficient",
         "Calcular el logaritmo" => "Compute the logarithm",
         "Calcular el gradiente" => "Compute the gradient",
+        "Calcular el hessiano" => "Compute the Hessian",
+        "Calcular el jacobiano" => "Compute the Jacobian",
         "Calcular la derivada" => "Compute the derivative",
         "Calcular la integral" => "Compute the integral",
         "Calcular potencia numérica" => "Compute the numeric power",
