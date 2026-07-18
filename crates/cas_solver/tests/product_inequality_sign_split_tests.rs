@@ -26,14 +26,20 @@ fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
 #[test]
 fn shared_root_product_with_ln_factor_splits_on_factor_signs() {
     // Both factors share the root x = 1 and the same sign on each side of it.
-    assert_eq!(solve_display("(x - 1)*ln(x)", RelOp::Lt, "0"), "No solution");
+    assert_eq!(
+        solve_display("(x - 1)*ln(x)", RelOp::Lt, "0"),
+        "No solution"
+    );
     assert_eq!(
         solve_display("(x - 1)*ln(x)", RelOp::Gt, "0"),
         "(0, 1) U (1, infinity)"
     );
     // Non-strict boundaries flow through the CLOSED factor sub-solves: the shared
     // root bridges the two open intervals for >=, and is the whole set for <=.
-    assert_eq!(solve_display("(x - 1)*ln(x)", RelOp::Geq, "0"), "(0, infinity)");
+    assert_eq!(
+        solve_display("(x - 1)*ln(x)", RelOp::Geq, "0"),
+        "(0, infinity)"
+    );
     assert_eq!(solve_display("(x - 1)*ln(x)", RelOp::Leq, "0"), "[1, 1]");
 }
 
@@ -49,7 +55,10 @@ fn distinct_root_products_keep_both_nonstrict_boundaries() {
 #[test]
 fn negation_and_swapped_factor_orientations() {
     // (1-x)*ln(x) has OPPOSITE factor signs everywhere on the domain: never positive.
-    assert_eq!(solve_display("(1 - x)*ln(x)", RelOp::Gt, "0"), "No solution");
+    assert_eq!(
+        solve_display("(1 - x)*ln(x)", RelOp::Gt, "0"),
+        "No solution"
+    );
     assert_eq!(
         solve_display("-(x - 1)*ln(x)", RelOp::Gt, "0"),
         "No solution"
@@ -65,10 +74,7 @@ fn sibling_owners_are_unchanged() {
     // Polynomial products: owned by the polynomial sign analysis.
     assert_eq!(solve_display("(x - 1)*(x - 2)", RelOp::Lt, "0"), "(1, 2)");
     // Constant coefficient: ordinary isolation.
-    assert_eq!(
-        solve_display("2*(x - 1)", RelOp::Lt, "0"),
-        "(-infinity, 1)"
-    );
+    assert_eq!(solve_display("2*(x - 1)", RelOp::Lt, "0"), "(-infinity, 1)");
     // The product EQUATION keeps its owner.
     assert_eq!(solve_display("(x - 1)*ln(x)", RelOp::Eq, "0"), "{ 1 }");
 }

@@ -24,13 +24,22 @@ fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
 
 #[test]
 fn product_of_two_abs_below_threshold_keeps_the_interior_interval() {
-    assert_eq!(solve_display("abs(x)*abs(x - 1)", RelOp::Lt, "2"), "(-1, 2)");
+    assert_eq!(
+        solve_display("abs(x)*abs(x - 1)", RelOp::Lt, "2"),
+        "(-1, 2)"
+    );
     assert_eq!(
         solve_display("abs(x)*abs(x - 1)", RelOp::Leq, "2"),
         "[-1, 2]"
     );
-    assert_eq!(solve_display("abs(x)*abs(x + 2)", RelOp::Lt, "3"), "(-3, 1)");
-    assert_eq!(solve_display("abs(x)*abs(x - 2)", RelOp::Lt, "3"), "(-1, 3)");
+    assert_eq!(
+        solve_display("abs(x)*abs(x + 2)", RelOp::Lt, "3"),
+        "(-3, 1)"
+    );
+    assert_eq!(
+        solve_display("abs(x)*abs(x - 2)", RelOp::Lt, "3"),
+        "(-1, 3)"
+    );
 }
 
 #[test]
