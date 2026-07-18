@@ -209,6 +209,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Complex Angle Sum" => "Aplicar la suma de ángulos compleja",
         "Gaussian Surd Modulus" => "Calcular el módulo con componentes surd",
         "Reciprocal Cis" => "Invertir la forma cis por su conjugada",
+        "Substitute Value" => "Sustituir el valor en la expresión",
         "Present calculus result in compact form" => {
             "Presentar resultado de cálculo en forma compacta"
         }
@@ -664,6 +665,7 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Aplicar la suma de ángulos compleja" => "Apply the complex angle sum",
         "Calcular el módulo con componentes surd" => "Compute the modulus with surd components",
         "Invertir la forma cis por su conjugada" => "Invert the cis form via its conjugate",
+        "Sustituir el valor en la expresión" => "Substitute the value into the expression",
         "Aplicar trigonometría de argumento imaginario" => "Apply trig of an imaginary argument",
         "Calcular el argumento principal" => "Compute the principal argument",
         "Calcular el conjugado" => "Compute the conjugate",

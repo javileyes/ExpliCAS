@@ -2484,6 +2484,44 @@ fn test_eval_limit_oscillation_dne() {
 }
 
 #[test]
+fn test_eval_subs_inline() {
+    // Cierre vectorial · pregunta abierta #2 (decisión del usuario): subs(expr, x, v)
+    // — evaluación-en-punto inline, ORDER-SAFE por construcción (declina mientras el
+    // target contenga cálculo sin evaluar: la cascada deriva ANTES de ligar, la trampa
+    // de orden del flujo let no puede ocurrir). Multi-variable por anidamiento.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("subs(x^2, x, 3)"), "9");
+    assert_eq!(r("subs(x^2+y, x, 2)"), "y + 4");
+    assert_eq!(r("subs(subs(x^2*y, x, 1), y, 2)"), "2");
+    assert_eq!(r("subs(x^2, x, x+1)"), "(x + 1)^2");
+    // LA trampa de orden, resuelta: deriva primero, liga después — siempre.
+    assert_eq!(r("subs(diff(x^2*y, x), x, 1)"), "2·y");
+    assert_eq!(r("subs(subs(diff(x^2*y, x), x, 1), y, 3)"), "6");
+    // Plano tangente one-shot (f=x²y en (1,2)): f=2, fx=4, fy=1.
+    assert_eq!(r("subs(subs(x^2*y, x, 1), y, 2)"), "2");
+    assert_eq!(r("subs(subs(diff(x^2*y,x), x, 1), y, 2)"), "4");
+    assert_eq!(r("subs(subs(diff(x^2*y,y), x, 1), y, 2)"), "1");
+    // Clasificación de críticos one-shot: det(H) de x³+y³−3xy en (1,1) → 27 > 0.
+    assert_eq!(
+        r("subs(subs(det(hessian(x^3+y^3-3*x*y,[x,y])), x, 1), y, 1)"),
+        "27"
+    );
+    // Declines honestos: cálculo residual dentro (no-elemental) y var no-Variable.
+    assert_eq!(
+        r("subs(integrate(1/ln(x), x), x, 2)"),
+        "subs(integrate(1 / ln(x), x), x, 2)"
+    );
+    assert_eq!(r("subs(x^2, 3, 1)"), "subs(x^2, 3, 1)");
+}
+
+#[test]
 fn test_eval_reciprocal_cis() {
     // Tanda-3 ciclo 4: n/(cos u ± i·sin u) → n·(cos u ∓ i·sin u) — identidad ENTERA
     // (cis·cis̄ = cos²+sin² = 1 en todo ℂ), sin guard de realidad. Cierra el residual

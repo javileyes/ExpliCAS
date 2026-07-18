@@ -772,6 +772,84 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
     }
 }
 
+/// True when `expr` still contains an UNEVALUATED calculus call — the order
+/// guard of `SubsRule` (see below): substitution must wait for those to
+/// evaluate first, or `subs(diff(f,x), x, 1)` would bind the differentiation
+/// variable before differentiating (the REPL let-flow's order trap).
+fn contains_unevaluated_calculus_call(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    use cas_ast::Expr;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Function(f, args) => {
+                let name = ctx.sym_name(*f);
+                if matches!(
+                    name,
+                    "diff"
+                        | "integrate"
+                        | "limit"
+                        | "sum"
+                        | "product"
+                        | "root_sum"
+                        | "taylor"
+                        | "series"
+                        | "subs"
+                ) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+// SubsRule: inline evaluation-at-a-point `subs(expr, x, value)` (cierre del
+// frente vectorial, pregunta abierta #2 — decisión del usuario 2026-07-18).
+// ORDER-SAFE BY CONSTRUCTION: declines while the target still contains an
+// unevaluated calculus call — the cascade evaluates those first, so
+// `subs(diff(x^2*y, x), x, 1)` differentiates BEFORE binding (the let-flow's
+// order trap cannot happen here); a residual calculus call keeps `subs` an
+// honest residual. Multi-variable evaluation nests: `subs(subs(f,x,1),y,2)`
+// (the inner guard also waits for inner subs). Purely syntactic node
+// substitution — no ValueDomain gate (guardrail #1: no ceremony).
+define_rule!(
+    SubsRule,
+    "Substitute Value",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        if !ctx.is_call_named(expr, "subs") {
+            return None;
+        }
+        let cas_ast::Expr::Function(_, args) = ctx.get(expr) else {
+            return None;
+        };
+        if args.len() != 3 {
+            return None;
+        }
+        let (target, var, value) = (args[0], args[1], args[2]);
+        if !matches!(ctx.get(var), cas_ast::Expr::Variable(_)) {
+            return None;
+        }
+        if contains_unevaluated_calculus_call(ctx, target) {
+            return None;
+        }
+        let rewritten = cas_ast::traversal::substitute_expr_by_id(ctx, target, var, value);
+        Some(Rewrite::new(rewritten).desc("Sustituir la variable por el valor en la expresión"))
+    }
+);
+
 // EvaluateMetaFunctionsRule: Handles meta functions that operate on expressions
 // - simplify(expr) → expr (already simplified by bottom-up processing)
 // - factor(expr) → expr (factoring is done by other rules during simplification)
@@ -988,6 +1066,7 @@ define_rule!(
 );
 
 pub fn register(simplifier: &mut crate::Simplifier) {
+    simplifier.add_rule(Box::new(SubsRule));
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
     simplifier.add_rule(Box::new(EvaluateCbrtPerfectCubeRule)); // cbrt(8) → 2 (perfect cubes only)
                                                                 // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule

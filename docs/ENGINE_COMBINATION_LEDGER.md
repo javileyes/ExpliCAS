@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 630 (newest first)
+Active entries: 631 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -135,6 +135,7 @@ Active entries: 630 (newest first)
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_surd_abs` sobre `split_i... | CAPACIDAD (tanda-3 · ciclo 2: módulo Gaussiano-surd): `|1/2 + i·√3/2| → 1` — la familia π-racional cierra por la vía surd
 - 2026-07-18 | `retained` | `cas_math/limits_support.rs` (`try_dne_by_oscillation`: sin/cos/tan(g) desnud... | HONESTIDAD+EDUCATIVO (tanda-3 · ciclo 3: oscilación en límites): `limit(sin(1/x), x, 0)` → no-existencia CON MOTIVO — el item del frontier-audit queda completo
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher compartido `match_cis` EXTRAÍDO de try... | CAPACIDAD (tanda-3 · ciclo 4: recíproco cis): `e^(-i·x)` → `cos(x) − i·sin(x)` — el último residual nombrado de B2 cierra
+- 2026-07-18 | `retained` | `cas_engine/rules/functions.rs` (`SubsRule` en la familia meta + guard `conta... | CAPACIDAD (cierre vectorial · A: verbo `subs`): evaluación-en-punto inline ORDER-SAFE — plano tangente y clasificación de críticos one-shot
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20568,3 +20569,16 @@ Active entries: 630 (newest first)
   - retained learning:
   - **Cuando una canonicalización re-forma el input antes de tu regla insignia, añade el consumidor de la forma canonicalizada — no pelees el orden**: `1/e^(ix)` era la forma REAL que llegaba al pipeline; una regla para ESA forma cierra el residual sin tocar Euler ni la canonicalización (cero riesgo de churn).
   - **TANDA-3 COMPLETA (4/4, 0 rechazos).** Frente complejo: los residuales nombrados de B2/B4b quedan TODOS cerrados (suma-de-ángulos, módulo surd, recíproco cis; el trig complejo elemental completo). RESIDUALES vivos con dueño: sinh↔exp con argumento CONSTANTE en equiv (el simbólico ya confirma — graduaría el fixture sin(i)), `|i|` anidado en Mul (split multiplicativo de abs), tri-estado wire equiv, quirk sqrt-radicando-solitario, roots-of-unity solve, y las 4 preguntas abiertas del scoping vectorial al usuario.
+
+## 2026-07-18 - CAPACIDAD (cierre vectorial · A: verbo `subs`): evaluación-en-punto inline ORDER-SAFE — plano tangente y clasificación de críticos one-shot
+
+- area: `cas_engine/rules/functions.rs` (`SubsRule` en la familia meta + guard `contains_unevaluated_calculus_call`) + gate `"subs" => arity == 3` + visible names es/en + completer + 2 filas examples.csv + contract e2e
+- status: `retained`. Ciclo A del cierre del frente vectorial (pregunta abierta #2, DECIDIDA por el usuario 2026-07-18: subs entra).
+- capture:
+  - investment_class: capacidad (superficie de producto nueva decidida por el usuario — unifica la evaluación-en-punto que vivía dispersa en 3 mecanismos).
+  - cell: `subs(x^2,x,3)→9`, parcial `subs(x^2+y,x,2)→y+4`, anidado multi-var `subs(subs(x^2*y,x,1),y,2)→2`, reemplazo simbólico `subs(x^2,x,x+1)→(x+1)^2`. **LA TRAMPA DE ORDEN MUERTA POR CONSTRUCCIÓN**: `subs(diff(x^2*y,x),x,1)→2·y` — el guard declina mientras el target contenga cálculo sin evaluar (diff/integrate/limit/sum/…/subs anidado), así que la cascada SIEMPRE deriva antes de ligar; el `let x=1` prematuro del REPL que mataba la derivada es imposible aquí. **Los dos ítems curriculares del scope-out abren one-shot**: plano tangente (f=2, fx=4, fy=1 en (1,2) para x²y) y clasificación de críticos (`subs(subs(det(hessian(x³+y³−3xy,[x,y])),x,1),y,1)→27` > 0 ⇒ mínimo). Declines honestos: cálculo residual dentro (`subs(∫1/ln x, x, 2)` eco — jamás sustituir dentro de un residual), var no-Variable.
+  - diseño: regla puramente SINTÁCTICA (sustitución exacta de nodo vía `substitute_expr_by_id` — cero gate ValueDomain, guardrail #1 sin ceremonia); el guard de orden es la pieza de soundness y es el mismo walker-patrón del never-confirm de integrate componentwise.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Un guard de "espera a que el interior evalúe" convierte un orden-de-operaciones frágil en un invariante**: la trampa derivar/ligar no se documenta — se hace inexpresable; el mismo patrón (declinar mientras contenga X sin evaluar) sirvió en integrate componentwise y aquí.
+  - PRÓXIMO PELDAÑO: cierre B — **V7d** (pre-evaluar diff en solve_system → flujo de puntos críticos con solve; decidido por el usuario: dentro del frente).

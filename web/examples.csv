@@ -179,3 +179,5 @@
 "Vectorial","hessian(x^2*y, [x,y])","Matriz hessiana simétrica de segundas derivadas → [[2·y, 2·x], [2·x, 0]]"
 "Vectorial","curl([y,-x], [x,y])","Rotacional 2D: convención ESCALAR ∂Q/∂x − ∂P/∂y → -2 (jamás rellenado a 3D)"
 "Vectorial","diff([x^2, x^3], x, 2)","Derivada segunda componente a componente de un vector → [[2], [6·x]]"
+"Vectorial","subs(subs(diff(x^2*y,x), x, 1), y, 2)","Evaluación en punto SIN trampa de orden: subs deriva primero y liga después — ∂f/∂x en (1,2) → 4"
+"Vectorial","subs(subs(det(hessian(x^3+y^3-3*x*y,[x,y])), x, 1), y, 1)","Clasificación de puntos críticos one-shot: det(H) en (1,1) → 27 > 0 (mínimo local)"

@@ -117,6 +117,9 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         // divergence/curl/laplacian/rot stay UNREGISTERED until their cycle lands.
         "gradient" | "grad" | "jacobian" | "hessian" | "divergence" | "laplacian" | "curl"
         | "rot" => arity == 2,
+        // Inline evaluation-at-a-point (cierre vectorial, decisión del usuario):
+        // subs(expr, var, value); multi-variable nests.
+        "subs" => arity == 3,
         "arclength" | "arc_length" => arity == 4,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.

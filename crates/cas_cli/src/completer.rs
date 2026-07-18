@@ -52,6 +52,7 @@ impl CasHelper {
                 "laplacian".to_string(),
                 "curl".to_string(),
                 "rot".to_string(),
+                "subs".to_string(),
                 "help".to_string(),
                 "profile".to_string(),
                 "health".to_string(),
