@@ -2436,6 +2436,45 @@ fn test_eval_complex_rule_names_localized() {
 }
 
 #[test]
+fn test_eval_gaussian_surd_modulus() {
+    // Tanda-3 ciclo 2: |a+b·i| con componentes reales DECIDIBLES (provable_const_sign
+    // — surds, e/π; la disciplina V0 hace declinar los símbolos). Cierra la familia
+    // π-racional que la unimodularidad dejó nombrada (el trig pliega a surds ANTES
+    // del abs). El caso ambos-racionales conserva su dueño exacto (GaussianRational).
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // La familia π-racional cierra: unimodulares por la vía surd.
+    assert_eq!(rc("abs(1/2 + i*sqrt(3)/2)"), "1");
+    assert_eq!(rc("abs(e^(i*pi/3))"), "1");
+    assert_eq!(rc("abs(e^(i*pi/4))"), "1");
+    // Módulos surd generales, forma factorizada incluida.
+    assert_eq!(rc("abs(1 + i*sqrt(3))"), "2");
+    assert_eq!(rc("abs(sqrt(2) + i*sqrt(2))"), "2");
+    // Puro-imaginario decidible: el signo ya está decidido — emite ±b directo.
+    assert_eq!(rc("abs(i*sqrt(3))"), "sqrt(3)");
+    assert_eq!(rc("abs(-i*sqrt(3))"), "sqrt(3)");
+    assert_eq!(rc("abs(i*pi)"), "pi");
+    // Transcendentales: forma exacta sin plegar, sound.
+    assert_eq!(rc("abs(e + i*pi)"), "(pi^2 + e^2)^(1/2)");
+    // Ownership: racionales al dueño exacto; símbolos declinan (disciplina V0).
+    assert_eq!(rc("abs(3+4*i)"), "5");
+    assert_eq!(rc("abs(x + i*sqrt(3))"), "|x + i·sqrt(3)|");
+}
+
+#[test]
 fn test_eval_complex_angle_sum() {
     // Tanda-3 ciclo 1: argumento complejo MIXTO re+iθ — la suma de ángulos entera
     // (válida ∀ re,θ ∈ ℂ, sin guard, como el puente). Puro-imaginario sigue siendo
@@ -2571,7 +2610,12 @@ fn test_eval_unimodular_abs() {
     assert_eq!(rc("abs(e^(-2*i))"), "1");
     // Declines V0-discipline: símbolo (puede ser complejo), θ distinto, θ=i, real mode.
     assert_eq!(rc("abs(cos(x)+i*sin(x))"), "|cos(x) + i·sin(x)|");
-    assert_eq!(rc("abs(cos(2)+i*sin(3))"), "|cos(2) + i·sin(3)|");
+    // El mismatch θ≠θ' dejó de ser residual en tanda-3 ciclo 2: el módulo
+    // Gaussiano-surd lo computa por la vía general (const_sign acota trig de
+    // racionales) → √(sin(3)²+cos(2)²), correcto y más informativo. La propiedad
+    // de ESTE test (unimodularidad solo con θ IGUAL y decidible) sigue fijada
+    // por los asserts de arriba.
+    assert_eq!(rc("abs(cos(2)+i*sin(3))"), "(sin(3)^2 + cos(2)^2)^(1/2)");
     // θ=i: la unimodularidad sigue DECLINANDO aquí, pero el puente trig-de-i
     // (ciclo 3) compone |cosh(1) − sinh(1)| = 1/e — exactamente el contraejemplo
     // |e^(i·i)| = 1/e que motiva el guard de realidad. El valor confirma la

@@ -807,6 +807,67 @@ pub fn try_rewrite_trig_complex_angle_sum(
     Some(out)
 }
 
+/// Modulus of a Gaussian with DECIDABLE-REAL surd/transcendental components:
+/// `|a + b·i| = √(a² + b²)` when BOTH parts prove decidable-real via
+/// `provable_const_sign` (rationals, surds, e/π combos) and at least one is NOT
+/// a plain rational (that case already belongs to the exact `GaussianRational`
+/// modulus). The emitted squares fold downstream by the exact surd arithmetic
+/// (`(√3/2)² → 3/4`), closing the π-rational family (`|1/2 + i·√3/2| → 1`).
+/// Symbolic components decline (V0 discipline: a variable may hold a complex
+/// value, so `a²+b²` would be the wrong formula).
+pub fn try_rewrite_gaussian_surd_abs(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, &'static str)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.builtin_of(*fn_id) != Some(BuiltinFn::Abs) || args.len() != 1 {
+        return None;
+    }
+    let arg = args[0];
+    let (re, im) = match split_i_factor(ctx, arg)? {
+        (Some(re), Some(im)) => (Some(re), im),
+        (None, Some(im)) => (None, im),
+        // No imaginary part: not a Gaussian modulus — never ours.
+        _ => return None,
+    };
+    let im_sign = crate::const_sign::provable_const_sign(ctx, im)?;
+    if let Some(re) = re {
+        crate::const_sign::provable_const_sign(ctx, re)?;
+    }
+    // Both parts plain rationals ⇒ the exact GaussianRational modulus owns it.
+    // (`|2·i| → 2·|i|` with the nested `|i|` unfolded is a PRE-EXISTING residual of
+    // the multiplicative abs split, bisect-verified — its owner is that split, not
+    // this rule: widening here was dead surface because the split preempts.)
+    let re_rational = re.is_none_or(|r| crate::numeric_eval::as_rational_const(ctx, r).is_some());
+    let im_rational = crate::numeric_eval::as_rational_const(ctx, im).is_some();
+    if re_rational && im_rational {
+        return None;
+    }
+    let Some(re) = re else {
+        // Pure imaginary: |i·b| = |b|, and the sign is already DECIDED — emit ±b
+        // directly (√(b²) would sit unfolded, the lone-radicand quirk).
+        let out = match im_sign {
+            crate::const_sign::ConstSign::Positive => im,
+            crate::const_sign::ConstSign::Negative => ctx.add(Expr::Neg(im)),
+            crate::const_sign::ConstSign::Zero => ctx.num(0),
+        };
+        return Some((
+            out,
+            "módulo del imaginario puro con componente real decidible: |b·i| = |b|",
+        ));
+    };
+    let two = ctx.num(2);
+    let im_sq = ctx.add(Expr::Pow(im, two));
+    let re_sq = ctx.add(Expr::Pow(re, two));
+    let sum = ctx.add(Expr::Add(re_sq, im_sq));
+    Some((
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![sum]),
+        "módulo del gaussiano con componentes reales decidibles: |a+b·i| = √(a²+b²)",
+    ))
+}
+
 /// STRUCTURAL split of an exponent into `real_part + i·theta` — exact, no
 /// folding. Returns `(real_part, theta)` where `None` means "zero part";
 /// both components are guaranteed i-free. Declines (`None` overall) on any

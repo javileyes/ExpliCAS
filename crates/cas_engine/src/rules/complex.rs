@@ -249,6 +249,22 @@ define_rule!(
     }
 );
 
+define_rule!(
+    GaussianSurdAbsRule,
+    "Gaussian Surd Modulus",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+        // |a+b·i| with decidable-real surd/transcendental components — the guard is
+        // provable_const_sign on BOTH parts (V0 discipline: symbols decline). The
+        // plain-rational case stays with the exact GaussianRational modulus.
+        let (rewritten, desc) =
+            cas_math::complex_support::try_rewrite_gaussian_surd_abs(ctx, expr)?;
+        Some(Rewrite::new(rewritten).desc(desc))
+    }
+);
+
 define_rule!(EulerRule, "Euler Formula", |ctx, expr, parent_ctx| {
     if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
         return None;
@@ -357,6 +373,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(UnimodularAbsRule));
     simplifier.add_rule(Box::new(TrigOfImaginaryRule));
     simplifier.add_rule(Box::new(ComplexAngleSumRule));
+    simplifier.add_rule(Box::new(GaussianSurdAbsRule));
     simplifier.add_rule(Box::new(EulerRule));
     simplifier.add_rule(Box::new(ArgRule));
     simplifier.add_rule(Box::new(GaussianSqrtRule));

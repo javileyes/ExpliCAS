@@ -207,6 +207,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Unimodular Absolute Value" => "Aplicar el valor absoluto unimodular",
         "Trig of Imaginary Argument" => "Aplicar trigonometría de argumento imaginario",
         "Complex Angle Sum" => "Aplicar la suma de ángulos compleja",
+        "Gaussian Surd Modulus" => "Calcular el módulo con componentes surd",
         "Present calculus result in compact form" => {
             "Presentar resultado de cálculo en forma compacta"
         }
@@ -660,6 +661,7 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Aplicar i·i = -1" => "Apply i·i = -1",
         "Aplicar la fórmula de Euler" => "Apply Euler's formula",
         "Aplicar la suma de ángulos compleja" => "Apply the complex angle sum",
+        "Calcular el módulo con componentes surd" => "Compute the modulus with surd components",
         "Aplicar trigonometría de argumento imaginario" => "Apply trig of an imaginary argument",
         "Calcular el argumento principal" => "Compute the principal argument",
         "Calcular el conjugado" => "Compute the conjugate",

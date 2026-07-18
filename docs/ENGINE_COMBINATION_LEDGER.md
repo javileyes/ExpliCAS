@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 627 (newest first)
+Active entries: 628 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -132,6 +132,7 @@ Active entries: 627 (newest first)
 - 2026-07-18 | `retained` | `cas_formatter/latex_core.rs` (helper compartido `diff_operator_latex` + pars... | PRESENTACIÓN (tanda-2 · ciclo 5: display diff multi-var + help): el input_latex de `diff(f,x,y)` deja de DROPEAR variables — forma neutral que no prejuzga ∂
 - 2026-07-18 | `retained` | docs-only (sin huella): `CALCULUS_FRONTIER_AUDIT.md` (6 anotaciones + 1 check... | META-MANTENIMIENTO A (tanda-2 · ciclo 6: audit de veracidad de docs): 20 claims stale corregidos en 4 fuentes de verdad — incl. una familia P0 graduada en silencio
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_trig_complex_angle_sum`: 4 brazos... | CAPACIDAD (tanda-3 · ciclo 1: suma de ángulos compleja): `sin(1+i)` → forma cartesiana exacta — el trig complejo elemental queda completo
+- 2026-07-18 | `retained` | `cas_math/complex_support.rs` (`try_rewrite_gaussian_surd_abs` sobre `split_i... | CAPACIDAD (tanda-3 · ciclo 2: módulo Gaussiano-surd): `|1/2 + i·√3/2| → 1` — la familia π-racional cierra por la vía surd
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20524,3 +20525,17 @@ Active entries: 627 (newest first)
   - retained learning:
   - **El decline planificado puede graduarse por COMPOSICIÓN sin código extra**: tan(1+i) estaba scopeado como residual y salió cociente-expandido porque una regla previa (Tan→Sin/Cos) alimenta a la nueva — al cerrar una familia, sondear también los vecinos que COMPONEN antes de anotar residuales.
   - PRÓXIMO PELDAÑO: tanda-3 ciclo 2 — **módulo Gaussiano-surd** (`abs(1/2+i·√3/2)→1`: componentes reales decidibles, a²+b² exacto — cierra la familia π-racional del ciclo unimodularidad).
+
+## 2026-07-18 - CAPACIDAD (tanda-3 · ciclo 2: módulo Gaussiano-surd): `|1/2 + i·√3/2| → 1` — la familia π-racional cierra por la vía surd
+
+- area: `cas_math/complex_support.rs` (`try_rewrite_gaussian_surd_abs` sobre `split_i_factor` + guard `provable_const_sign` en ambos componentes; brazo puro-imaginario emite `±b` DIRECTO con el signo ya decidido) + `cas_engine/rules/complex.rs` (`GaussianSurdAbsRule`, 21ª hermana gateada) + visible names es/en + contract e2e
+- status: `retained`. Tanda-3 ciclo 2/4 (residual nombrado al aterrizar la unimodularidad: la familia π-racional pliega el trig a surds ANTES del abs).
+- capture:
+  - investment_class: capacidad Fase-2 (frente complejo — módulo exacto más allá de ℚ[i]).
+  - cell: `abs(1/2 + i·√3/2)→1`, `abs(e^(iπ/3))→1`, `abs(e^(iπ/4))→1` (Euler → surds → este módulo: los unimodulares π-racionales cierran por composición); `abs(1+i·√3)→2`, `abs(√2+i·√2)→2` (la forma FACTORIZADA `|√2·(1+i)|` la resuelve el split recursivo); puro-imaginario con signo decidido emite directo (`abs(±i·√3)→√3`, `abs(i·π)→π` — evita el quirk del radicando solitario `sqrt((√3)²)` detectado en el primer intento); transcendentales exactos sin plegar (`abs(e+iπ)→(π²+e²)^(1/2)`, sound). Ownership: racionales al dueño `GaussianRational` (`abs(3+4i)→5`), símbolos declinan (disciplina V0), real mode gated.
+  - **bisect-before-believing pagó otra vez**: `abs(2·i)→2·|i|` parecía regresión del ciclo — el binario stash pre-ciclo da lo MISMO (residual preexistente del split multiplicativo de abs, cuyo `|i|` anidado no pliega; dueño = ese split, no esta regla). Un ensanche del brazo puro-imaginario para taparlo resultó SUPERFICIE MUERTA (el split preempta en el loop de rewrite) y se revirtió — el residual queda nombrado con su dueño real.
+  - validación: workspace failed:0 (tras migrar UN pin ajeno graduado por composición: el mismatch `abs(cos(2)+i·sin(3))` de la unimodularidad dejó de ser residual — const_sign ACOTA trig de racionales, así que esta regla lo computa `√(sin(3)²+cos(2)²)`, correcto y más informativo; la propiedad del test original —unimodularidad solo con θ igual— sigue fijada); clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Cuando el guard de tu regla decide el SIGNO, emite el valor con el signo — no el `√(x²)` que "alguien plegará"**: el brazo puro-imaginario con `provable_const_sign` en mano emite `±b` directo; la forma cuadrática-bajo-raíz de radicando solitario es exactamente la clase que se atasca (gemelos `sqrt(pi²)`, `sqrt(|pi|²)`).
+  - **Un fix que el pipeline preempta es superficie muerta, no robustez**: si otra regla reescribe la forma antes de que la tuya la vea, tu brazo extra jamás corre — probar el fix EN EL PIPELINE (no solo el helper) antes de retenerlo, y si muere, revertir y nombrar al dueño real.
+  - PRÓXIMO PELDAÑO: tanda-3 ciclo 3 — **diagnóstico de oscilación en límites** (`limit(sin(1/x),x,0)` → no-existencia con motivo; el item del frontier-audit estrechado a exactamente esto). Residual re-confirmado con dueño: `|i|` anidado en Mul no pliega (split multiplicativo de abs).
