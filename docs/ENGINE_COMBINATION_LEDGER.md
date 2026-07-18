@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 614 (newest first)
+Active entries: 615 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
+- 2026-07-18 | `retained` | `cas_math/expr_path_rewrite.rs` (brazo `Expr::Matrix` en `rewrite_at_expr_pat... | P0-WIRE (Fase 2 vectorial · V2): los steps bajo `Matrix` dejan de perderse — Matrix desciende como Function en el path-rewrite
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20332,3 +20333,16 @@ Active entries: 614 (newest first)
   - **Los tests de gobernanza son contratos con instrucciones de actualización**: el allowlist-sentinel no "falló" — funcionó exactamente como sus autores querían (forzar la justificación de caps por escrito en el punto de uso). Leer el mensaje del test antes de tocar el código productivo.
   - **El primitivo con nombre paga aunque la lógica exista inline**: wronskian ya mapeaba componentes; extraer `map_matrix_components` convierte los 6 verbos siguientes en one-liners y concentra all-or-nothing + cap en UN sitio auditable.
   - PRÓXIMO PELDAÑO: **V2** (P0-wire: narración bajo Matrix — brazo `Expr::Matrix` en `rewrite_at_expr_path_with` clonando el patrón Function; verificación empírica con `diff-smoke-85` como red). V1 queda ☑ en el scoping (hash en el ledger del ciclo siguiente).
+
+## 2026-07-18 - P0-WIRE (Fase 2 vectorial · V2): los steps bajo `Matrix` dejan de perderse — Matrix desciende como Function en el path-rewrite
+
+- area: `cas_math/expr_path_rewrite.rs` (brazo `Expr::Matrix` en `rewrite_at_expr_path_with` — índice de celda plano row-major, clonando el patrón Function; Matrix sale de la lista de hojas) + contract e2e con los 2 controles diferenciales como fixtures nombrados
+- status: `retained`. Ciclo 3/8 de la tanda vectorial (V2 del scoping; V1 = hash en este ledger, ciclo anterior).
+- capture:
+  - investment_class: soundness de WIRE didáctico (wrong-answer de narración: valores correctos, steps VACÍOS — la mitad educativa del norte pesa lo mismo que la universal).
+  - cell: `[diff(x^2,x), diff(x^3,x)] --steps on` → **2 steps con snapshots GLOBALES matrix-shaped** (`[[d/dx(x²)], [d/dx(x³)]] → [[2·x], [d/dx(x³)]] → [[2·x], [3·x²]]`) — antes steps_count=0 con valor correcto. Controles diferenciales intactos (bajo `Add`: 2 steps; bajo Function-arg: 2 steps — pineados como fixtures `steps-bajo-add`/`steps-bajo-function`).
+  - diseño: la hipótesis del scoping ("solo falta la reconstrucción — `transform_expr_recursive` ya emite `PathStep::Arg(i)` para Matrix") resultó SUFICIENTE — un solo brazo de ~12 líneas, sin tocar el pipeline didáctico ni necesitar la panic-trampa de contingencia. El bug era la asimetría productor/consumidor: el walker de transformación descendía en Matrix pero el reconstructor de snapshots lo trataba como HOJA → `global_before == global_after` → el pipeline descarta el step como no-op.
+  - validación: workspace failed:0; clippy --all-targets limpio; engine-fast verde; huella: CONTADORES idénticos ambos scorecards (el brazo solo dispara cuando un path ATRAVIESA un Matrix — inexistente en las lanes escalares; `diff-smoke-85` byte-idéntico).
+  - retained learning:
+  - **Ante un dato que se pierde en un pipeline, busca la asimetría productor/consumidor**: `transform_expr_recursive` (productor de paths) ya sabía descender en Matrix; `rewrite_at_expr_path_with` (consumidor/reconstructor) no — dos walkers gemelos que divergen en UN nodo son un silencioso descarte de datos. Al añadir un tipo de nodo contenedor, greppear TODOS los walkers por el nombre de la variante.
+  - PRÓXIMO PELDAÑO: **V3** (verbo `gradient` — estrena el esqueleto completo de registro: gate + regla molde WronskianRule + extractor var-lista + narración barra-alta es/en + completer; fixture direccional `dot(gradient(f,[x,y]),u)`; pin `verbos-never-confirm`). V2 queda ☑ (hash en el ledger del ciclo siguiente).

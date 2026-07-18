@@ -112,11 +112,24 @@ where
                 root
             }
         }
-        Expr::Number(_)
-        | Expr::Constant(_)
-        | Expr::Variable(_)
-        | Expr::SessionRef(_)
-        | Expr::Matrix { .. } => root,
+        // Matrix descends like Function (child = flat cell index, row-major). Treating it
+        // as a leaf silently discarded every narration step that fired UNDER a Matrix node:
+        // the step's global snapshot came back unchanged and the didactic pipeline dropped
+        // it (valores correctos, narración vacía — Fase 2 V2).
+        Expr::Matrix {
+            rows,
+            cols,
+            mut data,
+        } => {
+            if child < data.len() {
+                data[child] =
+                    rewrite_at_expr_path_with(ctx, data[child], rest, replacement, add_expr);
+                add_expr(ctx, Expr::Matrix { rows, cols, data })
+            } else {
+                root
+            }
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => root,
     }
 }
 

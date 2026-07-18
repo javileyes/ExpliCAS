@@ -96,7 +96,7 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 
 ### Bloque A — sustrato (sin verbo nuevo)
 
-#### ☑ V1 — diff componentwise sobre `Matrix` + cierre matmul **[S] — HECHO** *(2026-07-18, hash en el ledger)*
+#### ☑ V1 — diff componentwise sobre `Matrix` + cierre matmul **[S] — HECHO** *(2026-07-18 `b502c5c09`)*
 - **Graduado:** `diff([x^2,x^3],x)→[[2·x],[3·x^2]]`; mixtos (`sin`, multivariable); orden superior GRATIS vía desugar (`diff(M,x,2)→[[2],[6·x]]` — predicción del scoping verificada); todo-o-nada verificado (`diff([x,sign(x)],x)` → eco íntegro); narración visible en raíz ("Calcular la derivada"); matmul evalúa + mismatch residual honesto. Primitivo `map_matrix_components` (cap 64 celdas) estrenado. Gobernanza: el test-centinela `budget_exempt_allowlist` cazó la exención nueva — diff_rule.rs añadido con su cap por escrito (el mecanismo funcionó como diseñado).
 - **Gradúa:** `diff([x^2,x^3],x) → [[2·x], [3·x^2]]`; `diff([x^2*y, sin(x)],x) → [[2·x·y], [cos(x)]]`; `diff([x^2,x^3],x,2) → [[2], [6·x]]` (**gratis** vía desugar target-agnóstico); componente no derivable → decline honesto TODO-O-NADA (eco, jamás matriz medio-derivada); con `--steps json`, un paso narrado ("Derivar cada componente del vector", es/en). **Colateral:** `matmul(A,B)` evalúa (cable de 3 líneas — cierra el residual silencioso preexistente gate-sin-dispatch; nota de commit separada dentro del mismo ciclo).
 - **Inserción:** brazo Matrix temprano en `DiffRule` (`diff_rule.rs:67`, ANTES de la cascada de ~20 rutas de presentación); helpers NUEVOS `map_matrix_components` + `try_componentwise_diff_matrix` en `matrix_rule_support.rs` (junto a `try_wronskian_expr:773‑802` — no existe `Matrix::map`, este helper ES el primitivo); `matmul` en `try_rewrite_matrix_binary_function_expr` (`:821‑836`).
@@ -105,7 +105,8 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 - **Depende:** nada (independiente de V0). **Es el análogo A1/C-i/E-i: estrena el primitivo reusable central (map componentwise + ensamblaje) que TODOS los verbos aprovechan.**
 - **Retención (pins):** `wronskian([x^2,x^3],x)→x^4` (`wronskian-x4`); los 85 casos escalares de `calculus_diff_command_matrix_smoke` con sus substrings españoles byte-idénticos (`diff-smoke-85`); `diff(x^2*y^3,x,y)→6·x·y^2` (`mixta-sympy`); huella scorecard 16 lanes sin drift.
 
-#### ☐ V2 — P0-wire: narración bajo `Matrix` (chokepoint-C) **[S/M]**
+#### ☑ V2 — P0-wire: narración bajo `Matrix` (chokepoint-C) **[S/M] — HECHO** *(2026-07-18, hash en el ledger)*
+- **Graduado:** `[diff(x^2,x), diff(x^3,x)] --steps on` → 2 steps con snapshots globales matrix-shaped (antes 0). La hipótesis del scoping fue SUFICIENTE: un brazo `Expr::Matrix` de ~12 líneas en `rewrite_at_expr_path_with` (índice de celda plano, patrón Function) — sin panic-trampa, sin tocar el pipeline didáctico. Causa raíz: asimetría productor/consumidor (el walker de transformación descendía en Matrix; el reconstructor de snapshots lo trataba como hoja → step descartado como no-op). Controles bajo Add/Function pineados.
 - **Gradúa:** `[diff(x^2,x), diff(x^3,x)] --steps on --format json` → steps_count ≥ 2 con snapshots globales correctos (hoy 0, valor correcto — el WRONG-wire de la tabla); los controles diferenciales (mismo diff bajo `Add` y bajo Function-arg) siguen emitiendo exactamente igual.
 - **Inserción:** brazo `Expr::Matrix` en `rewrite_at_expr_path_with` (`expr_path_rewrite.rs:115‑119`, clonando el patrón `Expr::Function` de `:106‑114`); verificar `reconstruct_at_path` (`step_recording.rs:68`); `transform_expr_recursive` ya emite `PathStep::Arg(i)` para Matrix (`transform/mod.rs:297`) — solo falta la reconstrucción.
 - **Reuso:** el patrón Function del propio archivo.

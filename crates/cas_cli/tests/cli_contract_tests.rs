@@ -2367,6 +2367,44 @@ fn test_eval_componentwise_diff_over_matrix() {
 }
 
 #[test]
+fn test_eval_steps_under_matrix_literal() {
+    // Fase 2 V2 (P0-wire): steps that fire UNDER a `Matrix` node used to be silently
+    // discarded — `rewrite_at_expr_path_with` treated Matrix as a leaf, so the step's
+    // global snapshot came back unchanged and the didactic pipeline dropped it (correct
+    // values, EMPTY narration). Matrix now descends like Function (flat cell index).
+    let steps_of = |input: &str| -> Vec<Value> {
+        let out = cli()
+            .args(["eval", input, "--steps", "on", "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["steps"].as_array().cloned().unwrap_or_default()
+    };
+    // The fixed case: two derivatives inside a matrix literal narrate one step each,
+    // with GLOBAL (matrix-shaped) snapshots.
+    let steps = steps_of("[diff(x^2,x), diff(x^3,x)]");
+    assert!(
+        steps.len() >= 2,
+        "steps under a Matrix literal must narrate (got {})",
+        steps.len()
+    );
+    let first_before = steps[0]["before"].as_str().unwrap_or("");
+    assert!(
+        first_before.contains("[["),
+        "snapshots must be global (matrix-shaped), got: {first_before}"
+    );
+    // Differential controls (the two shapes that always worked): unchanged emission.
+    assert!(
+        steps_of("diff(x^2,x) + diff(x^3,x)").len() >= 2,
+        "steps under Add"
+    );
+    assert!(
+        !steps_of("sqrt(diff(x^4,x))").is_empty(),
+        "steps under Function arg"
+    );
+}
+
+#[test]
 fn test_eval_matmul_function() {
     // `matmul` sat in the eval gate with NO dispatch arm — the live gate-without-rule
     // gotcha (silent residual while `A*B` evaluated). Now it shares the `*` math; a
