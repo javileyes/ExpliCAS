@@ -2,8 +2,9 @@ use crate::limit_command_core::core::eval_limit_from_str;
 use crate::limit_command_parse::parse_limit_command_input;
 use cas_api_models::{LimitCommandApproach, LimitCommandEvalError, LimitCommandEvalOutput};
 
-pub(crate) fn evaluate_limit_command_input(
+pub(crate) fn evaluate_limit_command_input_in_domain(
     input: &str,
+    complex_enabled: bool,
 ) -> Result<LimitCommandEvalOutput, LimitCommandEvalError> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -11,7 +12,13 @@ pub(crate) fn evaluate_limit_command_input(
     }
 
     let parsed = parse_limit_command_input(trimmed).map_err(LimitCommandEvalError::Parse)?;
-    match eval_limit_from_str(parsed.expr, parsed.var, parsed.approach, parsed.presimplify) {
+    match eval_limit_from_str(
+        parsed.expr,
+        parsed.var,
+        parsed.approach,
+        parsed.presimplify,
+        complex_enabled,
+    ) {
         Ok(limit_result) => Ok(LimitCommandEvalOutput {
             var: parsed.var.to_string(),
             approach: limit_command_approach_from_runtime(parsed.approach),

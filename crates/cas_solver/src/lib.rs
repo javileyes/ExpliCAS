@@ -524,7 +524,8 @@ pub(crate) use crate::inspect_format::{
 pub(crate) use crate::inspect_parse::parse_history_entry_id;
 #[allow(unused_imports)]
 pub(crate) use crate::limit_command_core::{
-    evaluate_limit_command_input, evaluate_limit_subcommand_output, format_limit_subcommand_error,
+    evaluate_limit_command_input_in_domain, evaluate_limit_subcommand_output,
+    format_limit_subcommand_error,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::limit_command_parse::parse_limit_command_input;

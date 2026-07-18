@@ -193,7 +193,17 @@ pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
 pub fn expr_contains_imaginary(ctx: &Context, root: ExprId) -> bool {
     use num_traits::Signed;
 
-    let is_neg_const = |e: ExprId| as_rational_const(ctx, e).is_some_and(|v| v.is_negative());
+    // Negativity must be decided EXACTLY but not only for rational literals:
+    // surd/transcendental constants are decidable (`provable_const_sign`), and
+    // missing them lets an even root like `sqrt(-pi^2)` (= i·π) pass as "real"
+    // — the F0 adversarial sweep used exactly that spelling to reach a pole.
+    let is_neg_const = |e: ExprId| {
+        as_rational_const(ctx, e).is_some_and(|v| v.is_negative())
+            || matches!(
+                crate::const_sign::provable_const_sign(ctx, e),
+                Some(crate::const_sign::ConstSign::Negative)
+            )
+    };
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
         match ctx.get(e) {
@@ -811,6 +821,11 @@ mod tests {
             "5*(-1)^(1/2)",
             "i",
             "sqrt(-9)",
+            // F0b: NON-rational provably-negative radicands (the adversarial
+            // sweep reached a tanh pole via `sqrt(-pi^2)` = i·pi).
+            "sqrt(-pi^2)",
+            "(-pi)^(1/2)",
+            "sqrt(1 - e)",
         ] {
             let e = parse(src, &mut ctx).expect("parse");
             assert!(expr_contains_imaginary(&ctx, e), "`{src}` is imaginary");
@@ -825,6 +840,9 @@ mod tests {
             "x^2",
             "(-1)^2",
             "2 + 3",
+            // Provably-POSITIVE non-rational radicands stay real.
+            "sqrt(pi^2)",
+            "sqrt(e - 1)",
         ] {
             let e = parse(src, &mut ctx).expect("parse");
             assert!(

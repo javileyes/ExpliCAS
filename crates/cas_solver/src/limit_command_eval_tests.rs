@@ -7,9 +7,16 @@ mod tests {
     use cas_math::limit_types::{Approach, PreSimplifyMode};
 
     use crate::limit_command_core::{
-        evaluate_limit_command_input, evaluate_limit_subcommand_output,
+        evaluate_limit_command_input_in_domain, evaluate_limit_subcommand_output,
         format_limit_subcommand_error,
     };
+
+    // Real-domain view of the command entry (the pre-F0b legacy signature).
+    fn evaluate_limit_command_input(
+        input: &str,
+    ) -> Result<cas_api_models::LimitCommandEvalOutput, cas_api_models::LimitCommandEvalError> {
+        evaluate_limit_command_input_in_domain(input, false)
+    }
     use crate::limit_command_parse::parse_limit_command_input;
 
     #[test]
@@ -102,6 +109,38 @@ mod tests {
             }
             _ => panic!("expected parse error"),
         }
+    }
+
+    #[test]
+    fn limit_command_complex_domain_declines_to_residual() {
+        // F0b (Fase 3): la superficie del comando REPL heredaba el motor con
+        // complex_enabled=false SIEMPRE — con la sesión en value complex emitía
+        // valores de orden real (`lim e^(-x) = 0`). El eje enhebrado debe
+        // declinar TODO límite a residual con el warning del kill-switch.
+        for input in [
+            "e^(-x), x, infinity",
+            "atan(x), x, infinity",
+            "1/x, x, -infinity",
+        ] {
+            let out = evaluate_limit_command_input_in_domain(input, true).expect("limit eval");
+            assert!(
+                out.result.starts_with("limit("),
+                "`{input}` debe declinar a residual bajo complex, got: {}",
+                out.result
+            );
+            let warning = out.warning.expect("complex decline carries a warning");
+            assert!(
+                warning.contains("complex value domain"),
+                "`{input}` debe llevar el motivo del kill-switch, got: {warning}"
+            );
+        }
+        // Pin: la vista real (flag false y la firma legacy) sigue computando.
+        let real = evaluate_limit_command_input_in_domain("e^(-x), x, infinity", false)
+            .expect("limit eval");
+        assert_eq!(real.result, "0");
+        assert!(real.warning.is_none());
+        let legacy = evaluate_limit_command_input("e^(-x), x, infinity").expect("limit eval");
+        assert_eq!(legacy.result, "0");
     }
 
     #[test]

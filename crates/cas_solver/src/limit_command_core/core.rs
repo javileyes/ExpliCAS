@@ -7,6 +7,7 @@ pub(super) fn eval_limit_from_str(
     var: &str,
     approach: Approach,
     presimplify: PreSimplifyMode,
+    complex_enabled: bool,
 ) -> Result<LimitEvalResult, LimitEvalError> {
     let mut ctx = cas_ast::Context::new();
     let parsed = cas_parser::parse(expr, &mut ctx)
@@ -16,6 +17,7 @@ pub(super) fn eval_limit_from_str(
     let mut budget = crate::Budget::new();
     let opts = LimitOptions {
         presimplify,
+        complex_enabled,
         ..Default::default()
     };
 
@@ -49,7 +51,8 @@ pub(super) fn limit_str_to_wire(
     presimplify: PreSimplifyMode,
     pretty: bool,
 ) -> String {
-    let response = match eval_limit_from_str(expr, var, approach, presimplify) {
+    // The web wire has no value-domain axis yet: real view (named residual, F11).
+    let response = match eval_limit_from_str(expr, var, approach, presimplify, false) {
         Ok(limit_result) => LimitWireResponse::ok(limit_result.result, limit_result.warning),
         Err(LimitEvalError::Parse(message)) => LimitWireResponse::parse_error(message),
         Err(LimitEvalError::Limit(message)) => LimitWireResponse::limit_error(message),

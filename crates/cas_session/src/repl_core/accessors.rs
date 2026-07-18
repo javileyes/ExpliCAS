@@ -41,6 +41,14 @@ impl ReplCore {
         &self.simplify_options
     }
 
+    /// Whether the session's semantics value domain admits complex values.
+    /// Read-only; lets surfaces outside the eval pipeline (e.g. the REPL
+    /// `limit` command) thread the domain into domain-gated engines.
+    pub fn value_domain_is_complex(&self) -> bool {
+        self.simplify_options.shared.semantics.value_domain
+            != cas_solver_core::value_domain::ValueDomain::RealOnly
+    }
+
     /// Borrow simplify options + eval options mutably in one operation.
     pub(crate) fn with_simplify_and_eval_options_mut<R>(
         &mut self,

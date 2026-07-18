@@ -19,7 +19,8 @@ pub(crate) fn evaluate_limit_subcommand_output(
         )));
     }
 
-    match eval_limit_from_str(expr, var, approach, presimplify) {
+    // The standalone subcommand has no value-domain flag: real view (F11).
+    match eval_limit_from_str(expr, var, approach, presimplify, false) {
         Ok(limit_result) => Ok(LimitSubcommandEvalOutput::Text {
             result: limit_result.result,
             warning: limit_result.warning,

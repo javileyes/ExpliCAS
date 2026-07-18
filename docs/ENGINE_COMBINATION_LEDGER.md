@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 635 (newest first)
+Active entries: 636 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
+- 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20648,3 +20649,19 @@ Active entries: 635 (newest first)
 - retained learning:
   - **El kill-switch de dominio es un guard de ENTRADA de un solo punto cuando el subsistema tiene chokepoint**: las ~10.000 líneas de reglas de límites quedaron gateadas con ~20 líneas porque TODA forma de approach pasa por `eval_limit_at_infinity` — buscar el cuello del embudo antes de gatear regla a regla (contraste: los 21 gates de complex.rs son por-regla porque el Simplifier no tiene cuello único).
   - PRÓXIMO PELDAÑO: F1 (sustrato Taylor: cap de orden + política singular + singularidad evitable `sin(x)/x`).
+
+## 2026-07-19 - SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
+
+- area: `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado con `provable_const_sign` — exacto, decide radicandos no-racionales) + `cas_solver/limit_command_core/{core,input}.rs` + `limit_command.rs` + `command_api/limit.rs` (variantes `_in_domain(complex_enabled)`; firmas legacy delegan con `false`) + `cas_session/repl_core/accessors.rs` (`value_domain_is_complex()`) + `cas_cli/repl/limit.rs` (el REPL pasa la semántica de sesión) + tests en 3 capas
+- status: `retained`. Cierre de los hallazgos IN-SCOPE del workflow adversarial `wf_9666b8e7-ea3` (4 atacantes + verificadores; journal en subagents/workflows/).
+- capture:
+  - investment_class: soundness (agujeros del propio F0, mismo ciclo lógico — segundo commit).
+  - **Agujero 1 (P1 confirmado por 2 verificadores): evasión del detector.** `limit(tanh(x),x,sqrt(-pi^2)/2)` sustituía en el polo: `is_neg_const` solo decidía racionales (`as_rational_const`) y `-pi²` se colaba. Fix en la CAPA compartida (lección chokepoint): `provable_const_sign` como segundo decisor — exacto, jamás f64. El caller `solve_backend_local` (filtro de raíces imaginarias) se ensancha en la dirección SOUND (descarta más raíces probadamente imaginarias); raíz impar real `(-8)^(1/3)` sigue exenta (pin).
+  - **Agujero 2: la superficie REPL ignoraba la sesión.** `semantics set value complex` + `limit(e^(-x), x, infinity)` emitía `lim = 0` — `eval_limit_from_str` construye Context fresco y JAMÁS enhebraba la semántica. Fix: eje `complex_enabled` enhebrado REPL→command_api→core con variantes `_in_domain`; la web wire y el subcomando standalone quedan en vista real EXPLÍCITA (comentario con dueño F11 — no tienen eje de dominio aún: residual nombrado, no accidente).
+  - Fuera de scope, derivados a chips/backlog: **P0 pre-existente `limit(Matrix)` devuelve la matriz con la variable dentro como "valor"** (task chip creado — candidato soundness prioritario per protocolo); solve() afirma "No solution" con `limit()` sin evaluar dentro (chip); asimetría parse `i` desnudo vs `i*1` (dueño F11, ya documentada); Imaginary Usage Warning suprimido en path limit con i en CUERPO (nota).
+  - Atacante real-drift: CLEAN — 25+ límites reales canónicos sin drift alguno.
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + ambos scorecards verdes; huella contadores-idéntica (deltas solo timing/slots muestreados).
+- retained learning:
+  - **El barrido adversarial post-commit es parte del ciclo, no un extra**: el fixture verde y los probes del autor comparten los ángulos muertos del autor; 4 atacantes independientes con misión de ROMPER el contrato cazaron en 12 minutos dos agujeros reales (deletreo no-racional del punto; superficie paralela sin threading) que ninguna suite veía. Presupuestar el workflow adversarial en todo ciclo de soundness.
+  - **Toda superficie paralela al pipeline principal necesita el eje de dominio EXPLÍCITO**: el comando REPL `limit` es la 3ª superficie cazada construyendo Context fresco sin semántica (tras el parser stale F7 y el gate léxico colador) — al añadir un eje semántico, grep por `Context::new()` en superficies de comando y decidir POR CADA UNA: enhebrar o vista-real documentada con dueño.
+  - PRÓXIMO PELDAÑO: F1 (sustrato Taylor) — o el chip P0 de limit(Matrix) si el usuario lo prioriza.

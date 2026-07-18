@@ -2577,6 +2577,10 @@ fn test_eval_limit_imaginary_point_real_domain_residual() {
         "limit(tanh(z), z, i*pi/2)",
         "limit(1/(z^2+1), z, i*1)",
         "limit(atan(z), z, 2*i)",
+        // F0b: evasión del barrido adversarial — punto imaginario deletreado como
+        // raíz par de constante negativa NO-racional (sqrt(-pi^2) = i·pi alcanzaba
+        // el polo de tanh); el detector decide con provable_const_sign, exacto.
+        "limit(tanh(x), x, sqrt(-pi^2)/2)",
     ] {
         let (result, warnings) = eval_full(probe);
         assert!(
