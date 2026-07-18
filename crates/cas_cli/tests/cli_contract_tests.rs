@@ -2349,6 +2349,48 @@ fn test_eval_gaussian_reciprocal_clean_form() {
 }
 
 #[test]
+fn test_eval_unimodular_abs() {
+    // Fase 2 · residual B2 cerrado con disciplina V0: `|cos θ ± i·sin θ| = 1` SOLO con
+    // θ constante real DECIDIBLE (provable_const_sign). Una variable DEBE declinar:
+    // bajo ComplexEnabled puede tomar valor complejo y la unimodularidad es falsa
+    // (x:=i ⇒ |e^(i·i)| = 1/e ≠ 1) — el mismo sticky-fold que V0 mató en norm.
+    let rc = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Graduates: literal, surd (const_sign prueba sqrt(2)), conjugado, vía Euler.
+    assert_eq!(rc("abs(e^(2*i))"), "1");
+    assert_eq!(rc("abs(cos(2)+i*sin(2))"), "1");
+    assert_eq!(rc("abs(e^(i*sqrt(2)))"), "1");
+    assert_eq!(rc("abs(cos(2)-i*sin(2))"), "1");
+    assert_eq!(rc("abs(e^(-2*i))"), "1");
+    // Declines V0-discipline: símbolo (puede ser complejo), θ distinto, θ=i, real mode.
+    assert_eq!(rc("abs(cos(x)+i*sin(x))"), "|cos(x) + i·sin(x)|");
+    assert_eq!(rc("abs(cos(2)+i*sin(3))"), "|cos(2) + i·sin(3)|");
+    assert_eq!(rc("abs(cos(i)+i*sin(i))"), "|cos(i) + i·sin(i)|");
+    assert_eq!(r("abs(cos(2)+i*sin(2))"), "|cos(2) + i·sin(2)|");
+}
+
+#[test]
 fn test_eval_componentwise_diff_over_matrix() {
     // Fase 2 V1: `diff` distributes componentwise over a `Matrix` target, ALL-OR-NOTHING
     // (a non-differentiable component keeps the whole call an honest residual), and the

@@ -119,6 +119,68 @@ pub enum ComplexRewriteKind {
 }
 
 /// Extract `a + bi` from an expression when possible.
+/// Match `|cos θ ± i·sin θ|` and return `θ` — the SAME node in both trig
+/// arguments (hash-consing makes ExprId equality exact). Accepts either Add
+/// order for the two terms and the conjugate `Sub` form; the `i·sin θ` factor
+/// may carry `i` on either side of the `Mul`. The CALLER decides whether θ is
+/// provably real (unimodularity is FALSE for complex θ — V0 discipline: under
+/// ComplexEnabled a bare symbol may hold a complex value).
+pub fn try_match_unimodular_abs(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.builtin_of(*fn_id) != Some(BuiltinFn::Abs) || args.len() != 1 {
+        return None;
+    }
+    let (l, r) = match ctx.get(args[0]) {
+        Expr::Add(l, r) | Expr::Sub(l, r) => (*l, *r),
+        _ => return None,
+    };
+
+    fn cos_arg(ctx: &Context, e: ExprId) -> Option<ExprId> {
+        match ctx.get(e) {
+            Expr::Function(f, a) if ctx.builtin_of(*f) == Some(BuiltinFn::Cos) && a.len() == 1 => {
+                Some(a[0])
+            }
+            _ => None,
+        }
+    }
+    fn i_sin_arg(ctx: &Context, e: ExprId) -> Option<ExprId> {
+        // The sign of the imaginary term is irrelevant for the modulus
+        // (`|cos θ − i·sin θ| = |cos θ + i·sin θ|`): peel a Neg wrapper.
+        let e = match ctx.get(e) {
+            Expr::Neg(inner) => *inner,
+            _ => e,
+        };
+        let Expr::Mul(x, y) = ctx.get(e) else {
+            return None;
+        };
+        let (x, y) = (*x, *y);
+        let sin_of = |ctx: &Context, e: ExprId| match ctx.get(e) {
+            Expr::Function(f, a) if ctx.builtin_of(*f) == Some(BuiltinFn::Sin) && a.len() == 1 => {
+                Some(a[0])
+            }
+            _ => None,
+        };
+        let is_i = |ctx: &Context, e: ExprId| matches!(ctx.get(e), Expr::Constant(Constant::I));
+        if is_i(ctx, x) {
+            return sin_of(ctx, y);
+        }
+        if is_i(ctx, y) {
+            return sin_of(ctx, x);
+        }
+        None
+    }
+
+    let (theta_cos, theta_sin) = if let Some(tc) = cos_arg(ctx, l) {
+        (tc, i_sin_arg(ctx, r)?)
+    } else {
+        let ts = i_sin_arg(ctx, l)?;
+        (cos_arg(ctx, r)?, ts)
+    };
+    (theta_cos == theta_sin).then_some(theta_cos)
+}
+
 pub fn extract_gaussian(ctx: &Context, expr: ExprId) -> Option<GaussianRational> {
     match ctx.get(expr) {
         Expr::Number(n) => Some(GaussianRational::new(n.clone(), BigRational::zero())),

@@ -195,6 +195,26 @@ define_rule!(ImagPartRule, "Imaginary Part", |ctx, expr, parent_ctx| {
     Some(Rewrite::new(rewrite.rewritten).desc(format_complex_rewrite_desc(rewrite.kind)))
 });
 
+define_rule!(
+    UnimodularAbsRule,
+    "Unimodular Absolute Value",
+    |ctx, expr, parent_ctx| {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
+        // `|cos θ ± i·sin θ| = 1` ONLY when θ is a DECIDABLE real constant
+        // (`provable_const_sign`: rationals, surds, e/π combos). A bare symbol must
+        // DECLINE: under ComplexEnabled it may hold a complex value and unimodularity
+        // is then FALSE (x:=i gives |e^(i·i)| = 1/e) — the V0 sticky-fold discipline.
+        let theta = cas_math::complex_support::try_match_unimodular_abs(ctx, expr)?;
+        cas_math::const_sign::provable_const_sign(ctx, theta)?;
+        Some(
+            Rewrite::new(ctx.num(1))
+                .desc("valor absoluto unimodular: |cos θ + i·sen θ| = 1 con θ real"),
+        )
+    }
+);
+
 define_rule!(EulerRule, "Euler Formula", |ctx, expr, parent_ctx| {
     if parent_ctx.value_domain() == crate::semantics::ValueDomain::RealOnly {
         return None;
@@ -300,6 +320,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ConjugateRule));
     simplifier.add_rule(Box::new(RealPartRule));
     simplifier.add_rule(Box::new(ImagPartRule));
+    simplifier.add_rule(Box::new(UnimodularAbsRule));
     simplifier.add_rule(Box::new(EulerRule));
     simplifier.add_rule(Box::new(ArgRule));
     simplifier.add_rule(Box::new(GaussianSqrtRule));

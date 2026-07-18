@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 621 (newest first)
+Active entries: 622 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -126,6 +126,7 @@ Active entries: 621 (newest first)
 - 2026-07-18 | `retained` | `cas_engine` (assembler con signos `try_curl_expr`; `CurlRule` con alias rot;... | CAPACIDAD (Fase 2 vectorial · V6): `curl`/`rot` 3D columna + 2D ESCALAR — el bloque B de verbos queda COMPLETO
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (brazo `abs` en el dispatch unario, SOLO ... | CAPACIDAD (Fase 2 vectorial · V7a+b): `abs(vector)→norm` heredando V0, e `integrate` componentwise condiciones-conservador
 - 2026-07-18 | `retained` | `cas_math/fraction_add_build_support.rs` (`mul2_fold_numeric` en los 3 sitios... | PRESENTACIÓN-SOUNDNESS (tanda-2 · ciclo 1: el parcial `(z)^(-1)`): AddFractions pliega Number×Number en la emisión — el mangle `(1/2·2 - i)/(2)` muere en su origen
+- 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher `try_match_unimodular_abs`: Add/Sub am... | CAPACIDAD (tanda-2 · ciclo 2: unimodularidad): `|cos θ ± i·sin θ| = 1` SOLO con θ real decidible — el residual B2 re-scopeado por la disciplina V0
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20440,3 +20441,17 @@ Active entries: 621 (newest first)
   - **La escalera de diagnóstico barato-a-caro pagó en orden**: traza de steps (absolvió al productor visible) → run DEBUG con warnings del orquestador (reveló el ciclo y el bail — los WARN de `depth_overflow`/`cycle_detected` son diagnóstico gratis que el release silencia) → panic-trampa en `add` (descartó la vía canónica) → trampa en `add_raw` (backtrace exacto). Cada peldaño acotó el siguiente.
   - **Un builder compartido que emite productos crudos apuesta a que "alguien plegará después" — y el pipeline no siempre llega**: cuando un ciclo de rewrite abandona, la forma cruda ES el resultado final; plegar literales EN la emisión hace la forma limpia incondicional (independiente de qué lado del churn gane).
   - PRÓXIMO PELDAÑO: tanda-2 ciclo 2 — **unimodularidad `|e^(ix)|→1`** (residual B2 sin dueño). El churn combina↔separa con `i` queda como residual de ORQUESTACIÓN nombrado (clase A, no apresurar — memoria [[c5-diff-fold-rootcause]]): las formas visibles ya son limpias en ambos lados.
+
+## 2026-07-18 - CAPACIDAD (tanda-2 · ciclo 2: unimodularidad): `|cos θ ± i·sin θ| = 1` SOLO con θ real decidible — el residual B2 re-scopeado por la disciplina V0
+
+- area: `cas_math/complex_support.rs` (matcher `try_match_unimodular_abs`: Add/Sub ambos órdenes, `i` a cualquier lado del Mul, Neg pelado — el signo no afecta al módulo) + `cas_engine/rules/complex.rs` (`UnimodularAbsRule`, 18ª hermana gateada `RealOnly→None`, guard `provable_const_sign`) + contract e2e dual-superficie
+- status: `retained`. Tanda-2 ciclo 2/6 (residual nombrado en B2 `963ce8656`, sin dueño desde entonces).
+- capture:
+  - investment_class: capacidad Fase-2 (frente complejo — pulido con re-scope de soundness).
+  - cell: `abs(e^(2i))→1`, `abs(cos(2)+i·sin(2))→1`, `abs(e^(i·√2))→1` (const_sign prueba √2), conjugados `abs(cos(2)−i·sin(2))→1` / `abs(e^(−2i))→1` (Euler pliega e^(−iθ) a la forma Sub y el matcher pela el Neg). DECLINES pineados: `abs(cos(x)+i·sin(x))` residual (x puede ser COMPLEJA bajo ComplexEnabled — ver re-scope), θ distinto (`cos(2)+i·sin(3)`), θ=i, modo real byte-idéntico.
+  - **RE-SCOPE de soundness (la parte importante):** el residual B2 se enunció "`abs(e^(ix))→1`" con x SIMBÓLICA — bajo la disciplina V0 eso sería un sticky-fold latente (x:=i ⇒ |e^(i·i)|=1/e≠1; bajo ComplexEnabled un símbolo puede tomar valor complejo, exactamente el punto de V0 en norm). El fold sound exige θ constante real DECIDIBLE → el guard ES `provable_const_sign` (el chokepoint transversal de signo/constante: racionales, surds, combos e/π — reutilizado, no reinventado). El enunciado original del residual era una trampa que la lección del ciclo V0 desactivó ANTES de codificarla.
+  - residual honesto nuevo (nombrado): la familia π-racional (`abs(cos(π/5)+i·sin(π/5))`) NO pasa por aquí — el trig pliega a surds ANTES del abs y queda `|1/4·(√5+1+i·√(2(5−√5)))|` — dueña futura: módulo Gaussiano-surd exacto (a²+b²=1 con surds), maquinaria separada.
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **Los residuales nombrados ANTES de una lección de soundness se re-scopean al ejecutarlos, no se implementan tal cual**: el enunciado "|e^(ix)|→1" era pre-V0; ejecutarlo literal habría introducido el mismo P0 que V0 cerró. Al tomar un residual viejo, re-derivar su condición de soundness con las lecciones posteriores.
+  - PRÓXIMO PELDAÑO: tanda-2 ciclo 3 — **trig-de-i** (`sin(i)→i·sinh(1)`, puente hiperbólico; gradúa el fixture never-confirm `sin(i)` re-anclado en B4b).
