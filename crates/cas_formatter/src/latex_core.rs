@@ -17,26 +17,47 @@ use regex::Regex;
 /// notation on purpose: whether multivariable `diff` should render `∂` globally is
 /// an OPEN user decision (Fase-2 vectorial scoping, pregunta abierta #3) — this fix
 /// only stops the 3+-arg display from DROPPING variables.
-fn diff_operator_latex(pairs: &[(String, u64)]) -> String {
+fn diff_operator_latex(pairs: &[(String, u64)], partial: bool) -> String {
     let total: u64 = pairs.iter().map(|(_, c)| c).sum();
+    let sym = if partial { "\\partial" } else { "d" };
     let numer = if total == 1 {
-        "d".to_string()
+        sym.to_string()
     } else {
-        format!("d^{{{total}}}")
+        format!("{sym}^{{{total}}}")
     };
+    let sep = if partial { " " } else { "" };
     let denom = pairs
         .iter()
         .rev()
         .map(|(v, c)| {
             if *c == 1 {
-                format!("d{v}")
+                format!("{sym}{sep}{v}")
             } else {
-                format!("d{v}^{{{c}}}")
+                format!("{sym}{sep}{v}^{{{c}}}")
             }
         })
         .collect::<Vec<_>>()
         .join(" \\, ");
     format!("\\frac{{{numer}}}{{{denom}}}")
+}
+
+/// The derivative is PARTIAL — rendered with `∂` (decisión del usuario,
+/// pregunta abierta #3 del cierre vectorial) — when the differentiation
+/// involves more than one variable overall: several diff variables (mixed
+/// partials) or a target whose free variables go beyond the single diff
+/// variable. A univariate `diff(f(x), x[, n])` keeps `d` byte-identically.
+fn diff_is_partial(
+    ctx: &Context,
+    target: ExprId,
+    pair_names: impl Iterator<Item = String>,
+) -> bool {
+    let mut vars: std::collections::HashSet<String> = cas_ast::collect_variables(ctx, target)
+        .into_iter()
+        .collect();
+    for name in pair_names {
+        vars.insert(name);
+    }
+    vars.len() > 1
 }
 
 /// Parse the SymPy-convention diff tail `v1 [n1] v2 [n2] …` (a count binds to the
@@ -938,7 +959,19 @@ pub trait LaTeXRenderer {
                 if let Some(pairs) =
                     diff_tail_pairs(self.context(), &args[1..], |a| self.expr_to_latex(a, false))
                 {
-                    format!("{}({})", diff_operator_latex(&pairs), expr)
+                    let partial = diff_is_partial(
+                        self.context(),
+                        args[0],
+                        args[1..]
+                            .iter()
+                            .filter_map(|&a| match self.context().get(a) {
+                                Expr::Variable(sym) => {
+                                    Some(self.context().sym_name(*sym).to_string())
+                                }
+                                _ => None,
+                            }),
+                    );
+                    format!("{}({})", diff_operator_latex(&pairs, partial), expr)
                 } else {
                     let var = self.expr_to_latex(args[1], false);
                     format!("\\frac{{d}}{{d{}}}({})", var, expr)
@@ -2545,7 +2578,15 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                     let idx = 1 + args[1..].iter().position(|&x| x == a).unwrap_or(0);
                     self.render_with_path(a, false, &self.child_path(path, idx as u8))
                 }) {
-                    format!("{}({})", diff_operator_latex(&pairs), expr)
+                    let partial = diff_is_partial(
+                        self.context,
+                        args[0],
+                        args[1..].iter().filter_map(|&a| match self.context.get(a) {
+                            Expr::Variable(sym) => Some(self.context.sym_name(*sym).to_string()),
+                            _ => None,
+                        }),
+                    );
+                    format!("{}({})", diff_operator_latex(&pairs, partial), expr)
                 } else {
                     let var = self.render_with_path(args[1], false, &self.child_path(path, 1));
                     format!("\\frac{{d}}{{d{}}}({})", var, expr)

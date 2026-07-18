@@ -157,7 +157,7 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 
 ### Bloque C — transversal (bordes + pulido)
 
-#### ☑ V7 — bordes del ecosistema vectorial **[M] — HECHO (a+b; c adelantado a V4; d DIFERIDO)** *(2026-07-18, hash en el ledger)*
+#### ☑ V7 — bordes del ecosistema vectorial **[M] — HECHO COMPLETO (a+b `f4197f0ec`; c adelantado a V4; d EJECUTADO en el cierre `9df0aa329`)**
 - **Graduado (a):** `abs([3,4])→5`, `abs([x,y])` real/complejo heredando la decisión V0 ENTERA (delega en `norm_in_domain`, jamás re-decide); matriz general residual; abs escalar intacto. **Graduado (b):** `integrate([x,x^2],x)→[[x²/2],[x³/3]]` con gate TRIPLE por celda (fallo / required_conditions no vacías / resultado que aún contiene `integrate` — el residual-fallback del backend convierte Some(resultado) en afirmación débil); todo-o-nada verificado con `e^(-x²)`; definidas → residual (alcance indefinida). **(d) DIFERIDO** — pregunta abierta #4 (decisión del usuario: superficie compartida del solver).
 - **Gradúa:** (a) `abs([3,4]) → 5` y `abs([x,y])` según la decisión de dominio de **V0** (en real: `(x²+y²)^(1/2)`; en complejo: la forma con módulos o decline — V7a HEREDA V0, jamás re-decide) — brazo `abs` en el dispatch unario SOLO para shape vector n×1|1×n (matrices genéricas siguen residual — el módulo matricial ≠ norm); (b) `integrate([x,x^2],x) → [[x^2/2],[x^3/3]]` (brazo espejo de V1 en `IntegrateRule`; la extracción ya pasa `:44‑72`); (c) — adelantado a V4 (equiv bracket-aware); (d) flujo puntos-críticos: pre-evaluar (simplify) los lados de las ecuaciones en el path `solve_system` antes de la conversión multipoly + expandir SessionRefs/`let` en ese path → `solve([diff(f,x)=0, diff(f,y)=0],[x,y])` funciona para gradientes LINEALES (no-lineal sigue decline honesto — scope-out). NOTA de alcance: (d) NO habilita la clasificación de críticos one-shot (requiere subs inline + predicado de signo — scope-out del preámbulo); el camino interim es la composición REPL `let` con la trampa de orden documentada.
 - **Inserción:** (a) `matrix_rule_support.rs:998‑1045`; (b) `IntegrateRule` + `try_componentwise_integrate` sobre el helper V1; (d) path de `parse_solve_system_list_command`/`linear_system` (pre-pass de simplify por ecuación — muere hoy en `multipoly/conversion.rs:158`).
@@ -166,7 +166,8 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 - **Depende:** V0 (la decisión de dominio de (a)); V1 (helper); independiente del bloque B (intercalable tras V3).
 - **Retención (pins):** `solve([x+y=3,x-y=1],[x,y])→{x=2,y=1}`; equiv escalares intactos; `abs` escalar intacto (familia abs = terreno de 4 P0 históricas — memoria [[automejora-6cyc-abs-family-2026-07-07]]); **lane `engine_integrate_command_matrix_smoke` COMPLETA byte-idéntica** (es LA superficie de regresión del brazo (b)); `diff-smoke-85`; scorecard 16 lanes.
 
-#### ☐ V8 — pulido narración/display **[S]**
+#### ☑ V8 — pulido narración/display **[S] — HECHO** *(2026-07-18, cierre C, hash en el ledger)*
+- **Graduado:** ∂ GLOBAL multivariable (decisión del usuario, pregunta #3): `diff(x²y,x)` → `∂/∂x`, mixtas `∂²/∂y ∂x`; univariable `d` byte-idéntico (criterio computable: |vars-libres(target) ∪ vars-derivación| > 1). El fix del display 3-args y el help de verbos aterrizaron en tanda-2 c5; la localización es/en quedó cubierta por C2 + narración per-ciclo.
 - **Gradúa:** substeps de los verbos con notación ∂ (`\partial` NUEVO en el formatter, SOLO dentro de la narración de verbos — el render global de `diff` no cambia sin decisión del usuario, ver Preguntas abiertas); fix del display `diff` 3+ args (hoy `input_latex` de `diff(f,x,y)` muestra `\frac{d}{dx}(f)` dropeando la `y` — engañoso); localización es/en repasada; `help_topics` con los 6 verbos.
 *(re-audit 2026-07-18: display 3+ args ARREGLADO tanda-2 ciclo 5 (forma neutral `d^n`, denominador derecha-a-izquierda, 2-args byte-idéntico) + help_topics con los 6 verbos; V8 queda reducido a la decisión ∂ (pregunta abierta #3) y repaso de localización)*
 - **Justificación del deferral del display 3-args (decisión explícita, no omisión):** es un WRONG de display sobre capacidad ya en producción, pero (1) ninguna capacidad del frente depende de él, (2) el fix toca los dos sitios duplicados de `latex_core` — la MISMA zona que la decisión ∂ pendiente del usuario — y hacerlo en V8 evita abrir `latex_core` dos veces con la decisión a medias, y (3) el valor emitido es correcto (el engaño es solo del eco LaTeX del input). Si la decisión ∂ se resolviera antes, el fix puede adelantarse a cualquier ciclo B sin dependencias.
@@ -219,7 +220,16 @@ Orden por **soundness-primero + dependencia + blast**. Cuatro bloques: **V0 soun
 
 ---
 
-## Preguntas abiertas (decisión del usuario, no bloquean V0‑V6)
+## Preguntas abiertas — RESUELTAS por el usuario 2026-07-18 (frente CERRADO)
+
+1. **Steps en modo texto:** DECIDIDO — contrato JSON/REPL-only se mantiene (`eval_text.rs` sigue descartando pasos deliberadamente; la auditoría de narración usa `--format json` o REPL).
+2. **Verbo `subs` inline:** DECIDIDO — añadido (ciclo A del cierre, `e58ac62d4`): order-safe por construcción; plano tangente y clasificación de críticos one-shot.
+3. **Notación ∂:** DECIDIDO — GLOBAL multivariable (ciclo C del cierre).
+4. **V7d:** DECIDIDO — dentro del frente (ciclo B del cierre, hash arriba): puntos críticos por solve con gradiente lineal.
+
+**⚑ FRENTE VECTORIAL MULTIVARIABLE FORMALMENTE CERRADO 2026-07-18** — criterio de §Cómo ejecutar cumplido: filas de frontera verdes salvo SCOPE-OUT (cuyo decline sigue siendo contrato), metamórficos verdes, lanes byte-estables. Residuales honestos con dueño en backlog: 3+-arg diff y let-refs en solve_system, vector-laplacian, ∇f=0 no-lineal (Gröbner), StepWire estructurado de Matrix.
+
+## Preguntas abiertas originales (histórico — decisión del usuario, no bloqueaban V0‑V6)
 
 1. **Steps en modo texto del CLI:** `eval_text.rs:14` descarta los pasos deliberadamente (closure vacía) — ¿contrato JSON/REPL-only que se mantiene, o se quiere render de pasos en texto? Afecta a cómo se audita la narración de los verbos, no al cableado.
 2. **Verbo `subs(expr, var, val)`/`at(...)` inline:** habilitaría plano tangente y clasificación de críticos one-shot sin REPL. Hoy hay 3 mecanismos dispersos (let-bindings, subcomando substitute sin plegado, function-bindings). Es superficie de producto nueva — ¿entra al frente o el flujo `let` del REPL queda como camino oficial?

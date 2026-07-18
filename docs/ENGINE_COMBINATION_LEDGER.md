@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 632 (newest first)
+Active entries: 633 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -137,6 +137,7 @@ Active entries: 632 (newest first)
 - 2026-07-18 | `retained` | `cas_math/complex_support.rs` (matcher compartido `match_cis` EXTRAÍDO de try... | CAPACIDAD (tanda-3 · ciclo 4: recíproco cis): `e^(-i·x)` → `cos(x) − i·sin(x)` — el último residual nombrado de B2 cierra
 - 2026-07-18 | `retained` | `cas_engine/rules/functions.rs` (`SubsRule` en la familia meta + guard `conta... | CAPACIDAD (cierre vectorial · A: verbo `subs`): evaluación-en-punto inline ORDER-SAFE — plano tangente y clasificación de críticos one-shot
 - 2026-07-18 | `retained` | `cas_solver/linear_system_command_parse.rs` (pre-pass `pre_evaluate_inline_di... | CAPACIDAD (cierre vectorial · B: V7d): `solve([diff(f,x)=0, diff(f,y)=0], [x,y])` — el flujo de puntos críticos resuelve one-shot
+- 2026-07-18 | `retained` | `cas_formatter/latex_core.rs` (`diff_operator_latex(pairs, partial)` + `diff_... | CIERRE FORMAL (cierre vectorial · C: ∂ global): el FRENTE VECTORIAL MULTIVARIABLE queda CERRADO — Fase 2 con ambas mitades completas
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20597,3 +20598,17 @@ Active entries: 632 (newest first)
   - retained learning:
   - **Un pipeline sin Simplifier no está incompleto si las primitivas son funciones puras**: derivar + plegar constantes bastó — antes de enhebrar el Simplifier por N capas de firmas, pregunta si las funciones de cas_math ya cubren la transformación que el path necesita.
   - PRÓXIMO PELDAÑO: cierre C — **∂ global multivariable** (decisión del usuario) + cierre FORMAL del frente (scoping ☑ completo, phases doc, contrato steps JSON/REPL-only documentado).
+
+## 2026-07-18 - CIERRE FORMAL (cierre vectorial · C: ∂ global): el FRENTE VECTORIAL MULTIVARIABLE queda CERRADO — Fase 2 con ambas mitades completas
+
+- area: `cas_formatter/latex_core.rs` (`diff_operator_latex(pairs, partial)` + `diff_is_partial`: ∂ cuando |vars-libres(target) ∪ vars-de-derivación| > 1; univariable `d` byte-idéntico; ambos brazos duplicados vía el helper único) + pins ∂ migrados + docs de cierre (scoping ☑ completo, phases doc, contrato steps JSON/REPL-only) + memoria
+- status: `retained`. Ciclo C del cierre (pregunta abierta #3 DECIDIDA por el usuario: ∂ global; pregunta #1 DECIDIDA: steps quedan JSON/REPL-only como contrato).
+- capture:
+  - investment_class: presentación matemática estándar (decisión del usuario) + cierre formal de frente.
+  - cell: `diff(x²y³,x,y)` → `\frac{∂²}{∂y ∂x}(…)`; **el 2-args multivariable también**: `diff(x²y,x)` → `∂/∂x` (el parcial de libro); univariables BYTE-idénticos (`d/dx`, `d²/dx²`, anidado en sqrt). Pins propios migrados con el porqué.
+  - **CIERRE FORMAL DEL FRENTE VECTORIAL** (criterio del scoping cumplido): las filas ❌/⚠ de la tabla de frontera están verdes salvo las SCOPE-OUT (que siguen declinando como exige el contrato — verificado en la tanda); metamórficos de identidades verdes (hessian≡jac∘grad, curl∘grad=0, div∘curl≡0, armónica); `diff-smoke-85` y los scorecards estables en todos los ciclos. Las 4 preguntas abiertas RESUELTAS por el usuario 2026-07-18: (1) steps JSON/REPL-only = contrato documentado; (2) `subs()` añadido (ciclo A — plano tangente y clasificación one-shot); (3) ∂ global (este ciclo); (4) V7d dentro del frente (ciclo B — puntos críticos por solve). Inventario del frente: 6 verbos + subs, diff/integrate componentwise, métrica domain-aware (V0), P0-wire narración, equiv bracket-aware, matmul, abs-vector, help/completer/examples, narración es/en en todo.
+  - residuales honestos del frente (con dueño, backlog): 3+-arg diff y let-refs en solve_system, vector-laplacian, `∇f=0` no-lineal (Gröbner = Fase 3+), quirk sqrt-radicando-solitario, `2·|i|` anidado (dueño: split multiplicativo abs), StepWire estructurado de Matrix. FASE 2 COMPLETA en sus dos mitades (complejo elemental + vectorial multivariable); la apertura de Fase 3 es decisión del usuario (regla de oro de fases intacta).
+  - validación: workspace failed:0; clippy limpio; engine-fast verde; make ci verde; huella: CONTADORES idénticos ambos scorecards.
+  - retained learning:
+  - **El criterio "∂ ⟺ más de una variable involucrada" es computable y estable en el formatter** (vars-libres del target ∪ vars de derivación) — la convención de libro no necesita anotaciones del usuario ni estado; vive en el render y los pins univariables no se mueven.
+  - PRÓXIMO PELDAÑO: la cola post-Fase-2 — residuales con dueño de ambos frentes, re-audit de frontera global, o (decisión del usuario) apertura de Fase 3.

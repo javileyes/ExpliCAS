@@ -213,6 +213,12 @@ duro fundado en audit es el scope-out de Riemann/multivaluado — ver final de F
 
 **⚑ SCOPEADO 2026-07-18** (workflow 6 mappers + síntesis + doble verificación adversarial, 90
 anclas verificadas): `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md`.
+**⚑ FORMALMENTE CERRADO 2026-07-18** (las 4 preguntas abiertas resueltas por el usuario:
+steps JSON/REPL-only como contrato; `subs()` añadido — plano tangente y clasificación de
+críticos one-shot; ∂ global multivariable; V7d ejecutado — puntos críticos por solve).
+**Con ello la FASE 2 queda COMPLETA en sus dos mitades** (complejo elemental cerrado
+2026-07-17 + pulidos tanda-2/3; vectorial multivariable cerrado hoy). La apertura de la
+Fase 3 sigue la regla de oro: decisión del usuario.
 **⚑ EJECUTADO 2026-07-18 (tanda de 8 ciclos, 0 rechazos): V0 (P0 métrica norm) → V1‑V2
 (sustrato: diff componentwise + P0-wire narración) → V3‑V6 (los 6 verbos VIVOS:
 gradient/grad, jacobian, hessian, divergence, laplacian, curl/rot — con narración es/en,

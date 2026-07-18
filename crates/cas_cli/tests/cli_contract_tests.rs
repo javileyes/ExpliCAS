@@ -2350,10 +2350,11 @@ fn test_eval_gaussian_reciprocal_clean_form() {
 
 #[test]
 fn test_eval_diff_multivar_input_latex() {
-    // Tanda-2 ciclo 5: el input_latex de diff 3+ args DROPEABA las variables extra
-    // (`diff(f,x,y)` mostraba \frac{d}{dx}(f) — display engañoso de capacidad viva).
-    // Forma NEUTRAL con `d` (la elección global de ∂ es pregunta abierta del usuario);
-    // denominador derecha-a-izquierda (convención estándar de parciales mixtas).
+    // Tanda-2 ciclo 5 arregló el DROP de variables; el cierre vectorial C aplica la
+    // decisión del usuario (pregunta abierta #3): ∂ GLOBAL cuando la derivación
+    // involucra más de una variable (mixtas O target multivariable); el univariable
+    // conserva `d` BYTE-idéntico. Denominador derecha-a-izquierda (convención de
+    // parciales mixtas).
     let latex_of = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -2364,7 +2365,11 @@ fn test_eval_diff_multivar_input_latex() {
     };
     assert_eq!(
         latex_of("diff(x^2*y^3, x, y)"),
-        "\\frac{d^{2}}{dy \\, dx}({x}^{2}\\cdot {y}^{3})"
+        "\\frac{\\partial^{2}}{\\partial y \\, \\partial x}({x}^{2}\\cdot {y}^{3})"
+    );
+    assert_eq!(
+        latex_of("diff(x^2*y, x)"),
+        "\\frac{\\partial}{\\partial x}(y\\cdot {x}^{2})"
     );
     assert_eq!(
         latex_of("diff(x^5, x, 2)"),
@@ -2372,7 +2377,7 @@ fn test_eval_diff_multivar_input_latex() {
     );
     assert_eq!(
         latex_of("diff(x^2*y^2, x, 2, y)"),
-        "\\frac{d^{3}}{dy \\, dx^{2}}({x}^{2}\\cdot {y}^{2})"
+        "\\frac{\\partial^{3}}{\\partial y \\, \\partial x^{2}}({x}^{2}\\cdot {y}^{2})"
     );
     // El 2-args queda BYTE-IDÉNTICO (ambos renderers).
     assert_eq!(latex_of("diff(x^2, x)"), "\\frac{d}{dx}({x}^{2})");
