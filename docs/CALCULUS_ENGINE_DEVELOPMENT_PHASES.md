@@ -212,7 +212,13 @@ duro fundado en audit es el scope-out de Riemann/multivaluado — ver final de F
 ### Cálculo vectorial multivariable (CABLEADO barato — ~60-70% ya existe)
 
 **⚑ SCOPEADO 2026-07-18** (workflow 6 mappers + síntesis + doble verificación adversarial, 90
-anclas verificadas): `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md`. La estimación de abajo
+anclas verificadas): `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md`.
+**⚑ EJECUTADO 2026-07-18 (tanda de 8 ciclos, 0 rechazos): V0 (P0 métrica norm) → V1‑V2
+(sustrato: diff componentwise + P0-wire narración) → V3‑V6 (los 6 verbos VIVOS:
+gradient/grad, jacobian, hessian, divergence, laplacian, curl/rot — con narración es/en,
+metamórficos de conservatividad y equiv bracket-aware) → V7a+b (abs(vector)→norm heredando
+V0; integrate componentwise todo-o-nada). Hashes en el ledger. QUEDAN: V8 (pulido — gated
+por pregunta abierta ∂), V7d y las 4 preguntas abiertas del scoping al usuario.** La estimación de abajo
 se quedó CORTA (wronskian es el template exacto de verbo; el desugar de orden superior es
 target-agnóstico) y el barrido adversarial destapó un candidato P0 preexistente (capa métrica
 de `Matrix`: `norm` gaussiano/simbólico sin gate de dominio — sub-ciclo **V0**, va primero).
