@@ -6,12 +6,14 @@ los horizontes y, para cada uno, los items concretos. Fundado en dos evaluacione
 multi-agente (2026-06-21): la de completitud de la frontera real, y la de extensibilidad
 arquitectónica a complejo y multivariable.
 
-**Regla de oro (actualizada 2026-07-16):** el umbral de Fase 1 quedó **CRUZADO 2026-07-15**
-(los 3 criterios del checklist cumplidos) y la **Fase 2 está ACTIVA** desde 2026-07-16 por
-decisión del usuario (frente complejo primero, ver la sección de Fase 2). La Fase 3 sigue
-gated tras la Fase 2. La regla de fondo se mantiene: cada fase se abre SOLO al cruzar el
-umbral de la anterior, y los guardrails inter-fase (§final) siguen siendo obligatorios en
-cada ciclo — ahora también preparan la Fase 3.
+**Regla de oro (actualizada 2026-07-18):** el umbral de Fase 1 quedó **CRUZADO 2026-07-15**;
+la **Fase 2 quedó COMPLETA 2026-07-18 en sus dos mitades** (complejo elemental 2026-07-17 +
+vectorial multivariable 2026-07-18, ambos frentes formalmente cerrados). La **Fase 3 está
+ACTIVA desde 2026-07-18 por decisión del usuario** ("Haz el scoping workflow"), con scoping
+propio en `docs/FASE3_ANALYTIC_LAYERS_SCOPING.md` (secuencia F0→F12; el P0 F0 —
+kill-switch de dominio en límites — va primero). La regla de fondo se mantiene: cada fase se
+abre SOLO al cruzar el umbral de la anterior, y los guardrails inter-fase (§final) siguen
+siendo obligatorios en cada ciclo.
 
 *Texto original (histórico):* la **Fase 1 es el ÚNICO objetivo activo**. Las Fases 2 y 3 NO
 se empiezan hasta cruzar el umbral de Fase 1 — existen aquí para que las decisiones de HOY
@@ -218,7 +220,7 @@ steps JSON/REPL-only como contrato; `subs()` añadido — plano tangente y clasi
 críticos one-shot; ∂ global multivariable; V7d ejecutado — puntos críticos por solve).
 **Con ello la FASE 2 queda COMPLETA en sus dos mitades** (complejo elemental cerrado
 2026-07-17 + pulidos tanda-2/3; vectorial multivariable cerrado hoy). La apertura de la
-Fase 3 sigue la regla de oro: decisión del usuario.
+Fase 3 siguió la regla de oro: **decidida por el usuario 2026-07-18** (ver sección Fase 3).
 **⚑ EJECUTADO 2026-07-18 (tanda de 8 ciclos, 0 rechazos): V0 (P0 métrica norm) → V1‑V2
 (sustrato: diff componentwise + P0-wire narración) → V3‑V6 (los 6 verbos VIVOS:
 gradient/grad, jacobian, hessian, divergence, laplacian, curl/rot — con narración es/en,
@@ -243,7 +245,21 @@ Secuencia: `V0` soundness → `V1‑V2` sustrato (diff componentwise + P0-wire d
 
 ---
 
-## Fase 3 — Capas analíticas  **[DESPUÉS, L, varianza alta — mayormente net-new]**
+## Fase 3 — Capas analíticas  **[ACTIVA 2026-07-18 por decisión del usuario — SCOPEADA]**
+
+**⚑ SCOPEADA 2026-07-18** (workflow 6 mappers + síntesis + verificador de anclas 112/117 +
+crítico de completitud, 12 gaps integrados): `docs/FASE3_ANALYTIC_LAYERS_SCOPING.md`.
+Secuencia **F0 → F12**: **F0 va PRIMERO y es P0 de soundness** — el subsistema de límites es
+domain-blind (cero `ValueDomain`) y bajo `--value-domain complex` FABRICA valores con
+razonamiento real (`limit(e^(-1/z^2),z,0)→0` cuando en ℂ el límite NO existe —
+esencial-singular; `limit(z*sin(1/z),z,0)→0` ídem; ambos re-verificados a mano): kill-switch
+de dominio en el chokepoint del dispatcher, molde de los 21 gates de `complex.rs`. Después:
+bloque A Taylor (F1 sustrato univar, F2 multi-índice grado-total), bloque B ensambladores
+(F3 subs no-op + integrate definido componentwise, F4 lineintegral, F5 surface_integral,
+F6 potential), bloque C límites multivar (F7 superficie+continuidad probada, F8 DNE-por-caminos
+con testigos citados — JAMÁS existencia desde finitos caminos, F9 iterados), bloque D re-otorgo
+complejo selectivo (F10 fold de output, F11 sustitución compleja entera con combinador bilateral
+gateado, F12 opcional π/√2). Estimación original de abajo (histórica) superada por el scoping:
 
 - **Series/Taylor**: motor de series univariable (si no aterrizó en Fase 1) → **Taylor
   multivariable** vía book-keeping multi-índice (`∂^α/α!`).

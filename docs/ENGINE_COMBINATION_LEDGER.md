@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 633 (newest first)
+Active entries: 634 (newest first)
 
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
@@ -138,6 +138,7 @@ Active entries: 633 (newest first)
 - 2026-07-18 | `retained` | `cas_engine/rules/functions.rs` (`SubsRule` en la familia meta + guard `conta... | CAPACIDAD (cierre vectorial · A: verbo `subs`): evaluación-en-punto inline ORDER-SAFE — plano tangente y clasificación de críticos one-shot
 - 2026-07-18 | `retained` | `cas_solver/linear_system_command_parse.rs` (pre-pass `pre_evaluate_inline_di... | CAPACIDAD (cierre vectorial · B: V7d): `solve([diff(f,x)=0, diff(f,y)=0], [x,y])` — el flujo de puntos críticos resuelve one-shot
 - 2026-07-18 | `retained` | `cas_formatter/latex_core.rs` (`diff_operator_latex(pairs, partial)` + `diff_... | CIERRE FORMAL (cierre vectorial · C: ∂ global): el FRENTE VECTORIAL MULTIVARIABLE queda CERRADO — Fase 2 con ambas mitades completas
+- 2026-07-18 | `retained` | docs-only — `docs/FASE3_ANALYTIC_LAYERS_SCOPING.md` (nuevo, 295 líneas) + `do... | SCOPING (Fase 3 · capas analíticas): workflow multi-agente ABRE la Fase 3 — P0 confirmado: el subsistema de límites es domain-blind y FABRICA bajo complex
 - 2026-07-17 | `retained` | `cas_formatter/src/latex_core.rs` (`direct_negative_mul_abs_latex` + gemelo `... | FIX de presentación (formatter LaTeX: coeficiente unidad fabricado): `(1+i)^53` LaTeX `-1 - 1·i` → `-1 - i`
 - 2026-07-17 | `retained` | `cas_solver_core` (`solution_set.rs` rama `Δ<0∧Eq` domain-aware + `quadratic_... | CAPACIDAD (Fase 2 · A4: solve complejo cuadrático — F12 CERRADO): `solve(x^2+1, x)` → `{i, -i}`
 - 2026-07-17 | `retained` | `cas_ast/builtin.rs` (Re/Im/Conjugate: 5 sitios, COUNT 46→49, aliases re/im/c... | CAPACIDAD (Fase 2 · A2: módulo + builtins complejos): `abs(3+4*i)` → `5`, `conjugate/Re/Im` nacen
@@ -20612,3 +20613,19 @@ Active entries: 633 (newest first)
   - retained learning:
   - **El criterio "∂ ⟺ más de una variable involucrada" es computable y estable en el formatter** (vars-libres del target ∪ vars de derivación) — la convención de libro no necesita anotaciones del usuario ni estado; vive en el render y los pins univariables no se mueven.
   - PRÓXIMO PELDAÑO: la cola post-Fase-2 — residuales con dueño de ambos frentes, re-audit de frontera global, o (decisión del usuario) apertura de Fase 3.
+
+## 2026-07-18 - SCOPING (Fase 3 · capas analíticas): workflow multi-agente ABRE la Fase 3 — P0 confirmado: el subsistema de límites es domain-blind y FABRICA bajo complex
+
+- area: docs-only — `docs/FASE3_ANALYTIC_LAYERS_SCOPING.md` (nuevo, 295 líneas) + `docs/CALCULUS_ENGINE_DEVELOPMENT_PHASES.md` (Fase 3 ACTIVA 2026-07-18 por decisión del usuario) + memoria. Journal: `subagents/workflows/wf_1de36d6c-e27/journal.jsonl` (9 agentes: 6 mappers READ-ONLY + síntesis + verificador de anclas + crítico de completitud; 0 errores).
+- status: `retained` (scoping, sin código). Molde del scoping vectorial reutilizado por tercera vez.
+- capture:
+  - investment_class: apertura de fase (decisión del usuario) + P0 de soundness DESCUBIERTO por el scoping.
+  - **P0 CONFIRMADO A MANO (F0, va primero):** el subsistema de límites tiene CERO menciones a `ValueDomain` — razona con orden real bajo `--value-domain complex` y fabrica valores: `limit(e^(-1/z^2),z,0)→0` (singularidad esencial: en ℂ el límite NO existe — camino imaginario diverge) y `limit(z*sin(1/z),z,0)→0` (ídem). La cadena exacta del primero: total-real-unary `limit_rules.rs:3758` brazo `Pow(E,·)` + saturación exp(−∞)→0 sobre el −∞ bilateral del inner. Fix F0 = kill-switch en el chokepoint del dispatcher (molde de los 21 gates `RealOnly => return None` de `complex.rs`), con re-otorgo selectivo DESPUÉS (F10/F11: cancelación racional field-agnóstica, serie de entera; combinador bilateral gateado a solo-DNE — el acuerdo de laterales reales NO implica valor en ℂ: `conjugate(z)/z`).
+  - Secuencia completa F0→F12 en 4 bloques: A Taylor (F1 sustrato univar taylor/series verbo vivo con residual honesto en singularidad; F2 multi-índice GRADO-TOTAL con cap `C(n+d,d)≤64` — el anidado x²y² sobrevive a orden 2 por grado total 4); B ensambladores sobre composición viva (F3 SubsRule no-op guard — hint-ruido "requires cos(t)^2" reproducido en TODA composición con subs no-op — + integrate DEFINIDO componentwise; F4 lineintegral arity 6; F5 surface_integral; F6 potential con test curl=0 de V6); C límites multivar honestos (F7 superficie + continuidad probada + fix parser REPL stale; F8 DNE-por-caminos con batería concreta {y=0,x=0,y=±x,y=±x²,x=±y²} y testigos CITADOS — pin central: x²y/(x²+y²) residual, JAMÁS existencia desde finitos caminos; F9 iterados arity-3 SOLO); D complejo (F10 fold output solo rama sin-warning; F11 sustitución entera + unlock del gate léxico `wire_types.rs:866/:873` que hoy es un colador — `i` rechaza pero `2*i`/`i*pi`/`i*1` pasan; F12 opcional ∫x²/(x⁴+1)=π/√2).
+  - Verificación adversarial doble: 112/117 anclas verificadas (5 correcciones aplicadas, 0 FATAL — p.ej. "22 gates"→21; `:4109` even-saturating-pole está gateada a Cosh y NO participa en la cadena del P0) + 12 gaps del crítico integrados (pins never-fabricate de cuerpo-con-I `limit(e^(i*x),x,infinity)`; blast de F0 AUDITADO BAJO — el limit-matrix no usa `--value-domain` y tiene 0 puntos complejos; Green/Stokes composición-only documentada; criterio de cierre re-escrito a "drift real SOLO el declarado").
+  - Hand-verify del operador cazó su propio misread: `tanh(pi·i/2)` como output NO es eco — es el VALOR sustituido en un polo (fabricación confirmada; el wrapper limit se perdió = evaluó).
+  - 4 preguntas abiertas AL USUARIO (en el doc): residuos π/e como mini-front F12+; case-split paramétrico en límites; DNE-por-caminos complejo como F-extra; lado positivo (squeeze 2-var) tras F8.
+- retained learning:
+  - **Un subsistema maduro en real puede ser el P0 de la fase siguiente sin cambiar una línea**: limits es MADURO univariable-real y a la vez domain-blind — la fabricación no está en reglas nuevas sino en aplicar reglas CORRECTAS fuera de su dominio de validez. Al abrir un dominio nuevo, audita primero qué subsistemas legacy quedan alcanzables desde el flag.
+  - **El gate léxico parcial es peor que ninguno**: `wire_types.rs` rechaza `i` como dirección pero deja pasar `2*i` — da sensación de protección mientras el motor fabrica detrás. Un kill-switch va en el CHOKEPOINT semántico (dispatcher), no en el léxico.
+- PRÓXIMO PELDAÑO: ejecutar F0 (P0 kill-switch) como primer ciclo de la Fase 3 — o /auto-mejora N para la tanda F0→F2.

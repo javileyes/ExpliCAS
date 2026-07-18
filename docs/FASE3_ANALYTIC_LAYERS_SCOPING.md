@@ -1,0 +1,295 @@
+# Fase 3 · Capas analíticas: scoping en sub-ciclos acotados
+
+- **Fecha:** 2026-07-18
+- **HEAD:** `732a4f9c2` *(working tree con cambios de sesión; los probes se sondearon contra `./target/release/cas_cli` del día)*
+- **Clase:** **MIXTA — el "L, varianza alta, mayormente net-new" del doc de fases se matiza fuerte.** Dos de los cuatro frentes son **S‑M de orquestación** sobre maquinaria que YA cierra (Taylor multivariable: todos los ingredientes existen y el univariable con parámetros es sound 12/12; integrales de línea/superficie: TODAS las composiciones curriculares cierran hoy por `subs`+`dot`+`cross`+`norm`+`diff`+`integrate` — solo faltan los VERBOS ensambladores). La varianza alta se concentra en los límites: multivariables (capacidad acotada sound-first: continuidad probada + DNE-por-caminos con testigos) y **complejos, donde hay un P0 ACTIVO**: el motor de límites es **domain-blind** (cero ocurrencias de `ValueDomain` en las 17.819 líneas de `limits_support.rs`) y bajo `--value-domain complex` **fabrica valores** en al menos 7 probes confirmados (`e^(-1/z²)→0`, `z·sin(1/z)→0`, `tanh` en su polo `iπ/2` — también en real default —, `atan(2i)` sobre el branch cut, `1/(z²+1)` en el polo `i` emitido como `1/0`, `1/z²→infinity`, `e^z→infinity`). Se entra como **secuencia de sub-ciclos acotados**, nunca como un solo ciclo, y **F0 (el P0) va primero**.
+- **Método:** scoping workflow READ-ONLY (6 mappers de subsistema convergentes — Taylor/maquinaria univariable, límites multivar, límites complejos/domain-blindness, línea-superficie, barrido curricular ~48 probes, guardrails-didáctica-superficie — + síntesis). Journal crudo: `subagents/workflows/wf_1de36d6c-e27/journal.jsonl`. Doble verificación adversarial: verificador de anclas (112 verificadas, 5 correcciones aplicadas — 0 FATAL) + crítico de completitud (12 gaps integrados); los 2 WRONG centrales (`e^(-1/z²)→0`, `z·sin(1/z)→0` bajo complex) re-verificados A MANO por el operador.
+- **Relacionado:** `docs/CALCULUS_ENGINE_DEVELOPMENT_PHASES.md` (§Fase 3 líneas 246‑264 — definición del frente y FUERA del norte; guardrails :268‑290), `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (frente hermano CERRADO 2026-07-18 — molde de formato; deja pineados los nombres Fase-3 en el fixture never-confirm `cli_contract_tests.rs:2891‑2911` y el dueño-backlog del mensaje impreciso de límites, línea 44), `docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (los 21 gates `value_domain()==RealOnly => return None` de `complex.rs` (21 reglas, todas gateadas) — el molde exacto que al motor de límites le falta).
+
+Abrir este frente gradúa la Fase 3 del norte: **Taylor multivariable** (multi-índice `∂^α/α!`), **límites multivariables** (detectar no-existencia / punt honesto, NUNCA fabricar — mandato literal del doc de fases), **límites complejos** (hoy P0), e **integrales de línea/superficie** (parametrización + pullback — las primitivas ya existen).
+
+**SCOPE-OUT explícito (FUERA del norte, permanente — ningún sub-ciclo de este doc lo toca):** análisis complejo multivaluado / Riemann (cambiar `BranchPolicy::Principal` sería la única reescritura profunda; consecuencia aquí: **NO se introduce ∞ compleja de esfera de Riemann** — decisión D6); **EDOs** (`dsolve` jamás se registra); **funciones especiales como valores de salida** (`erf`/`Γ`/`Si`/`Ei`/`LambertW` — Dirichlet `∫₀^∞ sin(x)/x` queda punt permanente); los **residuales no-elementales protegidos** (`e^(-x²)` indefinida, `sin(x)/x`, `1/ln(x)`, oscilantes, divergentes — resolverlos sería un bug de soundness, no un avance); **residuos / contornos** SIN decisión explícita del usuario (mapper 5 confirmó el único caso curricular donde la vía real no llega: `∫ cos(x)/(x²+1) = π/e` — pregunta abierta #1; el gemelo `x²/(x⁴+1) = π/√2` NO necesita residuos, ver F12). Los nombres fuera-del-norte quedan **SIN registrar** en el gate: su decline "función no definida" es contrato (probes verificados: `dsolve`/`residue`/`erf`/`gamma` declinan hoy).
+
+---
+
+## La frontera exacta (probes verificados en vivo)
+
+> Cada fila sondeada con `./target/release/cas_cli eval "…"` (complejos con `--value-domain complex`). Los ✅ son la máquina reusable; cada ❌ lleva su **punto de decline** exacto; los **WRONG** son el P0 de F0.
+
+### Taylor (uni con parámetros = sound; multivariable = slot de firma LIBRE)
+
+| Input | Estado | Punto de decline / máquina |
+|---|---|---|
+| `taylor(x*y+x^2,x,0,2)` → `x^2+x·y`; `taylor(e^(x+y),x,0,2)` → `1/2·e^y·(...)`; `ln(1+xy)`, `1/(1-xy)`, `sqrt(1+xy)`, `1/(y-x)` → `.../y^3`; centro desplazado `taylor(x^2*y+y^3,x,1,2)` | ✅ **parámetro simbólico SIEMPRE sound** (12/12, mapper 5) | dos backends: Maclaurin analítico `limits_support.rs:4501→4590→4628` (Polynomial `Vec<BigRational>`, `polynomial.rs:15` — parámetro simbólico DECLINA la ruta) → cae a la definicional `Σ f^(k)(a)/k!·(x−a)^k` `:4516‑4564`, genéricamente sound |
+| `taylor(taylor(e^(x+y),x,0,2),y,0,2)` | ✅-por-composición, **semántica POR-variable** (`x²y²` sobrevive a "orden 2" — grado total 4) + WARN depth_overflow (depth 51) | anidamiento puro; la semántica grado-total es del verbo F2 |
+| `taylor(x^2+y^2,[x,y],[0,0],2)` / `taylor(sin(x),[x,y],2)` | ❌ eco residual honesto — **el slot de firma está LIBRE** | `taylor.rs:40` exige `Expr::Variable` en `args[1]`; el gate `"taylor"\|"series" => 2..=4` (`cas_session_core/src/eval.rs:92`) YA admite las formas con lista — **CERO cambio de gate** |
+| `taylor(sin(x)/x,x,0,2)` | ❌ `undefined` (lo correcto: `1−x²/6` — singularidad evitable) | `taylor_at_zero_with_rational` declina por `den(0)=0` (`:4590`); la definicional sustituye EN el polo (`:4516`) |
+| `taylor(ln(x),x,0,2)` | ❌ `undefined` (genuinamente singular — pero diverge de la política residual-honesto V5) | ruta definicional emite undefined |
+| `taylor(exp(x),x,0,20)` | ⚠ serie correcta + WARN depth_overflow depth=51 | el comando NO tiene cap de orden; `TAYLOR_QUOTIENT_MAX_ORDER=12` (`:4252`) solo capa la ruta del limit engine |
+
+### Límites multivariables (cero fabricación — el flujo paramétrico ya existe)
+
+| Input | Estado | Punto de decline / máquina |
+|---|---|---|
+| `limit(x^2+y^2,x,0)` → `y^2`; `limit(sin(x+y),x,0)` → `sin(y)`; `limit(x*y/(x^2+y^2),x,1)` → `y/(y^2+1)` | ✅ el parámetro libre FLUYE | recursión operand-wise Add/Sub/Mul/Div/Neg `limits_support.rs:4005‑4062` (SIN brazo Pow) + `apply_constant_rule` `:112` + `finite_div_result` con denominador probado ≠0 `:5834` |
+| `limit(x*y/(x^2+y^2),x,0)` y todo clásico path-dependent (`x²y/(x⁴+y²)`, `(x²−y²)/(x²+y²)`, `xy²/(x²+y⁴)`) | ❌ residual honesto + **mensaje impreciso** ("Finite point limits...") | `limits_support.rs:10081`; la causa real: `Polynomial::from_expr` → "Variable mismatch" ante 2ª variable (`polynomial.rs:88‑93`); dueño-backlog heredado del doc vectorial (línea 44) → **F7 lo cierra** |
+| `limit(y/(x^2+y^2),x,0)` | ❌ punt sound (requeriría case-split `y=0`/`y≠0`) | `finite_denominator_proven_nonzero` `:5872‑5883` — muro sound; pregunta abierta #2 |
+| caminos hand-sustituidos: `y=x`→`1/2`, `y=0`→`0` (para `xy/(x²+y²)`); `y=x`→`0` vs `y=x²`→`1/2` (para `x²y/(x⁴+y²)` — ¡el parabólico ES decidible!) | ✅-por-composición — **la evidencia DNE completa ya computa** | `substitute_expr_by_id` (`traversal.rs:201`) + límite univariado + racionales exactos → molde F8 |
+| pendiente SIMBÓLICA `y=k·x` | ❌ punt (0/0 sobre ℚ(k)) | sin pre-cancelación paramétrica — por eso F8 usa batería CONCRETA |
+| `limit(f,[x,y],[0,0])` | ❌ Parse error limpio "Invalid limit variable" | `wire_types.rs:596‑602`/`:824‑828`; helpers `split_top_level_commas :655` y `bracketed_inner :675` YA existen en el archivo → hook F7 barato |
+| `limit(limit(f,x,a),y,b)` | ❌ error duro "función [limit] no definida" (exit 1) — incluso con inner resoluble | `"limit"` AUSENTE de `is_known_eval_engine_function` (`eval.rs:68‑128`) → `error_model.rs:17`; F9 |
+| REPL: `limit(x^2,x,2)` (¡univariado!) | ❌ **WRONG-superficie** "Unsupported limit direction `2`... use infinity" | parser REPL STALE `limit_command_parse.rs:28‑45` (solo ±infinity); `limit_command_eval_tests.rs:37/53` ASSERTAN el error stale; bloquea el flujo interim subs→#ref→limit; F7 |
+| `limit(subs(...),x,0)` | ❌ subs queda INERTE (nodo sin evaluar) | `eval_limit` pasa `resolved` crudo al motor, sin pasada de simplify (`actions.rs:512‑532`) |
+| `limit(sin(1/x),x,0)` → undefined+motivo oscilación; `limit(1/x,x,0)` → undefined+laterales citados; `limit(x*sin(1/x),x,0)` → 0 | ✅ precedentes vivos de DNE-con-testigos | `try_dne_by_oscillation :10270`; `try_bilateral_limit_from_lateral_agreement :10323` — **el molde exacto de F8**: decidir solo desde hechos PROBADOS |
+
+### Límites complejos (el P0: motor domain-blind)
+
+| Input (`--value-domain complex`) | Estado | Punto exacto |
+|---|---|---|
+| `limit(e^(-1/z^2),z,0)` → `0` | **WRONG** (singularidad esencial; por `z=it` diverge — DNE en ℂ) | total-real-unary `:3758` vía su brazo `Pow(E,·)` (`:3771‑3773`) + saturación exp(−∞)→0 sobre el −∞ bilateral del inner `−1/z²` (nota: `:4109` even-saturating-pole está gateada a Cosh `:4118` y NO participa); **cero `ValueDomain` en `limits_support.rs`** (grep = 0 en 17.819 líneas); `LimitOptions` sin canal de dominio (`limit_types.rs:71`); `eval_limit` DESCARTA `options.shared.semantics` (`actions.rs:512`) |
+| `limit(z*sin(1/z),z,0)` → `0` | **WRONG** (squeeze `\|sin\|≤1` es teorema SOLO-real; sin no acotada en ℂ) | `apply_finite_squeeze_bounded_product_rule` `:4077` |
+| `limit(tanh(z),z,i*pi/2)` → `tanh(pi·i/2)` | **WRONG — también en real default, sin Imaginary Usage Warning** (tanh tiene POLO en iπ/2) | `apply_finite_total_real_unary_composition_rule` `:3758`; allowlist `:2974` mezcla enteras (exp/sin/cos/sinh/cosh) con NO-enteras (tanh, atan) |
+| `limit(atan(z),z,2*i)` → `atan(2·i)` | **WRONG** (2i sobre el branch cut [i,i∞)) | ídem |
+| `limit(1/(z^2+1),z,i*1)` → `1/(1+(i)^2)` = **1/0** | **WRONG** (polo genuino emitido como valor) | `finite_expr_proven_positive` HARDCODEA `real_only=true` (`:5865`) y prueba `1+(i)²>0` vía potencia-par — **el gate complejo del prover YA existe** (`prove_sign.rs:730`, el fix `\|z^(2k)\|` de Fase 2), la capa de límites nunca lo pide |
+| `limit(1/z^2,z,0)` → `infinity`; `limit(e^z,z,infinity)` → `infinity` | **WRONG** (por eje imaginario `1/(iy)²→−∞`; `e^(iy)` acotado) | escalera finita y at-infinity sin gate (mapper 5) |
+| `limit(sin(z),z,i)` | ❌ Parse error "Unsupported limit direction `i`" — pero `i*pi`, `2*i`, `i*1` PASAN | gate LÉXICO, no semántico: `looks_like_finite_limit_point` exige dígito o token pi/e (`wire_types.rs:866/:873`) — un colador |
+| `limit(sin(z)/z,z,0)` → 1; `limit((z^2-1)/(z-1),z,1)` → 2 | ✅-POR-COINCIDENCIA de analiticidad (sin justificación compleja del motor) | regresarán a residual con F0 y se re-otorgan con justificación en F11 |
+| `limit(e^z,z,i*pi)` → `exp(pi·i)` (eval directo pliega a −1); `limit(z^2+1,z,2*i)` → `1+(2·i)^2` | ⚠ gap de display/composición: el frente complejo de Fase 2 es INVISIBLE para el output del límite | `actions.rs:534` — solo `fold_infinity_saturation`, jamás el pipeline de simplify; F10 |
+| `conjugate(z)/z`, `abs(z)^2/z^2`, `1/(z-2*i)` en 2i, `ln(z)` en −1 | ✅ residual honesto (conjugate ausente de tablas; el fold `\|x\|²→x²` bien gateado — fix Fase 2) | punt correcto |
+
+### Integrales de línea/superficie (la composición CIERRA; faltan los verbos)
+
+| Input | Estado | Punto de decline / máquina |
+|---|---|---|
+| Circulación `∮F·dr` forma dot → `2·pi` LIMPIO; trabajo → `1`; hélice 3D → `2·(π²+π)`; `∫f·ds` → `π/2`, `2π`, `5√5/12−1/12` exacto; Green `∮x·dy` → `π`; Green doble `∫∫(Qx−Py)` → `2` | ✅-por-composición — **TODO el currículo de línea cierra hoy** | `subs`+`dot`+`diff`+`norm`+`integrate` iterado |
+| Forma POR-COMPONENTE de la circulación | ✅ valor `2·pi` + **hint RUIDO** "Blocked: requires cos(t) (defined) [Substitute Value]" | causa raíz precisa: subs NO-OP (variable ausente del target) → dos rewrites consecutivos en nodos DISTINTOS con contenido idéntico engañan al CycleDetector period-1 (`cycle_detection.rs:52‑59`, fingerprints sin identidad de nodo) → blocklist + BlockedHint `Defined` (`rule_application.rs:326‑333`) + ABORT de fase `:337‑339`. `SubsRule` reescribe sin guard no-op (`functions.rs:848`). (mismo hint-ruido re-probado en `∫f·ds` — "requires cos(t)^2 (defined)" —, Green `∮x·dy` y el flujo del cilindro: toda composición con un subs no-op lo dispara; los valores salen correctos). *(El mapper 6 no lo reprodujo porque sondeó la forma dot — sin contradicción.)* → **F3** |
+| Pullback superficie: cilindro `2π` (área lateral), flujo `2π`, patch plano `√3`, dobles con límite interior VARIABLE (`1/2`, `1/8`) | ✅-por-composición — pipeline `cross`+`norm`+dobles COMPLETO | `norm` pliega `sin²+cos²→1` dentro de cross anidado |
+| Esfera: `cross` de tangentes trig-ricos | ❌ residual (área 4π inalcanzable) | ciclo product-to-sum↔CombineLikeTerms corta la fase ANTES de la regla cross (`rule_application.rs:337‑339`) — fix de ORQUESTACIÓN, no de la regla; residual honesto, backlog nombrado |
+| `integrate([cos(t),sin(t)],t,0,pi)` | ❌ residual — componentwise DEFINIDO no compone | path definido (`integrate_rule.rs:9‑18`) rutea ANTES del brazo Matrix (`:25‑42`, solo indefinido) → **F3** |
+| `arclength(x^2,x,0,1)` → `1/4·asinh(2)+1/2·√5` (idéntico a `integrate(norm(diff([t,t²],t)),t,0,1)`) | ✅ — **el precedente DIRECTO del ensamblador** | `ArcLengthRule` `factoring.rs:175‑211`: extrae posicional, diferencia con decline honesto, reescribe a `ctx.call("integrate",...)` |
+| `lineintegral`/`surface_integral`/`potential` | ❌ "función no definida" — **contrato pineado** | fixture never-confirm `cli_contract_tests.rs:2891‑2911`; CAVEAT: prueba arities 2/2/2 y el gate es (nombre,aridad) — registrar arity≥5 lo dejaría verde POR ACCIDENTE → migración INTENCIONAL en F4/F5/F6 |
+| Impropias reales: `∫1/(x²+1)`→π, `1/(x²+1)²`→π/2, `1/(x²+2x+2)`→π, producto de cuadráticas→π/6 | ✅ la vía real cubre las curriculares | fracciones parciales + FTC |
+| `∫x²/(x⁴+1)` (verdad π/√2) | ❌ residual — la antiderivada elemental EXISTE con `arctan((x²−1)/(x√2))` DISCONTINUO en 0; declinar el FTC ingenuo es HONESTO | gap = evaluación impropia + corrección de salto interior (mate-nueva ACOTADA, no residuos) → **F12** |
+| `∫cos(x)/(x²+1)` (verdad π/e) | ❌ residual — el ÚNICO caso residuos con justificación curricular | pregunta abierta #1 |
+
+---
+
+## Arquitectura: la máquina reusable y los chokepoints
+
+### Lo que ya existe (verificado)
+
+1. **Taylor de dos rutas con soundness paramétrica de fábrica** (`limits_support.rs:4501/4516`): la analítica sobre `Polynomial<BigRational>` declina ante CUALQUIER parámetro y cae a la definicional `Σ f^(k)(a)/k!·(x−a)^k`, que es genéricamente sound. La disciplina `fold_constant_subexprs` POR ITERACIÓN (`:4536/4559` — los comentarios documentan que sin ella el árbol de la k-ésima derivada explota) es la que el ensamblador multi-índice DEBE clonar.
+2. **Los ingredientes del multi-índice existen TODOS**: diff per-variable (`differentiate_symbolic_expr`), subs en punto (`substitute_expr_by_id`, `traversal.rs:201`), fold, factorial-BigInt-in-loop; y el patrón incremental exacto: `try_hessian_expr` (`matrix_rule_support.rs:913‑944`) deriva el gradiente INTERNO sin re-entrar al pipeline — exactamente la estrategia ∂^α-desde-el-padre-α−e_i. Extractor molde: `try_extract_field_vars_call` (`symbolic_calculus_call_support.rs:87‑116`); caps precedentes: `VERB_MAX_VARS=8` (`matrix_rule_support.rs:839`), `COMPONENTWISE_MAX_CELLS=64` (`matrix_rule_support.rs:807`).
+3. **El flujo paramétrico de límites** (operand-wise `:4005‑4062` + constant-rule `:112` + continuidad con denominador probado `:5834`) ya compone `y/(y²+1)`; y los DOS moldes de DNE-probado (`try_dne_by_oscillation :10270`, laterales-disagree `:10323` — jamás fabricar, testigos exactos citados) son la plantilla de F8.
+4. **La composición línea/superficie cierra el currículo entero HOY** (circulación, trabajo, ds, Green, pullback, flujo) — los verbos F4/F5/F6 son ensambladores puros estilo `ArcLengthRule` (rewrite-to-integrate, el motor evalúa) + el molde de la familia vectorial (`vector_calculus.rs`, 6 reglas, dos-cables gate+regla).
+5. **El prover complejo YA existe** (`prove_sign.rs:730` — el gate potencia-par construido en Fase 2); a la capa de límites le falta pedirlo (`:5865` hardcodea `real_only=true`).
+6. **Wire de tres canales** para punt-con-motivo: `WarningWire` (`wire_types.rs:209`), `required_conditions` con kind (probado: `NonZero x²+y²`), `BlockedHintDto` (`:1991`). El contrato residual-vs-DNE ya distingue: residual = call simbólica + warning; DNE probado = `undefined` + testigos.
+7. **Narración keyed** (183 claves es/en en `locale.rs`; `SubStep::keyed` `substep/methods.rs:28`); `generate_limit_substeps` extensible (`focused_rule_substeps.rs:20128`) pero asume single-var y `StepMeta.limit_point` (`step_model.rs:36`); taylor NO emite substeps hoy (familia `taylor.term` = neta-nueva).
+
+### Los chokepoints
+
+- **CHOKEPOINT-0 · motor de límites domain-blind (el P0).** Cero `ValueDomain` en 17.819 líneas; `LimitOptions` sin canal (`limit_types.rs:71`); `eval_limit` recibe `options.shared.semantics` y lo DESCARTA (`actions.rs:512`). El "gate" del parser es LÉXICO (`wire_types.rs:866/873` — rechaza `i`, deja pasar `2*i`). Las 4 clases de fabricación entran por reglas de COMPOSICIÓN (total-real-unary `:3758`, squeeze `:4077`, even-pole `:4109`, div-con-prover-real `:5834/:5865`). → **F0**.
+- **CHOKEPOINT-A · el gate de nombres y el gotcha dos-cables.** `is_known_eval_engine_function` (`eval.rs:68‑128`): `"limit"` AUSENTE (iterados = error duro), `lineintegral`/`surface_integral`/`potential` sin registrar (contrato), `taylor` YA admite 2..=4 (F2 sin cambio de gate). Registrar gate sin regla = fallo EN SILENCIO (gotcha documentado, `vector_calculus.rs:9`).
+- **CHOKEPOINT-B · CycleDetector sin identidad de nodo** (`cycle_detection.rs:52‑59`): subs no-op → falso ciclo period-1 → hint-ruido "(defined)" + ABORT de fase (`rule_application.rs:337‑339`) que además deja `cross` sin disparar en la esfera. El fix acotado es el guard no-op en `SubsRule` (opción (a)); la identidad-de-nodo en el detector es transversal (backlog). → **F3**.
+- **CHOKEPOINT-C · superficie de límites triple-stale**: parser REPL solo-±infinity (`limit_command_parse.rs:28‑45`, con tests que ASSERTAN el error), sin sintaxis multivar (`wire_types.rs:596‑602`, helpers listos), cuerpo del limit sin simplify (`actions.rs:512` — subs/simplify inertes). → **F7**.
+- **CHOKEPOINT-D · output del límite salta el fold** (`actions.rs:534`): la Fase 2 compleja es invisible para resultados de limit (`exp(pi·i)` sin plegar). → **F10**.
+- **CHOKEPOINT-E · anti-worsen/depth budget**: taylor orden 20 ya WARN depth 51; el multi-índice multiplica por `C(n+d,d)`; las familias taylor ya son top-3 lentas del limit matrix (46ms vs p95=11ms). Caps explícitos obligatorios (F1/F2).
+
+---
+
+## Decisiones cerradas (con la evidencia de los mappers)
+
+1. **F0 = kill-switch de dominio en la ENTRADA del motor de límites, no cirugía por-regla.** Bajo `ComplexEnabled`, el motor de límites entero declina a residual honesto; en `RealOnly`, un punto cuyo árbol contiene `Constant::I` también declina (coherencia A2: en real, `i` es símbolo ordinario — cierra `tanh(iπ/2)` en real default). **Regresión DELIBERADA y documentada**: los ✅-por-coincidencia (`sin(z)/z→1`, `(z²−1)/(z−1)→2`, `1/z` DNE) pasan a residual bajo complex hasta que F11 los re-otorgue con justificación analítica; en real quedan byte-idénticos (pins). Evita gatear ~40 reglas una a una con el riesgo de dejar una fabricando.
+2. **Firmas cerradas** (cero colisión de aridad, verificado contra los gates): `taylor(f,[vars],n)` / `taylor(f,[vars],[punto],n)` — el gate `2..=4` YA las admite (`eval.rs:92`), la extensión vive SOLO en `try_extract_taylor_call` (brazo Matrix-list validando n×1|1×n como `symbolic_calculus_call_support.rs:102‑107`); `limit(f,[x,y],[a,b])` — hook en `parse_limit_command` reutilizando `split_top_level_commas`/`bracketed_inner`; `lineintegral(F,[vars],r,t,a,b)` **arity 6** (consistente con la familia field+[vars]; la arity-5 exigiría convención implícita x,y(,z) que rompe con campos en otras variables — descartada); `surface_integral(F,[vars],r,[u,v],[a,b],[c,d])` **arity 6**; `potential(F,[vars])` **arity 2** (coincide con el fixture never-confirm — su flip es limpio). Dispatch escalar-vs-vector del primer arg en línea/superficie: escalar → `ds`/`dS` (con `norm`/`norm(cross)`), vector → `dr`/flujo (con `dot`/`dot(·,cross)`).
+3. **Taylor multi-índice = GRADO TOTAL `|α|≤n`** (la convención curricular); la composición anidada `taylor(taylor(...))` conserva su semántica por-variable y se documenta la diferencia (riesgo señalado por mapper 5: los tests de contrato compararían contra la convención equivocada). Camino de derivación canónico determinista (incrementar siempre la variable de menor índice; Clairaut lo hace independiente del camino), all-or-nothing si diff declina en cualquier α, `fold_constant_subexprs` por iteración (disciplina `:4536/4559`), factorial multi-índice α! acumulado.
+4. **Caps Taylor:** `C(n+d,d) ≤ 64` (espeja `COMPONENTWISE_MAX_CELLS`; d=2 admite n≤9, d=3 n≤5) + vars ≤ `VERB_MAX_VARS=8`; y cap de orden en el comando UNIVARIABLE (hoy sin cap — n=20 dispara WARN). Fuera de cap → decline honesto.
+5. **Política de punto singular en taylor: residual honesto, NO `undefined`** (alineado con la política V5 del frente vectorial: `undefined` queda reservado a álgebra malformada). La singularidad EVITABLE (`sin(x)/x`) se resuelve en F1 vía la ruta racional (num y den se anulan → cancelar `t^k` — sobre la maquinaria `reciprocal_series`/`taylor_at_zero_with_rational` existente, SIN tocar la ruta del limit evaluator: la frontera `:4590` vs `:4628` se respeta).
+6. **Límites multivariables: existencia SOLO por continuidad PROBADA; DNE SOLO por testigos exactos citados.** Valor ⇔ f polinómica en el punto o racional con `den(a,b)≠0` probado EXACTO (aritmética racional, patrón `finite_denominator_proven_nonzero` sin relajar); DNE ⇔ dos caminos CONCRETOS de la batería `{y=0, x=0, y=±x, y=±x², x=±y²}` producen límites univariados exactos DISTINTOS, ambos citados en el warning (molde laterales-disagree `:10323`); **jamás** pendiente simbólica `k` (punts), **jamás** existencia desde finitos caminos (pin: `x²y/(x⁴+y²)` da 0 en todos los lineales y 1/2 en el parabólico). Todo lo demás punt honesto con el mensaje ESPECIALIZADO (cierra el backlog heredado). El driver vive en `limits_support` junto a sus moldes (usa el motor univariado + `substitute_expr_by_id` a nivel de árbol — NO vía SubsRule, cuya guarda anti-orden `functions.rs:790` existe a propósito).
+7. **Sin ∞ compleja.** Polos complejos → residual honesto; DNE solo con testigos (p.ej. dos rectas reales en desacuerdo ⇒ DNE en ℂ a fortiori). Introducir la esfera de Riemann colisionaría con el render `infinity` con signo y roza el scope-out multivaluado.
+8. **F11 re-otorga capacidad compleja por SUSTITUCIÓN ENTERA, partiendo la allowlist.** `is_finite_total_real_unary_builtin` (`:2974`) se divide: enteras (exp/sin/cos/sinh/cosh + polinomios/racionales con den≠0 probado en modo complejo del prover — `real_only` pasa a ser parámetro de dominio, el fix está "a una línea": `:5865` + `prove_sign.rs:730`) sustituyen bajo complex; NO-enteras (tanh/atan/abs/cbrt) jamás. El unlock del parser (`punto i`) se enhebra con `semantics.value_domain` — wire nuevo sin precedente, acotado a F11.
+9. **Verbos línea/superficie SIN gate `ValueDomain`** (orquestación sintáctica de primitivas — guardrail 1 en su modo "no gate-ceremonia", como los 6 verbos vectoriales); **ensamblado INTERNO sin re-entrada al pipeline** (esquiva por construcción el falso ciclo del chokepoint-B, que F3 arregla igualmente porque el defecto golpea la composición manual del usuario); all-or-nothing (la esfera → residual honesto, jamás forzar).
+10. **Migración del fixture never-confirm en DOS semánticas separadas:** (a) scope-out PERMANENTE — `dsolve`/`erf`/`gamma` jamás se registran (assert propio con su comentario); (b) condicionales — `residue` (pregunta abierta #1) y los tres verbos Fase-3 que se van registrando: al registrar cada uno, actualizar el fixture INTENCIONALMENTE con la aridad REAL registrada (el gate es (nombre,aridad): registrar arity-6 dejaría el assert arity-2 verde por accidente, anulando el detector en silencio).
+11. **Narración per-ciclo, claves keyed nuevas, jamás editar existentes:** `taylor.term` (familia neta-nueva — taylor hoy es mudo, substeps `[]`), `limit.path_counterexample` (molde `limit.residual_one_sided_method`, `locale.rs:143`), `lineintegral.*`/`surface.*`; brazo es→en en `visible_rule_names.rs` por regla nueva; los motivos DNE nuevos nacen KEYED (no perpetuar el string EN crudo de `:10354`). Los punts de calculus van por `warnings` (patrón actual de limit), NO por `blocked_hints` (canal del solve) — no mezclar por accidente.
+12. **Dueño de cada residual** (ninguno huérfano): mensaje impreciso multivar → **F7**; hint-ruido del falso ciclo + integrate componentwise definido → **F3**; parser REPL stale → **F7**; fold del output de limit → **F10**; cap/política singular taylor → **F1**; identidad-de-nodo en CycleDetector (fix transversal) → **backlog nombrado**; brazo Pow en la recursión operand-wise → **backlog nombrado**; esfera (early-stop vs cross) → **backlog nombrado** (fix de orquestación); case-split paramétrico condicional, squeeze 2-var, residuos π/e → **preguntas abiertas**; `∫x²/(x⁴+1)`→π/√2 → **F12 (opcional)**; Dirichlet/`Si`, EDOs, funciones especiales, Riemann → **SCOPE-OUT permanente**.
+
+---
+
+## Secuencia de sub-ciclos (cada uno = un `/auto-mejora`, un commit)
+
+Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundness** (P0 antes que capacidad), **A Taylor** (madurez máxima, cero wrong-answers, ingredientes completos), **B línea/superficie** (composición ya cierra — verbos puros), **C límites multivariables** (capacidad nueva sound-first), **D límites complejos** (capacidad value-dependent sobre F0).
+
+### F0 — soundness (antes que capacidad)
+
+#### F0 — Gate de dominio del motor de límites (kill-switch de entrada) **[S/M]**
+- **Gradúa:** bajo `--value-domain complex`, TODO límite declina a residual honesto (cierra de golpe los 7 WRONG: `e^(-1/z²)`, `z·sin(1/z)`, `tanh(iπ/2)`, `atan(2i)`, `1/(z²+1)` en `i`, `1/z²`, `e^z` at-infinity); en `RealOnly`, punto conteniendo `Constant::I` → residual honesto + el Imaginary Usage Warning estándar (cierra el agujero del gate léxico: `2*i`, `i*pi`, `i*1` pasan hoy). Los ✅-por-coincidencia bajo complex REGRESAN a residual (deliberado, documentado en el commit; F11 re-otorga).
+- **Inserción:** campo de dominio en `LimitOptions` (`limit_types.rs:71`); `eval_limit` deja de descartar `options.shared.semantics` (`actions.rs:512`); guard de entrada en `eval_limit_at_infinity` (`limits_support.rs:10414‑10426`) + chequeo de punto-con-I; el hint didáctico `limit_domain_path_warning` deja de hardcodear RealOnly (`actions.rs:297`).
+- **Reuso:** patrón de canal `SharedSemanticConfig.semantics` (`simplify_options.rs:16` — la información YA llega hasta el call site); molde de los 21 gates de `complex.rs:50`.
+- **Blast:** **BAJO en real** (byte-idéntico — el guard solo dispara con `i` en el punto o dominio complex); **BAJO en huella (AUDITADO por el crítico)**: el limit matrix NO usa `--value-domain` (0 ocurrencias) y no tiene ningún caso con punto complejo — el único drift real es el fix deliberado `tanh(iπ/2)` + los pins nuevos.
+- **Depende:** nada. **Va PRIMERO** (P0 gana a capacidad — la regla del proceso maestro).
+- **Retención (pins):** toda la lane `calculus_limit_contract` (189 tests) byte-idéntica en real; `limit(sin(x)/x,x,0)→1` y `limit(1/x,x,0)→undefined+laterales` EN REAL intactos; `limit(e^z,z,2)→exp(2)` (punto real, real domain) intacto; pin NUEVO dual-superficie: `limit(tanh(z),z,i*pi/2)` → residual en AMBOS dominios; **pins never-fabricate de cuerpo-con-I** (la protección actual es COINCIDENTAL, declina por Polynomial-sobre-ℚ, no por diseño): `limit(e^(i*x),x,infinity)` y `limit(i*sin(x)/x,x,0)` → residual en ambos dominios — F11 los HEREDA explícitamente.
+
+### Bloque A — Taylor multivariable
+
+#### F1 — Sustrato Taylor: cap de orden + política singular + singularidad evitable **[S/M]**
+- **Gradúa:** cap explícito de orden en el comando (decline honesto fuera de cap; silencia el WARN depth_overflow de n=20 o lo documenta como techo); `taylor(ln(x),x,0,2)` → **residual honesto** (eco + warning KEYED `taylor.singular_residual`), no `undefined` (política V5); `taylor(sin(x)/x,x,0,4)` → `1 − x²/6 + x⁴/120` — la singularidad evitable vía la ruta racional: si num(0)=0 y den(0)=0, cancelar la potencia común de `t` en las series (maquinaria `Polynomial`/`reciprocal_series` existente).
+- **Inserción:** `try_extract_taylor_call` (`taylor.rs:19‑57` — validación de orden/cap); `taylor_at_zero_with_rational` (`limits_support.rs:4590‑4626` — extensión de cociente con cancelación); la emisión undefined de la definicional (`:4516‑4564`) pasa a decline (None → residual).
+- **Reuso:** `Polynomial<BigRational>` (`polynomial.rs:13‑16`), `reciprocal_series` (`:4569‑4583`). **Frontera respetada:** `taylor_at_zero_with_rational` está deliberadamente separada de `taylor_at_zero` para no tocar la ruta del limit evaluator — la extensión vive SOLO en la primera.
+- **Blast:** **BAJO** — la familia `higher_order_taylor_quotient` del limit matrix NO pasa por la ruta del comando; pins de las 12 formas paramétricas sound.
+- **Depende:** nada (independiente de F0).
+- **Retención (pins):** los 12 probes paramétricos del mapper 1 byte-idénticos (`taylor(e^(x+y),x,0,2)`, centro desplazado, `1/(y-x)`, etc.); `taylor(exp(x),x,0,6)` intacto; lane limit matrix sin drift (la ruta interna del limit engine NO se toca).
+
+#### F2 — `taylor(f,[vars],[punto],n)` multi-índice **[M]**
+- **Gradúa:** `taylor(x^2+y^2,[x,y],[0,0],2)` → `x^2+y^2`; `taylor(e^(x+y),[x,y],[0,0],2)` → forma grado-total (SIN `x²y²` — a diferencia del anidado por-variable, diferencia documentada); `taylor(sin(x*y),[x,y],[0,0],2)` → `x·y`; forma 3-args `taylor(f,[x,y],n)` = Maclaurin multivar; punto singular → residual honesto (hereda F1); fuera de cap `C(n+d,d)>64` o vars>8 → decline honesto; all-or-nothing si algún ∂^α declina; **término de RESTO/cota de error (Lagrange) → residual honesto NOMBRADO, fuera de F2** (mate-nueva de prover de cotas — candidato futuro, misma clase que la pregunta abierta #3); forma arity-2 multivar `taylor(f,[x,y])` → orden por DEFECTO (el mismo default del univariable) — comportamiento DEFINIDO, no accidente; lista malformada (no-Variables) → decline pineado; narración: paso propio + substeps keyed `taylor.term` por término (familia nueva — taylor deja de ser mudo), es/en.
+- **Inserción:** brazo Matrix-list en `try_extract_taylor_call` (`taylor.rs:40` — validando n×1|1×n de Variables puras como `symbolic_calculus_call_support.rs:102‑107`); ensamblador multi-índice NUEVO junto a `try_hessian_expr` (`matrix_rule_support.rs:913` — clonando su patrón incremental ∂^α-desde-el-padre sin re-entrar al pipeline); **CERO cambio de gate** (`eval.rs:92` ya admite 2..=4); claves `taylor.term` en `locale.rs` + generador en `focused_rule_substeps` + dispatch `rule_dispatch.rs:53‑63` + brazo es→en `visible_rule_names.rs`.
+- **Reuso:** `differentiate_symbolic_expr` **sin tocar**, `substitute_expr_by_id`, disciplina `fold_constant_subexprs`-por-iteración (`:4536/4559` — OBLIGATORIA o el árbol explota), factorial BigInt, caps precedentes.
+- **Blast:** **BAJO-MEDIO** — net-new arm (la forma lista hoy es eco residual — slot libre verificado); presión de runtime vigilada (taylor ya top-3 del limit matrix; el verbo multivar NO pasa por ese matrix, pero presupuestar su propio lane o fixtures acotados).
+- **Depende:** F1 (política singular + cap decididos antes de codificarlos aquí).
+- **Retención (pins):** `taylor-multivar-grado-total` (pin de convención: la forma verbo trunca por |α|, el anidado por-variable — AMBOS pineados); sustitución segura: punto con variables de expansión → decline (guard en el extractor); pins F1.
+
+### Bloque B — integrales de línea/superficie (ensambladores sobre composición viva)
+
+> **Green/Stokes/Gauss: composición-only documentada.** Green compone hoy (probes `∮x·dy=π` y doble `∫∫(Qx−Py)=2` — quedan como pins); NINGÚN verbo `green`/`stokes` se registra en Fase 3; Stokes/Gauss 3D quedan bloqueados por la esfera (early-stop del cross trig-rico — backlog nombrado).
+
+#### F3 — Sustrato: guard no-op en SubsRule + integrate componentwise definido **[S]**
+- **Gradúa:** (a) `SubsRule` declina cuando la variable NO aparece en el target (guard no-op) → el reproducer exacto (circulación por-componente, mapper 4) da `2·pi` SIN hint — fixture pinea la AUSENCIA del blocked_hint en el wire JSON; muere el falso ciclo period-1 para el caso curricular típico `F=[P(y),Q(x)]`. (b) `integrate([cos(t),sin(t)],t,0,pi)` → `[[0],[2]]` — brazo Matrix en el path DEFINIDO, all-or-nothing, espejo del indefinido.
+- **Inserción:** (a) `functions.rs:848` (chequeo `contains_named_var` antes de `substitute_expr_by_id`); (b) `integrate_rule.rs:9‑18` (el path definido rutea antes del brazo `:25‑42` — añadir el brazo Matrix ANTES o dentro del rewrite definido).
+- **Reuso:** `map_matrix_components` (primitivo V1 del frente vectorial), precedente de supresión en `filter.rs:154‑189` NO usado (fix raíz, no supresión).
+- **Blast:** **BAJO-MEDIO** — (a) toca una regla transversal (SubsRule): pins de subs standalone (`subs(x*y/(x^2+y^2),y,k*x)` → `k/(k²+1)` con Requires) + la guarda order-safe (`:790`) intactas; el CycleDetector NO se toca (identidad-de-nodo = backlog transversal nombrado).
+- **Depende:** nada (independiente de F0-F2).
+- **Retención (pins):** `subs(cos(t),t,t)→cos(t)` sin hint; circulación forma dot `2·pi` limpia; lane `engine_integrate_command_matrix_smoke` byte-idéntica (superficie de regresión del brazo (b)).
+
+#### F4 — `lineintegral(F,[vars],r,t,a,b)` **[M]**
+- **Gradúa:** vector: `lineintegral([-y,x],[x,y],[cos(t),sin(t)],t,0,2*pi)` → `2·pi` (∮F·dr); escalar: `lineintegral(x^2,[x,y],[cos(t),sin(t)],t,0,pi)` → `pi/2` (∫f·ds vía ‖r'‖); 3D hélice; componente no derivable o campo/parametrización con shapes incompatibles → residual honesto all-or-nothing; narración keyed (`lineintegral.*`: parametrizar → derivar → ensamblar integrando → integrar); **fixture never-confirm actualizado INTENCIONALMENTE** (lineintegral sale con SU aridad real 6; surface_integral/potential siguen "no definida").
+- **Inserción:** gate `"lineintegral" => arity == 6` (`eval.rs`, junto a `:123` arclength); regla estilo `ArcLengthRule` (`factoring.rs:175‑211` como molde línea a línea: extraer, diferenciar con decline honesto, ensamblar INTERNAMENTE `dot(F∘r, r')` o `(f∘r)·‖r'‖`, reescribir a `ctx.call("integrate",...)`); extractor posicional NUEVO (el field+[vars] arity-2 de la familia NO encaja); claves locale + `visible_rule_names` + completer + examples.csv.
+- **Reuso:** `substitute_expr_by_id` (composición interna — esquiva SubsRule y el pipeline), `differentiate_symbolic_expr`, `Matrix` dot/norm (post-V0 del frente vectorial), el motor de integrate evalúa el resultado.
+- **Blast:** **BAJO-MEDIO** — net-new + DOS cables (gate+regla, mismo commit); las composiciones manuales quedan como pins de equivalencia (verbo ≡ composición, mismo valor exacto).
+- **Depende:** F3 recomendado (limpia el terreno de composición que valida los fixtures); independiente de F0-F2.
+- **Retención (pins):** `lineintegral-eq-composicion` (2·pi por ambas vías); `arclength(x^2,x,0,1)` intacto; never-confirm bidireccional (surface/potential siguen declinando).
+
+#### F5 — `surface_integral(F,[vars],r,[u,v],[a,b],[c,d])` **[M]**
+- **Gradúa:** escalar: área lateral del cilindro → `2·pi`, patch plano → `sqrt(3)` (∫∫f·dS vía ‖r_u×r_v‖); vector: flujo del cilindro → `2·pi`, flujo plano → `1` (∫∫F·(r_u×r_v)); paraboloide → integral residual honesta (el integrando `(4u²+4v²+1)^(1/2)` no tiene forma cerrada — el verbo emite el integrate residual, JAMÁS fuerza valor); esfera → residual honesto (el cross trig-rico no pliega — early-stop preexistente, backlog nombrado, pin de decline); narración keyed.
+- **Inserción:** mismos sitios que F4 (gate arity 6 + regla hermana + extractor posicional compartido); ensamblado interno `cross(∂r/∂u, ∂r/∂v)` + `norm`/`dot` + integrate doble anidado.
+- **Reuso:** extractor F4, `cross`/`norm` de `matrix_rule_support`, dobles iteradas con límites variables (ya componen).
+- **Blast:** **BAJO-MEDIO** — net-new; el pin del paraboloide protege el patrón residual-honesto.
+- **Depende:** F4 (extractor y patrón).
+- **Retención (pins):** `surface-paraboloide-residual`; `surface-esfera-residual` (decline pineado con su causa); pins F4.
+
+#### F6 — `potential(F,[vars])` **[S]**
+- **Gradúa:** `potential([2*x*y,x^2],[x,y])` → `x^2·y` (+ constante implícita documentada); `potential([y,x],[x,y])` → `x·y`; campo NO conservativo (`curl≠0` probado) → decline con motivo ("el campo no es conservativo: curl = ..."); curl no decidible → residual honesto; 3D vía el test `curl(F)=0` (V6 del frente vectorial); narración keyed `potential.conservativity_check`/`potential.reconstruct` es/en. Reconstrucción por el camino interim ya documentado en el doc vectorial (línea 11): `integrate` + resta + `integrate` — ahora ensamblado interno.
+- **Inserción:** gate `"potential" => arity == 2` + regla con el extractor field+[vars] EXISTENTE (`try_extract_field_vars_call` — aquí SÍ encaja); **el fixture never-confirm flip es limpio** (el assert ya prueba arity 2).
+- **Reuso:** `curl` (V6), integrate indefinido, diff — todo vivo.
+- **Blast:** **BAJO**.
+- **Depende:** F4/F5 no necesarios (independiente); frente vectorial cerrado (V6) sí.
+- **Retención (pins):** `curl(gradient(f))→0` intacto (metamórfico V6); `potential-no-conservativo-decline`; never-confirm final: los 3 verbos Fase-3 registrados, `dsolve`/`erf`/`gamma`/`residue` siguen "no definida" (dos asserts separados por semántica — decisión D10).
+
+### Bloque C — límites multivariables (sound-first)
+
+#### F7 — Superficie de límites + continuidad probada multivar **[M]**
+- **Gradúa:** (a) parser REPL de limit UNIFICADO con la vía eval (puntos finitos funcionan en REPL: `limit(x^2,x,2)→4`; los tests stale `limit_command_eval_tests.rs:37/53` se actualizan EN EL MISMO ciclo); (b) sintaxis `limit(f,[x,y],[a,b])` parsea; (c) evaluación por continuidad PROBADA: `limit(x^2+y^2,[x,y],[1,2])` → `5` (polinomio: sustitución); `limit(x*y/(x^2+y^2),[x,y],[1,1])` → `1/2` (racional con `den(1,1)=2≠0` probado EXACTO); denominador no probado ≠0 → residual honesto; (d) el mensaje del residual multivar SE ESPECIALIZA ("el límite multivariable con variable(s) libre(s) {vars} no está soportado..." — cierra el dueño-backlog del doc vectorial línea 44), keyed.
+- **Inserción:** `limit_command_parse.rs:28‑45` (REPL); `parse_limit_command` `wire_types.rs:801‑860` + brazo lista con `split_top_level_commas :655`/`bracketed_inner :675`; driver de sustitución multivar NUEVO en `limits_support` (secuencial `substitute_expr_by_id` con guards: entradas del punto sin variables de expansión Y FINITAS — `infinity` en el punto multivar → residual nombrado "multivar at-infinity fuera de scope"); prover de denominador vía el patrón `finite_denominator_proven_nonzero` (`:5872`) SIN relajar; mensaje en `:10081`+clave locale.
+- **Reuso:** `substitute_expr_by_id`, aritmética `BigRational` exacta, canal `required_conditions` del wire (ya emite `NonZero x²+y²`).
+- **Blast:** **MEDIO** — (a) toca la superficie REPL con tests que ASSERTAN el comportamiento stale; (c) es capacidad nueva con gates exactos (regla del repo: soundness gates EXACTOS, jamás f64).
+- **Depende:** F0 (el canal de dominio ya enhebrado — multivar hereda el kill-switch complex: multivar+complex → residual).
+- **Retención (pins):** `limit(x*y/(x^2+y^2),x,0)` sigue residual (la forma UNIVARIADA con parámetro no cambia de contrato); lane limit contract 189 en verde; pin del mensaje nuevo.
+
+#### F8 — DNE-por-caminos con testigos citados **[M]**
+- **Gradúa:** `limit(x*y/(x^2+y^2),[x,y],[0,0])` → `undefined` + warning citando AMBOS testigos ("por y=0 el límite es 0; por y=x es 1/2 — el límite no existe"); `limit(x^2*y/(x^4+y^2),[x,y],[0,0])` → `undefined` (testigos y=x→0, y=x²→1/2 — el parabólico ES decidible hoy, verificado); `(x²−y²)/(x²+y²)`, `xy²/(x²+y⁴)` (batería incluye x=y²); **`x²y/(x²+y²)` → residual honesto** (todos los caminos de la batería dan 0 — JAMÁS afirmar existencia desde finitos caminos: el pin de soundness central del ciclo); rama extra del mismo molde: **UN camino con DNE PROBADO por oscilación** (`try_dne_by_oscillation` sobre el univariado restringido) ⇒ DNE multivar con ese testigo; **camino con límite RESIDUAL ≠ testigo** (cláusula de soundness pineada); narración keyed `limit.path_counterexample` (clave nueva, molde `limit.residual_one_sided_method` `locale.rs:143`); motivo DNE keyed (no string EN crudo).
+- **Inserción:** driver NUEVO en `limits_support` junto a `try_dne_by_oscillation :10270` y `try_bilateral :10323` (sus moldes exactos: decidir solo desde hechos probados, racionales exactos que difieren); batería concreta `{y=0, x=0, y=x, y=−x, y=x², y=−x², x=y², x=−y²}` sustituida a nivel de árbol + límite univariado por camino + comparación exacta; llamado desde el path multivar de F7 cuando la continuidad no aplica.
+- **Reuso:** motor univariado ENTERO como oráculo por-camino, `substitute_expr_by_id`, molde de warning con testigos.
+- **Blast:** **BAJO-MEDIO** — aditivo tras F7; presupuesto: ≤8 caminos × límite univariado (cada uno acotado por el motor existente); huella limit matrix: outcome nuevo `multivar_dne_by_paths` × 8 ejes × 3 scorecards (coste de migración anticipado — como el ciclo oscilación 2026-07-18).
+- **Depende:** F7 (firma y driver).
+- **Retención (pins):** `multivar-no-existencia-desde-caminos` (el x²y/(x²+y²) residual — pin de soundness); testigos EXACTOS en el warning (fixture de substring); pins F7.
+
+#### F9 — Límites iterados `limit(limit(f,x,a),y,b)` **[M]**
+- **Gradúa:** `limit(limit(x^2+y^2,x,1),y,2)` → `5`; `limit(limit(x*y/(x^2+y^2),x,0),y,0)` → `0` (los iterados EXISTEN aunque el doble no — la narración dice "límite iterado", JAMÁS lo presenta como límite doble); inner residual → outer DECLINA all-or-nothing (jamás operar sobre un residual como si fuera valor); presupuesto de anidamiento (profundidad ≤2).
+- **Inserción:** brazo `"limit" => arity == 3` **SOLO** en `is_known_eval_engine_function` (`eval.rs:68‑128`) — la arity-4 direccional NO se registra en posición de expresión (left/right son tokens del COMANDO; como args de función parsearían Variables — declinar con motivo) — + **regla motor en el mismo commit** (gotcha dos-cables `vector_calculus.rs:9`); la regla evalúa el limit interno vía el motor y solo emite si resuelve COMPLETO.
+- **Reuso:** motor univariado, patrón residual-aware.
+- **Blast:** **MEDIO** — registra un nombre nuevo en el gate (superficie global); el pin crítico es que un `limit(...)` residual RE-alimentado no explote (hoy da error duro — pasa a componer o declinar limpio).
+- **Depende:** F7 (parser REPL sano para probarlo en sesión); F0.
+- **Retención (pins):** `iterado-inner-residual-declina`; narración "iterado≠doble" pineada con su clave keyed `limit.iterated`; `limit(...)` bajo `diff`/`solve` sigue declinando honesto (pins — registrar el nombre lo expone a TODO consumidor de Function); lane limit contract.
+
+### Bloque D — límites complejos (capacidad sobre el gate F0)
+
+#### F10 — Fold del output del límite **[S]**
+- **Gradúa:** el resultado de `limit` pasa por el pipeline de simplificación antes de emitirse: `limit(e^z,z,2)` → `exp(2)` intacto, y cuando F11 abra puntos complejos, `exp(pi·i)` → `−1`, `1+(2·i)^2` → `−3` (el frente complejo de Fase 2 se vuelve visible para límites). En real, los outputs actuales quedan byte-idénticos o mejoran solo en plegado (auditado caso a caso en el limit matrix).
+- **Inserción:** `actions.rs:534` (hoy solo `fold_infinity_saturation`) — añadir la pasada de simplify al output, **SOLO en la rama sin-warning** (eval_limit YA bifurca: con warning llama `cleanup_residual_limit_output_expr` `actions.rs:538`, que se conserva INTACTA — pin de round-trip del residual); NO al input (`PreSimplifyMode::Off` es deliberado — su cambio tendría blast en todo el subsistema univariado).
+- **Reuso:** pipeline de simplify existente.
+- **Blast:** **MEDIO en huella** — puede replegar outputs de los 209 casos del limit matrix: migración de contadores/expected explicada, juzgando por identidad de slots, no por bytes (memoria scorecard-noise).
+- **Depende:** F0 (para que el orden de aterrizaje no re-exponga formas fabricadas).
+- **Retención (pins):** lane limit contract; los DNE/undefined con testigos NO cambian de shape.
+
+#### F11 — Capacidad compleja: sustitución entera + unlock semántico de superficie **[M/L]**
+- **Gradúa:** bajo `--value-domain complex`: el parser acepta punto complejo (`limit(sin(z),z,i)` parsea — unlock enhebrado con `semantics.value_domain`, sustituyendo el gate léxico `wire_types.rs:866/873` por uno semántico); sustitución SOLO para funciones ENTERAS (exp/sin/cos/sinh/cosh, polinomios) y racionales con `den(punto)≠0` probado en MODO COMPLEJO del prover (`finite_expr_proven_positive :5865` parametrizado por dominio — el gate ya existe en `prove_sign.rs:730`); re-otorga `sin(z)/z→1` y `(z²−1)/(z−1)→2` con justificación analítica (cancelación racional field-agnóstica; serie de entera); **el combinador bilateral por laterales REALES queda gateado bajo complex a solo-DNE** (desacuerdo de laterales reales ⇒ DNE en ℂ a fortiori es sound; ACUERDO ⇒ valor NO lo es — `conjugate(z)/z` tiene laterales reales coincidentes en 1 y el límite complejo NO existe); el sufijo one-sided con punto complejo → error limpio ("one-sided no aplica en ℂ"); polos y no-enteras (tanh/atan/abs/cbrt en punto complejo) → residual honesto (decisión D7: sin ∞ compleja); DNE a fortiori (dos rectas reales en desacuerdo) re-otorgado con narración que NO dice "left/right" bajo complex (clasificador propio — `classify_lateral_limit_result` trata `Constant::I` como inclasificable y NO se sobrecarga).
+- **Inserción:** validación del comando limit (`wire_types.rs:604‑613/:866‑873`) recibiendo semantics — **wire nuevo sin precedente** (los 22 gates de Fase 2 viven en reglas, no en superficie de parse — el tramo más incierto del frente, por eso va ÚLTIMO); partición de `is_finite_total_real_unary_builtin` (`:2974`); relajación GATEADA del kill-switch F0 regla a regla (solo las re-otorgadas).
+- **Reuso:** F0 (canal), F10 (fold), prover complejo de Fase 2, fold Gaussiano/Euler de Fase 2 para los outputs.
+- **Blast:** **MEDIO-ALTO** — es la relajación controlada del kill-switch: cada regla re-otorgada necesita su justificación analítica escrita en el commit + probe adversarial (los 7 WRONG de la tabla como fixtures never-fabricate permanentes).
+- **Depende:** F0 + F10.
+- **Retención (pins):** los 7 WRONG de la tabla pineados como never-fabricate (la clase de fixture que cazó 2 P0 en el frente complejo); `tanh(iπ/2)`/`atan(2i)` residual PARA SIEMPRE; `conjugate(z)/z` residual; real byte-idéntico.
+
+### F12 — (opcional, tras el bloque D) Impropia con salto interior **[M, varianza alta]**
+- **Gradúa:** `integrate(x^2/(x^4+1),x,-infinity,infinity)` → `pi/√2` — evaluación impropia consciente de la discontinuidad del `arctan((x²−1)/(x√2))` interior (partir en los saltos + límites laterales, todo exacto). Mate-nueva ACOTADA sobre maquinaria existente (la antiderivada ya sale; los límites laterales ya computan) — **NO son residuos**. Declinar sigue siendo honesto si la detección del salto no es probada.
+- **Inserción:** capa de evaluación definida (donde vive el FTC) — detección de discontinuidades del antiderivado en el intervalo.
+- **Blast:** **MEDIO** — toca el FTC definido: la protección actual (declinar ante antiderivada discontinua) es un guardrail de soundness que se REFINA, no se relaja.
+- **Depende:** nada del resto; se decide con el frente maduro.
+- **Retención (pins):** `∫1/(x²+1)`→π y familia intactos; ningún caso donde el salto no esté probado emite valor.
+
+---
+
+## Orden recomendado y primer ciclo
+
+**Ejecutar F0 primero** — es el P0 (la regla del proceso maestro que este frente no deroga): 7 wrong-answers confirmados por probe, con la variante `tanh(iπ/2)` disparando TAMBIÉN en real default. Es además el análogo estructural del V0 vectorial: value-dependent sin gate, el fix es enhebrar el dominio que ya llega hasta el call site y se descarta (`actions.rs:512`), y su decisión (kill-switch + re-otorgamiento gradual) es herencia obligada de todo el bloque D. Acotado [S/M], real byte-idéntico.
+
+**Después, bloque A (F1→F2)** — el ROI más alto con el riesgo más bajo del frente: Taylor multivariable tiene CERO wrong-answers, todos los ingredientes vivos (extractor molde, ensamblador incremental de hessian, fold-por-iteración, caps precedentes), slot de firma LIBRE verificado y cero cambio de gate. F1 es el análogo A1: pequeño, fija política y cap ANTES de que F2 los codifique, y cierra la singularidad evitable curricular (`sin(x)/x`).
+
+**Bloque B (F3→F6)** puede intercalarse con A (independientes): F3 es sustrato mínimo (dos fixes S), F4-F6 son ensambladores puros sobre composición que ya cierra — el patrón exacto "verbo sobre máquina viva" que el frente vectorial ejecutó 6 veces sin rechazo.
+
+**Bloque C (F7→F9) tras F0**, porque hereda su canal de dominio; **bloque D (F10→F11) al final** — F11 contiene el único wire sin precedente (semantics hasta la validación de parse) y la relajación del kill-switch exige el frente maduro y los never-fabricate en su sitio. F12 opcional al cierre.
+
+**Orden global:** `F0 → F1 → F2 → F3 → F4 → F5 → F6 → F7 → F8 → F9 → F10 → F11 (→ F12)`, con A y B intercambiables entre sí tras F0. Dependencias netas: F2←F1; F5←F4; F7←F0; F8←F7; F9←F7; F10←F0; F11←F0+F10. F1, F3, F4, F6 independientes de F0.
+
+**Narración didáctica PER-CICLO, no batch** (lección de los dos frentes anteriores): cada sub-ciclo incluye su traza `--steps` keyed es/en en el graduates — las reglas no nacen mudas; taylor deja de ser mudo en F2, los motivos DNE nacen keyed en F8.
+
+**Compromiso por bloques:** el greenlight cubre F0+A+B. El bloque C se re-confirma con A/B aterrizados; el bloque D (F11) se re-confirma con C aterrizado y las preguntas abiertas resueltas.
+
+---
+
+## Riesgos (trampas a evitar)
+
+- **La fabricación compleja es ACTIVA, no hipotética** — 7 probes confirmados. Cualquier trabajo de "límites complejos" que reuse la escalera sin F0 las hereda y multiplica. Cerrar el gate en el PARSER sería parche frágil (el gate léxico actual es un colador): el gate vive en el MOTOR.
+- **Regresión deliberada de F0**: los ✅-por-coincidencia bajo complex pasan a residual hasta F11. Documentarlo en el commit y en los contadores del scorecard — no es un bug, es la secuencia soundness-primero. En real, byte-idéntico o el ciclo no gradúa.
+- **DNE jamás desde pendiente simbólica ni existencia desde finitos caminos** (F8): la batería es CONCRETA; `x²y/(x⁴+y²)` da 0 en TODOS los lineales y 1/2 en el parabólico — el pin `multivar-no-existencia-desde-caminos` es el contrato de soundness central del bloque C.
+- **Gates de soundness EXACTOS** (regla del repo): den≠0 por aritmética racional, comparación de testigos por racionales exactos o clases ±∞ — jamás f64, jamás relajar `finite_denominator_proven_nonzero`.
+- **Gotcha dos-cables** en CADA nombre nuevo (`lineintegral`/`surface_integral`/`potential`/`limit`-anidado): gate + regla en el MISMO commit; el fixture never-confirm detecta a medio cablear — pero SOLO si se actualiza con la aridad REAL (el assert arity-2 quedaría verde por accidente con un registro arity-6: decisión D10).
+- **La disciplina fold-por-iteración es load-bearing** (F2): sin `fold_constant_subexprs` por α, el árbol de derivadas explota exponencialmente y colapsa a undefined (los comentarios `:4531‑4534` lo documentan — no es optimización, es correción práctica).
+- **La frontera `taylor_at_zero_with_rational` vs `taylor_at_zero`** se respeta (F1): la extensión de cociente vive SOLO en la ruta del comando, jamás en la del limit evaluator.
+- **SubsRule y el orden**: el driver de caminos (F8) y los ensambladores (F4/F5) sustituyen a NIVEL DE ÁRBOL (`substitute_expr_by_id`), nunca vía SubsRule — su guarda order-safe (`functions.rs:790`) existe a propósito; un desugar "subs bajo limit" ingenuo entra en la trampa que esa guarda evita. Y `PreSimplifyMode::Off` del cuerpo del limit NO se cambia (blast en todo el subsistema univariado) — F10 pliega el OUTPUT.
+- **Huella multi-contador**: cada outcome nuevo del limit matrix = 8 ejes × 3 variantes de scorecard (el ciclo oscilación dejó el precedente); juzgar por contadores e identidad de slots, no por bytes/timing. Taylor ya presiona el guardrail de runtime (familias top-3 a 46ms vs p95=11ms) — presupuestar lane propio si F2 lo necesita.
+- **Semántica iterado ≠ doble** (F9): los iterados pueden existir donde el doble no — la narración jamás los conflaciona; inner residual → outer declina.
+- **El CycleDetector queda con su defecto transversal** (identidad de nodo) tras F3 — el guard no-op mata el caso curricular, pero rewrites content-iguales en nodos distintos por OTRAS reglas pueden seguir disparando falsos ciclos (la esfera es el ejemplo vivo): backlog nombrado, fix de orquestación, no apresurar (memoria: el HANG expand↔factor tiene la misma clase de raíz).
+
+---
+
+## Guardrails inter-fase aplicados al frente
+
+1. **`ValueDomain`-threading** — **APLICA EN MODO FUERTE en límites (F0/F11)**: el motor es value-dependent y hoy no gatea — el hallazgo central del frente. Taylor multivar y los verbos línea/superficie son SINTÁCTICOS: cero gate-ceremonia (el guardrail lo prohíbe explícitamente — código muerto + contrato engañoso). No copiar por inercia ni el gate (a ensambladores) ni su ausencia (al motor de límites).
+2. **diff/integrate per-variable** — **CUMPLIDO y RESPETADO**: el multi-índice ∂^α llama `differentiate_symbolic_expr` por variable con camino canónico determinista; los ensambladores derivan por parámetro; jamás estado global de variable.
+3. **Predicados de condición estructurados** — los punt multivar emiten `required_conditions` con kind (canal vivo, probado `NonZero x²+y²`); los motivos DNE citan testigos estructurados y nacen keyed; si un ciclo futuro necesita condición de camino como predicado, `ConditionPredicate::PrincipalBranch` (`domain.rs:62`) es el precedente de wire (coste medido compiler-driven en su ciclo, no estimado).
+4. **Backstop de soundness domain-aware y EXACTO** — toda decisión valor/DNE/den≠0 sobre `BigRational`/clases exactas; cero f64. CABLEAR per-ciclo: fixtures never-fabricate (los 7 WRONG complejos — la clase de detector que cazó 2 P0 en Fase 2), never-confirm por aridad real, all-or-nothing en ensambladores, pin no-existencia-desde-caminos.
+5. **Resultado-como-contrato** — la salida de cada verbo re-parsea y compone (`lineintegral ≡ composición` como fixture de equivalencia); el residual de limit conserva la call simbólica re-emitible (F9 hace que además COMPONGA anidada en vez de dar error duro); F10 elimina el "branch hop" inverso (outputs sin plegar que eval directo sí pliega).
+
+---
+
+## Preguntas abiertas (decisión del usuario)
+
+1. **Mini-frente de residuos para el kernel trig** (`∫cos(x)/(x²+1) = π/e`): es el ÚNICO caso curricular confirmado por el barrido donde la vía real NO llega y los residuos son el método legítimo (las demás impropias curriculares salen por fracciones parciales, y π/√2 sale por F12 sin residuos). El doc de fases exige "no planificar sin caso curricular" — el caso existe, pero abrirlo es contornos net-new [L]. ¿Se abre como frente propio tras el bloque D, o punt permanente documentado?
+2. **Case-split paramétrico en límites univariados** (`limit(y/(x²+y²),x,0)` → resultado condicional "0 si y≠0; DNE si y=0"): el solver ya tiene paramétricos tri-estado, limits no. Es superficie de producto nueva (límites con respuesta por-casos en el wire). ¿Entra como sub-ciclo del bloque C o queda punt honesto permanente?
+3. **DNE-por-caminos COMPLEJO** (`conjugate(z)/z`, `Re(z)/z` — DNE por `z=t` vs `z=i·t`): reutilizaría el driver F8 bajo complex con dos testigos exactos citados, mismas reglas de soundness. ¿Entra como F-extra del bloque D tras F11, o los clásicos direccionales quedan residual honesto?
+4. **Lado positivo de los límites multivariables** (squeeze 2-var exacto / cota polar probada: `x²y/(x²+y²)→0`): sin él, el bloque C prueba existencia solo por continuidad y no-existencia por caminos — los clásicos "demuestre que el límite ES 0" quedan residual honesto. Es mate-nueva de prover (cota `|f| ≤ g·r^p` exacta). ¿Entra como F-extra de varianza alta o el frente queda continuidad+DNE?
+
+---
+
+## Cómo ejecutar
+
+Cada sub-ciclo es un `/auto-mejora 1` (o encadenar `/auto-mejora N`). Marca aquí `☑` con el hash del commit al graduar (disciplina de hash-stamps: nunca estampar el propio commit vía amend — estampar en el ciclo siguiente o citar "hash en el ledger"; auditar con `--is-ancestor`). Verificación por ciclo: probes de `graduates` + pins de retención nombrados + `cargo test --workspace` completo AL INICIO y al cierre (clean git status ≠ green tests; gatear pipes con `&&`).
+
+**Criterio de "frente Fase 3 cerrado":** (1) los 7 WRONG complejos de la tabla cerrados y pineados never-fabricate; (2) las filas ❌ de capacidad verdes según su bloque (Taylor multivar, verbos línea/superficie, continuidad+DNE multivar, sustitución entera compleja) — salvo las marcadas SCOPE-OUT/pregunta-abierta, que deben SEGUIR declinando honestas (su decline es parte del contrato); (3) fixtures de equivalencia verbo≡composición y never-confirm por-aridad verdes; (4) drift en dominio real SOLO el DECLARADO en los graduates del ciclo, auditado por lane (`calculus_limit_contract` 189 + `engine_integrate_command_matrix_smoke` + limit matrix 209, migraciones de contadores explicadas en las 3 variantes de scorecard) — cualquier cambio real NO listado invalida el ciclo; (5) narración keyed es/en presente en cada capacidad nueva (taylor deja de ser mudo; motivos DNE keyed).
