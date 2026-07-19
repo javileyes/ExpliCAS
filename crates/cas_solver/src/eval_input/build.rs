@@ -1,4 +1,4 @@
-mod special;
+pub(crate) mod special;
 mod statement;
 
 use cas_api_models::{

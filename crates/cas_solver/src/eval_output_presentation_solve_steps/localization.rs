@@ -118,6 +118,9 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — initial-condition narration (D13, O3).
+    SolveDesc { template: "Aplicar la condición inicial {0}({1}) = {2}: sustituir el punto y fijar la constante", es: "Aplicar la condición inicial {0}({1}) = {2}: sustituir el punto y fijar la constante", en: "Apply the initial condition {0}({1}) = {2}: substitute the point and pin the constant" },
+    SolveDesc { template: "Solución particular con la condición aplicada", es: "Solución particular con la condición aplicada", en: "Particular solution with the condition applied" },
     // dsolve (Fase 4) — exact method narration (D13, O2).
     SolveDesc { template: "Identificar forma exacta: M + N·y' = 0 con M = {0}, N = {1}", es: "Identificar forma exacta: M + N·y' = 0 con M = {0}, N = {1}", en: "Identify exact form: M + N·y' = 0 with M = {0}, N = {1}" },
     SolveDesc { template: "Comprobar exactitud: ∂M/∂y = ∂N/∂x (el campo (M, N) es conservativo)", es: "Comprobar exactitud: ∂M/∂y = ∂N/∂x (el campo (M, N) es conservativo)", en: "Check exactness: ∂M/∂y = ∂N/∂x (the field (M, N) is conservative)" },

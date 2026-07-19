@@ -693,6 +693,46 @@ fn parse_dsolve_command(input: &str) -> Option<(String, String, String, Vec<Stri
     Some((equation, func, var, conditions))
 }
 
+/// Textual split of a dsolve initial-condition string: `y(x0) = y0` →
+/// `(x0, y0, 0)`; `y'(x0) = v0` → `(x0, v0, 1)`. The head (`y(0)`, `y'(0)`)
+/// is scanned textually and NEVER reaches the expression parser (D1:
+/// apostrophes and call-heads on the unknown are not parseable). Point and
+/// value come back as separate texts for individual parsing by the caller.
+pub fn split_dsolve_initial_condition(cond: &str, func: &str) -> Option<(String, String, usize)> {
+    let trimmed = cond.trim();
+    let rest = trimmed.strip_prefix(func)?;
+    let (order, rest) = match rest.strip_prefix('\'') {
+        Some(r) => (1usize, r),
+        None => (0usize, rest),
+    };
+    let rest = rest.trim_start();
+    let inner_and_tail = rest.strip_prefix('(')?;
+    // Find the matching close paren of the point group.
+    let mut depth = 1i32;
+    let mut close = None;
+    for (i, ch) in inner_and_tail.char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let close = close?;
+    let point = inner_and_tail[..close].trim();
+    let tail = inner_and_tail[close + 1..].trim_start();
+    let value = tail.strip_prefix('=')?.trim();
+    if point.is_empty() || value.is_empty() {
+        return None;
+    }
+    Some((point.to_string(), value.to_string(), order))
+}
+
 fn dsolve_command_usage_error() -> String {
     "Invalid dsolve command. Expected dsolve(diff(y,x) = f(x,y), y, x[, conditions...]), e.g. dsolve(diff(y,x)=x*y, y, x).".to_string()
 }

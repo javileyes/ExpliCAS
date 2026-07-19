@@ -705,6 +705,11 @@ fn cancel_literal_factor(ctx: &mut Context, e: ExprId, f: ExprId) -> Option<Expr
     })
 }
 
+/// One initial condition `y(point) = value` (order 0) or `y'(point) = value`
+/// (order 1 — declines until O4), already parsed by the solver layer (the
+/// engine never parses text — D1 keeps the heads out of cas_parser entirely).
+type InitialCondition = cas_solver_core::eval_models::DsolveCondition;
+
 /// Honest residual (D8): a re-emittable `dsolve(...)` echo plus the warning
 /// naming why the command declined and which cycle owns the missing method.
 fn residual_action_result(
@@ -763,7 +768,7 @@ impl Engine {
         resolved: ExprId,
         func: &str,
         var: &str,
-        conditions: &[String],
+        conditions: &[InitialCondition],
     ) -> Result<ActionResult, anyhow::Error> {
         let ctx = &mut self.simplifier.context;
         let y_var = ctx.var(func);
@@ -791,14 +796,24 @@ impl Engine {
             residual_action_result(ctx, resolved, y_var, x_var, reason)
         };
 
-        // Initial conditions parse but resolve in a future cycle (O3).
-        if !conditions.is_empty() {
+        // Initial conditions (O3): already parsed by the solver layer.
+        let parsed_conditions: Vec<InitialCondition> = conditions.to_vec();
+        if parsed_conditions.iter().any(|c| c.order > 0) {
             let r = mk_residual(
                 ctx,
-                "Condiciones iniciales aún no soportadas (ciclo O3): se declina en lugar de emitir la solución general sin aplicarlas",
+                "Condiciones sobre la derivada (y'(x0)=v0) llegan con el 2º orden (ciclo O4); se declina honesto",
             );
             return Ok(r);
         }
+        if parsed_conditions.len() > 1 {
+            let r = mk_residual(
+                ctx,
+                "Una EDO de primer orden admite UNA condición inicial; el sistema de constantes de 2º orden llega en O4",
+            );
+            return Ok(r);
+        }
+        let initial_condition = parsed_conditions.into_iter().next();
+
         // Higher-order ODEs are future cycles (O4+).
         if max_diff_arity > 2 {
             let r = mk_residual(
@@ -811,19 +826,38 @@ impl Engine {
         // Method dispatch: separable first (O0 — the S1-S9 pins stay
         // byte-identical), then linear first-order (O1), then exact (O2). A
         // form that fits none declines honestly naming the owner cycles (O8
-        // Bernoulli/homogeneous).
+        // Bernoulli/homogeneous). The general solution is computed first; an
+        // initial condition then pins the constant (O3) over the SAME result.
         let isolated_rhs = match_isolated_first_order(ctx, &ode_eq, diff_sym, func, var);
         let split = isolated_rhs
             .and_then(|rhs| split_separable(ctx, rhs, func, var).map(|split| (rhs, split)));
         let Some((rhs, split)) = split else {
             // O1: linear first-order via integrating factor.
             if let Some(linear) = try_match_linear_first_order(ctx, &ode_eq, diff_sym, func, var) {
-                return self.eval_dsolve_linear(options, resolved, func, var, &ode_eq, linear);
+                let general =
+                    self.eval_dsolve_linear(options, resolved, func, var, &ode_eq, linear)?;
+                return Ok(self.maybe_apply_initial_condition(
+                    options,
+                    general,
+                    initial_condition.as_ref(),
+                    resolved,
+                    func,
+                    var,
+                    &ode_eq,
+                ));
             }
             // O2: exact equation M + N·y' = 0 via the F6 potential machinery.
             if let Some((m, n)) = try_extract_exact_form(ctx, &ode_eq, diff_sym, func, var) {
-                if let Some(result) = self.eval_dsolve_exact(options, resolved, func, var, m, n)? {
-                    return Ok(result);
+                if let Some(general) = self.eval_dsolve_exact(options, resolved, func, var, m, n)? {
+                    return Ok(self.maybe_apply_initial_condition(
+                        options,
+                        general,
+                        initial_condition.as_ref(),
+                        resolved,
+                        func,
+                        var,
+                        &ode_eq,
+                    ));
                 }
             }
             let r = mk_residual(
@@ -1070,7 +1104,7 @@ impl Engine {
                 let eqs: Vec<ExprId> = verified.iter().map(|r| wrap_eq(ctx, y_var, *r)).collect();
                 EvalResult::SolutionSet(SolutionSet::Discrete(eqs))
             };
-            return Ok((
+            let general = (
                 result,
                 warnings,
                 vec![],
@@ -1079,6 +1113,15 @@ impl Engine {
                 vec![],
                 vec![],
                 vec![],
+            );
+            return Ok(self.maybe_apply_initial_condition(
+                options,
+                general,
+                initial_condition.as_ref(),
+                resolved,
+                func,
+                var,
+                &ode_eq,
             ));
         }
 
@@ -1135,7 +1178,7 @@ impl Engine {
             c_var,
         );
         let result = EvalResult::Expr(wrap_eq(ctx, phi, c_var));
-        Ok((
+        let general = (
             result,
             warnings,
             vec![],
@@ -1144,19 +1187,45 @@ impl Engine {
             vec![],
             vec![],
             vec![],
+        );
+        Ok(self.maybe_apply_initial_condition(
+            options,
+            general,
+            initial_condition.as_ref(),
+            resolved,
+            func,
+            var,
+            &ode_eq,
         ))
     }
 
     /// True when the FULL evaluator reduces `e` to exactly `Number(0)`, with
     /// numeric verification disabled (the D5 ritual: a probe never confirms).
+    /// Runs up to TWO passes: the pipeline can stop one step short of the
+    /// fixpoint (`(1/e^0 + 0 - 1) - 0` folds to `1/e^0 - 1` in one pass and
+    /// to `0` only on the next — a named engine-coverage candidate); iterating
+    /// the exact evaluator never changes semantics, only reaches the fixpoint.
     fn reduces_to_zero_exact(&mut self, options: &crate::options::EvalOptions, e: ExprId) -> bool {
         let saved_numeric = self.simplifier.allow_numerical_verification;
         self.simplifier.allow_numerical_verification = false;
-        let reduced = matches!(
-            self.eval_simplify(options, e),
-            Ok((EvalResult::Expr(result), ..))
-                if matches!(self.simplifier.context.get(result), cas_ast::Expr::Number(n) if n.is_zero())
-        );
+        let mut reduced = false;
+        let mut current = e;
+        for _pass in 0..2 {
+            match self.eval_simplify(options, current) {
+                Ok((EvalResult::Expr(result), ..)) => {
+                    if matches!(self.simplifier.context.get(result), cas_ast::Expr::Number(n) if n.is_zero())
+                    {
+                        reduced = true;
+                        break;
+                    }
+                    if result == current {
+                        break; // true fixpoint, nonzero
+                    }
+                    current = result;
+                }
+                _ => break,
+            }
+        }
         self.simplifier.allow_numerical_verification = saved_numeric;
         reduced
     }
@@ -1462,6 +1531,286 @@ impl Engine {
             Some(p) => ctx.add(cas_ast::Expr::Add(phi_x, p)),
             None => phi_x,
         })
+    }
+
+    /// O3: pin the arbitrary constant of a general solution with one initial
+    /// condition `y(x0) = y0`. Explicit forms substitute the point and solve
+    /// for the constant (each root is verified against BOTH the ODE and the
+    /// condition before emission — D5 twice); the implicit form `φ(x,y) = C`
+    /// evaluates `C = φ(x0, y0)` directly. Any failure declines to the honest
+    /// residual — a general solution is NEVER emitted as if the condition had
+    /// been applied.
+    #[allow(clippy::too_many_arguments)]
+    fn maybe_apply_initial_condition(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        general: ActionResult,
+        cond: Option<&InitialCondition>,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+    ) -> ActionResult {
+        let Some(cond) = cond else { return general };
+        let (result, warnings, steps, mut solve_steps, a4, a5, a6, a7) = general;
+        if matches!(result, EvalResult::SolutionSet(SolutionSet::Residual(_))) {
+            // The general solve already declined; keep the honest residual.
+            return (result, warnings, steps, solve_steps, a4, a5, a6, a7);
+        }
+
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+        let mk_residual = |ctx: &mut Context, reason: &str| -> ActionResult {
+            residual_action_result(ctx, resolved, y_var, x_var, reason)
+        };
+
+        enum Shape {
+            Explicit(Vec<ExprId>),
+            Implicit { phi: ExprId },
+        }
+        let shape = match &result {
+            EvalResult::Expr(eq_id) => match cas_ast::eq::unwrap_eq(ctx, *eq_id) {
+                Some((lhs, rhs)) if lhs == y_var => Shape::Explicit(vec![rhs]),
+                Some((lhs, _)) => Shape::Implicit { phi: lhs },
+                None => {
+                    return mk_residual(
+                        ctx,
+                        "La condición inicial no pudo aplicarse sobre la forma emitida; se declina honesto",
+                    )
+                }
+            },
+            EvalResult::SolutionSet(SolutionSet::Discrete(eqs)) => {
+                let mut hs = Vec::new();
+                for e in eqs {
+                    match cas_ast::eq::unwrap_eq(ctx, *e) {
+                        Some((lhs, rhs)) if lhs == y_var => hs.push(rhs),
+                        _ => {
+                            return mk_residual(
+                                ctx,
+                                "La condición inicial no pudo aplicarse sobre la forma emitida; se declina honesto",
+                            )
+                        }
+                    }
+                }
+                Shape::Explicit(hs)
+            }
+            _ => {
+                return mk_residual(
+                    ctx,
+                    "La condición inicial no pudo aplicarse sobre la forma emitida; se declina honesto",
+                )
+            }
+        };
+
+        // Drop the "arbitrary constant" warnings: the constant gets pinned.
+        let warnings: Vec<DomainWarning> = warnings
+            .into_iter()
+            .filter(|w| {
+                !w.message.contains("constante arbitraria")
+                    && !w.message.contains("se absorbe en C")
+            })
+            .collect();
+
+        match shape {
+            Shape::Implicit { phi } => {
+                // C = φ(x0, y0), evaluated exactly.
+                let ctx = &mut self.simplifier.context;
+                let at_x =
+                    substitute_power_aware(ctx, phi, x_var, cond.point, SubstituteOptions::exact());
+                let at_xy = substitute_power_aware(
+                    ctx,
+                    at_x,
+                    y_var,
+                    cond.value,
+                    SubstituteOptions::exact(),
+                );
+                let c_star = self.fold_free_subtree(&verify_options, at_xy);
+                let ctx = &mut self.simplifier.context;
+                let c_vars = collect_variables(ctx, c_star);
+                if c_vars.contains(func) || c_vars.contains(var) {
+                    return mk_residual(
+                        ctx,
+                        "La condición inicial no fijó la constante de la solución implícita; se declina honesto",
+                    );
+                }
+                let point_str = render_expr(ctx, cond.point);
+                let value_str = render_expr(ctx, cond.value);
+                solve_steps.push(crate::api::SolveStep {
+                    description: format!(
+                        "Aplicar la condición inicial {func}({point_str}) = {value_str}: sustituir el punto y fijar la constante"
+                    ),
+                    equation_after: Equation {
+                        lhs: phi,
+                        rhs: c_star,
+                        op: RelOp::Eq,
+                    },
+                    importance: ImportanceLevel::High,
+                    substeps: vec![],
+                });
+                let result = EvalResult::Expr(wrap_eq(ctx, phi, c_star));
+                (result, warnings, steps, solve_steps, a4, a5, a6, a7)
+            }
+            Shape::Explicit(hs) => {
+                // The constant is the ONE variable of the solution that is
+                // neither the unknown, the independent variable, nor a symbol
+                // of the ODE itself.
+                let ctx = &mut self.simplifier.context;
+                let ode_vars = collect_variables(ctx, resolved);
+                let mut const_names: Vec<String> = Vec::new();
+                for h in &hs {
+                    for v in collect_variables(ctx, *h) {
+                        if v != func
+                            && v != var
+                            && !ode_vars.contains(&v)
+                            && !const_names.contains(&v)
+                        {
+                            const_names.push(v);
+                        }
+                    }
+                }
+                if const_names.len() != 1 {
+                    return mk_residual(
+                        ctx,
+                        "La condición inicial no pudo aislar la constante de la solución general; se declina honesto",
+                    );
+                }
+                let c_name = const_names.remove(0);
+                let c_var = ctx.var(&c_name);
+
+                let mut winners: Vec<(ExprId, ExprId)> = Vec::new(); // (y_p, c_star)
+                for h in &hs {
+                    let ctx = &mut self.simplifier.context;
+                    let h_at = substitute_power_aware(
+                        ctx,
+                        *h,
+                        x_var,
+                        cond.point,
+                        SubstituteOptions::exact(),
+                    );
+                    let solve_eq = Equation {
+                        lhs: h_at,
+                        rhs: cond.value,
+                        op: RelOp::Eq,
+                    };
+                    let solver_opts =
+                        cas_solver_core::solver_options::SolverOptions::from_eval_config(
+                            options.shared.semantics,
+                            options.budget,
+                        );
+                    let Ok((SolutionSet::Discrete(c_roots), _, _)) =
+                        crate::api::solve_with_display_steps(
+                            &solve_eq,
+                            &c_name,
+                            &mut self.simplifier,
+                            solver_opts,
+                        )
+                    else {
+                        continue;
+                    };
+                    for c_star in c_roots {
+                        let ctx = &mut self.simplifier.context;
+                        let y_p_raw = substitute_power_aware(
+                            ctx,
+                            *h,
+                            c_var,
+                            c_star,
+                            SubstituteOptions::exact(),
+                        );
+                        // Selective fold (the O1 lesson): folding an Add
+                        // re-joins the split fractions; fold only non-Add
+                        // shapes so `1/e^x + x - 1` keeps its textbook form.
+                        let y_p = if matches!(
+                            self.simplifier.context.get(y_p_raw),
+                            cas_ast::Expr::Add(..)
+                        ) {
+                            y_p_raw
+                        } else {
+                            self.fold_free_subtree(&verify_options, y_p_raw)
+                        };
+                        // Gate 1: the particular solution verifies the ODE.
+                        let ctx = &mut self.simplifier.context;
+                        let ode_residue = ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs));
+                        let substituted = substitute_power_aware(
+                            ctx,
+                            ode_residue,
+                            y_var,
+                            y_p,
+                            SubstituteOptions::exact(),
+                        );
+                        if !self.reduces_to_zero_exact(&verify_options, substituted) {
+                            continue;
+                        }
+                        // Gate 2: the condition holds exactly.
+                        let ctx = &mut self.simplifier.context;
+                        let y_p_at = substitute_power_aware(
+                            ctx,
+                            y_p,
+                            x_var,
+                            cond.point,
+                            SubstituteOptions::exact(),
+                        );
+                        let cond_residue = ctx.add(cas_ast::Expr::Sub(y_p_at, cond.value));
+                        if !self.reduces_to_zero_exact(&verify_options, cond_residue) {
+                            continue;
+                        }
+                        winners.push((y_p, c_star));
+                        break;
+                    }
+                }
+                if winners.is_empty() {
+                    let ctx = &mut self.simplifier.context;
+                    return mk_residual(
+                        ctx,
+                        "La condición inicial es inconsistente con la familia general (o apunta a una solución singular); se declina honesto",
+                    );
+                }
+                let ctx = &mut self.simplifier.context;
+                let point_str = render_expr(ctx, cond.point);
+                let value_str = render_expr(ctx, cond.value);
+                let (first_yp, first_c) = winners[0];
+                solve_steps.push(crate::api::SolveStep {
+                    description: format!(
+                        "Aplicar la condición inicial {func}({point_str}) = {value_str}: sustituir el punto y fijar la constante"
+                    ),
+                    equation_after: Equation {
+                        lhs: c_var,
+                        rhs: first_c,
+                        op: RelOp::Eq,
+                    },
+                    importance: ImportanceLevel::High,
+                    substeps: vec![],
+                });
+                solve_steps.push(crate::api::SolveStep {
+                    description: "Solución particular con la condición aplicada".to_string(),
+                    equation_after: Equation {
+                        lhs: y_var,
+                        rhs: first_yp,
+                        op: RelOp::Eq,
+                    },
+                    importance: ImportanceLevel::High,
+                    substeps: vec![],
+                });
+                let result = if winners.len() == 1 {
+                    EvalResult::Expr(wrap_eq(ctx, y_var, first_yp))
+                } else {
+                    let eqs: Vec<ExprId> = winners
+                        .iter()
+                        .map(|(y_p, _)| wrap_eq(ctx, y_var, *y_p))
+                        .collect();
+                    EvalResult::SolutionSet(SolutionSet::Discrete(eqs))
+                };
+                (result, warnings, steps, solve_steps, a4, a5, a6, a7)
+            }
+        }
     }
 }
 

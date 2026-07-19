@@ -20,13 +20,23 @@ pub enum EvalAction {
         approach: cas_math::limit_types::Approach,
     },
     /// Solve an elementary ODE for `func(var)` (Fase 4). The parsed equation
-    /// travels as the request expression; conditions stay textual (their heads
-    /// like `y(0)` are not parseable expressions).
+    /// travels as the request expression; conditions arrive pre-parsed (their
+    /// textual heads like `y(0)` never reach the expression parser — the
+    /// solver layer splits them and parses point/value separately).
     Dsolve {
         func: String,
         var: String,
-        conditions: Vec<String>,
+        conditions: Vec<DsolveCondition>,
     },
+}
+
+/// One dsolve initial condition `y(point) = value` (order 0) or
+/// `y'(point) = value` (order 1).
+#[derive(Clone, Copy, Debug)]
+pub struct DsolveCondition {
+    pub point: ExprId,
+    pub value: ExprId,
+    pub order: usize,
 }
 
 #[derive(Clone, Debug)]

@@ -3,6 +3,7 @@
 mod build;
 
 pub(crate) use build::build_prepared_eval_request_for_input;
+pub(crate) use build::special::parse_dsolve_conditions;
 
 #[derive(Debug, Clone)]
 pub enum EvalNonSolveAction {
@@ -17,7 +18,7 @@ pub enum EvalNonSolveAction {
     Dsolve {
         func: String,
         var: String,
-        conditions: Vec<String>,
+        conditions: Vec<cas_solver_core::eval_models::DsolveCondition>,
     },
 }
 

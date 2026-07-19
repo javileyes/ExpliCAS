@@ -17,9 +17,9 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_o0_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        # O0+O1+O2 registry: 7 separable + 4 linear + 3 exact supported rows
-        # + 5 honest residual rows.
-        self.assertEqual(len(cases), 19)
+        # O0-O3 registry: 7 separable + 4 linear + 3 exact + 3 IVP supported
+        # rows + 6 honest residual rows.
+        self.assertEqual(len(cases), 23)
         names = {case.name for case in cases}
         self.assertIn("separable_growth_textbook", names)
         self.assertIn("separable_implicit_circle", names)
@@ -35,13 +35,16 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("residual_nonexact_nonlinear", names)
         self.assertIn("residual_riccati_never_fabricate", names)
         self.assertIn("residual_airy_higher_order", names)
-        self.assertIn("residual_ivp_conditions_future_cycle", names)
+        self.assertIn("ivp_separable_pinned_constant", names)
+        self.assertIn("ivp_implicit_circle", names)
+        self.assertIn("residual_ivp_derivative_condition_future_cycle", names)
+        self.assertIn("residual_ivp_inconsistent_condition", names)
         self.assertIn("residual_pendulum_never_fabricate", names)
 
         supported = [case for case in cases if case.outcome == "supported"]
         residual = [case for case in cases if case.outcome == "residual"]
-        self.assertEqual(len(supported), 14)
-        self.assertEqual(len(residual), 5)
+        self.assertEqual(len(supported), 17)
+        self.assertEqual(len(residual), 6)
 
         # Verification-gated emission: every supported row is verified; every
         # residual row is declined (never fabricated).
@@ -70,8 +73,10 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("implicit", {case.presentation_regime for case in cases})
         self.assertIn("sugar_arity2", {case.presentation_regime for case in cases})
         self.assertIn(
-            "conditions_future_cycle", {case.residual_cause for case in cases}
+            "derivative_condition_future_cycle",
+            {case.residual_cause for case in cases},
         )
+        self.assertIn("ivp_resolved", {case.constant_regime for case in cases})
 
     def test_case_filter_selects_named_cases(self) -> None:
         cases = SMOKE.build_cases(("separable_growth_textbook",))

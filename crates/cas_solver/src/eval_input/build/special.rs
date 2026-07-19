@@ -88,6 +88,7 @@ pub(super) fn build_special_command_request(
             let (parsed, _original_equation) =
                 parse_solve_input_for_eval_request(ctx, &equation)
                     .map_err(|e| format!("Parse error in dsolve equation: {e}"))?;
+            let conditions = parse_dsolve_conditions(ctx, &conditions, &func)?;
             Ok(PreparedEvalRequest::Eval {
                 raw_input: raw_input.to_string(),
                 parsed,
@@ -100,4 +101,33 @@ pub(super) fn build_special_command_request(
             })
         }
     }
+}
+
+/// Split each textual dsolve condition (`y(0)=3`, `y'(0)=2`) and parse point
+/// and value separately — the head never reaches the expression parser (D1).
+pub(crate) fn parse_dsolve_conditions(
+    ctx: &mut cas_ast::Context,
+    conditions: &[String],
+    func: &str,
+) -> Result<Vec<cas_solver_core::eval_models::DsolveCondition>, String> {
+    let mut parsed = Vec::with_capacity(conditions.len());
+    for cond_text in conditions {
+        let Some((point_text, value_text, order)) =
+            cas_api_models::split_dsolve_initial_condition(cond_text, func)
+        else {
+            return Err(format!(
+                "Invalid dsolve initial condition `{cond_text}`: expected {func}(x0) = y0, e.g. {func}(0) = 3."
+            ));
+        };
+        let point = cas_parser::parse(&point_text, ctx)
+            .map_err(|e| format!("Parse error in dsolve condition point: {e}"))?;
+        let value = cas_parser::parse(&value_text, ctx)
+            .map_err(|e| format!("Parse error in dsolve condition value: {e}"))?;
+        parsed.push(cas_solver_core::eval_models::DsolveCondition {
+            point,
+            value,
+            order,
+        });
+    }
+    Ok(parsed)
 }

@@ -8863,14 +8863,12 @@ fn dsolve_separable_o0_contract() {
     // --- No-colisión de prefijo solve(/dsolve( en ambas direcciones.
     assert_eq!(first_line("solve(x^2=4, x)"), "{ -2, 2 }");
 
-    // --- Condiciones iniciales: parsean y declinan honesto (ciclo O3).
-    // Eco por stdout; el warning con el motivo viaja por stderr.
-    let ivp = r("dsolve(diff(y,x)=-y, y, x, y(0)=3)");
-    assert!(ivp.starts_with("dsolve("), "IVP declina a residual: {ivp}");
-    let ivp_full = err_of("dsolve(diff(y,x)=-y, y, x, y(0)=3)");
-    assert!(
-        ivp_full.contains("ciclo O3") || ivp_full.contains("Condiciones iniciales"),
-        "{ivp_full}"
+    // --- Condiciones iniciales: GRADUARON en O3 (el pin de decline de O0
+    // migró a resolución con su porqué — V30 pinea en el contrato O3; aquí
+    // queda el pin de la RESOLUCIÓN básica).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=-y, y, x, y(0)=3)"),
+        "y = 3 / e^x"
     );
 
     // --- 2º orden: residual honesto nombrado (ciclo O4).
@@ -9129,4 +9127,110 @@ fn dsolve_exact_o2_contract() {
     );
     assert!(en.contains("Identify exact form"), "{en}");
     assert!(en.contains("Check exactness"), "{en}");
+}
+
+#[test]
+fn dsolve_initial_conditions_o3_contract() {
+    // Fase 4 · O3: la condición inicial fija la constante de la general con
+    // verificación DOBLE (la particular verifica la EDO y la condición) antes
+    // de emitir; toda inconsistencia declina honesto.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // V30/V32/V33 (separable y lineal, explícitas).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=-y, y, x, y(0)=3)"),
+        "y = 3 / e^x"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x, y(0)=2)"),
+        "y = 2·e^(x^2 / 2)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y=x, y, x, y(0)=0)"),
+        "y = 1 / e^x + x - 1"
+    );
+    // Implícita IVP: φ(x0,y0) fija C directamente (el círculo clásico).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=-x/y, y, x, y(0)=2)"),
+        "x^2 + y^2 = 4"
+    );
+    // La particular NO lleva warning de constante arbitraria.
+    let particular = err_of("dsolve(diff(y,x)=-y, y, x, y(0)=3)");
+    assert!(
+        !particular.contains("constante arbitraria"),
+        "la particular no anuncia constante libre: {particular}"
+    );
+
+    // Inconsistente (la condición apunta a la singular y=0 descartada):
+    // residual honesto, jamás fabricación.
+    let bad = r("dsolve(diff(y,x)=y^2, y, x, y(0)=0)");
+    assert!(bad.starts_with("dsolve("), "inconsistente declina: {bad}");
+    assert!(err_of("dsolve(diff(y,x)=y^2, y, x, y(0)=0)").contains("inconsistente"));
+
+    // Condición de derivada y'(x0): declina honesto hasta O4.
+    let deriv = r("dsolve(diff(y,x)=-y, y, x, y'(0)=3)");
+    assert!(deriv.starts_with("dsolve("), "y'(0) declina: {deriv}");
+    assert!(err_of("dsolve(diff(y,x)=-y, y, x, y'(0)=3)").contains("O4"));
+
+    // Dos condiciones en 1er orden: sobredeterminado → declina honesto.
+    let two = r("dsolve(diff(y,x)=-y, y, x, y(0)=3, y(1)=1)");
+    assert!(
+        two.starts_with("dsolve("),
+        "dos condiciones declinan: {two}"
+    );
+
+    // Condición malformada → usage-error explícito.
+    assert!(err_of("dsolve(diff(y,x)=-y, y, x, y(0)3)").contains("Invalid dsolve"));
+
+    // Pins de no-regresión: la general SIN condición byte-idéntica.
+    assert_eq!(first_line("dsolve(diff(y,x)=-y, y, x)"), "y = C / e^x");
+    // Pin D16: solve_system acepta ahora c1/C1 (constantes de O4) y los
+    // nombres inválidos siguen inválidos.
+    assert_eq!(
+        first_line("solve_system(c1+c2=3; c1-c2=1; c1; c2)"),
+        "{ c1 = 2, c2 = 1 }"
+    );
+    assert!(err_of("solve_system(a+b=2; a-b=0; 1a; b)").contains("Invalid variable name"));
+    // Pin del molde solve_system intacto.
+    assert_eq!(
+        first_line("solve_system(a+b=3; 2*a-2*b=4; a; b)"),
+        "{ a = 5/2, b = 1/2 }"
+    );
+
+    // Narración O3 keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(diff(y,x)=-y, y, x, y(0)=3)", None);
+    assert!(es.contains("Aplicar la condición inicial"), "{es}");
+    assert!(es.contains("Solución particular"), "{es}");
+    let en = steps_of("dsolve(diff(y,x)=-y, y, x, y(0)=3)", Some("en"));
+    assert!(en.contains("Apply the initial condition"), "{en}");
+    assert!(en.contains("Particular solution"), "{en}");
 }

@@ -25,6 +25,12 @@ pub(super) fn build_eval_request(
                 &equation,
             )
             .map_err(|e| EvalCommandError::Eval(format!("Parse error in dsolve equation: {e}")))?;
+        let conditions = crate::eval_input::parse_dsolve_conditions(
+            &mut engine.simplifier.context,
+            &conditions,
+            &func,
+        )
+        .map_err(EvalCommandError::Eval)?;
         return Ok((
             style_signals,
             crate::EvalRequest {

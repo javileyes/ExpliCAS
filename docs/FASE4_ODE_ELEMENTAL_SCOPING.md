@@ -215,7 +215,7 @@ Orden por dependencia + ROI. El costo fijo grande va primero (O0); después cada
 - **Depende:** O0. Independiente de O1 (intercalable).
 - **Retención (pins):** `potential([2*x*y,x^2],[x,y])`→`y·x²` intacto (metamórfico F6); `potential([cos(x),-sin(y)],[x,y])` sigue residual (el upgrade de PotentialRule NO entra aquí — chip aparte); E-neg decline.
 
-#### O3 — Condiciones iniciales (IVP) **[S/M]**
+#### O3 — Condiciones iniciales (IVP) **[S/M]** ☑ *(graduado 2026-07-20, hash en el ledger: V30/V32/V33 + implícita-IVP `x²+y²=4`; las condiciones viajan PARSEADAS en la acción (`DsolveCondition` — cas_engine no toca cas_parser; `split_dsolve_initial_condition` textual en el wire, D1); verificación DOBLE (EDO + condición) por raíz de C; inconsistente/derivada/sobredeterminado declinan honesto; fix D16 `vars.rs` con pins (`c1` válido, `1a` inválido); el gate a dos pasadas cazó el gap de fixpoint ±0 del pipeline — chip nombrado; V31 pendiente para O4 como manda el scoping)*
 - **Gradúa:** V30/V32/V33 (1er orden); scanner textual de condiciones `y(x0)=y0` / `y'(x0)=v0` en el wire (D1 — heads jamás llegan a cas_parser); resolución de C: `subs` del punto + `solve` univariado (verde incl. paramétrico: `solve(C*e^(-a)=b,C)`→`{b·e^a}`); fix D16 de `vars.rs:18-20` + tests (deja listo el 2×2 de constantes para O4); condición inconsistente o solve declina → residual honesto con warning; `constant_regime=IVP` en la matrix; verificación FINAL doble: la solución particular verifica la EDO Y las condiciones (subs exacto).
 - **Inserción:** scanner en `parse_dsolve_command`; resolutor de constantes en `eval_dsolve` (subs a nivel de árbol + solve); `vars.rs:18-20` una línea.
 - **Reuso:** `substitute_expr_by_id`, solve univariado, `solve_system` (post-fix).
