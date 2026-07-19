@@ -67,6 +67,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return div_lap_substeps;
     }
 
+    let taylor_multivar_substeps = generate_taylor_multivar_substeps(ctx, step);
+    if !taylor_multivar_substeps.is_empty() {
+        return taylor_multivar_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -11995,6 +12000,57 @@ fn generate_divergence_laplacian_substeps(ctx: &Context, step: &Step) -> Vec<Sub
 
 /// Per-component narration of `gradient(f, [vars]) → [∂f/∂v₁, …]` (Fase 2 V3):
 /// one keyed sub-step per variable, pairing the field with its partial derivative.
+/// A plain nonnegative integer literal, for narration arguments.
+fn integer_literal(ctx: &Context, expr: ExprId) -> Option<i64> {
+    use num_traits::{Signed, ToPrimitive};
+    match ctx.get(expr) {
+        Expr::Number(n) if n.is_integer() && !n.is_negative() => n.to_integer().to_i64(),
+        _ => None,
+    }
+}
+
+/// Formula-level narration for the MULTIVARIATE Taylor verb (F2, Fase 3 —
+/// same precedent as the divergence/laplacian formula substeps: per-term
+/// narration would need the assembler's internals threaded through the wire,
+/// which `Rewrite::substep()` metadata does not reach).
+fn generate_taylor_multivar_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Taylor Series" | "Desarrollar en serie de Taylor"
+    ) {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    let fn_name = ctx.sym_name(*fn_id);
+    if (fn_name != "taylor" && fn_name != "series") || !(2..=4).contains(&args.len()) {
+        return Vec::new();
+    }
+    let target = args[0];
+    // Multivariate form only: the 2nd argument is the variable LIST.
+    let Expr::Matrix { data: vars, .. } = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_count = vars.len();
+    let order = match args.len() {
+        4 => integer_literal(ctx, args[3]),
+        3 => integer_literal(ctx, args[2]),
+        _ => Some(2),
+    };
+    let Some(order) = order else {
+        return Vec::new();
+    };
+    vec![SubStep::keyed(
+        "taylor.formula",
+        vec![order.to_string(), var_count.to_string()],
+        display_expr(ctx, target),
+        display_expr(ctx, after),
+    )]
+}
+
 fn generate_vector_gradient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     if !matches!(
         step.rule_name.as_str(),

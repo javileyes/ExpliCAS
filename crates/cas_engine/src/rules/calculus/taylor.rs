@@ -11,6 +11,12 @@ use crate::rule::Rewrite;
 /// the truncation order. Matches the common textbook default (a Maclaurin expansion up to `x^6`).
 const DEFAULT_TAYLOR_ORDER: usize = 6;
 
+/// Default TOTAL degree for the multivariate list form `taylor(f, [x,y])`: the
+/// quadratic approximation — the multivariate textbook default (and it keeps
+/// the default term count small: C(2+d,d)). An explicit order can go higher,
+/// under the caps.
+const DEFAULT_MULTIVAR_TAYLOR_ORDER: usize = 2;
+
 /// Explicit ceiling for the requested order (F1, Fase 3): beyond it the command declines to an
 /// honest residual instead of building an ever-deeper series tree. 32 sits far above any
 /// curricular use; note that from roughly order 20 the simplifier's depth budget already leaves
@@ -63,7 +69,120 @@ fn try_extract_taylor_call(
     Some((target, var_name, point, order))
 }
 
+/// Parse the MULTIVARIATE forms (F2, Fase 3): `taylor(f, [x,y])` (Maclaurin,
+/// default order), `taylor(f, [x,y], n)` and `taylor(f, [x,y], [a,b], n)` (and
+/// the `series` alias). The variable list must be an n×1|1×n matrix of pure
+/// Variables (anything else declines — the malformed-list pin); an explicit
+/// point list must match the variable count and its entries may not mention the
+/// expansion variables. Returns `(target, var_names, points, order)`.
+fn try_extract_taylor_multivar_call(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<String>, Vec<ExprId>, usize)> {
+    if !ctx.is_call_named(expr, "taylor") && !ctx.is_call_named(expr, "series") {
+        return None;
+    }
+    let Expr::Function(_, args) = ctx.get(expr) else {
+        return None;
+    };
+    let args = args.clone();
+    let (target, vars_expr, points_expr, order_expr) = match args.len() {
+        2 => (args[0], args[1], None, None),
+        3 => (args[0], args[1], None, Some(args[2])),
+        4 => (args[0], args[1], Some(args[2]), Some(args[3])),
+        _ => return None,
+    };
+    let var_names = extract_pure_variable_list(ctx, vars_expr)?;
+    let points = match points_expr {
+        Some(points_expr) => {
+            let Expr::Matrix { rows, cols, data } = ctx.get(points_expr) else {
+                return None;
+            };
+            if (*rows != 1 && *cols != 1) || data.len() != var_names.len() {
+                return None;
+            }
+            let points = data.clone();
+            // A point entry mentioning an expansion variable is not a point.
+            for &p in &points {
+                if expr_mentions_any_var(ctx, p, &var_names) {
+                    return None;
+                }
+            }
+            points
+        }
+        None => {
+            let zero = ctx.num(0);
+            vec![zero; var_names.len()]
+        }
+    };
+    let order = match order_expr {
+        Some(order_expr) => {
+            let order = cas_math::numeric::as_i64(ctx, order_expr)?;
+            if order < 0 || order as usize > MAX_TAYLOR_ORDER {
+                return None;
+            }
+            order as usize
+        }
+        None => DEFAULT_MULTIVAR_TAYLOR_ORDER,
+    };
+    Some((target, var_names, points, order))
+}
+
+/// An n×1 | 1×n matrix whose entries are ALL pure `Variable`s, as names.
+fn extract_pure_variable_list(ctx: &Context, expr: ExprId) -> Option<Vec<String>> {
+    let Expr::Matrix { rows, cols, data } = ctx.get(expr) else {
+        return None;
+    };
+    if (*rows != 1 && *cols != 1) || data.is_empty() {
+        return None;
+    }
+    let mut names = Vec::with_capacity(data.len());
+    for &v in data {
+        let Expr::Variable(sym) = ctx.get(v) else {
+            return None;
+        };
+        names.push(ctx.sym_name(*sym).to_string());
+    }
+    Some(names)
+}
+
+/// True when `expr` mentions any of the named variables.
+fn expr_mentions_any_var(ctx: &Context, expr: ExprId, names: &[String]) -> bool {
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Variable(sym) => {
+                let name = ctx.sym_name(*sym);
+                if names.iter().any(|n| n == name) {
+                    return true;
+                }
+            }
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
 define_rule!(TaylorRule, "Taylor Series", |ctx, expr| {
+    // Multivariate list form first (F2): its 2nd argument is a Matrix, which
+    // the univariate extractor rejects, so the two forms cannot overlap.
+    if let Some((target, var_names, points, order)) = try_extract_taylor_multivar_call(ctx, expr) {
+        let series = cas_math::limits_support::taylor_multivar_series_expr(
+            ctx, target, &var_names, &points, order,
+        )?;
+        return Some(Rewrite::new(series).desc("serie de Taylor multivariable (grado total)"));
+    }
     let (target, var_name, point, order) = try_extract_taylor_call(ctx, expr)?;
     // The Maclaurin point uses the analytic engine (nicer closed forms) when it can. When that
     // declines (e.g. a fractional binomial (1+x)^α), AND for any non-zero point, expand from the
@@ -117,6 +236,37 @@ mod tests {
         ); // at the ceiling
         assert_eq!(extract("diff(exp(x), x)"), None); // not a taylor/series call
         assert_eq!(extract("taylor(exp(x))"), None); // too few args (no variable)
+    }
+
+    #[test]
+    fn multivar_extractor_validates_list_point_and_order() {
+        let mut ctx = Context::new();
+        let extract_mv = |ctx: &mut Context, src: &str| {
+            let expr = parse(src, ctx).expect(src);
+            try_extract_taylor_multivar_call(ctx, expr).map(|(_, v, p, o)| (v, p.len(), o))
+        };
+        assert_eq!(
+            extract_mv(&mut ctx, "taylor(e^(x+y), [x,y], [0,0], 3)"),
+            Some((vec!["x".to_string(), "y".to_string()], 2, 3))
+        );
+        // 2-args: orden default multivar (la aproximación cuadrática).
+        assert_eq!(
+            extract_mv(&mut ctx, "taylor(e^(x+y), [x,y])"),
+            Some((
+                vec!["x".to_string(), "y".to_string()],
+                2,
+                DEFAULT_MULTIVAR_TAYLOR_ORDER
+            ))
+        );
+        // Lista malformada (no-Variables) → decline (pin del scoping).
+        assert_eq!(extract_mv(&mut ctx, "taylor(x*y, [x, 2*y], 2)"), None);
+        // Punto que menciona una variable de expansión → decline.
+        assert_eq!(
+            extract_mv(&mut ctx, "taylor(e^(x+y), [x,y], [x,0], 2)"),
+            None
+        );
+        // Longitud de punto distinta → decline.
+        assert_eq!(extract_mv(&mut ctx, "taylor(e^(x+y), [x,y], [0], 2)"), None);
     }
 
     #[test]

@@ -4542,6 +4542,7 @@ pub fn taylor_series_at_point_expr(
         // leaks as an unfolded raw tree.
         let value = cas_ast::substitute_expr_by_id(ctx, derivative, var_id, point);
         let value = fold_constant_subexprs(ctx, value);
+        let value = tidy_taylor_units(ctx, value);
         // F1 (Fase 3): a coefficient that is not a real finite value means the
         // function is NOT smooth at the point — the definition does not apply.
         // Decline to the honest residual instead of emitting a series that the
@@ -4573,10 +4574,236 @@ pub fn taylor_series_at_point_expr(
             // tree grows exponentially in k otherwise, and its unfolded `u^(2-1)·0`-style
             // subtrees are also what collapsed arc-function expansions to `undefined`.
             derivative = fold_constant_subexprs(ctx, derivative);
+            derivative = tidy_taylor_units(ctx, derivative);
             factorial *= BigInt::from(k + 1);
         }
     }
     sum
+}
+
+/// Bottom-up tidy pass for Taylor derivative/coefficient trees, applied AFTER
+/// [`fold_constant_subexprs`] on the Taylor routes only (the L'Hôpital route
+/// keeps the plain fold — its 209-case lane pins exact shapes): the generic
+/// `a^u` derivative rule litters `ln(e)` factors that the plain fold cannot
+/// fold (`ln(e)` is not a rational literal), and at high orders the chains
+/// (`ln(e)·ln(e)·…`) push the emitted series past the simplifier's depth
+/// budget, leaking unsimplified output. Rewrites `ln(e) → 1`, drops unit
+/// factors, and unwraps `base^1`.
+fn tidy_taylor_units(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let one_test = |ctx: &Context, e: ExprId| {
+        crate::numeric_eval::as_rational_const(ctx, e).is_some_and(|v| v.is_one())
+    };
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(fn_id, cas_ast::BuiltinFn::Ln)
+                && args.len() == 1
+                && matches!(ctx.get(args[0]), Expr::Constant(Constant::E)) =>
+        {
+            ctx.num(1)
+        }
+        Expr::Function(fn_id, args) => {
+            let args2: Vec<ExprId> = args.iter().map(|a| tidy_taylor_units(ctx, *a)).collect();
+            ctx.add(Expr::Function(fn_id, args2))
+        }
+        Expr::Mul(l, r) => {
+            let l2 = tidy_taylor_units(ctx, l);
+            let r2 = tidy_taylor_units(ctx, r);
+            if one_test(ctx, l2) {
+                return r2;
+            }
+            if one_test(ctx, r2) {
+                return l2;
+            }
+            ctx.add(Expr::Mul(l2, r2))
+        }
+        Expr::Pow(base, exp) => {
+            use num_traits::Zero;
+            let base2 = tidy_taylor_units(ctx, base);
+            let exp2 = tidy_taylor_units(ctx, exp);
+            if one_test(ctx, exp2) {
+                return base2;
+            }
+            // `e^0 → 1` (a substituted `e^(x+y)` at the origin): safe for a
+            // base that is provably nonzero — E and nonzero rationals cover
+            // every shape the Taylor substitution produces.
+            let exp_is_zero =
+                crate::numeric_eval::as_rational_const(ctx, exp2).is_some_and(|v| v.is_zero());
+            if exp_is_zero {
+                let base_nonzero = matches!(ctx.get(base2), Expr::Constant(Constant::E))
+                    || crate::numeric_eval::as_rational_const(ctx, base2)
+                        .is_some_and(|v| !v.is_zero());
+                if base_nonzero {
+                    return ctx.num(1);
+                }
+            }
+            ctx.add(Expr::Pow(base2, exp2))
+        }
+        Expr::Add(l, r) => {
+            let l2 = tidy_taylor_units(ctx, l);
+            let r2 = tidy_taylor_units(ctx, r);
+            ctx.add(Expr::Add(l2, r2))
+        }
+        Expr::Sub(l, r) => {
+            let l2 = tidy_taylor_units(ctx, l);
+            let r2 = tidy_taylor_units(ctx, r);
+            ctx.add(Expr::Sub(l2, r2))
+        }
+        Expr::Div(l, r) => {
+            let l2 = tidy_taylor_units(ctx, l);
+            let r2 = tidy_taylor_units(ctx, r);
+            if one_test(ctx, r2) {
+                return l2;
+            }
+            ctx.add(Expr::Div(l2, r2))
+        }
+        Expr::Neg(inner) => {
+            let i2 = tidy_taylor_units(ctx, inner);
+            ctx.add(Expr::Neg(i2))
+        }
+        _ => expr,
+    }
+}
+
+/// Variable-count cap for the multivariate Taylor verb (precedent: the
+/// engine's `VERB_MAX_VARS` for the vectorial verbs).
+const TAYLOR_MULTIVAR_MAX_VARS: usize = 8;
+/// Cap on the number of multi-indices `C(order+d, d)` the multivariate
+/// expansion may enumerate (F2, Fase 3): beyond it the command declines to an
+/// honest residual instead of assembling a combinatorial tree.
+const TAYLOR_MULTIVAR_MAX_TERMS: u128 = 64;
+
+/// Number of multi-indices of dimension `d` with total degree ≤ `order`:
+/// `C(order+d, d)`. `None` on overflow (which certainly exceeds the cap).
+fn multivar_term_count(order: usize, d: usize) -> Option<u128> {
+    let mut acc: u128 = 1;
+    for i in 1..=d {
+        acc = acc.checked_mul((order + i) as u128)? / (i as u128);
+    }
+    Some(acc)
+}
+
+/// All multi-indices of dimension `d` with total degree EXACTLY `k`, in a
+/// deterministic (lexicographic) order.
+fn multi_indices_of_degree(d: usize, k: u32) -> Vec<Vec<u32>> {
+    if d == 1 {
+        return vec![vec![k]];
+    }
+    let mut out = Vec::new();
+    for first in (0..=k).rev() {
+        for mut rest in multi_indices_of_degree(d - 1, k - first) {
+            let mut alpha = Vec::with_capacity(d);
+            alpha.push(first);
+            alpha.append(&mut rest);
+            out.push(alpha);
+        }
+    }
+    out
+}
+
+/// Multivariate Taylor expansion by TOTAL degree (F2, Fase 3):
+/// `Σ_{|α| ≤ order} ∂^α f(a) / α! · Π (xᵢ − aᵢ)^αᵢ`, built incrementally —
+/// each ∂^α derives from its parent `α − e_i` (first nonzero slot), folding the
+/// chain-rule constant litter per step (the same discipline the univariate
+/// definitional route needs to stay bounded). All-or-nothing: any failing
+/// derivative or singular coefficient (see [`taylor_coefficient_is_singular`])
+/// declines the whole expansion. Terms with a folded rational-zero coefficient
+/// are skipped for display quality; symbolic coefficients are kept.
+pub fn taylor_multivar_series_expr(
+    ctx: &mut Context,
+    target: ExprId,
+    var_names: &[String],
+    points: &[ExprId],
+    order: usize,
+) -> Option<ExprId> {
+    use num_bigint::BigInt;
+    use num_traits::{One, Zero};
+    use std::collections::HashMap;
+
+    let d = var_names.len();
+    if d == 0 || d > TAYLOR_MULTIVAR_MAX_VARS || points.len() != d {
+        return None;
+    }
+    if multivar_term_count(order, d)? > TAYLOR_MULTIVAR_MAX_TERMS {
+        return None;
+    }
+    let var_ids: Vec<ExprId> = var_names.iter().map(|v| ctx.var(v)).collect();
+
+    // Level-by-level derivative table: level k maps α (|α| = k) to ∂^α f.
+    let mut level: HashMap<Vec<u32>, ExprId> = HashMap::new();
+    level.insert(vec![0u32; d], target);
+    let mut sum: Option<ExprId> = None;
+    for k in 0..=(order as u32) {
+        for alpha in multi_indices_of_degree(d, k) {
+            let derivative = *level.get(&alpha)?;
+            // Coefficient: substitute the expansion point into ∂^α f, fold, and
+            // divide by α!.
+            let mut value = derivative;
+            for (var_id, point) in var_ids.iter().zip(points) {
+                value = cas_ast::substitute_expr_by_id(ctx, value, *var_id, *point);
+            }
+            let value = fold_constant_subexprs(ctx, value);
+            let value = tidy_taylor_units(ctx, value);
+            if taylor_coefficient_is_singular(ctx, value) {
+                return None;
+            }
+            let is_zero_coeff =
+                crate::numeric_eval::as_rational_const(ctx, value).is_some_and(|v| v.is_zero());
+            if !is_zero_coeff {
+                let mut factorial = BigInt::one();
+                for &a in &alpha {
+                    for i in 2..=a {
+                        factorial *= BigInt::from(i);
+                    }
+                }
+                let factorial_expr = ctx.add(Expr::Number(BigRational::from_integer(factorial)));
+                let mut term = ctx.add(Expr::Div(value, factorial_expr));
+                // · Π (xᵢ − aᵢ)^αᵢ
+                for ((var_id, point), &a) in var_ids.iter().zip(points).zip(&alpha) {
+                    if a == 0 {
+                        continue;
+                    }
+                    let base = if crate::numeric_eval::as_rational_const(ctx, *point)
+                        .is_some_and(|p| p.is_zero())
+                    {
+                        *var_id
+                    } else {
+                        ctx.add(Expr::Sub(*var_id, *point))
+                    };
+                    let factor = if a == 1 {
+                        base
+                    } else {
+                        let exponent = ctx.num(a as i64);
+                        ctx.add(Expr::Pow(base, exponent))
+                    };
+                    term = ctx.add(Expr::Mul(term, factor));
+                }
+                sum = Some(match sum {
+                    None => term,
+                    Some(acc) => ctx.add(Expr::Add(acc, term)),
+                });
+            }
+            // Seed the next level from this node: ∂^(α + e_i) for every i.
+            if k < order as u32 {
+                for i in 0..d {
+                    let mut child = alpha.clone();
+                    child[i] += 1;
+                    if level.contains_key(&child) {
+                        continue;
+                    }
+                    let dchild =
+                        crate::symbolic_differentiation_support::differentiate_symbolic_expr(
+                            ctx,
+                            derivative,
+                            &var_names[i],
+                        )?;
+                    let dchild = fold_constant_subexprs(ctx, dchild);
+                    let dchild = tidy_taylor_units(ctx, dchild);
+                    level.insert(child, dchild);
+                }
+            }
+        }
+    }
+    Some(sum.unwrap_or_else(|| ctx.num(0)))
 }
 
 /// True when a FOLDED Taylor coefficient (a constant tree — the expansion
@@ -18170,6 +18397,34 @@ mod tests {
         // Pin: coeficientes SIMBÓLICOS (paramétricos) siguen pasando.
         let expr = cas_parser::parse("e^(x+y)", &mut ctx).expect("param");
         assert!(taylor_series_at_point_expr(&mut ctx, expr, "x", zero, 2).is_some());
+    }
+
+    #[test]
+    fn taylor_multivar_total_degree_expansion() {
+        // F2 (Fase 3): grado TOTAL — e^(x+y) a orden 2 NO lleva x²y².
+        let mut ctx = Context::new();
+        let render = |ctx: &mut Context, src: &str, order: usize| -> Option<String> {
+            let expr = cas_parser::parse(src, ctx).expect(src);
+            let zero = ctx.num(0);
+            let points = vec![zero; 2];
+            taylor_multivar_series_expr(ctx, expr, &["x".into(), "y".into()], &points, order)
+                .map(|id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }))
+        };
+        // x²+y² es su propio desarrollo de orden 2.
+        let s = render(&mut ctx, "x^2+y^2", 2).expect("expands");
+        assert!(s.contains("x^2") && s.contains("y^2"), "{s}");
+        assert!(
+            !s.contains("x^2·y^2") && !s.contains("y^2·x^2"),
+            "sin término de grado 4: {s}"
+        );
+        // sin(x·y) a orden 2 expande (la forma FINAL `x·y` la pinea el e2e:
+        // el ensamblador crudo lleva litter `cos(0)` que pliega el simplify).
+        let s = render(&mut ctx, "sin(x*y)", 2).expect("expands");
+        assert!(s.contains("x") && s.contains("y"), "{s}");
+        // Punto singular → decline all-or-nothing.
+        assert_eq!(render(&mut ctx, "ln(x*y)", 2), None);
+        // Cap de términos: C(33+2,2) > 64 → decline (orden alto en 2 vars).
+        assert_eq!(render(&mut ctx, "e^(x+y)", 20), None);
     }
 
     #[test]

@@ -2725,6 +2725,49 @@ fn test_eval_taylor_substrate_f1() {
 }
 
 #[test]
+fn test_eval_taylor_multivar_f2() {
+    // Fase 3 · F2: multi-índice por grado TOTAL (e^(x+y) a orden 2 SIN x²y²),
+    // punto singular/lista malformada/cap → residual honesto; univar intacto.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(eval_result("taylor(x^2+y^2, [x,y], [0,0], 2)"), "x^2 + y^2");
+    assert_eq!(
+        eval_result("taylor(e^(x+y), [x,y], [0,0], 2)"),
+        "1/2·(x^2 + y^2 + 2·x·y + 2·x + 2·y + 2)"
+    );
+    assert_eq!(eval_result("taylor(sin(x*y), [x,y], 2)"), "x·y");
+    // 2-args: el default multivar es la aproximación cuadrática.
+    assert_eq!(
+        eval_result("taylor(e^(x+y), [x,y])"),
+        "1/2·(x^2 + y^2 + 2·x·y + 2·x + 2·y + 2)"
+    );
+    // Declines honestos: singular, lista malformada, cap de términos.
+    for probe in [
+        "taylor(ln(x*y), [x,y], [0,0], 2)",
+        "taylor(x*y, [x, 2*y], 2)",
+        "taylor(e^(x+y), [x,y], [x,0], 2)",
+        "taylor(e^(x+y), [x,y], 20)",
+    ] {
+        let r = eval_result(probe);
+        assert!(
+            r.starts_with("taylor("),
+            "{probe} debe declinar a eco residual, got: {r}"
+        );
+    }
+    // Pin: el univar no se mueve.
+    assert_eq!(
+        eval_result("taylor(exp(x), x, 0, 6)"),
+        "1/720·(x^6 + 6·x^5 + 30·x^4 + 120·x^3 + 360·x^2 + 720·x + 720)"
+    );
+}
+
+#[test]
 fn test_eval_solve_calculus_binder_solution_survives() {
     // Chip del barrido F0 (2026-07-19): `solve(limit(1/x,x,infinity)=y, y)`
     // afirmaba "No solution" — los walkers non-finite recursaban en los ARGS de

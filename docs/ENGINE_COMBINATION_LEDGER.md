@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 639 (newest first)
+Active entries: 640 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; br... | SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
 - 2026-07-19 | `retained` | `cas_solver_core/solve_outcome.rs` (`CALCULUS_BINDER_FN_NAMES` pub const + ex... | SOUNDNESS (chip del barrido F0): solve afirmaba "No solution" ante infinity en ARGS de binders de cálculo — la cota es notación, no valor
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (Div-arm de `taylor_at_zero_with_rational`: canc... | CAPACIDAD+SOUNDNESS (Fase 3 · F1, ciclo 1/4): sustrato Taylor — singularidad evitable computa, punto singular deja de responder `undefined`, cap de orden explícito
+- 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`taylor_multivar_series_expr`: tabla de derivad... | CAPACIDAD (Fase 3 · F2, ciclo 2/4): taylor(f,[vars],[punto],n) multivariable — multi-índice por grado TOTAL, incremental desde el padre, narración keyed
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20714,3 +20715,19 @@ Active entries: 639 (newest first)
 - retained learning:
   - **En series truncadas, toda cancelación de valuación exige re-expandir a `order+s` primero**: el shift convierte la cola truncada en términos bajos — un off-by-truncation silencioso que da coeficientes bien-formados pero INCOMPLETOS (wrong-answer de la peor clase: plausible).
   - PRÓXIMO PELDAÑO: F2 (taylor multivariable multi-índice grado-total, cap C(n+d,d)≤64, narración keyed `taylor.term` — donde nace también `taylor.singular_residual`).
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F2, ciclo 2/4): taylor(f,[vars],[punto],n) multivariable — multi-índice por grado TOTAL, incremental desde el padre, narración keyed
+
+- area: `cas_math/limits_support.rs` (`taylor_multivar_series_expr`: tabla de derivadas por niveles con ∂^α desde el padre α−e_i + fold por paso; caps `TAYLOR_MULTIVAR_MAX_VARS=8` y `C(order+d,d)≤64`; `tidy_taylor_units` post-fold SOLO-Taylor: ln(e)→1, drop de unidades, base^1, E^0→1, ÷1 — la ruta L'Hôpital conserva el fold plano, sus 209 pins no se mueven) + `cas_engine/rules/calculus/taylor.rs` (extractor multivar arity 2/3/4, lista de Variables puras, punto sin variables de expansión, `DEFAULT_MULTIVAR_TAYLOR_ORDER=2`) + didáctica (`taylor.formula` keyed es/en, generador formula-level, dispatch) + tests 3 capas
+- status: `retained`. Bloque A del scoping COMPLETO (F1+F2).
+- capture:
+  - investment_class: capacidad curricular nueva (Taylor multivariable era el ítem de "madurez máxima, cero wrong-answers" del scoping).
+  - cell: `taylor(e^(x+y),[x,y],[0,0],2)` → `1 + x + y + x²/2 + xy + y²/2` — grado TOTAL, SIN `x²y²` (la diferencia con el anidado por-variable, documentada); `taylor(sin(x*y),[x,y],2)` → `x·y`; `taylor(x^2+y^2,[x,y],[0,0],2)` → `x^2+y^2`; forma 2-args → orden 2 por DEFECTO (la aproximación CUADRÁTICA — el default de libro multivariable, y mantiene C(2+d,d) pequeño; el univar conserva su 6). Declines pineados: singular (`ln(x·y)` — hereda `taylor_coefficient_is_singular` de F1), lista malformada `[x,2*y]`, punto que menciona variable de expansión `[x,0]`, cap de términos (orden 20 en 2 vars).
+  - **La incrementalidad clonada del patrón hessian**: cada ∂^α deriva de su padre α−e_i (primer slot no-cero) con fold por paso — sin re-entrar al pipeline; el memo por multi-índice hace único cada cómputo y el orden de enumeración (lexicográfico por grado) lo vuelve determinista.
+  - **tidy_taylor_units, y por qué NO se tocó el fold compartido**: la regla `a^u` del derivador ensucia `ln(e)` que `as_rational_const` no pliega; a órdenes altos las cadenas empujan el árbol emitido más allá del depth-budget (WARN + output sin simplificar). El fix vive en un post-pass usado SOLO por las 4 rutas Taylor — `fold_constant_subexprs` también alimenta L'Hôpital (lane de 209 con formas exactas pineadas) y ensancharlo ahí era blast sin necesidad. A órdenes altos explícitos el WARN stderr persiste (techo documentado, mismo que univar n≥20); el default ya no lo toca.
+  - Narración: `taylor.formula` keyed es/en a nivel de fórmula (precedente V5 divergence/laplacian) — la per-término del spec exigiría enhebrar internos del ensamblador y `Rewrite::substep()` no llega al wire (lección grabada); decisión documentada, la clave `taylor.term` queda reservada.
+  - CERO cambio de gate (eval.rs ya admite 2..=4 para taylor/series — verificado por el scoping).
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + scorecards verdes; huella contadores-idéntica salvo UN delta declarado: `calculus_integrate_backend_mode_boundary.filtered_out` 2283→2284 (la lane corre 2 tests del binario cas_engine filtrando el resto; el test unitario nuevo del extractor multivar sube el total en 1 — passed 2/2 y status intactos).
+- retained learning:
+  - **El litter del derivador es por-REGLA, no por-función**: `e^x` vía builtin Exp deriva limpio y vía `Pow(E,x)` ensucia `ln(e)` — al componer derivación repetida (Taylor, jacobianos anidados), presupuestar un tidy de unidades EN LA RUTA, no confiar en el simplify final (el depth-budget lo capa justo cuando más lo necesitas).
+  - PRÓXIMO PELDAÑO: F3 (SubsRule no-op guard + integrate DEFINIDO componentwise) — bloque B.
