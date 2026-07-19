@@ -316,8 +316,14 @@ variables no-triviales, no-lineales sin método — la política de siempre); (d
 registra SOLO en su ciclo O0 con migración documentada del never-confirm (decisión D10 —
 hoy es PRESA del detector y así sigue hasta ese ciclo).
 
-**Secuenciación**: scoping workflow multi-agente propio → `docs/FASE4_ODE_ELEMENTAL_SCOPING.md`
-(secuencia O0..On de sub-ciclos acotados). **Ejecución recomendada tras cerrar el núcleo
+**Secuenciación**: **⚑ SCOPEADA 2026-07-19** (workflow 6 mappers + síntesis + verificador de
+anclas 98/106 + crítico 13 gaps): `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` — secuencia
+**O0→O9** (O0 sustrato wire+acción+verificador+separables [L]; O1 lineal; O2 exactas vía
+`try_potential_expr`; O3 IVP; O4 2º orden homogénea por discriminante exacto interno; O5
+coeficientes indeterminados [el neto-nuevo mayor]; O6 sistemas 2×2 eigen-interno; O7
+superficie; O8 Bernoulli+homogéneas — NO opcional; O9 series/μ(x)/Cauchy-Euler opcionales),
+17 decisiones cerradas D1-D17, catálogo de ~37 probes con oráculo verificado 36/39 y 7
+never-fabricate Z1-Z7. **Ejecución recomendada tras cerrar el núcleo
 restante de la Fase 3** (F9 iterados, F8b squeeze, bloque D F10/F11 — ~4-5 ciclos): las
 dependencias de la Fase 4 (Fase 1 + F6) YA están cumplidas, así que el usuario puede
 reordenar sin coste técnico; la regla de oro se mantiene con el umbral de cierre de Fase 3
