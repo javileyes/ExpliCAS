@@ -724,6 +724,31 @@ define_rule!(
                     .budget_exempt(),
             );
         }
+        // F8b: continuity declined — try the PROVEN-zero squeeze first (polar
+        // bound, exact family P/(x²+y²)^k with min-degree > 2k). Existence and
+        // non-existence provers are complementary by construction.
+        if let Some(bound) =
+            cas_math::limits_support::try_multivar_squeeze_zero(ctx, target, &var_ids, &points)
+        {
+            let zero = ctx.num(0);
+            let event = crate::AssumptionEvent {
+                key: cas_solver_core::assumption_model::AssumptionKey::Defined {
+                    expr_fingerprint: cas_solver_core::assumption_model::expr_fingerprint(
+                        ctx, target,
+                    ),
+                },
+                expr_display: bound.clone(),
+                message: bound,
+                kind: cas_solver_core::assumption_model::AssumptionKind::HeuristicAssumption,
+                expr_id: Some(target),
+            };
+            return Some(
+                Rewrite::new(zero)
+                    .desc("Límite multivariable probado por acotación (squeeze polar)")
+                    .assume(event)
+                    .budget_exempt(),
+            );
+        }
         // F8: continuity declined — run the path battery. The verdict APPLIES
         // a rewrite (→ undefined), so the witnesses travel as an assumption
         // event; agreeing paths NEVER prove existence (the residual echo stays).

@@ -11329,6 +11329,77 @@ fn eval_rational_const_deep(ctx: &Context, expr: ExprId) -> Option<BigRational> 
     }
 }
 
+/// F8b (Fase 3): PROVEN-zero multivariate limit by the polar bound (squeeze).
+/// Decidable family, exact: `P/(x²+y²)^k` at the ORIGIN where EVERY monomial
+/// of `P` has total degree `p > 2k` — then `|x^a·y^b| ≤ r^(a+b)` gives
+/// `|f| ≤ (Σ|cᵢ|)·r^(p−2k) → 0`. Returns the bound display for the citation;
+/// anything outside the exact family declines (`x·y/(x²+y²)` has p = 2k and
+/// correctly falls to the DNE-by-paths driver — the two provers are
+/// complementary by construction).
+pub fn try_multivar_squeeze_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_ids: &[ExprId],
+    points: &[ExprId],
+) -> Option<String> {
+    use num_traits::Zero;
+    if var_ids.len() != 2 || points.len() != 2 {
+        return None;
+    }
+    for &pt in points {
+        if !eval_rational_const_deep(ctx, pt).is_some_and(|v| v.is_zero()) {
+            return None;
+        }
+    }
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let budget = crate::multipoly::PolyBudget::default();
+    let num_poly = crate::multipoly::conversion::multipoly_from_expr(ctx, num, &budget).ok()?;
+    let den_poly = crate::multipoly::conversion::multipoly_from_expr(ctx, den, &budget).ok()?;
+    if num_poly.terms.is_empty() || den_poly.terms.is_empty() {
+        return None;
+    }
+    // Denominator must be EXACTLY (x²+y²)^k: uniform total degree 2k and
+    // equal to the constructed power (MultiPoly equality, same lex vars).
+    let den_degrees: Vec<usize> = den_poly
+        .terms
+        .iter()
+        .map(|(_, mono)| mono.iter().map(|&e| e as usize).sum())
+        .collect();
+    let d0 = *den_degrees.first()?;
+    if d0 == 0 || d0 % 2 != 0 || den_degrees.iter().any(|&d| d != d0) {
+        return None;
+    }
+    let k = d0 / 2;
+    let (x_id, y_id) = (var_ids[0], var_ids[1]);
+    let two = ctx.num(2);
+    let x_sq = ctx.add(Expr::Pow(x_id, two));
+    let two = ctx.num(2);
+    let y_sq = ctx.add(Expr::Pow(y_id, two));
+    let r_sq = ctx.add(Expr::Add(x_sq, y_sq));
+    let k_expr = ctx.num(k as i64);
+    let expected_expr = ctx.add(Expr::Pow(r_sq, k_expr));
+    let expected =
+        crate::multipoly::conversion::multipoly_from_expr(ctx, expected_expr, &budget).ok()?;
+    if den_poly != expected {
+        return None;
+    }
+    // Every numerator monomial strictly beats degree 2k.
+    let min_deg = num_poly
+        .terms
+        .iter()
+        .map(|(_, mono)| mono.iter().map(|&e| e as usize).sum::<usize>())
+        .min()?;
+    if min_deg <= 2 * k {
+        return None;
+    }
+    Some(format!(
+        "0 ≤ |f| ≤ C·r^{} con r² = x²+y² (cota polar: |x^a·y^b| ≤ r^(a+b)) — el límite es 0 por acotación",
+        min_deg - 2 * k
+    ))
+}
+
 /// One path witness for a multivariate DNE verdict (F8, Fase 3).
 pub struct MultivarPathWitness {
     /// e.g. `y = x^2` — built structurally minimal at the origin.
@@ -19041,6 +19112,34 @@ mod tests {
         assert_eq!(render(&mut ctx, "ln(x*y)", 2), None);
         // Cap de términos: C(33+2,2) > 64 → decline (orden alto en 2 vars).
         assert_eq!(render(&mut ctx, "e^(x+y)", 20), None);
+    }
+
+    #[test]
+    fn multivar_squeeze_zero_exact_family_only() {
+        // F8b: P/(x²+y²)^k con min-grado(P) > 2k → 0 probado; el borde
+        // min-grado == 2k DECLINA (complementario del driver de caminos).
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let zero = ctx.num(0);
+        let vars = [x, y];
+        let points = [zero, zero];
+        let ok = |ctx: &mut Context, src: &str| -> bool {
+            let e = cas_parser::parse(src, ctx).expect(src);
+            try_multivar_squeeze_zero(ctx, e, &vars, &points).is_some()
+        };
+        assert!(ok(&mut ctx, "x^2*y/(x^2+y^2)"));
+        assert!(ok(&mut ctx, "x^3/(x^2+y^2)"));
+        assert!(ok(&mut ctx, "x^3*y^2/(x^2+y^2)^2"));
+        // Bordes que DECLINAN: grado igual (x·y), menor (xy² sobre ^2), den
+        // que no es potencia exacta de r², punto no-origen.
+        assert!(!ok(&mut ctx, "x*y/(x^2+y^2)"));
+        assert!(!ok(&mut ctx, "x*y^2/(x^2+y^2)^2"));
+        assert!(!ok(&mut ctx, "x^3/(x^2+2*y^2)"));
+        let one = ctx.num(1);
+        let pts = [one, zero];
+        let e = cas_parser::parse("x^2*y/(x^2+y^2)", &mut ctx).expect("e");
+        assert!(try_multivar_squeeze_zero(&mut ctx, e, &vars, &pts).is_none());
     }
 
     #[test]

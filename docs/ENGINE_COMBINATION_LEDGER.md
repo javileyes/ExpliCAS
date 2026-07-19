@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 650 (newest first)
+Active entries: 651 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -132,6 +132,7 @@ Active entries: 650 (newest first)
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LimitUnivarExprRule`: forma ... | CAPACIDAD (Fase 3 · F9, tanda-3 ciclo 1/4): límites anidados/compuestos/iterados evalúan en posición de expresión — y el wire aprende a distinguir comando de expresión
 - 2026-07-19 | `retained` | `cas_engine/eval/actions.rs` (rama sin-warning de `eval_limit`: `fold_infinit... | PULIDO (Fase 3 · F10, tanda-3 ciclo 2/4): el output RESUELTO del límite pasa por el pipeline de simplify — muere el branch-hop inverso; el residual conserva su cleanup intacto
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_complex_limit_selective` DENTRO del kill-s... | CAPACIDAD (Fase 3 · F11, tanda-3 ciclo 3/4): re-otorgo complejo SELECTIVO en límites — formas analíticas decididas exactas dentro del kill-switch; el gate léxico deja de ser colador
+- 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_multivar_squeeze_zero`: familia decidible ... | CAPACIDAD (Fase 3 · F8b, tanda-3 ciclo 4/4): el lado POSITIVO de los límites multivar — squeeze polar exacto; el pin central de F8 gradúa POR TEOREMA, no por caminos; TANDA-3 4/4 COMPLETA
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20897,3 +20898,17 @@ Active entries: 650 (newest first)
 - retained learning:
   - **"Never-fabricate por construcción" > "never-fabricate por lista"**: los 8 pins complejos no son excepciones enumeradas sino consecuencias del shape analítico (esencial⇔exponente-con-polo, etc.) — un guard cuya matemática EXCLUYE la clase entera de fabricaciones no necesita mantenimiento cuando aparezca el noveno caso.
   - PRÓXIMO PELDAÑO: F8b (squeeze positivo, scoping fino) cierra la tanda; tras él la Fase 3 queda con solo los opcionales F11b/F12.
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F8b, tanda-3 ciclo 4/4): el lado POSITIVO de los límites multivar — squeeze polar exacto; el pin central de F8 gradúa POR TEOREMA, no por caminos; TANDA-3 4/4 COMPLETA
+
+- area: `cas_math/limits_support.rs` (`try_multivar_squeeze_zero`: familia decidible EXACTA `P/(x²+y²)^k` en el origen con min-grado(P) > 2k ⇒ `|f| ≤ C·r^(p−2k) → 0` vía `|x^a·y^b| ≤ r^(a+b)`; den verificado IGUAL a `(x²+y²)^k` por MultiPoly — homogeneidad + igualdad con la potencia construida; cita del bound como String) + `cas_engine/vector_calculus.rs` (hook continuidad → SQUEEZE → caminos: los provers de existencia y no-existencia son COMPLEMENTARIOS por construcción — el borde min-grado = 2k declina squeeze y cae al driver DNE) + clave `limit.squeeze` + unit + e2e + fila examples
+- status: `retained`. **TANDA-3 4/4 COMPLETA (0 rechazos): F9+F10+F11+F8b — el núcleo ENTERO de la Fase 3 (F0-F11 + F8b) está CERRADO; quedan solo los opcionales F11b/F12.**
+- capture:
+  - investment_class: capacidad curricular con scoping fino inline (la decisión del usuario: «scoping fino propio al llegar») — el clásico «demuestre que el límite ES 0» deja de ser residual.
+  - cell: `limit(x²y/(x²+y²),[x,y],[0,0])` → `0` + warning «0 ≤ |f| ≤ C·r¹ con r² = x²+y² (cota polar) — el límite es 0 por acotación» — **EL PIN CENTRAL DE F8 GRADÚA con la cláusula intacta**: el 0 viene del TEOREMA de acotación (citado), jamás de que finitos caminos coincidan — el e2e ahora exige la cita «cota polar» en el warning; `x³/(x²+y²)` → 0; `(x⁴+y⁴)/(x²+y²)` → 0 (r²); `x³y²/(x²+y²)²` → 0.
+  - **Complementariedad por construcción**: min-grado > 2k → squeeze (0 probado); = 2k → declina y los caminos deciden (`xy/(x²+y²)` → DNE con testigos); < 2k → declina y los caminos cazan la divergencia (`xy²/(x²+y²)²` → DNE, y=x diverge). El orden continuidad → squeeze → caminos particiona la familia racional-sobre-r^2k completa sin solaparse.
+  - Bordes pineados que DECLINAN: den ≠ potencia exacta de r² (`x²+2y²` — la generalización por cota inferior de coeficientes es peldaño futuro nombrado), punto no-origen, num con grado igual/menor.
+- validación: workspace failed:0; clippy --all-targets limpio; lint 0; engine-fast + scorecards verdes; huella contadores-idéntica salvo filtered_out declarados.
+- retained learning:
+  - **Dos provers parciales complementarios > un decisor total imposible**: la existencia multivar es indecidible en general, pero squeeze (familia exacta) + DNE-por-caminos (testigos exactos) + continuidad (den≠0) particionan el currículo completo con CERO zona gris fabricable — cada verdicto lleva su certificado y el resto declina honesto.
+  - PRÓXIMO PELDAÑO: la Fase 3 queda en núcleo CERRADO — decisión del usuario: F11b/F12 opcionales, o abrir la Fase 4 (O0 sustrato dsolve — dependencias cumplidas).

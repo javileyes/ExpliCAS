@@ -195,3 +195,4 @@
 "Analítico","limit(x*y/(x^2+y^2), [x,y], [0,0])","DNE por caminos con testigos citados: por y=0 el límite es 0, por y=x es 1/2 → no existe"
 "Analítico","limit(sin(z)/z, z, 0)","Límite complejo re-otorgado con justificación analítica (serie entera) → 1 bajo dominio complejo"
 "Analítico","limit(exp(z), z, i*pi)","Límite complejo por sustitución entera: e^(iπ) → −1 (Euler) bajo dominio complejo"
+"Analítico","limit(x^2*y/(x^2+y^2), [x,y], [0,0])","Límite multivariable PROBADO por squeeze (cota polar |f| ≤ C·r → 0), no por caminos → 0"

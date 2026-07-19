@@ -2726,12 +2726,16 @@ fn test_eval_limit_multivar_dne_by_paths_f8() {
         assert!(w.contains(frag_a), "{probe}: falta testigo A en {w}");
         assert!(w.contains(frag_b), "{probe}: falta testigo B en {w}");
     }
-    // EL PIN CENTRAL: todos los caminos dan 0 → residual honesto, JAMÁS 0.
+    // EL PIN CENTRAL, GRADUADO POR F8b: x²y/(x²+y²) ahora da 0 PROBADO por
+    // squeeze (cota polar |f| ≤ C·r — teorema, no caminos): la cláusula
+    // "jamás existencia desde finitos caminos" SIGUE INTACTA — el valor viene
+    // del prover de acotación, y la cita del warning lo dice.
     let wire = eval_wire("limit(x^2*y/(x^2+y^2), [x,y], [0,0])");
+    assert_eq!(wire["result"].as_str().unwrap_or(""), "0");
+    let w = warnings_of(&wire);
     assert!(
-        wire["result"].as_str().unwrap_or("").starts_with("limit("),
-        "existencia desde finitos caminos JAMÁS: {}",
-        wire["result"]
+        w.contains("cota polar"),
+        "el 0 debe venir CITADO por squeeze, no por caminos: {w}"
     );
     // Pins F7: continuidad intacta.
     assert_eq!(
