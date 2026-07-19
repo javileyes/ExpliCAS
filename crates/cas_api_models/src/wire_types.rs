@@ -571,6 +571,12 @@ pub fn parse_eval_limit_command_error(input: &str) -> Option<String> {
 
     let content = &trimmed[prefix_len..trimmed.len() - 1];
     let parts = split_by_comma_at_depth_0(content);
+    // Multivariate list form `limit(f, [x,y], [a,b])` (F7, Fase 3): not a
+    // wire-level limit command — let the general eval path route it to the
+    // engine rule instead of erroring here.
+    if parts.iter().any(|p| p.trim().starts_with('[')) {
+        return None;
+    }
     if parts.len() < 2 {
         return Some(limit_command_usage_error());
     }

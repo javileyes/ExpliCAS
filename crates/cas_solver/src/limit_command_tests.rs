@@ -21,11 +21,14 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_limit_command_lines_rejects_finite_point_subcommand_until_supported() {
-        let err = crate::command_api::limit::evaluate_limit_command_lines("limit x, x, 0")
-            .expect_err("finite point limits are not supported yet");
-        assert!(err.contains("Unsupported limit direction `0`"));
-        assert!(err.contains("Finite point limits are not supported yet"));
-        assert!(err.contains("use infinity or -infinity"));
+    fn evaluate_limit_command_lines_supports_finite_points() {
+        // F7 (Fase 3): el comando REPL quedó unificado con la vía eval — el
+        // contrato stale "not supported yet" se retiró en este ciclo.
+        let lines = crate::command_api::limit::evaluate_limit_command_lines("limit x^2, x, 2")
+            .expect("finite point evaluates");
+        assert!(
+            lines.iter().any(|line| line.contains("lim_{x→2} = 4")),
+            "expected finite-point output, got: {lines:?}"
+        );
     }
 }

@@ -254,6 +254,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Line Integral" => "Calcular la integral de línea",
         "Surface Integral" => "Calcular la integral de superficie",
         "Scalar Potential" => "Reconstruir el potencial escalar",
+        "Multivariate Limit" => "Evaluar el límite multivariable por continuidad",
         "Zero Property of Division" => "Cero dividido entre cualquier valor es cero",
         "sinh(x)/cosh(x) = tanh(x)" => "Reconocer la tangente hiperbólica",
         _ => rule_name,
@@ -718,6 +719,9 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Calcular la integral de línea" => "Compute the line integral",
         "Calcular la integral de superficie" => "Compute the surface integral",
         "Reconstruir el potencial escalar" => "Reconstruct the scalar potential",
+        "Evaluar el límite multivariable por continuidad" => {
+            "Evaluate the multivariate limit by continuity"
+        }
         "Descomponer en fracciones parciales" => "Decompose into partial fractions",
         "Deshacer raíz y potencia" => "Cancel the root with the power",
         "Distribuir la potencia sobre el producto" => "Distribute the power over the product",

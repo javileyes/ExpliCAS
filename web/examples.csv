@@ -191,3 +191,4 @@
 "Analítico","surface_integral(1, [x,y,z], [u,v,u+v], [u,v], [0,1], [0,1])","Área de un parche plano vía ‖r_u×r_v‖ → √3"
 "Analítico","potential([2*x*y, x^2], [x,y])","Potencial escalar de un campo conservativo: φ = x²y (+C implícita), verificado ∇φ = F"
 "Analítico","potential(gradient(x^2*y + 3*x, [x,y]), [x,y])","Metamórfico: potential ∘ gradient recupera la función original (mod constante)"
+"Analítico","limit(x*y/(x^2+y^2), [x,y], [1,1])","Límite multivariable por continuidad probada: denominador ≠ 0 exacto → 1/2"

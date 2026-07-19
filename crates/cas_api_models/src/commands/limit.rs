@@ -1,8 +1,10 @@
 /// Limit direction for subcommand-level evaluation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LimitCommandApproach {
     Infinity,
     NegInfinity,
+    /// Finite approach point, carried as the user's source text (F7, Fase 3).
+    Finite(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

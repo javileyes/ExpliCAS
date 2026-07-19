@@ -1,5 +1,6 @@
-use crate::limit_command_core::core::eval_limit_from_str;
+use crate::limit_command_core::core::eval_limit_from_str_spec;
 use crate::limit_command_parse::parse_limit_command_input;
+use crate::limit_command_parse_types::LimitCommandApproachSpec;
 use cas_api_models::{LimitCommandApproach, LimitCommandEvalError, LimitCommandEvalOutput};
 
 pub(crate) fn evaluate_limit_command_input_in_domain(
@@ -12,7 +13,7 @@ pub(crate) fn evaluate_limit_command_input_in_domain(
     }
 
     let parsed = parse_limit_command_input(trimmed).map_err(LimitCommandEvalError::Parse)?;
-    match eval_limit_from_str(
+    match eval_limit_from_str_spec(
         parsed.expr,
         parsed.var,
         parsed.approach,
@@ -35,14 +36,13 @@ pub(crate) fn evaluate_limit_command_input_in_domain(
 }
 
 fn limit_command_approach_from_runtime(
-    approach: cas_math::limit_types::Approach,
+    approach: LimitCommandApproachSpec<'_>,
 ) -> LimitCommandApproach {
     match approach {
-        cas_math::limit_types::Approach::PosInfinity => LimitCommandApproach::Infinity,
-        cas_math::limit_types::Approach::NegInfinity => LimitCommandApproach::NegInfinity,
-        cas_math::limit_types::Approach::Finite(_)
-        | cas_math::limit_types::Approach::FiniteOneSided(_, _) => {
-            unreachable!("limit command parser does not construct finite approaches")
+        LimitCommandApproachSpec::PosInfinity => LimitCommandApproach::Infinity,
+        LimitCommandApproachSpec::NegInfinity => LimitCommandApproach::NegInfinity,
+        LimitCommandApproachSpec::Finite(point) => {
+            LimitCommandApproach::Finite(point.trim().to_string())
         }
     }
 }

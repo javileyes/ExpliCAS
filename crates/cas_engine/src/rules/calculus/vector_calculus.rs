@@ -646,3 +646,108 @@ mod potential_tests {
         }
     }
 }
+
+define_rule!(
+    LimitMultivarRule,
+    "Multivariate Limit",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr, parent_ctx| {
+        // F7 (Fase 3): `limit(f, [x,y], [a,b])` by PROVEN continuity only —
+        // polynomial/rational trees with the substituted denominator folding
+        // to a nonzero exact rational, plus continuous total-real unary calls.
+        // Everything else stays an honest residual echo: multivariate limit
+        // existence is path-dependent and F8 owns the negative side. The rule
+        // is VALUE-DEPENDENT (guardrail #1): the continuity reasoning is
+        // real-order, so the complex domain declines (the F0 kill-switch
+        // discipline, inherited).
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled {
+            return None;
+        }
+        if !ctx.is_call_named(expr, "limit") {
+            return None;
+        }
+        let cas_ast::Expr::Function(_, args) = ctx.get(expr) else {
+            return None;
+        };
+        if args.len() != 3 {
+            return None;
+        }
+        let args = args.clone();
+        let (target, vars_expr, points_expr) = (args[0], args[1], args[2]);
+        // List form ONLY — the univariate `limit(f, x, a)` in expression
+        // position stays an honest residual echo (F9 evaluates it).
+        let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(vars_expr) else {
+            return None;
+        };
+        if (*rows != 1 && *cols != 1) || data.is_empty() {
+            return None;
+        }
+        let mut var_ids = Vec::with_capacity(data.len());
+        let mut var_syms = Vec::with_capacity(data.len());
+        for &v in data {
+            let cas_ast::Expr::Variable(sym) = ctx.get(v) else {
+                return None;
+            };
+            var_ids.push(v);
+            var_syms.push(*sym);
+        }
+        let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(points_expr) else {
+            return None;
+        };
+        if (*rows != 1 && *cols != 1) || data.len() != var_ids.len() {
+            return None;
+        }
+        let points = data.clone();
+        // Point entries: free of the expansion variables AND finite (an
+        // at-infinity multivariate limit is out of scope — named residual);
+        // imaginary points inherit the F0 discipline via the same detector.
+        for &pt in &points {
+            if var_syms
+                .iter()
+                .any(|sym| expr_mentions_symbol(ctx, pt, *sym))
+            {
+                return None;
+            }
+            if expr_contains_nonfinite_constant(ctx, pt)
+                || cas_math::numeric_eval::expr_contains_imaginary(ctx, pt)
+            {
+                return None;
+            }
+        }
+        let value = cas_math::limits_support::try_multivar_limit_by_continuity(
+            ctx, target, &var_ids, &points,
+        )?;
+        Some(
+            Rewrite::new(value)
+                .desc("Límite multivariable por continuidad probada: sustituir el punto")
+                .budget_exempt(),
+        )
+    }
+);
+
+/// True when `expr` contains an `Infinity`/`Undefined` sentinel anywhere.
+fn expr_contains_nonfinite_constant(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    use cas_ast::Expr;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Constant(cas_ast::Constant::Infinity | cas_ast::Constant::Undefined) => {
+                return true
+            }
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            _ => {}
+        }
+    }
+    false
+}

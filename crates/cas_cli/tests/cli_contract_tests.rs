@@ -2670,6 +2670,60 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_limit_multivar_continuity_f7() {
+    // Fase 3 · F7: limit(f,[vars],[punto]) por continuidad PROBADA (den
+    // sustituido pliega a racional ≠0, exacto) — lo demás queda residual
+    // honesto (la existencia multivar es path-dependent; F8 posee el lado
+    // negativo). Bajo complex hereda la disciplina del kill-switch F0.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(eval_result("limit(x^2+y^2, [x,y], [1,2])"), "5");
+    assert_eq!(eval_result("limit(x*y/(x^2+y^2), [x,y], [1,1])"), "1/2");
+    assert_eq!(
+        eval_result("limit(sin(x+y)/(1+x^2+y^2), [x,y], [0,0])"),
+        "0"
+    );
+    // Residuales honestos: den no probado ≠0 (F8 decidirá el DNE), punto con
+    // infinity (at-infinity multivar fuera de scope), punto imaginario.
+    for probe in [
+        "limit(x*y/(x^2+y^2), [x,y], [0,0])",
+        "limit(x^2*y, [x,y], [infinity,1])",
+        "limit(x+y, [x,y], [i,0])",
+    ] {
+        let r = eval_result(probe);
+        assert!(
+            r.starts_with("limit("),
+            "{probe} debe quedar eco residual, got: {r}"
+        );
+    }
+    // Bajo complex: residual (la continuidad razona con orden real).
+    let out = cli()
+        .args([
+            "eval",
+            "limit(x^2+y^2, [x,y], [1,2])",
+            "--value-domain",
+            "complex",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    assert!(wire["result"].as_str().unwrap_or("").starts_with("limit("));
+    // Pins: univar paramétrico intacto; comando wire univar intacto; el
+    // anidado pasa de error a eco residual (drift declarado, F9 lo evalúa).
+    assert!(eval_result("limit(x*y/(x^2+y^2), x, 0)").starts_with("limit("));
+    assert_eq!(eval_result("limit(x^2, x, 2)"), "4");
+    assert_eq!(eval_result("1+limit(x^2, x, 2)"), "limit(x^2, x, 2) + 1");
+}
+
+#[test]
 fn test_eval_potential_verb_f6() {
     // Fase 3 · F6: potencial escalar por caminos con VERIFICACIÓN exacta
     // (∂φ/∂xᵢ ≡ Fᵢ vía poly_eq) — la emisión la gatea la verificación, no la
@@ -3444,12 +3498,7 @@ fn test_eval_gradient_verb() {
     // potential GRADUÓ en F6 con su aridad real 2 (assert separado por
     // semántica, decisión D10); las presas del never-confirm pasan a los
     // nombres FUERA del norte, que jamás deben registrarse por accidente.
-    for probe in [
-        "dsolve(y, x)",
-        "erf(1)",
-        "gamma(5)",
-        "residue(1/z, z, 0)",
-    ] {
+    for probe in ["dsolve(y, x)", "erf(1)", "gamma(5)", "residue(1/z, z, 0)"] {
         assert!(
             err_of(probe).contains("no definida"),
             "nombre fuera del norte debe seguir 'función no definida': {probe}"

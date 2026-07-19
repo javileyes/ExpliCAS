@@ -45,13 +45,13 @@ fn bench_frontend_limit(c: &mut Criterion) {
     for (name, expr, var, approach, presimplify) in &cases {
         group.bench_with_input(
             BenchmarkId::new("wire", name),
-            &(*expr, *var, *approach, *presimplify),
+            &(*expr, *var, approach.clone(), *presimplify),
             |b, (expr, var, approach, presimplify)| {
                 b.iter(|| {
                     black_box(evaluate_limit_subcommand(
                         expr,
                         var,
-                        *approach,
+                        approach.clone(),
                         *presimplify,
                         true,
                     ))
@@ -61,13 +61,13 @@ fn bench_frontend_limit(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("text", name),
-            &(*expr, *var, *approach, *presimplify),
+            &(*expr, *var, approach.clone(), *presimplify),
             |b, (expr, var, approach, presimplify)| {
                 b.iter(|| {
                     black_box(evaluate_limit_subcommand(
                         expr,
                         var,
-                        *approach,
+                        approach.clone(),
                         *presimplify,
                         false,
                     ))

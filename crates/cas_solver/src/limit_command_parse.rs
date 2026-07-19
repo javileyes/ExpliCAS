@@ -1,5 +1,5 @@
-use crate::limit_command_parse_types::LimitCommandInput;
-use cas_math::limit_types::{Approach, PreSimplifyMode};
+use crate::limit_command_parse_types::{LimitCommandApproachSpec, LimitCommandInput};
+use cas_math::limit_types::PreSimplifyMode;
 
 fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
@@ -25,7 +25,7 @@ fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     parts
 }
 
-fn parse_limit_approach(raw: &str) -> Result<Approach, String> {
+fn parse_limit_approach(raw: &str) -> Result<LimitCommandApproachSpec<'_>, String> {
     let dir = raw.trim();
     if dir.is_empty()
         || dir.eq_ignore_ascii_case("infinity")
@@ -33,15 +33,15 @@ fn parse_limit_approach(raw: &str) -> Result<Approach, String> {
         || dir.eq_ignore_ascii_case("inf")
         || dir.eq_ignore_ascii_case("+inf")
     {
-        return Ok(Approach::PosInfinity);
+        return Ok(LimitCommandApproachSpec::PosInfinity);
     }
     if dir.eq_ignore_ascii_case("-infinity") || dir.eq_ignore_ascii_case("-inf") {
-        return Ok(Approach::NegInfinity);
+        return Ok(LimitCommandApproachSpec::NegInfinity);
     }
-
-    Err(format!(
-        "Unsupported limit direction `{dir}`. Finite point limits are not supported yet; use infinity or -infinity."
-    ))
+    // F7 (Fase 3): finite points travel as source text and parse in the
+    // evaluator's context — the REPL command is unified with the eval path
+    // (`limit(x^2, x, 2)` → 4 instead of "not supported yet").
+    Ok(LimitCommandApproachSpec::Finite(dir))
 }
 
 pub(crate) fn parse_limit_command_input(rest: &str) -> Result<LimitCommandInput<'_>, String> {

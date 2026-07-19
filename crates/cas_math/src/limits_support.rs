@@ -10903,6 +10903,152 @@ pub fn eval_limit_at_infinity(
     }
 }
 
+/// Multivariate limit by PROVEN continuity (F7, Fase 3): substitute the point
+/// only when the expression is visibly continuous there — a tree of
+/// `Add/Sub/Mul/Neg`, non-negative integer powers, continuous total-real unary
+/// calls of such, and `Div` whose SUBSTITUTED denominator folds to a NONZERO
+/// exact rational. Anything else returns `None` (honest residual): the
+/// existence question for general multivariate limits is path-dependent and is
+/// NOT decided here (F8 owns the negative side).
+pub fn try_multivar_limit_by_continuity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_ids: &[ExprId],
+    points: &[ExprId],
+) -> Option<ExprId> {
+    if !expr_is_visibly_continuous_at(ctx, expr, var_ids, points) {
+        return None;
+    }
+    let mut value = expr;
+    for (var_id, point) in var_ids.iter().zip(points) {
+        value = cas_ast::substitute_expr_by_id(ctx, value, *var_id, *point);
+    }
+    let value = fold_constant_subexprs(ctx, value);
+    let value = tidy_taylor_units(ctx, value);
+    Some(value)
+}
+
+/// Shape check behind [`try_multivar_limit_by_continuity`]: every node must be
+/// continuous at the point, decided EXACTLY. `Div` (and negative integer
+/// powers) require the substituted denominator to fold to a nonzero rational —
+/// the `finite_denominator_proven_nonzero` doctrine, never f64.
+fn expr_is_visibly_continuous_at(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_ids: &[ExprId],
+    points: &[ExprId],
+) -> bool {
+    use num_traits::Signed;
+    match ctx.get(expr).clone() {
+        Expr::Number(_) | Expr::Variable(_) => true,
+        Expr::Constant(c) => !matches!(c, Constant::Infinity | Constant::Undefined),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            expr_is_visibly_continuous_at(ctx, l, var_ids, points)
+                && expr_is_visibly_continuous_at(ctx, r, var_ids, points)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            expr_is_visibly_continuous_at(ctx, inner, var_ids, points)
+        }
+        Expr::Pow(base, exp) => {
+            let Some(e) = crate::numeric_eval::as_rational_const(ctx, exp) else {
+                return false;
+            };
+            if !e.is_integer() {
+                return false;
+            }
+            if e.is_negative() {
+                // base^(-m) = 1/base^m: needs the substituted base nonzero.
+                return expr_is_visibly_continuous_at(ctx, base, var_ids, points)
+                    && substituted_folds_to_nonzero_rational(ctx, base, var_ids, points);
+            }
+            expr_is_visibly_continuous_at(ctx, base, var_ids, points)
+        }
+        Expr::Div(num, den) => {
+            expr_is_visibly_continuous_at(ctx, num, var_ids, points)
+                && expr_is_visibly_continuous_at(ctx, den, var_ids, points)
+                && substituted_folds_to_nonzero_rational(ctx, den, var_ids, points)
+        }
+        // Continuous total-real unary functions of a continuous argument.
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            use cas_ast::BuiltinFn;
+            let continuous = ctx.is_builtin(fn_id, BuiltinFn::Sin)
+                || ctx.is_builtin(fn_id, BuiltinFn::Cos)
+                || ctx.is_builtin(fn_id, BuiltinFn::Exp)
+                || ctx.is_builtin(fn_id, BuiltinFn::Sinh)
+                || ctx.is_builtin(fn_id, BuiltinFn::Cosh)
+                || ctx.is_builtin(fn_id, BuiltinFn::Atan)
+                || ctx.is_builtin(fn_id, BuiltinFn::Arctan);
+            continuous && expr_is_visibly_continuous_at(ctx, args[0], var_ids, points)
+        }
+        _ => false,
+    }
+}
+
+/// True when `sub_expr` with the point substituted folds to a NONZERO exact
+/// rational.
+fn substituted_folds_to_nonzero_rational(
+    ctx: &mut Context,
+    sub_expr: ExprId,
+    var_ids: &[ExprId],
+    points: &[ExprId],
+) -> bool {
+    use num_traits::Zero;
+    let mut value = sub_expr;
+    for (var_id, point) in var_ids.iter().zip(points) {
+        value = cas_ast::substitute_expr_by_id(ctx, value, *var_id, *point);
+    }
+    eval_rational_const_deep(ctx, value).is_some_and(|v| !v.is_zero())
+}
+
+/// Exact rational evaluation of a fully-numeric tree INCLUDING integer powers
+/// (`1^2 + 1^2` → 2), which `as_rational_const` deliberately does not fold.
+/// Fourth appearance of the "only literals match" lesson — this is the local
+/// DECISION evaluator for the continuity prover; the shared fold stays
+/// untouched (its L'Hôpital lane pins exact shapes).
+fn eval_rational_const_deep(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    use num_traits::{ToPrimitive, Zero};
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Add(l, r) => {
+            Some(eval_rational_const_deep(ctx, *l)? + eval_rational_const_deep(ctx, *r)?)
+        }
+        Expr::Sub(l, r) => {
+            Some(eval_rational_const_deep(ctx, *l)? - eval_rational_const_deep(ctx, *r)?)
+        }
+        Expr::Mul(l, r) => {
+            Some(eval_rational_const_deep(ctx, *l)? * eval_rational_const_deep(ctx, *r)?)
+        }
+        Expr::Div(l, r) => {
+            let d = eval_rational_const_deep(ctx, *r)?;
+            if d.is_zero() {
+                return None;
+            }
+            Some(eval_rational_const_deep(ctx, *l)? / d)
+        }
+        Expr::Neg(inner) => Some(-eval_rational_const_deep(ctx, *inner)?),
+        Expr::Hold(inner) => eval_rational_const_deep(ctx, *inner),
+        Expr::Pow(base, exp) => {
+            let b = eval_rational_const_deep(ctx, *base)?;
+            let e = eval_rational_const_deep(ctx, *exp)?;
+            if !e.is_integer() {
+                return None;
+            }
+            let n = e.to_integer().to_i64().filter(|n| n.unsigned_abs() <= 64)?;
+            if n >= 0 {
+                Some(num_traits::pow::Pow::pow(b, n as u64))
+            } else {
+                if b.is_zero() {
+                    return None;
+                }
+                Some(
+                    BigRational::from_integer(1.into()) / num_traits::pow::Pow::pow(b, (-n) as u64),
+                )
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Cell cap for componentwise matrix limits (precedent: the engine's
 /// `COMPONENTWISE_MAX_CELLS` for matrix diff/integrate).
 const MATRIX_LIMIT_MAX_CELLS: usize = 64;

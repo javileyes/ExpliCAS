@@ -16,6 +16,13 @@ pub fn evaluate_limit_subcommand(
     let approach = match approach {
         LimitCommandApproach::Infinity => Approach::PosInfinity,
         LimitCommandApproach::NegInfinity => Approach::NegInfinity,
+        // The standalone subcommand's argument parser only offers ±infinity;
+        // finite points route through eval / the REPL command (F7).
+        LimitCommandApproach::Finite(point) => {
+            return Err(format!(
+                "The limit subcommand takes infinity or -infinity; for the finite point `{point}` use eval: limit(expr, var, {point})."
+            ));
+        }
     };
     let presimplify = match presimplify {
         LimitCommandPreSimplify::Off => PreSimplifyMode::Off,

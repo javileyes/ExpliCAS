@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::limit_command_parse_types::LimitCommandApproachSpec;
     use cas_api_models::{
         LimitCommandApproach, LimitCommandEvalError, LimitSubcommandEvalError,
         LimitSubcommandEvalOutput,
@@ -24,7 +25,7 @@ mod tests {
         let parsed = parse_limit_command_input("x^2").expect("parse");
         assert_eq!(parsed.expr, "x^2");
         assert_eq!(parsed.var, "x");
-        assert_eq!(parsed.approach, Approach::PosInfinity);
+        assert_eq!(parsed.approach, LimitCommandApproachSpec::PosInfinity);
         assert_eq!(parsed.presimplify, PreSimplifyMode::Off);
     }
 
@@ -34,16 +35,19 @@ mod tests {
             parse_limit_command_input("(x^2+1)/(2*x^2-3), t, -infinity, safe").expect("parse");
         assert_eq!(parsed.expr, "(x^2+1)/(2*x^2-3)");
         assert_eq!(parsed.var, "t");
-        assert_eq!(parsed.approach, Approach::NegInfinity);
+        assert_eq!(parsed.approach, LimitCommandApproachSpec::NegInfinity);
         assert_eq!(parsed.presimplify, PreSimplifyMode::Safe);
     }
 
     #[test]
-    fn parse_limit_command_input_rejects_unsupported_finite_direction() {
-        let err = parse_limit_command_input("x, x, 0").expect_err("finite point unsupported");
-        assert!(err.contains("Unsupported limit direction `0`"));
-        assert!(err.contains("Finite point limits are not supported yet"));
-        assert!(err.contains("use infinity or -infinity"));
+    fn parse_limit_command_input_accepts_finite_points() {
+        // F7 (Fase 3): el comando REPL queda UNIFICADO con la vía eval — los
+        // puntos finitos viajan como texto fuente y parsean en el evaluador
+        // (el contrato stale "not supported yet" se retira en este ciclo).
+        let parsed = parse_limit_command_input("x, x, 0").expect("finite parses");
+        assert_eq!(parsed.approach, LimitCommandApproachSpec::Finite("0"));
+        let parsed = parse_limit_command_input("sin(x)/x, x, pi/2").expect("finite parses");
+        assert_eq!(parsed.approach, LimitCommandApproachSpec::Finite("pi/2"));
     }
 
     #[test]
@@ -53,12 +57,20 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_limit_command_input_rejects_unsupported_finite_direction() {
-        let err = evaluate_limit_command_input("x, x, 0").expect_err("finite point unsupported");
+    fn evaluate_limit_command_input_evaluates_finite_points() {
+        // F7: puntos finitos EVALÚAN en el comando (antes: error "unsupported").
+        let out = evaluate_limit_command_input("x^2, x, 2").expect("finite evaluates");
+        assert_eq!(out.result, "4");
+        let out = evaluate_limit_command_input("sin(x)/x, x, 0").expect("notable evaluates");
+        assert_eq!(out.result, "1");
+    }
+
+    #[test]
+    fn evaluate_limit_command_input_rejects_malformed_finite_point() {
+        let err = evaluate_limit_command_input("x, x, )bad(").expect_err("malformed point");
         match err {
             LimitCommandEvalError::Parse(message) => {
-                assert!(message.contains("Unsupported limit direction `0`"));
-                assert!(message.contains("Finite point limits are not supported yet"));
+                assert!(message.contains("Parse error"));
             }
             other => panic!("expected parse error, got {other:?}"),
         }

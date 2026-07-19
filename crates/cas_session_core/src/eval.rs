@@ -127,6 +127,10 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         "lineintegral" => arity == 6,
         "surface_integral" => arity == 6,
         "potential" => arity == 2,
+        // F7 (Fase 3): limit(f, [vars], [punto]) — la forma lista multivar. El
+        // univar anidado con esta aridad pasa el gate y queda ECO residual
+        // honesto (antes: error "no definida"); F9 lo evaluará.
+        "limit" => arity == 3,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.
         "round" => arity == 1,
