@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 636 (newest first)
+Active entries: 637 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
+- 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; br... | SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20665,3 +20666,18 @@ Active entries: 636 (newest first)
   - **El barrido adversarial post-commit es parte del ciclo, no un extra**: el fixture verde y los probes del autor comparten los ángulos muertos del autor; 4 atacantes independientes con misión de ROMPER el contrato cazaron en 12 minutos dos agujeros reales (deletreo no-racional del punto; superficie paralela sin threading) que ninguna suite veía. Presupuestar el workflow adversarial en todo ciclo de soundness.
   - **Toda superficie paralela al pipeline principal necesita el eje de dominio EXPLÍCITO**: el comando REPL `limit` es la 3ª superficie cazada construyendo Context fresco sin semántica (tras el parser stale F7 y el gate léxico colador) — al añadir un eje semántico, grep por `Context::new()` en superficies de comando y decidir POR CADA UNA: enhebrar o vista-real documentada con dueño.
   - PRÓXIMO PELDAÑO: F1 (sustrato Taylor) — o el chip P0 de limit(Matrix) si el usuario lo prioriza.
+
+## 2026-07-19 - SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
+
+- area: `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; brazo Matrix en `eval_limit_at_infinity` tras el guard de dominio → `eval_limit_matrix_componentwise` con cap `MATRIX_LIMIT_MAX_CELLS=64`, precedente del engine) + unit test 3-ramas + e2e contract
+- status: `retained`. Chip del barrido adversarial `wf_9666b8e7-ea3` aceptado por el usuario (P0 pre-existente, NO causado por F0 — bajo complex el kill-switch ya lo interceptaba; la herida estaba en la superficie real).
+- capture:
+  - investment_class: soundness P0 (wrong-answer activo en real default) + capacidad curricular gratis (el fix honesto ES el límite componentwise del frente vectorial).
+  - **Causa raíz de una línea**: `depends_on` (limits_support.rs:47) trataba `Expr::Matrix` como hoja var-independiente → la regla límite-de-constante afirmaba `limit([[1/x,0],[0,1]],x,∞) = [[1/x,0],[0,1]]` — un "valor" x-dependiente, wrong en cualquier dominio, sin warning, también en punto finito y en el REPL.
+  - Fix en dos capas: (1) raíz — `depends_on` empuja las entradas (la matriz depende de x sii alguna entrada depende); (2) política — brazo componentwise all-or-nothing en el chokepoint, DESPUÉS del guard de dominio (bajo complex la matriz entera declina residual ANTES de mirar entradas): todas resuelven → matriz de límites (`[[0,0],[0,1]]`); una entrada con DNE PROBADO (undefined de laterales/oscilación, chequeado ANTES de la rama decline porque esas pruebas llevan warning) → `undefined` del conjunto citando el motivo; una entrada declina → residual de la matriz ENTERA (jamás matriz semi-evaluada) citando la entrada.
+  - Orden de ramas cazado en diseño: el `undefined` probado viaja CON warning — chequear decline primero lo habría degradado a residual (under-answer del DNE probado).
+  - Pins: escalares byte-idénticos (`sin(x)/x→1`, `1/x→undefined`); punto finito `[[x,1],[2,3]]→[[2,1],[2,3]]`; kill-switch complex primero.
+- validación: workspace failed:0; clippy --all-targets limpio (gating con exit reales); engine-fast + scorecards verdes; huella contadores-idéntica.
+- retained learning:
+  - **Un walker estructural que trata un contenedor como hoja convierte cada regla "es constante" en un fabricador**: al añadir un nodo contenedor al AST (Matrix, futuro tensor), auditar TODOS los walkers de dependencia/constancia del repo en el mismo commit — el brazo `Matrix{..} => {}` compilaba limpio y mentía.
+  - PRÓXIMO PELDAÑO: chip #25 (solve afirma "No solution" con Constant::Infinity en cualquier parte de la ecuación — causa acotada por probe: `foo(infinity)=y` dispara, `foo(3)=y` no) y después F1 (sustrato Taylor).

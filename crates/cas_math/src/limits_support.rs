@@ -44,7 +44,15 @@ pub(crate) fn depends_on(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
                 }
             }
             Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => {}
-            Expr::Matrix { .. } | Expr::SessionRef(_) => {}
+            // A matrix depends on the variable iff any ENTRY does — skipping the
+            // entries made `[[1/x,0],[0,1]]` read as var-free, so the constant
+            // rule asserted the matrix itself as its own limit (P0, 2026-07-19).
+            Expr::Matrix { data, .. } => {
+                for entry in data {
+                    stack.push(*entry);
+                }
+            }
+            Expr::SessionRef(_) => {}
         }
     }
 
@@ -10455,6 +10463,15 @@ pub fn eval_limit_at_infinity(
         }
     }
 
+    // Matrix limits are componentwise, all-or-nothing (P0 2026-07-19: the
+    // constant rule used to assert `[[1/x,0],[0,1]]` as its OWN limit because
+    // `depends_on` skipped matrix entries). Runs after the domain guard so
+    // complex/imaginary-point declines stay whole-matrix residuals.
+    if let Expr::Matrix { rows, cols, data } = ctx.get(expr) {
+        let (rows, cols, data) = (*rows, *cols, data.clone());
+        return eval_limit_matrix_componentwise(ctx, expr, rows, cols, data, var, approach, opts);
+    }
+
     let simplified_expr = match opts.presimplify {
         PreSimplifyMode::Off => expr,
         PreSimplifyMode::Safe => presimplify_safe_for_limit(ctx, expr),
@@ -10534,6 +10551,70 @@ pub fn eval_limit_at_infinity(
     LimitEvalOutcome {
         expr: residual,
         warning: Some(warning),
+    }
+}
+
+/// Cell cap for componentwise matrix limits (precedent: the engine's
+/// `COMPONENTWISE_MAX_CELLS` for matrix diff/integrate).
+const MATRIX_LIMIT_MAX_CELLS: usize = 64;
+
+/// Componentwise matrix limit, all-or-nothing:
+/// - every entry limit resolves → the matrix of entry limits;
+/// - any entry is `undefined` (DNE) → the whole limit is `undefined` (a matrix
+///   limit exists iff every entry limit does), quoting that entry's warning;
+/// - any entry declines → the WHOLE matrix stays an honest residual (never a
+///   partially-evaluated matrix), quoting the declining entry's warning.
+#[allow(clippy::too_many_arguments)]
+fn eval_limit_matrix_componentwise(
+    ctx: &mut Context,
+    matrix_expr: ExprId,
+    rows: usize,
+    cols: usize,
+    data: Vec<ExprId>,
+    var: ExprId,
+    approach: Approach,
+    opts: &LimitOptions,
+) -> LimitEvalOutcome {
+    if data.len() > MATRIX_LIMIT_MAX_CELLS {
+        let residual = mk_limit_for_approach(ctx, matrix_expr, var, approach);
+        return LimitEvalOutcome {
+            expr: residual,
+            warning: Some(format!(
+                "Matrix limits are bounded to {MATRIX_LIMIT_MAX_CELLS} cells"
+            )),
+        };
+    }
+    let mut entry_limits = Vec::with_capacity(data.len());
+    for entry in data {
+        let outcome = eval_limit_at_infinity(ctx, entry, var, approach, opts);
+        // Proven DNE for an entry (undefined comes only from the proven paths:
+        // disagreeing laterals, oscillation) decides the WHOLE matrix — check
+        // before the decline branch, because those proofs carry a warning too.
+        if matches!(ctx.get(outcome.expr), Expr::Constant(Constant::Undefined)) {
+            let detail = outcome
+                .warning
+                .unwrap_or_else(|| "an entry limit does not exist".to_string());
+            return LimitEvalOutcome {
+                expr: outcome.expr,
+                warning: Some(format!("the matrix limit does not exist: {detail}")),
+            };
+        }
+        if let Some(entry_warning) = outcome.warning {
+            let residual = mk_limit_for_approach(ctx, matrix_expr, var, approach);
+            return LimitEvalOutcome {
+                expr: residual,
+                warning: Some(format!("matrix entry declines: {entry_warning}")),
+            };
+        }
+        entry_limits.push(outcome.expr);
+    }
+    LimitEvalOutcome {
+        expr: ctx.add(Expr::Matrix {
+            rows,
+            cols,
+            data: entry_limits,
+        }),
+        warning: None,
     }
 }
 
@@ -17927,6 +18008,47 @@ mod tests {
                 "must stay a residual limit call: {source} -> {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn matrix_limit_is_componentwise_all_or_nothing() {
+        // P0 2026-07-19: `depends_on` skipped Matrix entries, so the constant
+        // rule asserted `[[1/x,0],[0,1]]` as its OWN limit (x-dependent "value").
+        let mut ctx = Context::new();
+        let opts = LimitOptions::default();
+        let var = ctx.var("x");
+        let render = |ctx: &Context, id: ExprId| {
+            format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+        };
+        // Every entry resolves → matrix of entry limits.
+        let m = cas_parser::parse("[[1/x,0],[0,1]]", &mut ctx).expect("matrix");
+        let outcome = eval_limit_at_infinity(&mut ctx, m, var, Approach::PosInfinity, &opts);
+        assert!(outcome.warning.is_none());
+        assert_eq!(render(&ctx, outcome.expr), "[[0, 0], [0, 1]]");
+        // An entry with a PROVEN-DNE limit (disagreeing laterals) decides the whole.
+        let m = cas_parser::parse("[[1/x,2]]", &mut ctx).expect("matrix");
+        let zero = ctx.num(0);
+        let outcome = eval_limit_at_infinity(&mut ctx, m, var, Approach::Finite(zero), &opts);
+        assert_eq!(render(&ctx, outcome.expr), "undefined");
+        assert!(
+            outcome
+                .warning
+                .as_deref()
+                .is_some_and(|w| w.starts_with("the matrix limit does not exist")),
+            "DNE entry must decide the matrix: {:?}",
+            outcome.warning
+        );
+        // A declining entry keeps the WHOLE matrix an honest residual.
+        let m = cas_parser::parse("[[e^(i*x),1]]", &mut ctx).expect("matrix");
+        let outcome = eval_limit_at_infinity(&mut ctx, m, var, Approach::PosInfinity, &opts);
+        assert!(
+            render(&ctx, outcome.expr).starts_with("limit("),
+            "must stay residual"
+        );
+        assert!(outcome
+            .warning
+            .as_deref()
+            .is_some_and(|w| w.starts_with("matrix entry declines")));
     }
 
     #[test]

@@ -2613,6 +2613,63 @@ fn test_eval_limit_imaginary_point_real_domain_residual() {
 }
 
 #[test]
+fn test_eval_limit_matrix_componentwise() {
+    // P0 2026-07-19 (barrido adversarial de F0): `depends_on` no atravesaba
+    // Matrix, así que la regla de constante afirmaba `[[1/x,0],[0,1]]` como su
+    // PROPIO límite (un "valor" x-dependiente). Ahora: componentwise
+    // all-or-nothing — todas resuelven → matriz de límites; una DNE probada →
+    // undefined del conjunto; una declina → residual de la matriz ENTERA.
+    let eval_full = |input: &str| -> (String, String) {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        let warnings = wire["warnings"]
+            .as_array()
+            .map(|w| {
+                w.iter()
+                    .filter_map(|x| x["assumption"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            })
+            .unwrap_or_default();
+        (wire["result"].as_str().unwrap_or("").to_string(), warnings)
+    };
+    assert_eq!(
+        eval_full("limit([[1/x,0],[0,1]], x, infinity)").0,
+        "[[0, 0], [0, 1]]"
+    );
+    assert_eq!(
+        eval_full("limit([[x,1],[2,3]], x, 2)").0,
+        "[[2, 1], [2, 3]]"
+    );
+    let (r, w) = eval_full("limit([[1/x,2]], x, 0)");
+    assert_eq!(r, "undefined", "una entrada DNE decide el conjunto");
+    assert!(w.contains("matrix limit does not exist"), "got: {w}");
+    let (r, w) = eval_full("limit([[e^(i*x),1]], x, infinity)");
+    assert!(
+        r.starts_with("limit("),
+        "entrada que declina => residual de la matriz entera, got: {r}"
+    );
+    assert!(w.contains("matrix entry declines"), "got: {w}");
+    // Bajo complex el kill-switch va PRIMERO: residual de la matriz entera.
+    let out = cli()
+        .args([
+            "eval",
+            "limit([[1/x,0],[0,1]], x, infinity)",
+            "--value-domain",
+            "complex",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    assert!(wire["result"].as_str().unwrap_or("").starts_with("limit("));
+}
+
+#[test]
 fn test_eval_solve_critical_points() {
     // Cierre vectorial · V7d (decisión del usuario): los diff inline se pre-evalúan
     // en el path de solve_system (con fold numérico de los artefactos x^(2-1)), así
