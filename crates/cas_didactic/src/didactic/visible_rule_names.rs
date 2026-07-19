@@ -251,6 +251,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         }
         "Root Denesting" => "Desanidar el radical",
         "Taylor Series" => "Desarrollar en serie de Taylor",
+        "Line Integral" => "Calcular la integral de línea",
         "Zero Property of Division" => "Cero dividido entre cualquier valor es cero",
         "sinh(x)/cosh(x) = tanh(x)" => "Reconocer la tangente hiperbólica",
         _ => rule_name,
@@ -712,6 +713,7 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Derivar de orden superior" => "Differentiate to a higher order",
         "Desanidar el radical" => "Denest the radical",
         "Desarrollar en serie de Taylor" => "Expand as a Taylor series",
+        "Calcular la integral de línea" => "Compute the line integral",
         "Descomponer en fracciones parciales" => "Decompose into partial fractions",
         "Deshacer raíz y potencia" => "Cancel the root with the power",
         "Distribuir la potencia sobre el producto" => "Distribute the power over the product",

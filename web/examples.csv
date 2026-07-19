@@ -182,3 +182,8 @@
 "Vectorial","subs(subs(diff(x^2*y,x), x, 1), y, 2)","Evaluación en punto SIN trampa de orden: subs deriva primero y liga después — ∂f/∂x en (1,2) → 4"
 "Vectorial","subs(subs(det(hessian(x^3+y^3-3*x*y,[x,y])), x, 1), y, 1)","Clasificación de puntos críticos one-shot: det(H) en (1,1) → 27 > 0 (mínimo local)"
 "Vectorial","solve([diff(x^2+y^2-2*x-4*y, x)=0, diff(x^2+y^2-2*x-4*y, y)=0], [x,y])","Puntos críticos one-shot: resolver ∇f = 0 como sistema → { x = 1, y = 2 }"
+"Analítico","taylor(sin(x)/x, x, 0, 4)","Serie de Maclaurin con singularidad evitable: 1 − x²/6 + x⁴/120 (cancelación de la potencia común)"
+"Analítico","taylor(e^(x+y), [x,y], [0,0], 2)","Taylor multivariable por grado total: 1 + x + y + x²/2 + x·y + y²/2 (sin términos de grado 4)"
+"Analítico","lineintegral([-y,x], [x,y], [cos(t),sin(t)], t, 0, 2*pi)","Circulación ∮F·dr sobre la circunferencia unidad → 2π"
+"Analítico","lineintegral(x^2, [x,y], [cos(t),sin(t)], t, 0, pi)","Integral de línea escalar ∫f·ds vía ‖r′(t)‖ → π/2"
+"Analítico","integrate([cos(t),sin(t)], t, 0, pi)","Integral definida componente a componente sobre un vector → [[0],[2]]"

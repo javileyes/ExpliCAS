@@ -2670,6 +2670,54 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_lineintegral_verb_f4() {
+    // Fase 3 · F4: ensamblador puro sobre composición viva — parametrizar,
+    // derivar, ensamblar el integrando y delegar en la integral definida.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Vector (circulación), escalar (∫f·ds vía ‖r'‖) y hélice 3D.
+    assert_eq!(
+        eval_result("lineintegral([-y,x],[x,y],[cos(t),sin(t)],t,0,2*pi)"),
+        "2·pi"
+    );
+    assert_eq!(
+        eval_result("lineintegral(x^2,[x,y],[cos(t),sin(t)],t,0,pi)"),
+        "1/2·pi"
+    );
+    assert_eq!(
+        eval_result("lineintegral([y,-x,1],[x,y,z],[cos(t),sin(t),t],t,0,2*pi)"),
+        "0"
+    );
+    // Fixture de equivalencia verbo ≡ composición (guardrail #5: resultado
+    // como contrato): la circulación ensamblada A MANO da lo mismo.
+    assert_eq!(
+        eval_result(
+            "integrate(subs(subs(-y,x,cos(t)),y,sin(t))*diff(cos(t),t) + subs(subs(x,x,cos(t)),y,sin(t))*diff(sin(t),t), t, 0, 2*pi)"
+        ),
+        "2·pi"
+    );
+    // Declines honestos: parametrización que menciona una variable del campo,
+    // shapes incompatibles (#comps ≠ #vars), t dentro de la lista de vars.
+    for probe in [
+        "lineintegral(x,[x,y],[t,x],t,0,1)",
+        "lineintegral([-y,x],[x,y],[cos(t)],t,0,1)",
+        "lineintegral(x^2,[x,t],[cos(t),sin(t)],t,0,1)",
+    ] {
+        let r = eval_result(probe);
+        assert!(
+            r.starts_with("lineintegral("),
+            "{probe} debe declinar a eco residual, got: {r}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_subs_noop_guard_and_definite_matrix_integrate_f3() {
     // Fase 3 · F3: (a) el subs no-op y las cadenas anidadas colapsan en el
     // nodo EXTERIOR en UN rewrite — la resolución hijo-primero re-observaba la
@@ -3283,8 +3331,11 @@ fn test_eval_gradient_verb() {
             .expect("Failed to run CLI");
         String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
     };
-    // The six verbs are all registered now; the detector moves to the Fase-3
-    // scope-out names, whose "función no definida" decline is part of the contract.
+    // lineintegral GRADUÓ en F4 (Fase 3) con su aridad REAL 6 — el detector
+    // never-confirm se actualiza INTENCIONALMENTE (decisión D10 del scoping:
+    // el assert por aridad quedaría verde por accidente si no se migra): la
+    // aridad-6 computa, cualquier OTRA aridad sigue "función no definida", y
+    // los nombres aún fuera de alcance conservan su decline.
     for probe in [
         "lineintegral(x^2, [x,y])",
         "surface_integral(x*y, [x,y,z])",
@@ -3292,7 +3343,7 @@ fn test_eval_gradient_verb() {
     ] {
         assert!(
             err_of(probe).contains("no definida"),
-            "Fase-3 scope-out name must stay 'función no definida': {probe}"
+            "Fase-3 scope-out name/arity must stay 'función no definida': {probe}"
         );
     }
     // Narration: rule name localizes es/en; one keyed substep per component.

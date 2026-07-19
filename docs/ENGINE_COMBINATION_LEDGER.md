@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 641 (newest first)
+Active entries: 642 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -123,6 +123,7 @@ Active entries: 641 (newest first)
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (Div-arm de `taylor_at_zero_with_rational`: canc... | CAPACIDAD+SOUNDNESS (Fase 3 · F1, ciclo 1/4): sustrato Taylor — singularidad evitable computa, punto singular deja de responder `undefined`, cap de orden explícito
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`taylor_multivar_series_expr`: tabla de derivad... | CAPACIDAD (Fase 3 · F2, ciclo 2/4): taylor(f,[vars],[punto],n) multivariable — multi-índice por grado TOTAL, incremental desde el padre, narración keyed
 - 2026-07-19 | `retained` | `cas_engine/rules/functions.rs` (SubsRule reescrito: `peel_subs_target_spine`... | SUSTRATO (Fase 3 · F3, ciclo 3/4): las cadenas de subs colapsan en el nodo exterior (muere el hint-ruido de ciclo) + integrate DEFINIDO componentwise sobre Matrix
+- 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LineIntegralRule` + extracto... | CAPACIDAD (Fase 3 · F4, ciclo 4/4): verbo lineintegral(F,[vars],r,t,a,b) — ensamblador puro sobre la composición ya limpia por F3
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20748,3 +20749,18 @@ Active entries: 641 (newest first)
 - retained learning:
   - **Con un detector de ciclos global-de-fase por contenido, toda familia de rules cuyo resultado CONVERGE (eliminadores, colapsadores) debe emitir su cadena en UN rewrite del nodo exterior** — hijo-primero + padre-converge = falso period-1 garantizado; el patrón espina+ancestor-decline lo evita sin tocar el detector ni suprimir hints.
   - PRÓXIMO PELDAÑO: F4 (verbo lineintegral — ensamblador puro sobre esta composición ya limpia; gotcha dos-cables + never-confirm con aridad real 6).
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F4, ciclo 4/4): verbo lineintegral(F,[vars],r,t,a,b) — ensamblador puro sobre la composición ya limpia por F3
+
+- area: `cas_engine/rules/calculus/vector_calculus.rs` (`LineIntegralRule` + extractor posicional arity-6 EXACTO + validaciones: params sin variables del campo, t fuera de la lista de vars, shapes #comps==#vars; molde ArcLengthRule línea a línea: derivar con decline honesto, ensamblar `Σ Fᵢ(r)·rᵢ'` o `f(r)·‖r'‖` INTERNAMENTE, reescribir a `ctx.call("integrate", …)` definido) + gate `"lineintegral" => arity == 6` en eval.rs (MISMO commit — gotcha dos-cables) + narración keyed `lineintegral.formula_vector`/`formula_scalar` es/en (formula-level) + never-confirm actualizado INTENCIONALMENTE (D10) + 5 filas examples.csv (familia "Analítico" nueva: F1/F2/F3/F4)
+- status: `retained`. **TANDA 4/4 COMPLETA (0 rechazos): bloque A entero (F1+F2) + bloque B abierto (F3+F4).**
+- capture:
+  - investment_class: capacidad curricular (el verbo estrella del bloque B — "verbo sobre máquina viva", séptima repetición del patrón del frente vectorial).
+  - cell: `lineintegral([-y,x],[x,y],[cos(t),sin(t)],t,0,2π)` → `2·pi` (circulación); `lineintegral(x²,[x,y],[cos(t),sin(t)],t,0,π)` → `pi/2` (∫f·ds vía ‖r'‖); hélice 3D `[y,-x,1]` → `0` (−sin²−cos²+1); **fixture de equivalencia verbo≡composición** (guardrail #5): la circulación ensamblada A MANO con subs/diff da el MISMO `2·pi` — y sin blocked_hints porque F3 limpió esa composición primero (la secuencia F3→F4 del scoping era exactamente esta dependencia).
+  - Declines honestos pineados: parametrización que menciona variable del campo (`[t,x]`), shapes incompatibles (`#comps≠#vars`), `t` dentro de la lista de vars; aridad ≠ 6 conserva "función no definida" (never-confirm por (nombre, aridad) — el assert actualizado con el porqué D10: sin migrar quedaría verde por accidente).
+  - Sustitución secuencial order-safe POR CONSTRUCCIÓN: el extractor garantiza que ningún componente de r(t) menciona variables del campo — la validación es la premisa del orden, no ceremonia.
+  - surface_integral y potential siguen "no definida" (F5/F6 — próximos peldaños del bloque B).
+- validación: workspace failed:0; clippy --all-targets limpio; lint string-compares 0; engine-fast + scorecards verdes; huella contadores-idéntica (delta filtered_out de lane declarado si aparece — tests nuevos).
+- retained learning:
+  - **Un ensamblador que valida sus premisas estructurales (params libres de las vars del campo) convierte la sustitución secuencial en trivialmente sound** — la alternativa (sustitución simultánea con renombrado) es maquinaria que nadie necesita si el extractor rechaza el único caso que la exigiría.
+  - PRÓXIMO PELDAÑO: F5 (surface_integral) y F6 (potential vía curl=0) completan el bloque B; después bloque C (F7 límites multivar sobre el canal de dominio de F0).

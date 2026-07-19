@@ -72,6 +72,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return taylor_multivar_substeps;
     }
 
+    let lineintegral_substeps = generate_lineintegral_substeps(ctx, step);
+    if !lineintegral_substeps.is_empty() {
+        return lineintegral_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -12007,6 +12012,40 @@ fn integer_literal(ctx: &Context, expr: ExprId) -> Option<i64> {
         Expr::Number(n) if n.is_integer() && !n.is_negative() => n.to_integer().to_i64(),
         _ => None,
     }
+}
+
+/// Formula-level narration for the line-integral verb (F4, Fase 3 — same
+/// formula-level precedent as divergence/laplacian/taylor).
+fn generate_lineintegral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Line Integral" | "Calcular la integral de línea"
+    ) {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    let fn_name = ctx.sym_name(*fn_id);
+    if fn_name != "lineintegral" || args.len() != 6 {
+        return Vec::new();
+    }
+    let field = args[0];
+    let key = if matches!(ctx.get(field), Expr::Matrix { .. }) {
+        "lineintegral.formula_vector"
+    } else {
+        "lineintegral.formula_scalar"
+    };
+    let lower = display_expr(ctx, args[4]);
+    let upper = display_expr(ctx, args[5]);
+    vec![SubStep::keyed(
+        key,
+        vec![lower, upper],
+        display_expr(ctx, field),
+        display_expr(ctx, after),
+    )]
 }
 
 /// Formula-level narration for the MULTIVARIATE Taylor verb (F2, Fase 3 —

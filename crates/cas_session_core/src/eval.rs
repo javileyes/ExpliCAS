@@ -121,6 +121,10 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         // subs(expr, var, value); multi-variable nests.
         "subs" => arity == 3,
         "arclength" | "arc_length" => arity == 4,
+        // F4 (Fase 3): lineintegral(field, [vars], [param], t, a, b) — arity-6
+        // EXACT; other arities keep the "función no definida" decline (the
+        // never-confirm fixture pins both surfaces).
+        "lineintegral" => arity == 6,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.
         "round" => arity == 1,
