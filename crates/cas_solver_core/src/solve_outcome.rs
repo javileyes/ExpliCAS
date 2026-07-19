@@ -1921,11 +1921,31 @@ pub(crate) fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFr
     }
 }
 
+/// Calculus binder calls carry `infinity` in their arguments as NOTATION (an
+/// approach point, an improper or series bound), so a non-finite constant among
+/// the args says nothing about the call's VALUE — `limit(1/x, x, infinity)` is
+/// exactly `0`. Non-finite walkers must treat these calls as opaque instead of
+/// flagging them (2026-07-19: `solve(limit(1/x,x,infinity)=y, y)` asserted
+/// "No solution" because the walker recursed into the binder's bound).
+pub const CALCULUS_BINDER_FN_NAMES: &[&str] = &[
+    "limit",
+    "integrate",
+    "int",
+    "sum",
+    "product",
+    "diff",
+    "taylor",
+    "series",
+    "root_sum",
+    "subs",
+];
+
 /// True when `expr` contains a non-finite sentinel constant (`Undefined` or
 /// `Infinity`), including nested inside arithmetic, negation, function
 /// arguments, or a matrix. Mirrors the Matrix-aware `solution_contains_nonfinite`
 /// in `cas_solver`, kept in-crate so the var-eliminated classifier can reject a
 /// folded sentinel before it is mistaken for a symbolic parameter constraint.
+/// Calculus binder calls are opaque (see [`CALCULUS_BINDER_FN_NAMES`]).
 fn residual_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Constant(Constant::Infinity | Constant::Undefined) => true,
@@ -1933,7 +1953,13 @@ fn residual_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
             residual_contains_nonfinite(ctx, *a) || residual_contains_nonfinite(ctx, *b)
         }
         Expr::Neg(a) | Expr::Hold(a) => residual_contains_nonfinite(ctx, *a),
-        Expr::Function(_, args) => args.iter().any(|&c| residual_contains_nonfinite(ctx, c)),
+        Expr::Function(fn_id, args) => {
+            let name = ctx.sym_name(*fn_id);
+            if CALCULUS_BINDER_FN_NAMES.contains(&name) {
+                return false;
+            }
+            args.iter().any(|&c| residual_contains_nonfinite(ctx, c))
+        }
         Expr::Matrix { data, .. } => data.iter().any(|&c| residual_contains_nonfinite(ctx, c)),
         _ => false,
     }

@@ -2670,6 +2670,35 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_solve_calculus_binder_solution_survives() {
+    // Chip del barrido F0 (2026-07-19): `solve(limit(1/x,x,infinity)=y, y)`
+    // afirmaba "No solution" — los walkers non-finite recursaban en los ARGS de
+    // la call y el `infinity` de la COTA (notación, no valor: el límite ES 0)
+    // marcaba la solución como no-finita. Los binders de cálculo son opacos.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        eval_result("solve(limit(1/x, x, infinity) = y, y)"),
+        "{ limit(1 / x, x, infinity) }"
+    );
+    assert_eq!(
+        eval_result("solve(y = limit(1/x, x, infinity), y)"),
+        "{ limit(1 / x, x, infinity) }"
+    );
+    // Pins: los "No solution" legítimos y los guards de no-realidad intactos.
+    assert_eq!(eval_result("solve(x = x+1, x)"), "No solution");
+    assert_eq!(eval_result("solve(abs(x) = -1, x)"), "No solution");
+    assert_eq!(eval_result("solve(cos(x) = 2, x)"), "No solution");
+    assert_eq!(eval_result("solve(sin(x) = sqrt(2), x)"), "No solution");
+}
+
+#[test]
 fn test_eval_solve_critical_points() {
     // Cierre vectorial · V7d (decisión del usuario): los diff inline se pre-evalúan
     // en el path de solve_system (con fold numérico de los artefactos x^(2-1)), así

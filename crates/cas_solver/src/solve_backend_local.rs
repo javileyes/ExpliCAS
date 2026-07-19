@@ -174,6 +174,13 @@ fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
             {
                 return true;
             }
+            // A calculus binder's bounds carry ∞ as notation, not as a value:
+            // `y = limit(1/x, x, infinity)` has the finite solution 0 — do not
+            // drop it (which asserted "No solution", 2026-07-19).
+            let name = ctx.sym_name(*fn_id);
+            if cas_solver_core::solve_outcome::CALCULUS_BINDER_FN_NAMES.contains(&name) {
+                return false;
+            }
             args.iter().any(|&c| solution_contains_nonfinite(ctx, c))
         }
         Expr::Matrix { data, .. } => data.iter().any(|&c| solution_contains_nonfinite(ctx, c)),

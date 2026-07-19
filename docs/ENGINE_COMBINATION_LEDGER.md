@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 637 (newest first)
+Active entries: 638 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; br... | SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
+- 2026-07-19 | `retained` | `cas_solver_core/solve_outcome.rs` (`CALCULUS_BINDER_FN_NAMES` pub const + ex... | SOUNDNESS (chip del barrido F0): solve afirmaba "No solution" ante infinity en ARGS de binders de cálculo — la cota es notación, no valor
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20681,3 +20682,18 @@ Active entries: 637 (newest first)
 - retained learning:
   - **Un walker estructural que trata un contenedor como hoja convierte cada regla "es constante" en un fabricador**: al añadir un nodo contenedor al AST (Matrix, futuro tensor), auditar TODOS los walkers de dependencia/constancia del repo en el mismo commit — el brazo `Matrix{..} => {}` compilaba limpio y mentía.
   - PRÓXIMO PELDAÑO: chip #25 (solve afirma "No solution" con Constant::Infinity en cualquier parte de la ecuación — causa acotada por probe: `foo(infinity)=y` dispara, `foo(3)=y` no) y después F1 (sustrato Taylor).
+
+## 2026-07-19 - SOUNDNESS (chip del barrido F0): solve afirmaba "No solution" ante infinity en ARGS de binders de cálculo — la cota es notación, no valor
+
+- area: `cas_solver_core/solve_outcome.rs` (`CALCULUS_BINDER_FN_NAMES` pub const + excepción en `residual_contains_nonfinite`) + `cas_solver/solve_backend_local.rs` (misma excepción en `solution_contains_nonfinite`, tras el guard arcsin/arccos que queda intacto) + e2e contract con pins
+- status: `retained`. Segundo chip del barrido adversarial `wf_9666b8e7-ea3` aceptado por el usuario.
+- capture:
+  - investment_class: soundness (claim asertivo unsound — afirmar ∅ sin prueba viola la política de residual honesto).
+  - **Acotado por probe en 3 saltos**: `solve(limit(1/x,x,infinity)=y,y)` → "No solution" pero `solve(foo(3)=y,y)` → `{foo(3)}` BIEN y `solve(foo(infinity)=y,y)` → "No solution" ⇒ el disparador es `Constant::Infinity` en CUALQUIER parte, no la función desconocida. Dos walkers gemelos con la misma recursión sobre-ancha en args de `Function`: `solution_contains_nonfinite` (dropea soluciones → Discrete vacío → Empty) y `residual_contains_nonfinite` (clasifica residual var-free como ContradictionNonZero).
+  - Fix con distinción semántica: **en un binder de cálculo (`limit`/`integrate`/`sum`/`product`/`diff`/`taylor`/`series`/`root_sum`/`subs`) el ∞ de los args es NOTACIÓN (punto de aproximación, cota impropia, cota de serie) — el valor puede ser finito (`limit(1/x,x,∞)=0`, `∫₀^∞e^(-t²)=√π/2`)**. Lista compartida `CALCULUS_BINDER_FN_NAMES` en solver_core, consumida por ambos walkers: binder ⇒ opaco (no flag). Las funciones ORDINARIAS conservan la recursión (arg no-finito ⇒ valor no-finito: `sqrt(∞)`, `sin(undefined)`) — el guard es correcto para evaluables.
+  - Resultado: `{ limit(1/x, x, infinity) }` como solución residual honesta (misma convención que integrate, que además evalúa). Pins verdes: `x=x+1`, `|x|=-1`, `cos(x)=2`, `sin(x)=√2` siguen "No solution" (guard arcsin/arccos intacto).
+  - Residual nombrado honesto: `solve(foo(infinity)=y,y)` (función DESCONOCIDA con arg ∞) sigue afirmando "No solution" — misma clase de claim, fuera del scope de este chip (ensancharlo a toda Function desconocida tiene blast en lanes de verificación); dueño: backlog de solve.
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + scorecards verdes; huella contadores-idéntica.
+- retained learning:
+  - **Un walker "contiene X" aplicado a calls con estructura de BINDER necesita la distinción args-de-valor vs args-de-notación**: la cota/el punto de aproximación no participan del valor. Es la tercera aparición de la clase (order-guard de subs, gate léxico del wire, ahora los non-finite): al escribir un walker genérico sobre Function, preguntar SIEMPRE qué significan los args del binder.
+  - PRÓXIMO PELDAÑO: F1 (sustrato Taylor) — la cola de chips del barrido queda vacía.
