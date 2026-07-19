@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 645 (newest first)
+Active entries: 646 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -127,6 +127,7 @@ Active entries: 645 (newest first)
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`SurfaceIntegralRule` + extra... | CAPACIDAD (Fase 3 · F5, tanda-2 ciclo 1/4): verbo surface_integral(F,[vars],r,[u,v],[a,b],[c,d]) — elemento de área r_u×r_v sobre iteradas definidas vivas
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`PotentialRule` + `try_potent... | CAPACIDAD (Fase 3 · F6, tanda-2 ciclo 2/4): verbo potential(F,[vars]) — reconstrucción por caminos con EMISIÓN GATEADA POR VERIFICACIÓN exacta ∇φ≡F — BLOQUE B COMPLETO
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_multivar_limit_by_continuity` + `expr_is_v... | CAPACIDAD (Fase 3 · F7, tanda-2 ciclo 3/4): límites multivariables por continuidad PROBADA + comando REPL unificado con puntos finitos — bloque C abierto
+- 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_multivar_dne_by_paths`: batería concreta `... | CAPACIDAD+SOUNDNESS (Fase 3 · F8, tanda-2 ciclo 4/4): DNE-por-caminos con testigos CITADOS — el motor univariado entero como oráculo por-camino; TANDA-2 4/4 COMPLETA
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20813,3 +20814,20 @@ Active entries: 645 (newest first)
 - retained learning:
   - **Los evaluadores de DECISIÓN y las formas de EMISIÓN necesitan aritméticas distintas**: la emisión puede confiar en el simplify downstream (que sí pliega `Pow(1,2)`), la decisión NO tiene downstream — todo prover in-rule necesita su evaluador exacto completo, no el fold de conveniencia.
   - PRÓXIMO PELDAÑO: F8 (DNE-por-caminos con testigos citados — cierra la tanda; el pin central `x²y/(x²+y²)` residual).
+
+## 2026-07-19 - CAPACIDAD+SOUNDNESS (Fase 3 · F8, tanda-2 ciclo 4/4): DNE-por-caminos con testigos CITADOS — el motor univariado entero como oráculo por-camino; TANDA-2 4/4 COMPLETA
+
+- area: `cas_math/limits_support.rs` (`try_multivar_dne_by_paths`: batería concreta `{y=b, x=a, y=b±(x−a), y=b±(x−a)², x=a±(y−b)²}` sustituida a nivel de árbol, límite univariado por camino vía `eval_limit_at_infinity` ENTERO, decisión SOLO desde hechos probados — dos racionales exactos distintos, o un camino con `undefined` probado (laterales/oscilación) — testigos estructurados con displays construidos a mano, cas_math no depende del formatter) + `cas_engine/vector_calculus.rs` (hook tras la continuidad F7: el veredicto APLICA rewrite → undefined y los testigos viajan como `AssumptionEvent` con kind `HeuristicAssumption` — el único que `collect_domain_warnings` deja pasar) + narración keyed `limit.path_counterexample` + unit + e2e + fila examples
+- status: `retained`. **TANDA-2 4/4 COMPLETA (0 rechazos): bloque B CERRADO (F5+F6) + bloque C ABIERTO Y CERRADO en su núcleo (F7+F8)**.
+- capture:
+  - investment_class: capacidad curricular sound-first (el lado NEGATIVO decidible de los límites multivar — el complemento exacto de la continuidad F7) con el pin de soundness central del bloque.
+  - cell: `limit(x·y/(x²+y²),[x,y],[0,0])` → `undefined` + warning "el límite no existe: por y = 0 el límite es 0; por y = x es 1/2" (los testigos EXACTOS del spec); `x²y/(x⁴+y²)` → testigo parabólico `y = x²` → 1/2 (el spec verificó que el parabólico es decidible — confirmado); `(x²−y²)/(x²+y²)` → 1 vs −1; `xy²/(x²+y⁴)` → `x = y²` → 1/2 (la batería incluye x=y²). **EL PIN CENTRAL**: `x²y/(x²+y²)` → residual honesto (todos los caminos dan 0 — JAMÁS existencia desde finitos caminos). Cláusulas de soundness: camino RESIDUAL ≠ testigo (warning presente ⇒ skip); camino con `undefined` probado (laterales discrepantes/oscilación del univariado) ⇒ DNE inmediato con ese único testigo; valores no-racionales ⇒ skip (comparación exacta o nada); punto no-racional ⇒ decline (la batería exige aritmética exacta — pin).
+  - **El warning con testigos llega TAMBIÉN en modo default** — el análisis previo del gating-por-steps era pesimista: el collector de domain-warnings ve los eventos de step en todos los modos; lo que filtraba era el KIND (`RequiresIntroduced` se descarta — el veredicto viaja como `HeuristicAssumption`, el único informativo que pasa; el canal semánticamente propio "veredicto de rule" sigue siendo el candidato transversal nombrado, ahora con menos urgencia).
+  - El motor univariado ENTERO como oráculo por-camino (con L'Hôpital, laterales, oscilación incluidos) — reuso máximo: el driver son ~100 líneas de orquestación sobre maquinaria viva.
+  - Pin propio de F7 graduado POR F8 en la misma tanda (el test F7 anticipaba "F8 decidirá el DNE" en el singular [0,0] — migrado con nota al test de F8, que lo pinea como undefined+testigos).
+  - Narración keyed `limit.path_counterexample` definida y cableada (lee el evento del step); el warning ya porta los testigos en todos los modos.
+- validación: workspace failed:0; clippy --all-targets limpio (gating por exit reales — las dos fricciones de F7 no se repitieron); engine-fast + scorecards verdes; huella contadores-idéntica salvo deltas filtered_out declarados (tests nuevos).
+- retained learning:
+  - **"Decidir solo desde hechos probados" convierte un problema indecidible en una familia curricular cerrada**: la batería finita no decide la existencia (indecidible en general) pero SÍ decide la no-existencia cuando dos oráculos exactos difieren — el mismo molde de los laterales discrepantes univariados, elevado una dimensión.
+  - **Verificar el canal ANTES de asumir su gating**: el "warnings solo con steps" era una inferencia de dos probes con la causa equivocada (kind filtrado, no steps) — un probe dirigido al mecanismo real (kind permitido) lo falsificó y ahorró el threading de acción entero.
+  - PRÓXIMO PELDAÑO: F9 (límites iterados arity-3 — el gate ya está registrado por F7; solo falta la regla univar-anidada) o F8b (squeeze-positivo, scoping fino propio); el canal default-mode de veredictos de rules como candidato de arquitectura.

@@ -11049,6 +11049,192 @@ fn eval_rational_const_deep(ctx: &Context, expr: ExprId) -> Option<BigRational> 
     }
 }
 
+/// One path witness for a multivariate DNE verdict (F8, Fase 3).
+pub struct MultivarPathWitness {
+    /// e.g. `y = x^2` — built structurally minimal at the origin.
+    pub path_display: String,
+    /// Exact value along the path, or a proven-DNE note.
+    pub value_display: String,
+}
+
+/// Verdict of the path battery: either two witnesses with DIFFERENT exact
+/// values, or a single path whose univariate limit provably does not exist.
+pub struct MultivarDneByPaths {
+    pub witness_a: MultivarPathWitness,
+    pub witness_b: Option<MultivarPathWitness>,
+}
+
+/// DNE-by-paths for a TWO-variable limit at a rational point (F8, Fase 3):
+/// run the concrete battery `{y=b, x=a, y=b±(x−a), y=b±(x−a)², x=a±(y−b)²}`
+/// through the ENTIRE univariate limit engine as the per-path oracle, and
+/// decide ONLY from proven facts — two paths with DIFFERENT exact rational
+/// limits, or one path whose univariate limit provably does not exist
+/// (disagreeing laterals / oscillation, which arrive as `undefined`). A path
+/// whose univariate limit stays residual is NEVER a witness, and agreeing
+/// paths NEVER prove existence (the central soundness pin: the caller keeps
+/// the honest residual).
+pub fn try_multivar_dne_by_paths(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_ids: &[ExprId],
+    points: &[ExprId],
+) -> Option<MultivarDneByPaths> {
+    if var_ids.len() != 2 || points.len() != 2 {
+        return None;
+    }
+    // The battery shifts by the point: both coordinates must be exact rationals.
+    let a_val = eval_rational_const_deep(ctx, points[0])?;
+    let b_val = eval_rational_const_deep(ctx, points[1])?;
+    let (x_id, y_id) = (var_ids[0], var_ids[1]);
+    let (a_pt, b_pt) = (points[0], points[1]);
+    let name_of = |ctx: &Context, id: ExprId| -> String {
+        match ctx.get(id) {
+            Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+            _ => "?".to_string(),
+        }
+    };
+    let x_name = name_of(ctx, x_id);
+    let y_name = name_of(ctx, y_id);
+    // Rendered coordinates for the path displays (rationals by construction).
+    let a_disp = a_val.to_string();
+    let b_disp = b_val.to_string();
+    // `x` at the origin, `(x − a)` otherwise — display fragment of the core.
+    let core_disp = |var: &str, at: &BigRational, at_disp: &str| -> String {
+        use num_traits::Zero;
+        if at.is_zero() {
+            var.to_string()
+        } else {
+            format!("({var} - {at_disp})")
+        }
+    };
+    let with_offset = |base: &BigRational, base_disp: &str, core: String| -> String {
+        use num_traits::Zero;
+        if base.is_zero() {
+            core
+        } else {
+            format!("{base_disp} + {core}")
+        }
+    };
+
+    // Structurally-minimal shifted core: `x` at the origin, `x − a` otherwise.
+    let shifted = |ctx: &mut Context, var: ExprId, at: ExprId, at_val: &BigRational| -> ExprId {
+        use num_traits::Zero;
+        if at_val.is_zero() {
+            var
+        } else {
+            ctx.add(Expr::Sub(var, at))
+        }
+    };
+    let offset =
+        |ctx: &mut Context, base: ExprId, base_val: &BigRational, core: ExprId| -> ExprId {
+            use num_traits::Zero;
+            if base_val.is_zero() {
+                core
+            } else {
+                ctx.add(Expr::Add(base, core))
+            }
+        };
+
+    // Build the battery as (substituted var, path expr, remaining var, its point).
+    let mut paths: Vec<(ExprId, ExprId, ExprId, ExprId, String)> = Vec::new();
+    // y fixed / x fixed.
+    paths.push((y_id, b_pt, x_id, a_pt, format!("{y_name} = {b_disp}")));
+    paths.push((x_id, a_pt, y_id, b_pt, format!("{x_name} = {a_disp}")));
+    // y = b ± (x−a) and y = b ± (x−a)².
+    for sign in [1i32, -1] {
+        let sign_str = if sign < 0 { "-" } else { "" };
+        let core = shifted(ctx, x_id, a_pt, &a_val);
+        let core = if sign < 0 {
+            ctx.add(Expr::Neg(core))
+        } else {
+            core
+        };
+        let path = offset(ctx, b_pt, &b_val, core);
+        let disp = with_offset(
+            &b_val,
+            &b_disp,
+            format!("{sign_str}{}", core_disp(&x_name, &a_val, &a_disp)),
+        );
+        paths.push((y_id, path, x_id, a_pt, format!("{y_name} = {disp}")));
+
+        let base = shifted(ctx, x_id, a_pt, &a_val);
+        let two = ctx.num(2);
+        let sq = ctx.add(Expr::Pow(base, two));
+        let sq = if sign < 0 { ctx.add(Expr::Neg(sq)) } else { sq };
+        let path = offset(ctx, b_pt, &b_val, sq);
+        let disp = with_offset(
+            &b_val,
+            &b_disp,
+            format!("{sign_str}{}^2", core_disp(&x_name, &a_val, &a_disp)),
+        );
+        paths.push((y_id, path, x_id, a_pt, format!("{y_name} = {disp}")));
+    }
+    // x = a ± (y−b)².
+    for sign in [1i32, -1] {
+        let sign_str = if sign < 0 { "-" } else { "" };
+        let base = shifted(ctx, y_id, b_pt, &b_val);
+        let two = ctx.num(2);
+        let sq = ctx.add(Expr::Pow(base, two));
+        let sq = if sign < 0 { ctx.add(Expr::Neg(sq)) } else { sq };
+        let path = offset(ctx, a_pt, &a_val, sq);
+        let disp = with_offset(
+            &a_val,
+            &a_disp,
+            format!("{sign_str}{}^2", core_disp(&y_name, &b_val, &b_disp)),
+        );
+        paths.push((x_id, path, y_id, b_pt, format!("{x_name} = {disp}")));
+    }
+
+    let opts = LimitOptions::default();
+    let mut witnesses: Vec<(String, BigRational)> = Vec::new();
+    for (sub_var, path_expr, remaining_var, remaining_point, path_display) in paths {
+        let restricted = cas_ast::substitute_expr_by_id(ctx, expr, sub_var, path_expr);
+        let outcome = eval_limit_at_infinity(
+            ctx,
+            restricted,
+            remaining_var,
+            Approach::Finite(remaining_point),
+            &opts,
+        );
+        let is_undefined = matches!(ctx.get(outcome.expr), Expr::Constant(Constant::Undefined));
+        if is_undefined {
+            // Proven DNE along ONE path (disagreeing laterals / oscillation —
+            // those verdicts always arrive as `undefined`) decides the whole.
+            return Some(MultivarDneByPaths {
+                witness_a: MultivarPathWitness {
+                    path_display,
+                    value_display: "el límite univariado por este camino no existe".to_string(),
+                },
+                witness_b: None,
+            });
+        }
+        if outcome.warning.is_some() {
+            // Residual path: NEVER a witness (pinned soundness clause).
+            continue;
+        }
+        let Some(value) = limit_result_rational(ctx, outcome.expr) else {
+            continue;
+        };
+        if let Some((first_path, first_val)) = witnesses.first() {
+            if *first_val != value {
+                return Some(MultivarDneByPaths {
+                    witness_a: MultivarPathWitness {
+                        path_display: first_path.clone(),
+                        value_display: format!("{first_val}"),
+                    },
+                    witness_b: Some(MultivarPathWitness {
+                        path_display,
+                        value_display: format!("{value}"),
+                    }),
+                });
+            }
+        } else {
+            witnesses.push((path_display, value));
+        }
+    }
+    None
+}
+
 /// Cell cap for componentwise matrix limits (precedent: the engine's
 /// `COMPONENTWISE_MAX_CELLS` for matrix diff/integrate).
 const MATRIX_LIMIT_MAX_CELLS: usize = 64;
@@ -18575,6 +18761,35 @@ mod tests {
         assert_eq!(render(&mut ctx, "ln(x*y)", 2), None);
         // Cap de términos: C(33+2,2) > 64 → decline (orden alto en 2 vars).
         assert_eq!(render(&mut ctx, "e^(x+y)", 20), None);
+    }
+
+    #[test]
+    fn multivar_dne_by_paths_decides_only_from_proven_facts() {
+        // F8 (Fase 3): dos caminos con racionales exactos DISTINTOS → DNE con
+        // ambos testigos; caminos que COINCIDEN → None (jamás existencia desde
+        // finitos caminos — el pin de soundness central).
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let zero = ctx.num(0);
+        let vars = [x, y];
+        let points = [zero, zero];
+        // El clásico: y=0 → 0, y=x → 1/2.
+        let expr = cas_parser::parse("x*y/(x^2+y^2)", &mut ctx).expect("expr");
+        let verdict =
+            try_multivar_dne_by_paths(&mut ctx, expr, &vars, &points).expect("DNE probado");
+        let b = verdict.witness_b.expect("dos testigos");
+        assert_eq!(verdict.witness_a.value_display, "0");
+        assert_eq!(b.value_display, "1/2");
+        assert_eq!(b.path_display, "y = x");
+        // Todos los caminos dan 0 → None (residual honesto).
+        let expr = cas_parser::parse("x^2*y/(x^2+y^2)", &mut ctx).expect("expr");
+        assert!(try_multivar_dne_by_paths(&mut ctx, expr, &vars, &points).is_none());
+        // Punto no racional → None (la batería exige aritmética exacta).
+        let e_pt = ctx.add(Expr::Constant(Constant::E));
+        let points_e = [e_pt, zero];
+        let expr = cas_parser::parse("x*y/(x^2+y^2)", &mut ctx).expect("expr");
+        assert!(try_multivar_dne_by_paths(&mut ctx, expr, &vars, &points_e).is_none());
     }
 
     #[test]

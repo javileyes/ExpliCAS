@@ -715,12 +715,51 @@ define_rule!(
                 return None;
             }
         }
-        let value = cas_math::limits_support::try_multivar_limit_by_continuity(
+        if let Some(value) = cas_math::limits_support::try_multivar_limit_by_continuity(
             ctx, target, &var_ids, &points,
-        )?;
+        ) {
+            return Some(
+                Rewrite::new(value)
+                    .desc("Límite multivariable por continuidad probada: sustituir el punto")
+                    .budget_exempt(),
+            );
+        }
+        // F8: continuity declined — run the path battery. The verdict APPLIES
+        // a rewrite (→ undefined), so the witnesses travel as an assumption
+        // event; agreeing paths NEVER prove existence (the residual echo stays).
+        let verdict =
+            cas_math::limits_support::try_multivar_dne_by_paths(ctx, target, &var_ids, &points)?;
+        let message = match &verdict.witness_b {
+            Some(b) => format!(
+                "el límite no existe: por {} el límite es {}; por {} es {}",
+                verdict.witness_a.path_display,
+                verdict.witness_a.value_display,
+                b.path_display,
+                b.value_display
+            ),
+            None => format!(
+                "el límite no existe: por {} {}",
+                verdict.witness_a.path_display, verdict.witness_a.value_display
+            ),
+        };
+        let undefined = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Undefined));
+        let event = crate::AssumptionEvent {
+            key: cas_solver_core::assumption_model::AssumptionKey::Defined {
+                expr_fingerprint: cas_solver_core::assumption_model::expr_fingerprint(ctx, target),
+            },
+            expr_display: message.clone(),
+            message,
+            // HeuristicAssumption es el único kind que collect_domain_warnings
+            // deja pasar — el mensaje es un VEREDICTO informativo, no una
+            // asunción; el canal default-mode para veredictos de rules es el
+            // residual transversal nombrado (F1/F7/F8 lo esperan).
+            kind: cas_solver_core::assumption_model::AssumptionKind::HeuristicAssumption,
+            expr_id: Some(target),
+        };
         Some(
-            Rewrite::new(value)
-                .desc("Límite multivariable por continuidad probada: sustituir el punto")
+            Rewrite::new(undefined)
+                .desc("Límite multivariable: caminos con límites distintos — no existe")
+                .assume(event)
                 .budget_exempt(),
         )
     }

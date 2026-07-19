@@ -87,6 +87,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return potential_substeps;
     }
 
+    let path_counterexample_substeps = generate_limit_path_counterexample_substeps(ctx, step);
+    if !path_counterexample_substeps.is_empty() {
+        return path_counterexample_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -12056,6 +12061,33 @@ fn generate_lineintegral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         display_expr(ctx, field),
         display_expr(ctx, after),
     )]
+}
+
+/// Path-counterexample narration for the multivariate-limit DNE verdict (F8,
+/// Fase 3): the witnesses travel in the step's assumption event.
+fn generate_limit_path_counterexample_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Multivariate Limit" | "Evaluar el límite multivariable por continuidad"
+    ) {
+        return Vec::new();
+    }
+    let after = step.after_local().unwrap_or(step.after);
+    if !matches!(ctx.get(after), Expr::Constant(cas_ast::Constant::Undefined)) {
+        return Vec::new();
+    }
+    step.assumption_events()
+        .iter()
+        .filter(|event| event.message.contains("no existe"))
+        .map(|event| {
+            SubStep::keyed(
+                "limit.path_counterexample",
+                vec![event.message.clone()],
+                display_expr(ctx, step.before_local().unwrap_or(step.before)),
+                display_expr(ctx, after),
+            )
+        })
+        .collect()
 }
 
 /// Formula-level narration for the scalar-potential verb (F6, Fase 3).

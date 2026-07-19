@@ -2670,6 +2670,77 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_limit_multivar_dne_by_paths_f8() {
+    // Fase 3 · F8: DNE-por-caminos con testigos CITADOS en el warning; el pin
+    // central: caminos que coinciden JAMÁS prueban existencia (residual).
+    let eval_wire = |input: &str| -> Value {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+    let warnings_of = |wire: &Value| -> String {
+        wire["warnings"]
+            .as_array()
+            .map(|w| {
+                w.iter()
+                    .filter_map(|x| x["assumption"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            })
+            .unwrap_or_default()
+    };
+    // Los 4 clásicos: undefined + AMBOS testigos citados.
+    for (probe, frag_a, frag_b) in [
+        (
+            "limit(x*y/(x^2+y^2), [x,y], [0,0])",
+            "por y = 0 el límite es 0",
+            "por y = x es 1/2",
+        ),
+        (
+            "limit(x^2*y/(x^4+y^2), [x,y], [0,0])",
+            "por y = 0 el límite es 0",
+            "por y = x^2 es 1/2",
+        ),
+        (
+            "limit((x^2-y^2)/(x^2+y^2), [x,y], [0,0])",
+            "por y = 0 el límite es 1",
+            "por x = 0 es -1",
+        ),
+        (
+            "limit(x*y^2/(x^2+y^4), [x,y], [0,0])",
+            "por y = 0 el límite es 0",
+            "por x = y^2 es 1/2",
+        ),
+    ] {
+        let wire = eval_wire(probe);
+        assert_eq!(
+            wire["result"].as_str().unwrap_or(""),
+            "undefined",
+            "{probe}"
+        );
+        let w = warnings_of(&wire);
+        assert!(w.contains(frag_a), "{probe}: falta testigo A en {w}");
+        assert!(w.contains(frag_b), "{probe}: falta testigo B en {w}");
+    }
+    // EL PIN CENTRAL: todos los caminos dan 0 → residual honesto, JAMÁS 0.
+    let wire = eval_wire("limit(x^2*y/(x^2+y^2), [x,y], [0,0])");
+    assert!(
+        wire["result"].as_str().unwrap_or("").starts_with("limit("),
+        "existencia desde finitos caminos JAMÁS: {}",
+        wire["result"]
+    );
+    // Pins F7: continuidad intacta.
+    assert_eq!(
+        eval_wire("limit(x*y/(x^2+y^2), [x,y], [1,1])")["result"]
+            .as_str()
+            .unwrap_or(""),
+        "1/2"
+    );
+}
+
+#[test]
 fn test_eval_limit_multivar_continuity_f7() {
     // Fase 3 · F7: limit(f,[vars],[punto]) por continuidad PROBADA (den
     // sustituido pliega a racional ≠0, exacto) — lo demás queda residual
@@ -2689,10 +2760,11 @@ fn test_eval_limit_multivar_continuity_f7() {
         eval_result("limit(sin(x+y)/(1+x^2+y^2), [x,y], [0,0])"),
         "0"
     );
-    // Residuales honestos: den no probado ≠0 (F8 decidirá el DNE), punto con
-    // infinity (at-infinity multivar fuera de scope), punto imaginario.
+    // Residuales honestos: punto con infinity (at-infinity multivar fuera de
+    // scope), punto imaginario. (El singular [0,0] con caminos discrepantes
+    // GRADUÓ en F8 a undefined+testigos — pin migrado a su test; el que
+    // COINCIDE en caminos sigue residual y lo pinea el test de F8.)
     for probe in [
-        "limit(x*y/(x^2+y^2), [x,y], [0,0])",
         "limit(x^2*y, [x,y], [infinity,1])",
         "limit(x+y, [x,y], [i,0])",
     ] {
