@@ -565,11 +565,13 @@ pub fn parse_eval_limit_command_error(input: &str) -> Option<String> {
         return None;
     };
 
-    if !trimmed.ends_with(')') {
-        return Some(limit_command_usage_error());
-    }
-
-    let content = &trimmed[prefix_len..trimmed.len() - 1];
+    let content = match classify_limit_wire_shape(trimmed, prefix_len) {
+        LimitWireShape::SingleCall(content) => content,
+        // Composed expression (`limit(...)+1`, iterated head): general eval
+        // owns it — no wire-level error (F9).
+        LimitWireShape::ComposedExpression => return None,
+        LimitWireShape::Malformed => return Some(limit_command_usage_error()),
+    };
     let parts = split_by_comma_at_depth_0(content);
     // Multivariate list form `limit(f, [x,y], [a,b])` (F7, Fase 3): not a
     // wire-level limit command — let the general eval path route it to the
@@ -804,6 +806,51 @@ fn parse_solve_system_command(input: &str) -> Option<String> {
     Some(trimmed["solve_system".len()..].trim().to_string())
 }
 
+/// Wire-shape verdict for an input starting with `limit(`/`lim(` (F9): is it a
+/// SINGLE call (the wire command), a COMPOSED expression (`limit(...)+1`,
+/// `limit(limit(...),y,2)` — general eval owns it: the nested-limit rule
+/// composes bottom-up), or MALFORMED (unbalanced — wire usage-error)?
+enum LimitWireShape<'a> {
+    SingleCall(&'a str),
+    ComposedExpression,
+    Malformed,
+}
+
+fn classify_limit_wire_shape(trimmed: &str, prefix_len: usize) -> LimitWireShape<'_> {
+    // Find the close paren matching the prefix's opening `(`.
+    let mut depth: i32 = 1;
+    for (i, ch) in trimmed[prefix_len..].char_indices() {
+        match ch {
+            '(' | '[' => depth += 1,
+            ')' | ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let end = prefix_len + i;
+                    return if end == trimmed.len() - 1 {
+                        let content = &trimmed[prefix_len..end];
+                        // An iterated head (`limit(limit(...),y,b)`) is ALSO
+                        // general-eval territory: the inner call must resolve
+                        // through the simplifier before the outer sees it.
+                        let first = split_by_comma_at_depth_0(content)
+                            .first()
+                            .map(|p| p.trim().to_lowercase())
+                            .unwrap_or_default();
+                        if first.starts_with("limit(") || first.starts_with("lim(") {
+                            LimitWireShape::ComposedExpression
+                        } else {
+                            LimitWireShape::SingleCall(content)
+                        }
+                    } else {
+                        LimitWireShape::ComposedExpression
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+    LimitWireShape::Malformed
+}
+
 fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach)> {
     let trimmed = input.trim();
     let lower = trimmed.to_lowercase();
@@ -815,11 +862,9 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach
         return None;
     };
 
-    if !trimmed.ends_with(')') {
+    let LimitWireShape::SingleCall(content) = classify_limit_wire_shape(trimmed, prefix_len) else {
         return None;
-    }
-
-    let content = &trimmed[prefix_len..trimmed.len() - 1];
+    };
     let parts = split_by_comma_at_depth_0(content);
     if parts.len() < 2 || parts.len() > 4 {
         return None;

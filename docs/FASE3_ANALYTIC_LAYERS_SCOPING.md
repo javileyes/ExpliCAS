@@ -206,7 +206,7 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 - **Depende:** F7 (firma y driver).
 - **Retención (pins):** `multivar-no-existencia-desde-caminos` (el x²y/(x²+y²) residual — pin de soundness); testigos EXACTOS en el warning (fixture de substring); pins F7.
 
-#### F9 — Límites iterados `limit(limit(f,x,a),y,b)` **[M]**
+#### F9 — Límites iterados `limit(limit(f,x,a),y,b)` **[M]** ☑ GRADUADO 2026-07-19 (hash en el ledger; anidados/compuestos/iterados evalúan all-or-nothing; el wire clasifica comando-vs-expresión por matching de paréntesis — interceptaba de más en 2 formas; pins solve-binder y 1+limit migrados a valor)
 - **Gradúa:** `limit(limit(x^2+y^2,x,1),y,2)` → `5`; `limit(limit(x*y/(x^2+y^2),x,0),y,0)` → `0` (los iterados EXISTEN aunque el doble no — la narración dice "límite iterado", JAMÁS lo presenta como límite doble); inner residual → outer DECLINA all-or-nothing (jamás operar sobre un residual como si fuera valor); presupuesto de anidamiento (profundidad ≤2).
 - **Inserción:** brazo `"limit" => arity == 3` **SOLO** en `is_known_eval_engine_function` (`eval.rs:68‑128`) — la arity-4 direccional NO se registra en posición de expresión (left/right son tokens del COMANDO; como args de función parsearían Variables — declinar con motivo) — + **regla motor en el mismo commit** (gotcha dos-cables `vector_calculus.rs:9`); la regla evalúa el limit interno vía el motor y solo emite si resuelve COMPLETO.
 - **Reuso:** motor univariado, patrón residual-aware.

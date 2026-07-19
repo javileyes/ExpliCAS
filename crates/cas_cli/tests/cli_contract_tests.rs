@@ -2789,10 +2789,57 @@ fn test_eval_limit_multivar_continuity_f7() {
     let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
     assert!(wire["result"].as_str().unwrap_or("").starts_with("limit("));
     // Pins: univar paramétrico intacto; comando wire univar intacto; el
-    // anidado pasa de error a eco residual (drift declarado, F9 lo evalúa).
+    // anidado GRADUÓ en F9 (evalúa — pin migrado de eco a valor).
     assert!(eval_result("limit(x*y/(x^2+y^2), x, 0)").starts_with("limit("));
     assert_eq!(eval_result("limit(x^2, x, 2)"), "4");
-    assert_eq!(eval_result("1+limit(x^2, x, 2)"), "limit(x^2, x, 2) + 1");
+    assert_eq!(eval_result("1+limit(x^2, x, 2)"), "5");
+}
+
+#[test]
+fn test_eval_limit_iterated_and_composed_f9() {
+    // Fase 3 · F9: limit anidado/compuesto/iterado evalúa vía el motor
+    // univariado y SOLO emite en resolución completa (inner residual → declina
+    // all-or-nothing); el wire clasifica la forma (single call / compuesta /
+    // malformada) por matching de paréntesis — las compuestas van a eval.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Iterados (la narración dice ITERADO, jamás doble).
+    assert_eq!(eval_result("limit(limit(x^2+y^2,x,1),y,2)"), "5");
+    assert_eq!(eval_result("limit(limit(x*y,x,2),y,3)"), "6");
+    // Compuestos.
+    assert_eq!(eval_result("limit(sin(x)/x,x,0)*2"), "2");
+    assert_eq!(eval_result("limit(x^2,x,2)+limit(x,x,1)"), "5");
+    assert_eq!(eval_result("diff(limit(x^2,x,2)*t,t)"), "4");
+    // Inner residual/DNE → all-or-nothing (eco completo, jamás operar sobre
+    // un residual como valor).
+    assert!(eval_result("limit(limit(x/y,y,0),x,0)").starts_with("limit("));
+    // Complex declina (disciplina F0; F11 re-otorga).
+    let out = cli()
+        .args([
+            "eval",
+            "1+limit(x^2,x,2)",
+            "--value-domain",
+            "complex",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    assert!(wire["result"].as_str().unwrap_or("").contains("limit("));
+    // Pins del comando wire: las formas single-call byte-idénticas.
+    assert_eq!(eval_result("limit(x^2, x, 2)"), "4");
+    assert_eq!(eval_result("limit(sin(x)/x, x, 0)"), "1");
+    assert_eq!(eval_result("limit(1/x, x, 0)"), "undefined");
+    assert_eq!(eval_result("limit(1/x, x, 0, right)"), "infinity");
+    // Never-fabricate heredados: cuerpo-con-I sigue residual en ambos dominios.
+    assert!(eval_result("limit(e^(i*x), x, infinity)").starts_with("limit("));
 }
 
 #[test]
@@ -3130,13 +3177,18 @@ fn test_eval_solve_calculus_binder_solution_survives() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
+    // F9 GRADUÓ el limit anidado: ahora el limit RESUELVE dentro de solve
+    // (limit(1/x,x,∞)→0 ⇒ y=0) — estrictamente mejor que la solución residual
+    // que este pin fijaba mientras el limit no evaluaba (contrato actualizado
+    // por intención). El fix de los walkers non-finite sigue pineado por los
+    // "No solution" legítimos de abajo.
     assert_eq!(
         eval_result("solve(limit(1/x, x, infinity) = y, y)"),
-        "{ limit(1 / x, x, infinity) }"
+        "{ 0 }"
     );
     assert_eq!(
         eval_result("solve(y = limit(1/x, x, infinity), y)"),
-        "{ limit(1 / x, x, infinity) }"
+        "{ 0 }"
     );
     // Pins: los "No solution" legítimos y los guards de no-realidad intactos.
     assert_eq!(eval_result("solve(x = x+1, x)"), "No solution");

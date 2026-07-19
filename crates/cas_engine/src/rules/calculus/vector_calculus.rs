@@ -790,3 +790,82 @@ fn expr_contains_nonfinite_constant(ctx: &cas_ast::Context, expr: cas_ast::ExprI
     }
     false
 }
+
+define_rule!(
+    LimitUnivarExprRule,
+    "Nested Limit",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr, parent_ctx| {
+        // F9 (Fase 3): `limit(f, x, a)` in EXPRESSION position (nested,
+        // composed, iterated) evaluates through the univariate limit engine
+        // and emits ONLY on a COMPLETE resolution — a residual, a warning, or
+        // an inner unevaluated calculus call decline all-or-nothing (a
+        // residual is never operated on as if it were a value). Iterated
+        // limits resolve bottom-up: the inner call becomes a value (possibly
+        // parametric) before the outer fires, so nesting depth is naturally
+        // bounded by the clean-target guard. Value-dependent (guardrail #1):
+        // the engine reasons with the real order — complex declines (F0
+        // discipline; F11 re-grants selectively).
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled {
+            return None;
+        }
+        if !ctx.is_call_named(expr, "limit") {
+            return None;
+        }
+        let cas_ast::Expr::Function(_, args) = ctx.get(expr) else {
+            return None;
+        };
+        if args.len() != 3 {
+            return None;
+        }
+        let args = args.clone();
+        let (target, var_expr, point) = (args[0], args[1], args[2]);
+        // Univar shape ONLY (the list form is LimitMultivarRule's).
+        if !matches!(ctx.get(var_expr), cas_ast::Expr::Variable(_)) {
+            return None;
+        }
+        if matches!(ctx.get(point), cas_ast::Expr::Matrix { .. }) {
+            return None;
+        }
+        // All-or-nothing: an unresolved calculus call inside target or point
+        // would be misread as an opaque constant by the limit rules.
+        if crate::rules::functions::contains_unevaluated_calculus_call(ctx, target)
+            || crate::rules::functions::contains_unevaluated_calculus_call(ctx, point)
+        {
+            return None;
+        }
+        let approach = match ctx.get(point) {
+            cas_ast::Expr::Constant(cas_ast::Constant::Infinity) => {
+                cas_math::limit_types::Approach::PosInfinity
+            }
+            cas_ast::Expr::Neg(inner)
+                if matches!(
+                    ctx.get(*inner),
+                    cas_ast::Expr::Constant(cas_ast::Constant::Infinity)
+                ) =>
+            {
+                cas_math::limit_types::Approach::NegInfinity
+            }
+            _ => cas_math::limit_types::Approach::Finite(point),
+        };
+        let opts = cas_math::limit_types::LimitOptions::default();
+        let outcome = cas_math::limits_support::eval_limit_at_infinity(
+            ctx, target, var_expr, approach, &opts,
+        );
+        // COMPLETE resolutions only: any warning (residual, proven-DNE with
+        // its citation, imaginary point) declines to the honest echo — the
+        // action path owns warnings; a rule cannot carry them on decline.
+        if outcome.warning.is_some() {
+            return None;
+        }
+        if crate::rules::functions::contains_unevaluated_calculus_call(ctx, outcome.expr) {
+            return None;
+        }
+        Some(
+            Rewrite::new(outcome.expr)
+                .desc("Evaluar el límite anidado (límite iterado, no doble)")
+                .budget_exempt(),
+        )
+    }
+);

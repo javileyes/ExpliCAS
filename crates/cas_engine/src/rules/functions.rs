@@ -776,7 +776,10 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
 /// guard of `SubsRule` (see below): substitution must wait for those to
 /// evaluate first, or `subs(diff(f,x), x, 1)` would bind the differentiation
 /// variable before differentiating (the REPL let-flow's order trap).
-fn contains_unevaluated_calculus_call(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+pub(crate) fn contains_unevaluated_calculus_call(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
     use cas_ast::Expr;
     let mut stack = vec![expr];
     while let Some(id) = stack.pop() {

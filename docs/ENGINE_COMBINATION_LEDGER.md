@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 647 (newest first)
+Active entries: 648 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -129,6 +129,7 @@ Active entries: 647 (newest first)
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_multivar_limit_by_continuity` + `expr_is_v... | CAPACIDAD (Fase 3 · F7, tanda-2 ciclo 3/4): límites multivariables por continuidad PROBADA + comando REPL unificado con puntos finitos — bloque C abierto
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_multivar_dne_by_paths`: batería concreta `... | CAPACIDAD+SOUNDNESS (Fase 3 · F8, tanda-2 ciclo 4/4): DNE-por-caminos con testigos CITADOS — el motor univariado entero como oráculo por-camino; TANDA-2 4/4 COMPLETA
 - 2026-07-19 | `retained` | docs-only — `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` (nuevo, 320 líneas) + `docs... | SCOPING (Fase 4 · EDOs elementales): el norte se amplía por decisión del usuario — dsolve scopeado en O0-O9 con 17 decisiones y oráculo curricular verificado
+- 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LimitUnivarExprRule`: forma ... | CAPACIDAD (Fase 3 · F9, tanda-3 ciclo 1/4): límites anidados/compuestos/iterados evalúan en posición de expresión — y el wire aprende a distinguir comando de expresión
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20848,3 +20849,19 @@ Active entries: 647 (newest first)
 - retained learning:
   - **Un colapso silencioso ok:true es el P0 de diseño de cualquier comando nuevo cuya notación reutilice símbolos vivos**: la EDO muere en el simplificador ANTES de llegar a cualquier handler — el chokepoint de intercepción textual (wire) es la única capa donde la notación aún existe. Cuarta fase consecutiva donde el hallazgo central es "qué capa ve la información antes de que se destruya".
   - PRÓXIMO PELDAÑO: responder las 5 preguntas abiertas → O0 (sustrato dsolve). La frontera por defecto sigue siendo cerrar el núcleo restante de Fase 3 (F9, F8b, F10/F11) primero — las dependencias de O0 ya están cumplidas si el usuario prefiere reordenar.
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F9, tanda-3 ciclo 1/4): límites anidados/compuestos/iterados evalúan en posición de expresión — y el wire aprende a distinguir comando de expresión
+
+- area: `cas_engine/rules/calculus/vector_calculus.rs` (`LimitUnivarExprRule`: forma univar en posición de expresión, gate RealOnly — F0; all-or-nothing por `contains_unevaluated_calculus_call` (promovido pub(crate)) sobre target/punto/RESULTADO; mapping punto→Approach ±infinity/finito; emite SOLO en resolución completa sin warning) + `cas_api_models/wire_types.rs` (`classify_limit_wire_shape` por MATCHING de paréntesis: SingleCall / ComposedExpression / Malformed — las compuestas e iteradas van a eval general, las malformadas al usage-error) + narración `limit.iterated` + nombres es/en + e2e + pins migrados
+- status: `retained`. Bloque C+D avanzan: F9 cerrado.
+- capture:
+  - investment_class: capacidad de composición (el limit deja de ser un ciudadano de segunda en expresiones) + fix de superficie wire (el pre-pass ROMPÍA composiciones legítimas).
+  - cell: `1+limit(x^2,x,2)` → `5` (era eco); `limit(limit(x^2+y^2,x,1),y,2)` → `5` y `limit(limit(x*y,x,2),y,3)` → `6` (iterados — el inner paramétrico polinomial YA resolvía: `limit(x^2+y^2,x,1)`→`y²+1`); `limit(sin(x)/x,x,0)*2` → `2` y `limit(x^2,x,2)+limit(x,x,1)` → `5` (compuestos — ANTES: Parse error del pre-pass); `diff(limit(x^2,x,2)*t,t)` → `4`; inner residual/DNE → eco completo all-or-nothing (`limit(limit(x/y,y,0),x,0)`).
+  - **El wire interceptaba de más en DOS formas** (halladas por probe): (1) `limit(f,x,a),y,b` iterado — el comando lo capturaba y el inner jamás pasaba por simplify (residual sin motivo); (2) `limit(...)*2` — el pre-pass exigía terminar en `)` y emitía usage-error para composiciones. `classify_limit_wire_shape` resuelve ambas con el matching del paréntesis del prefijo: cierre en el último char + primer arg no-limit ⇒ comando; cierre antes ⇒ expresión (eval general); sin cierre ⇒ malformado (usage-error). Pins: todas las formas single-call byte-idénticas (`limit(x^2,x,2)`→4, laterales, one-sided 4-args, REPL).
+  - **Dos pins propios graduados por el ciclo, migrados con porqué**: el solve-binder (`solve(limit(1/x,x,∞)=y,y)` pasaba de solución residual `{limit(...)}` a `{0}` — el limit ahora RESUELVE dentro de solve, estrictamente mejor; los "No solution" legítimos siguen pineando el fix de los walkers) y `1+limit(x^2,x,2)` (de eco declarado-F7 a valor).
+  - Fricción de tooling cazada por el test rojo: un heredoc python con DOS ediciones re-usó el `s` sin recargar y la segunda escritura PISÓ la primera — releer entre escrituras o editar en un solo replace.
+  - La arity-4 direccional en expresión NO se registra (left/right son tokens del comando — declina como diseña el spec); complex declina (F11 re-otorga); never-fabricate cuerpo-con-I heredados.
+- validación: workspace failed:0; clippy --all-targets limpio; lint 0; engine-fast + scorecards verdes; huella contadores-idéntica salvo filtered_out declarados.
+- retained learning:
+  - **Un pre-pass de comando sobre prefijo debe clasificar la FORMA COMPLETA, no el prefijo**: `starts_with("limit(")` + `ends_with(')')` acepta/rechaza expresiones enteras que solo EMPIEZAN como el comando — el matching del paréntesis del prefijo es la clasificación correcta (tercera aparición del gate-léxico-colador, ahora en dirección inversa: interceptaba de más).
+  - PRÓXIMO PELDAÑO: F10 (fold del output de limit, rama sin-warning).
