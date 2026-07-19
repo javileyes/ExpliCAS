@@ -295,13 +295,13 @@ Orden por dependencia + ROI. El costo fijo grande va primero (O0); después cada
 
 ---
 
-## Preguntas abiertas al usuario
+## Preguntas abiertas — RESUELTAS 2026-07-19 (el usuario delegó la respuesta con su criterio: «lo más universal y más educativo posible al mismo tiempo»)
 
-1. **Azúcar de aridad corta**: además de la canónica `dsolve(eq, y, x)`, ¿aceptar `dsolve(eq, y)` infiriendo la variable independiente del primer nodo `diff(y, <var>)` del texto? (Barato en el wire; el catálogo del mapper 5 se escribió así. Propuesta: sí, en O0, con usage-error si la inferencia es ambigua.)
-2. **Prioridad O5 (no-homogénea UC) vs O6 (sistemas 2×2)** si hay que recortar la fase: son intercambiables; UC es más curricular-central, sistemas luce más la maquinaria eigen. Propuesta: O5 primero (como está el orden).
-3. **Convención de constantes**: `C1`/`C2` (mayúscula, como el catálogo) vs `c1`/`c2` (minúscula didáctica). Ambas exigen el fix D16; la elección es puramente de presentación. Propuesta: `C`, `C1`, `C2`.
-4. **Los wrinkles D12** (μ=|x|→x; ± absorbido en C con warning de solución singular): cerrados como propuesta — ¿veto o ajuste?
-5. **O9 series** (y la extensión μ(x) simple): ¿se pre-aprueban como opcionales al cierre o quedan fuera hasta decisión explícita?
+1. **Azúcar de aridad corta** → **SÍ, en O0**: `dsolve(eq, y)` infiere la variable del primer `diff(y, <var>)` del texto; usage-error si la inferencia es ambigua (dos vars distintas derivando y). Universal (acepta la entrada natural) y educativo (menos fricción); la canónica 3-args sigue siendo la documentada.
+2. **Prioridad O5 vs O6** → **O5 primero** (como está el orden): coeficientes indeterminados es el corazón curricular del 2º curso — el criterio educativo manda; los sistemas lucen la maquinaria pero enseñan menos por ciclo. No se recorta nada: ambos entran.
+3. **Convención de constantes** → **`C`, `C1`, `C2`** (mayúsculas): la convención dominante de los textos — el resultado se lee como en el libro (criterio educativo); el fix D16 igual se necesita.
+4. **Los wrinkles D12** → **SIN veto, cerrados como están**: μ=x es la convención textbook (capa de PRESENTACIÓN — cualquier μ funcional es legítimo) y el warning de solución singular al dividir por g(y) ENSEÑA exactamente el punto que un curso serio subraya — presentación de libro + honestidad explícita es la síntesis universal+educativo.
+5. **Los opcionales O9** → **PRE-APROBADOS con matiz**: μ(x) simple y Cauchy-Euler ENTRAN a la fase como ciclos post-O8 (son S/M sobre maquinaria viva y ensanchan cobertura real — criterio universal); las SERIES conservan su «se scopea al llegar» (varianza alta — un mini-scoping propio al abrirlas, no un cheque en blanco). El orden del núcleo O0-O8 no se altera.
 
 ---
 

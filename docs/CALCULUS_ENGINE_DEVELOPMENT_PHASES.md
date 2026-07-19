@@ -323,7 +323,11 @@ anclas 98/106 + crítico 13 gaps): `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` — sec
 coeficientes indeterminados [el neto-nuevo mayor]; O6 sistemas 2×2 eigen-interno; O7
 superficie; O8 Bernoulli+homogéneas — NO opcional; O9 series/μ(x)/Cauchy-Euler opcionales),
 17 decisiones cerradas D1-D17, catálogo de ~37 probes con oráculo verificado 36/39 y 7
-never-fabricate Z1-Z7. **Ejecución recomendada tras cerrar el núcleo
+never-fabricate Z1-Z7. **Las 5 preguntas abiertas del scoping quedaron RESUELTAS 2026-07-19
+(el usuario delegó con su criterio universal+educativo): azúcar aridad-2 SÍ; O5 antes que
+O6; constantes `C`/`C1`/`C2`; wrinkles D12 sin veto; μ(x)/Cauchy-Euler pre-aprobados
+post-O8, series con mini-scoping propio al llegar.** Ejecución recomendada: cerrar núcleo
+Fase 3 (F9, F8b, F10/F11) → O0. **Ejecución recomendada tras cerrar el núcleo
 restante de la Fase 3** (F9 iterados, F8b squeeze, bloque D F10/F11 — ~4-5 ciclos): las
 dependencias de la Fase 4 (Fase 1 + F6) YA están cumplidas, así que el usuario puede
 reordenar sin coste técnico; la regla de oro se mantiene con el umbral de cierre de Fase 3
