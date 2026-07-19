@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 653 (newest first)
+Active entries: 654 (newest first)
 
+- 2026-07-20 | `retained` | `cas_engine/eval/dsolve_action.rs` (`try_extract_exact_form`: extractor M,N s... | CAPACIDAD (Fase 4 · O2, tanda-4 ciclo 3/4): exactas M + N·y′ = 0 por delegación en el potencial F6 — y el nivel-2 D11 (full-eval) GRADÚA el trascendente en vez de solo pinearlo
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; br... | SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
@@ -20945,3 +20946,17 @@ Active entries: 653 (newest first)
 - retained learning:
   - **La verificación-gate convierte la presentación en contrato**: si el gate solo acepta lo que el evaluador sabe reducir, la forma de emisión queda FORZADA hacia la que el engine domina — un incentivo estructural sano (la forma textbook y la forma verificable coincidieron en los 4 probes).
   - PRÓXIMO PELDAÑO: O2 (exactas vía `try_potential_expr` — delegación F6).
+
+## 2026-07-20 - CAPACIDAD (Fase 4 · O2, tanda-4 ciclo 3/4): exactas M + N·y′ = 0 por delegación en el potencial F6 — y el nivel-2 D11 (full-eval) GRADÚA el trascendente en vez de solo pinearlo
+
+- area: `cas_engine/eval/dsolve_action.rs` (`try_extract_exact_form`: extractor M,N sobre términos aditivos del árbol crudo — el cofactor de `diff(y,x)` PUEDE llevar y, a diferencia del matcher lineal; declina diff anidado/invertido/duplicado; `eval_dsolve_exact`: nivel-1 delega en `try_potential_expr` (F6 as-is, re-export pub(crate)) + nivel-2 `reconstruct_potential_full_eval` — la MISMA reconstrucción φ=∫M dx+∫(N−∂y∫M)dy pero con el evaluador COMPLETO plegando las piezas (la interna solo canoniza restos polinomiales); gate D5 POR COMPONENTE para ambos niveles: `∂φ/∂x−M→0 ∧ ∂φ/∂y−N→0` exactos; dispatcher separable→lineal→exacta→residual) + 4 claves narración es/en + 4 filas `exacta` en la matrix (19 casos) + contrato e2e O2 con pins F6
+- status: `retained`. O2 cerrado; E14/E15 + trascendente graduados.
+- capture:
+  - investment_class: capacidad (Fase 4 O2 — [S] del scoping: "extraer M,N y emitir φ=C — casi nada"; el hallazgo fue que el nivel-2 D11 también era barato).
+  - cell: E14 `y·x²+y²+x = C`; E15 `x³+y³+2xy = C`; **trascendente `e^y+(x·e^y+2y)y′=0 → x·e^y+y² = C` — el fallback nivel-2 GRADUÓ el caso que el scoping solo pedía pinear** (poly_eq no verifica e^y; el evaluador completo sí — 15 líneas de reconstrucción en el caller); E13 y la E-neg del catálogo caen ANTES al camino lineal con formas explícitas equivalentes (`y=C/x²`, `y=C/√(2x)` — el dispatcher no roba: gana el método más simple y la salida es mejor que la implícita esperada); no-conservativo puro (y+xy²)+x·y′ → residual honesto (un campo no conservativo JAMÁS verifica: la detección de exactitud es GRATIS — doctrina D11 confirmada en runtime).
+  - Pins F6 del dueño intactos: `potential([2xy,x²],[x,y])`→`y·x²` y `potential([cos(x),−sin(y)],[x,y])` SIGUE residual — el upgrade nivel-2 vive en dsolve, NO en el verbo (el chip PotentialRule sigue fuera de fase).
+  - El mensaje del decline genérico se re-anotó (O2 ya vive): "no es separable, lineal ni exacta; Bernoulli/homogéneas → O8" — el fixture O1 que fijaba el texto viejo se actualizó A PROPÓSITO (contrato de mensaje, no de valor).
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + scorecards verdes con huella contador-idéntica salvo los contadores de la lane (15→19 declarados); contratos e2e O0+O1+O2 verdes; matrix 19/19; unittest lane 3/3.
+- retained learning:
+  - **El "nivel 2" de un gate de verificación puede ser capacidad, no solo honestidad**: cuando el nivel-1 (poly_eq) declina una familia entera (trascendentes), re-correr la MISMA reconstrucción con el evaluador completo bajo el MISMO gate exacto convierte el pin-de-decline en graduación — 15 líneas porque toda la maquinaria (integrate, diff, fold, reduces_to_zero) ya estaba viva.
+  - PRÓXIMO PELDAÑO: O3 (condiciones iniciales IVP — scanner textual + subs/solve de C + fix D16 vars.rs).

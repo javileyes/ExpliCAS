@@ -583,6 +583,96 @@ fn contains_surd_over_c(ctx: &Context, root: ExprId, c: ExprId) -> bool {
     false
 }
 
+/// Match the exact-equation shape `M(x,y) + N(x,y)·y' = 0` on the RAW tree:
+/// additive terms of `LHS − RHS`; terms carrying `diff(func,var)` as a plain
+/// numerator product factor contribute their cofactor to `N` (which MAY
+/// involve the unknown — unlike the linear matcher), every other term goes to
+/// `M`. Declines when the diff is nested, inverted, or appears in several
+/// factors of one term.
+fn try_extract_exact_form(
+    ctx: &mut Context,
+    eq: &Equation,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, eq.lhs, true, &mut terms);
+    collect_signed_terms(ctx, eq.rhs, false, &mut terms);
+
+    let mut m_parts: Vec<ExprId> = Vec::new();
+    let mut n_parts: Vec<ExprId> = Vec::new();
+    for (term, positive) in terms {
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut diff_count = 0usize;
+        let mut cof_num: Vec<ExprId> = Vec::new();
+        let mut cof_den: Vec<ExprId> = Vec::new();
+        for (f, is_den) in factors {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            if is_first_order_diff_call(ctx, g, diff_sym, func, var) {
+                if is_den {
+                    return None; // y' inverted: not the exact shape
+                }
+                diff_count += 1;
+                continue;
+            }
+            // A diff nested anywhere deeper than a plain factor declines.
+            if scan_diff_calls_of(ctx, g, diff_sym, func).is_some() {
+                return None;
+            }
+            if is_den {
+                cof_den.push(g)
+            } else {
+                cof_num.push(g)
+            }
+        }
+        if diff_count > 1 {
+            return None;
+        }
+        let build_product = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+            let mut it = parts.iter();
+            let first = *it.next()?;
+            Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Mul(acc, p))))
+        };
+        let num = build_product(ctx, &cof_num).unwrap_or_else(|| ctx.num(1));
+        let mut piece = match build_product(ctx, &cof_den) {
+            Some(d) => ctx.add(cas_ast::Expr::Div(num, d)),
+            None => num,
+        };
+        if !sign {
+            piece = ctx.add(cas_ast::Expr::Neg(piece));
+        }
+        if diff_count == 1 {
+            n_parts.push(piece);
+        } else {
+            m_parts.push(piece);
+        }
+    }
+    if n_parts.is_empty() {
+        return None;
+    }
+    let sum = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+        let mut it = parts.iter();
+        let first = *it.next()?;
+        Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Add(acc, p))))
+    };
+    let n = sum(ctx, &n_parts).expect("nonempty");
+    let m = sum(ctx, &m_parts).unwrap_or_else(|| ctx.num(0));
+    Some((m, n))
+}
+
 /// `Some(numerator/f with one literal factor `f` removed)` when `f` appears as
 /// an exact numerator product factor of `e`. Structural cancellation only —
 /// used to peel `μ` out of `∫μq` before building the display quotient.
@@ -719,8 +809,8 @@ impl Engine {
         }
 
         // Method dispatch: separable first (O0 — the S1-S9 pins stay
-        // byte-identical), then linear first-order (O1). A form that fits
-        // neither declines honestly naming the owner cycles (O2 exact, O8
+        // byte-identical), then linear first-order (O1), then exact (O2). A
+        // form that fits none declines honestly naming the owner cycles (O8
         // Bernoulli/homogeneous).
         let isolated_rhs = match_isolated_first_order(ctx, &ode_eq, diff_sym, func, var);
         let split = isolated_rhs
@@ -730,9 +820,15 @@ impl Engine {
             if let Some(linear) = try_match_linear_first_order(ctx, &ode_eq, diff_sym, func, var) {
                 return self.eval_dsolve_linear(options, resolved, func, var, &ode_eq, linear);
             }
+            // O2: exact equation M + N·y' = 0 via the F6 potential machinery.
+            if let Some((m, n)) = try_extract_exact_form(ctx, &ode_eq, diff_sym, func, var) {
+                if let Some(result) = self.eval_dsolve_exact(options, resolved, func, var, m, n)? {
+                    return Ok(result);
+                }
+            }
             let r = mk_residual(
                 &mut self.simplifier.context,
-                "La EDO no es separable ni lineal de primer orden; exactas/Bernoulli/homogéneas llegan en ciclos futuros (O2/O8)",
+                "La EDO no es separable, lineal ni exacta; Bernoulli/homogéneas llegan en el ciclo O8",
             );
             return Ok(r);
         };
@@ -1228,6 +1324,145 @@ impl Engine {
             vec![],
         ))
     }
+
+    /// O2: exact equation `M + N·y' = 0` — the F6 potential machinery IS the
+    /// heart. Level 1 delegates to `try_potential_expr` (poly_eq-verified
+    /// reconstruction); level 2 (D11) re-runs the same reconstruction in the
+    /// caller with the FULL evaluator folding the pieces, so transcendental
+    /// exact fields (`e^y + (x·e^y+2y)·y' = 0`) graduate too. Emission is
+    /// gated per component (D5): `∂φ/∂x − M → 0` AND `∂φ/∂y − N → 0` under
+    /// `reduces_to_zero_exact` — a non-conservative field can never verify,
+    /// so exactness detection is free. `Ok(None)` = this path declines (the
+    /// dispatcher falls to the honest residual).
+    fn eval_dsolve_exact(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        m: ExprId,
+        n: ExprId,
+    ) -> Result<Option<ActionResult>, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+
+        // Level 1: the F6 reconstruction with its exact poly_eq gate.
+        let vars_spec = vec![var.to_string(), func.to_string()];
+        let phi =
+            crate::rules::calculus::try_potential_expr(ctx, &[m, n], &vars_spec).or_else(|| {
+                // Level 2 (D11): same reconstruction, FULL-evaluator folds.
+                self.reconstruct_potential_full_eval(&verify_options, m, n, func, var)
+            });
+        let Some(phi) = phi else {
+            return Ok(None);
+        };
+
+        // Per-component verification gate (D5) — for BOTH levels.
+        let ctx = &mut self.simplifier.context;
+        let dphi_dx = ctx.call("diff", vec![phi, x_var]);
+        let res_x = ctx.add(cas_ast::Expr::Sub(dphi_dx, m));
+        if !self.reduces_to_zero_exact(&verify_options, res_x) {
+            return Ok(None);
+        }
+        let ctx = &mut self.simplifier.context;
+        let dphi_dy = ctx.call("diff", vec![phi, y_var]);
+        let res_y = ctx.add(cas_ast::Expr::Sub(dphi_dy, n));
+        if !self.reduces_to_zero_exact(&verify_options, res_y) {
+            return Ok(None);
+        }
+
+        // Display normalization + arbitrary constant (D7).
+        let phi = self.fold_free_subtree(&verify_options, phi);
+        let ctx = &mut self.simplifier.context;
+        let phi = clear_global_rational_factor(ctx, phi);
+        let input_vars = collect_variables(ctx, resolved);
+        let c_name = if input_vars.contains("C") { "K1" } else { "C" };
+        let c_var = ctx.var(c_name);
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c_name != "C" {
+            warnings.push(DomainWarning {
+                message: "La entrada ya usa el nombre C; la constante arbitraria se emite como K1"
+                    .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+        warnings.push(DomainWarning {
+            message: format!(
+                "Solución implícita: se emite φ({var},{func}) = {c_name} porque la EDO es exacta (φ es el potencial del campo (M, N))"
+            ),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+        warnings.push(DomainWarning {
+            message: format!("Solución general: {c_name} es una constante arbitraria"),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+
+        let solve_steps = build_exact_steps(ctx, m, n, phi, y_var, x_var, c_var);
+        let result = EvalResult::Expr(wrap_eq(ctx, phi, c_var));
+        Ok(Some((
+            result,
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        )))
+    }
+
+    /// D11 level 2: reconstruct φ = ∫M dx + ∫(N − ∂y∫M) dy with the FULL
+    /// evaluator folding the intermediate pieces (the internal F6 path only
+    /// canonicalizes polynomial rests). All pieces are diff-free ordinary
+    /// expressions in (x, y), so the D4 invariant allows the pipeline.
+    fn reconstruct_potential_full_eval(
+        &mut self,
+        verify_options: &crate::options::EvalOptions,
+        m: ExprId,
+        n: ExprId,
+        func: &str,
+        var: &str,
+    ) -> Option<ExprId> {
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let phi_x = match crate::rules::calculus::integrate_with_trace(ctx, m, var) {
+            Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+            _ => return None,
+        };
+        let dphi_dy_call = ctx.call("diff", vec![phi_x, y_var]);
+        let dphi_dy = self.fold_free_subtree(verify_options, dphi_dy_call);
+        let ctx = &mut self.simplifier.context;
+        let rest_raw = ctx.add(cas_ast::Expr::Sub(n, dphi_dy));
+        let rest = self.fold_free_subtree(verify_options, rest_raw);
+        let ctx = &mut self.simplifier.context;
+        // For an exact field the rest is a function of y alone; an x left
+        // over means non-exact → decline.
+        if collect_variables(ctx, rest).contains(var) {
+            return None;
+        }
+        let piece = if matches!(ctx.get(rest), cas_ast::Expr::Number(v) if v.is_zero()) {
+            None
+        } else {
+            match crate::rules::calculus::integrate_with_trace(ctx, rest, func) {
+                Some(outcome) if outcome.required_conditions.is_empty() => Some(outcome.result),
+                _ => return None,
+            }
+        };
+        let ctx = &mut self.simplifier.context;
+        Some(match piece {
+            Some(p) => ctx.add(cas_ast::Expr::Add(phi_x, p)),
+            None => phi_x,
+        })
+    }
 }
 
 /// Narrated solve steps for the separable method (D13). Every description
@@ -1394,6 +1629,88 @@ fn build_linear_steps(
         equation_after: Equation {
             lhs: y_var,
             rhs: candidate,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    steps
+}
+
+/// Narrated solve steps for the exact method (D13). Every description
+/// template must have an es/en entry in `SOLVE_DESCRIPTIONS`.
+fn build_exact_steps(
+    ctx: &mut Context,
+    m: ExprId,
+    n: ExprId,
+    phi: ExprId,
+    y_var: ExprId,
+    x_var: ExprId,
+    c_var: ExprId,
+) -> Vec<crate::api::SolveStep> {
+    let mut steps: Vec<crate::api::SolveStep> = Vec::new();
+    let diff_call =
+        |ctx: &mut Context, target: ExprId, v: ExprId| ctx.call("diff", vec![target, v]);
+    let n_yprime = {
+        let dy = diff_call(ctx, y_var, x_var);
+        ctx.add(cas_ast::Expr::Mul(n, dy))
+    };
+    let ode_shown = ctx.add(cas_ast::Expr::Add(m, n_yprime));
+    let zero = ctx.num(0);
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Identificar forma exacta: M + N·y' = 0 con M = {}, N = {}",
+            render_expr(ctx, m),
+            render_expr(ctx, n)
+        ),
+        equation_after: Equation {
+            lhs: ode_shown,
+            rhs: zero,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    let dm_dy = diff_call(ctx, m, y_var);
+    let dn_dx = diff_call(ctx, n, x_var);
+    steps.push(crate::api::SolveStep {
+        description: "Comprobar exactitud: ∂M/∂y = ∂N/∂x (el campo (M, N) es conservativo)"
+            .to_string(),
+        equation_after: Equation {
+            lhs: dm_dy,
+            rhs: dn_dx,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Reconstruir el potencial: φ = ∫M dx + h(y) con h'(y) ajustando ∂φ/∂y = N"
+            .to_string(),
+        equation_after: Equation {
+            lhs: phi,
+            rhs: phi,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Combinar en una solución implícita φ(x,y) = C".to_string(),
+        equation_after: Equation {
+            lhs: phi,
+            rhs: c_var,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Verificar el potencial: ∂φ/∂x = M y ∂φ/∂y = N (residuos exactos a 0)"
+            .to_string(),
+        equation_after: Equation {
+            lhs: phi,
+            rhs: c_var,
             op: RelOp::Eq,
         },
         importance: ImportanceLevel::Medium,

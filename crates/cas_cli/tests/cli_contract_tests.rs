@@ -8997,10 +8997,7 @@ fn dsolve_linear_first_order_o1_contract() {
     ] {
         let out = r(probe);
         assert!(out.starts_with("dsolve("), "no-lineal declina a eco: {out}");
-        assert!(
-            err_of(probe).contains("O2/O8"),
-            "decline nombra ciclos dueños"
-        );
+        assert!(err_of(probe).contains("O8"), "decline nombra ciclo dueño");
     }
 
     // Pins de no-robo: los separables S1/S2 siguen byte-idénticos (el
@@ -9029,4 +9026,107 @@ fn dsolve_linear_first_order_o1_contract() {
     let en = steps_of("dsolve(diff(y,x)+y=x, y, x)", Some("en"));
     assert!(en.contains("Identify linear form"), "{en}");
     assert!(en.contains("integrating factor"), "{en}");
+}
+
+#[test]
+fn dsolve_exact_o2_contract() {
+    // Fase 4 · O2: exactas M + N·y' = 0 por la maquinaria de potencial F6
+    // (nivel 1 poly_eq) + fallback full-eval del caller (nivel 2, D11) — la
+    // emisión gateada POR COMPONENTE: ∂φ/∂x−M → 0 y ∂φ/∂y−N → 0 exactos.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // E14/E15: exactas polinomiales puras (camino exacto nivel 1).
+    assert_eq!(
+        first_line("dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)"),
+        "y·x^2 + y^2 + x = C"
+    );
+    assert_eq!(
+        first_line("dsolve((3*x^2+2*y) + (2*x+3*y^2)*diff(y,x) = 0, y, x)"),
+        "x^3 + y^3 + 2·x·y = C"
+    );
+    // Trascendente exacta (nivel 2 D11: el fallback full-eval del caller —
+    // poly_eq no verifica e^y; el evaluador completo sí).
+    assert_eq!(
+        first_line("dsolve(e^y + (x*e^y+2*y)*diff(y,x) = 0, y, x)"),
+        "x·e^y + y^2 = C"
+    );
+    let exact_warn = err_of("dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)");
+    assert!(exact_warn.contains("potencial del campo"), "{exact_warn}");
+
+    // E13 y la E-neg del catálogo se resuelven ANTES por el camino lineal
+    // (formas explícitas equivalentes a las implícitas del catálogo — el
+    // dispatcher separable→lineal→exacta no roba: gana el método más simple).
+    assert_eq!(
+        first_line("dsolve(2*x*y + x^2*diff(y,x) = 0, y, x)"),
+        "y = C / x^2"
+    );
+    assert_eq!(
+        first_line("dsolve(y + 2*x*diff(y,x) = 0, y, x)"),
+        "y = C / sqrt(2·x)"
+    );
+
+    // No-exacta no-lineal no-separable → residual honesto (un campo no
+    // conservativo JAMÁS verifica: la detección de exactitud es gratis).
+    let neg = r("dsolve((y + x*y^2) + x*diff(y,x) = 0, y, x)");
+    assert!(neg.starts_with("dsolve("), "no-exacta declina a eco: {neg}");
+    assert!(err_of("dsolve((y + x*y^2) + x*diff(y,x) = 0, y, x)").contains("O8"));
+
+    // Pins de no-robo: separable y lineal byte-idénticos.
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y=x, y, x)"),
+        "y = C / e^x + x - 1"
+    );
+
+    // Pins F6: los verbos potential() NO cambian (metamórfico del dueño).
+    assert_eq!(first_line("potential([2*x*y, x^2], [x, y])"), "y·x^2");
+    let pot_trig = first_line("potential([cos(x), -sin(y)], [x, y])");
+    assert!(
+        pot_trig.starts_with("potential("),
+        "potential trig sigue residual (el upgrade nivel-2 vive en dsolve, no en el verbo): {pot_trig}"
+    );
+
+    // Narración exacta keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)", None);
+    assert!(es.contains("Identificar forma exacta"), "{es}");
+    assert!(es.contains("Comprobar exactitud"), "{es}");
+    assert!(es.contains("Reconstruir el potencial"), "{es}");
+    let en = steps_of(
+        "dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)",
+        Some("en"),
+    );
+    assert!(en.contains("Identify exact form"), "{en}");
+    assert!(en.contains("Check exactness"), "{en}");
 }

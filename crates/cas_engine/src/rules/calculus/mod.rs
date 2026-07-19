@@ -299,6 +299,7 @@ use sqrt_product_presentation::shared_positive_content_sqrt_product_for_calculus
 use sqrt_shifted_log_derivative_presentation::sqrt_shifted_ln_derivative_presentation;
 pub(crate) use sqrt_small_additive_derivative_presentation::sqrt_small_additive_elementary_derivative_presentation_with_domain;
 pub(crate) use tanh_primitive_derivative_presentation::diff_target_is_tanh_cubic_sech_fourth_primitive;
+pub(crate) use vector_calculus::try_potential_expr;
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(IntegrateRule));

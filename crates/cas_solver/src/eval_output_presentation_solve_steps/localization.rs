@@ -118,6 +118,11 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — exact method narration (D13, O2).
+    SolveDesc { template: "Identificar forma exacta: M + N·y' = 0 con M = {0}, N = {1}", es: "Identificar forma exacta: M + N·y' = 0 con M = {0}, N = {1}", en: "Identify exact form: M + N·y' = 0 with M = {0}, N = {1}" },
+    SolveDesc { template: "Comprobar exactitud: ∂M/∂y = ∂N/∂x (el campo (M, N) es conservativo)", es: "Comprobar exactitud: ∂M/∂y = ∂N/∂x (el campo (M, N) es conservativo)", en: "Check exactness: ∂M/∂y = ∂N/∂x (the field (M, N) is conservative)" },
+    SolveDesc { template: "Reconstruir el potencial: φ = ∫M dx + h(y) con h'(y) ajustando ∂φ/∂y = N", es: "Reconstruir el potencial: φ = ∫M dx + h(y) con h'(y) ajustando ∂φ/∂y = N", en: "Reconstruct the potential: φ = ∫M dx + h(y) with h'(y) matching ∂φ/∂y = N" },
+    SolveDesc { template: "Verificar el potencial: ∂φ/∂x = M y ∂φ/∂y = N (residuos exactos a 0)", es: "Verificar el potencial: ∂φ/∂x = M y ∂φ/∂y = N (residuos exactos a 0)", en: "Verify the potential: ∂φ/∂x = M and ∂φ/∂y = N (exact residues to 0)" },
     // dsolve (Fase 4) — linear first-order method narration (D13, O1).
     SolveDesc { template: "Identificar forma lineal: y' + p·y = q con p = {0}, q = {1}", es: "Identificar forma lineal: y' + p·y = q con p = {0}, q = {1}", en: "Identify linear form: y' + p·y = q with p = {0}, q = {1}" },
     SolveDesc { template: "Calcular el factor integrante: μ = e^(∫p dx) = {0}", es: "Calcular el factor integrante: μ = e^(∫p dx) = {0}", en: "Compute the integrating factor: μ = e^(∫p dx) = {0}" },

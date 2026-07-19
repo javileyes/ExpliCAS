@@ -207,7 +207,7 @@ Orden por dependencia + ROI. El costo fijo grande va primero (O0); después cada
 - **Depende:** O0.
 - **Retención (pins):** S1-S7 intactos (el dispatcher de métodos prueba lineal DESPUÉS de separable o con matcher excluyente — pin de no-regresión de forma); L9 μ-display.
 
-#### O2 — Exactas (delegación en `try_potential_expr`) **[S]**
+#### O2 — Exactas (delegación en `try_potential_expr`) **[S]** ☑ *(graduado 2026-07-20, hash en el ledger: E14/E15 nivel-1 poly_eq + el TRASCENDENTE `x·e^y+y²=C` graduado por el nivel-2 D11 — la misma reconstrucción con el evaluador completo en el caller, no solo el pin de decline; gate POR COMPONENTE ∂φ/∂x−M→0 ∧ ∂φ/∂y−N→0; E13/E-neg caen antes al lineal con explícitas equivalentes; pins potential() intactos — el upgrade del verbo sigue siendo chip fuera de fase; familia `exacta` en la matrix)*
 - **Gradúa:** E13-E15 → `φ(x,y) = C` implícita (D6.3); no-exacta → decline del camino con motivo (el gate poly_eq no verifica — E-neg pineado); gate dos-niveles D11 (fallback full-eval para exactas trig — graduar al menos un caso trascendente o pinear su decline honesto); narración D13 exactas; familia `exacta` en la matrix.
 - **Inserción:** extractor M,N de la forma `M + N·diff(y,x) = 0` (árbol crudo, D4) + llamada directa `try_potential_expr(ctx, &[M,N], &["x","y"])` (misma crate); brazo fallback de verificación por componente.
 - **Reuso:** TODO el corazón F6 (`vector_calculus.rs:547-592`) as-is; `required_conditions` decline (:556-559) heredado como residual honesto (M=1/x etc.).

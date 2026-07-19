@@ -17,9 +17,9 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_o0_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        # O0+O1 registry: 7 separable + 4 linear supported rows + 4 honest
-        # residual rows.
-        self.assertEqual(len(cases), 15)
+        # O0+O1+O2 registry: 7 separable + 4 linear + 3 exact supported rows
+        # + 5 honest residual rows.
+        self.assertEqual(len(cases), 19)
         names = {case.name for case in cases}
         self.assertIn("separable_growth_textbook", names)
         self.assertIn("separable_implicit_circle", names)
@@ -30,6 +30,9 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("linear_mu_display_strip_abs", names)
         self.assertIn("linear_first_order_resonance", names)
         self.assertIn("linear_trig_rhs", names)
+        self.assertIn("exact_polynomial_potential", names)
+        self.assertIn("exact_transcendental_full_eval_level2", names)
+        self.assertIn("residual_nonexact_nonlinear", names)
         self.assertIn("residual_riccati_never_fabricate", names)
         self.assertIn("residual_airy_higher_order", names)
         self.assertIn("residual_ivp_conditions_future_cycle", names)
@@ -37,15 +40,19 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
 
         supported = [case for case in cases if case.outcome == "supported"]
         residual = [case for case in cases if case.outcome == "residual"]
-        self.assertEqual(len(supported), 11)
-        self.assertEqual(len(residual), 4)
+        self.assertEqual(len(supported), 14)
+        self.assertEqual(len(residual), 5)
 
         # Verification-gated emission: every supported row is verified; every
         # residual row is declined (never fabricated).
         for case in supported:
             self.assertIn(
                 case.verification_regime,
-                ("verified_by_substitution", "verified_by_implicit_differentiation"),
+                (
+                    "verified_by_substitution",
+                    "verified_by_implicit_differentiation",
+                    "verified_per_component",
+                ),
                 case.name,
             )
         for case in residual:
@@ -54,9 +61,9 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
             self.assertTrue(case.expected_result.startswith("dsolve("), case.name)
             self.assertNotEqual(case.residual_cause, "not_applicable", case.name)
 
-        # Axis coverage minimums for O0+O1.
+        # Axis coverage minimums for O0+O1+O2.
         families = {case.family for case in cases}
-        self.assertEqual(families, {"separable", "lineal_1o"})
+        self.assertEqual(families, {"separable", "lineal_1o", "exacta"})
         self.assertEqual(
             {case.order_regime for case in cases}, {"first", "second"}
         )
