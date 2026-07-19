@@ -2670,6 +2670,84 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_subs_noop_guard_and_definite_matrix_integrate_f3() {
+    // Fase 3 · F3: (a) el subs no-op y las cadenas anidadas colapsan en el
+    // nodo EXTERIOR en UN rewrite — la resolución hijo-primero re-observaba la
+    // huella del hijo y el CycleDetector global-de-fase lo leía como ciclo
+    // period-1 (blocked-hint "requires cos(t) (defined)" en toda circulación
+    // por-componente / Green). El fixture pinea la AUSENCIA de blocked_hints.
+    // (b) integrate DEFINIDO sobre Matrix: componentwise all-or-nothing.
+    let eval_wire = |input: &str| -> Value {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+    // (a) circulación por-componente: valor limpio y CERO blocked_hints.
+    let wire = eval_wire(
+        "integrate(subs(subs(-y,x,cos(t)),y,sin(t))*diff(cos(t),t) + subs(subs(x,x,cos(t)),y,sin(t))*diff(sin(t),t), t, 0, 2*pi)",
+    );
+    assert_eq!(wire["result"].as_str().unwrap_or(""), "2·pi");
+    assert!(
+        wire["blocked_hints"]
+            .as_array()
+            .is_none_or(|h| h.is_empty()),
+        "la circulación por-componente no debe llevar blocked_hints: {}",
+        wire["blocked_hints"]
+    );
+    // Formas aisladas: no-op, cadena con no-op interior, cadena con no-op
+    // exterior, y efectiva — todas limpias.
+    for (probe, expected) in [
+        ("subs(cos(t), x, 1)", "cos(t)"),
+        ("subs(subs(-y,x,cos(t)),y,sin(t))", "-sin(t)"),
+        ("subs(subs(x,x,cos(t)),y,sin(t))", "cos(t)"),
+        ("subs(subs(x^2+y^2,x,1),y,2)", "5"),
+    ] {
+        let wire = eval_wire(probe);
+        assert_eq!(wire["result"].as_str().unwrap_or(""), expected, "{probe}");
+        assert!(
+            wire["blocked_hints"]
+                .as_array()
+                .is_none_or(|h| h.is_empty()),
+            "{probe} no debe llevar blocked_hints"
+        );
+    }
+    // (b) integrate definido componentwise; una entrada que declina => residual entero.
+    assert_eq!(
+        eval_wire("integrate([cos(t),sin(t)], t, 0, pi)")["result"]
+            .as_str()
+            .unwrap_or(""),
+        "[[0], [2]]"
+    );
+    assert_eq!(
+        eval_wire("integrate([2*t,3*t^2], t, 0, 1)")["result"]
+            .as_str()
+            .unwrap_or(""),
+        "[[1], [1]]"
+    );
+    // Pins: subs con Requires y el orden order-safe intactos; definido escalar.
+    assert_eq!(
+        eval_wire("subs(x*y/(x^2+y^2),y,k*x)")["result"]
+            .as_str()
+            .unwrap_or(""),
+        "k / (k^2 + 1)"
+    );
+    assert_eq!(
+        eval_wire("subs(diff(x^2*y,x),x,1)")["result"]
+            .as_str()
+            .unwrap_or(""),
+        "2·y"
+    );
+    assert_eq!(
+        eval_wire("integrate(x^2,x,0,1)")["result"]
+            .as_str()
+            .unwrap_or(""),
+        "1/3"
+    );
+}
+
+#[test]
 fn test_eval_taylor_substrate_f1() {
     // Fase 3 · F1: (1) singularidad EVITABLE computa vía cancelación de la
     // potencia común re-expandida a order+s; (2) punto singular → residual
@@ -3486,11 +3564,11 @@ fn test_eval_abs_vector_and_componentwise_integrate() {
         r("integrate([x, e^(-x^2)], x)"),
         "integrate([[x], [1 / e^(x^2)]], x)"
     );
-    // Definite integrals over a Matrix stay an honest residual (indefinite-only scope).
-    assert_eq!(
-        r("integrate([x,x^2], x, 0, 1)"),
-        "integrate([[x], [x^2]], x, 0, 1)"
-    );
+    // Definite integrals over a Matrix: GRADUATED by F3 (Fase 3) — the V7b
+    // indefinite-only boundary was the honest residual until the definite
+    // componentwise arm landed; the deep pin (all-or-nothing) lives in
+    // test_eval_subs_noop_guard_and_definite_matrix_integrate_f3.
+    assert_eq!(r("integrate([x,x^2], x, 0, 1)"), "[[1/2], [1/3]]");
 }
 
 #[test]

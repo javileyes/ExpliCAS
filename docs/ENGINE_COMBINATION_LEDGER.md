@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 640 (newest first)
+Active entries: 641 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -122,6 +122,7 @@ Active entries: 640 (newest first)
 - 2026-07-19 | `retained` | `cas_solver_core/solve_outcome.rs` (`CALCULUS_BINDER_FN_NAMES` pub const + ex... | SOUNDNESS (chip del barrido F0): solve afirmaba "No solution" ante infinity en ARGS de binders de cálculo — la cota es notación, no valor
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (Div-arm de `taylor_at_zero_with_rational`: canc... | CAPACIDAD+SOUNDNESS (Fase 3 · F1, ciclo 1/4): sustrato Taylor — singularidad evitable computa, punto singular deja de responder `undefined`, cap de orden explícito
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`taylor_multivar_series_expr`: tabla de derivad... | CAPACIDAD (Fase 3 · F2, ciclo 2/4): taylor(f,[vars],[punto],n) multivariable — multi-índice por grado TOTAL, incremental desde el padre, narración keyed
+- 2026-07-19 | `retained` | `cas_engine/rules/functions.rs` (SubsRule reescrito: `peel_subs_target_spine`... | SUSTRATO (Fase 3 · F3, ciclo 3/4): las cadenas de subs colapsan en el nodo exterior (muere el hint-ruido de ciclo) + integrate DEFINIDO componentwise sobre Matrix
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20731,3 +20732,19 @@ Active entries: 640 (newest first)
 - retained learning:
   - **El litter del derivador es por-REGLA, no por-función**: `e^x` vía builtin Exp deriva limpio y vía `Pow(E,x)` ensucia `ln(e)` — al componer derivación repetida (Taylor, jacobianos anidados), presupuestar un tidy de unidades EN LA RUTA, no confiar en el simplify final (el depth-budget lo capa justo cuando más lo necesitas).
   - PRÓXIMO PELDAÑO: F3 (SubsRule no-op guard + integrate DEFINIDO componentwise) — bloque B.
+
+## 2026-07-19 - SUSTRATO (Fase 3 · F3, ciclo 3/4): las cadenas de subs colapsan en el nodo exterior (muere el hint-ruido de ciclo) + integrate DEFINIDO componentwise sobre Matrix
+
+- area: `cas_engine/rules/functions.rs` (SubsRule reescrito: `peel_subs_target_spine` + colapso en UN rewrite del exterior; decline del interior vía `has_ancestor_matching` sobre la espina-target; no-op por binding saltado; `expr_mentions_variable` por SymbolId) + `cas_engine/rules/calculus/integrate_rule.rs` (brazo Matrix en el path DEFINIDO antes de `definite_integration_rewrite` — espejo del indefinido V7b: all-or-nothing, conditions-conservative, budget_exempt bajo el cap existente) + e2e con fixture de AUSENCIA
+- status: `retained`. Bloque B del scoping abierto (F3 sustrato).
+- capture:
+  - investment_class: sustrato de composición (el hint-ruido contaminaba TODA composición con subs no-op: circulación por-componente, Green, flujo — valores correctos con warning falso) + capacidad espejo (definida componentwise).
+  - cell: la circulación `integrate(subs(subs(-y,x,cos(t)),y,sin(t))·diff(cos(t),t) + …, t, 0, 2π)` → `2·pi` con `blocked_hints` VACÍO (el fixture pinea la AUSENCIA); `integrate([cos(t),sin(t)],t,0,π)` → `[[0],[2]]`; `integrate([2t,3t²],t,0,1)` → `[[1],[1]]`; entrada impropia divergente hereda el veredicto escalar (`[1/t,t]` → `[[infinity],[1/2]]`, consistente con `∫₀¹1/t`).
+  - **El diagnóstico movió el fix una capa más adentro que el spec**: el guard no-op del scoping (saltar la sustitución que reconstruye copia content-equal) mató la MITAD del ruido (cadena con no-op interior) — pero `subs(subs(x,x,cos(t)),y,·)` seguía disparando: el detector de ciclos es GLOBAL-DE-FASE por fingerprint de contenido, y dos nodos DISTINTOS convergiendo al mismo `cos(t)` (hijo resuelve primero bottom-up; padre re-observa la misma huella) son su falso period-1 — el defecto de identidad-de-nodo nombrado como backlog. El fix raíz acotado SIN tocar el detector: la cadena anidada colapsa en el nodo EXTERIOR en UN rewrite (una sola huella nueva); el interior declina cuando está en la espina-target de un subs ancestro (`has_ancestor_matching`, precedente de 3 rules). La supresión de filter.rs NO se usó (spec).
+  - Pin MIGRADO con porqué: el V7b fijaba "definida sobre Matrix = residual honesto (scope indefinite-only)" — era el contrato correcto HASTA que este ciclo gradúa la definida; el assert pasa a `[[1/2],[1/3]]` con la nota de graduación (el caso "actualiza el contrato" del protocolo, juzgado por intención).
+  - Pins: subs standalone con Requires (`k/(k²+1)`), order-safe (`subs(diff(x²y,x),x,1)→2y`), anidado efectivo (`→5`), no-op simple; definido escalar `1/3`; lane integrate-smoke byte-idéntica; lint string-compares 0 (forma pre-lookup blessed).
+  - El CycleDetector CONSERVA su defecto transversal para OTRAS reglas content-convergentes (la esfera sigue siendo el ejemplo vivo) — backlog nombrado, fix de orquestación, no apresurado (riesgo del scoping respetado).
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + scorecards verdes; huella contadores-idéntica.
+- retained learning:
+  - **Con un detector de ciclos global-de-fase por contenido, toda familia de rules cuyo resultado CONVERGE (eliminadores, colapsadores) debe emitir su cadena en UN rewrite del nodo exterior** — hijo-primero + padre-converge = falso period-1 garantizado; el patrón espina+ancestor-decline lo evita sin tocar el detector ni suprimir hints.
+  - PRÓXIMO PELDAÑO: F4 (verbo lineintegral — ensamblador puro sobre esta composición ya limpia; gotcha dos-cables + never-confirm con aridad real 6).

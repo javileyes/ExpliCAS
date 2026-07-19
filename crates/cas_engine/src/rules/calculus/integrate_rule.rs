@@ -9,6 +9,42 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     if let Some(mut definite_call) =
         crate::symbolic_calculus_call_support::try_extract_definite_integrate_call(ctx, expr)
     {
+        // Matrix target: DEFINITE integration goes componentwise too (F3,
+        // Fase 3 — mirror of the indefinite V7b arm below), all-or-nothing and
+        // conditions-conservative: an entry whose definite evaluation declines,
+        // still carries an integrate node, or emits assumptions/conditions
+        // declines the WHOLE call — never a half-evaluated vector.
+        if matches!(ctx.get(definite_call.target), cas_ast::Expr::Matrix { .. }) {
+            let rewritten = crate::matrix_rule_support::map_matrix_components(
+                ctx,
+                definite_call.target,
+                |ctx, entry| {
+                    let entry_call = crate::symbolic_calculus_call_support::DefiniteIntegralCall {
+                        target: entry,
+                        var_expr: definite_call.var_expr,
+                        var_name: definite_call.var_name.clone(),
+                        lower: definite_call.lower,
+                        upper: definite_call.upper,
+                    };
+                    let rewrite = super::definite_integration::definite_integration_rewrite(
+                        ctx,
+                        &entry_call,
+                    )?;
+                    if !rewrite.required_conditions.is_empty()
+                        || !rewrite.assumption_events.is_empty()
+                        || contains_integrate_call(ctx, rewrite.new_expr)
+                    {
+                        return None;
+                    }
+                    Some(rewrite.new_expr)
+                },
+            )?;
+            return Some(
+                crate::rule::Rewrite::new(rewritten)
+                    .desc("Integrar cada componente del vector en el intervalo")
+                    .budget_exempt(),
+            );
+        }
         if let Some(folded) =
             fold_var_power_quotient(ctx, definite_call.target, &definite_call.var_name)
         {

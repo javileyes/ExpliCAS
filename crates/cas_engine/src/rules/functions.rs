@@ -828,27 +828,116 @@ define_rule!(
     SubsRule,
     "Substitute Value",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
         if !ctx.is_call_named(expr, "subs") {
             return None;
         }
-        let cas_ast::Expr::Function(_, args) = ctx.get(expr) else {
-            return None;
-        };
-        if args.len() != 3 {
+        // F3 (Fase 3): a NESTED subs chain collapses at the OUTERMOST call in
+        // ONE rewrite. Resolving child-first (the bottom-up default) makes the
+        // parent's result re-observe the child's fingerprint, and the
+        // phase-global CycleDetector reads that convergence as a period-1
+        // cycle — blocked-hint noise ("requires cos(t) (defined)") on every
+        // per-component circulation / Green composition. An inner subs on the
+        // TARGET SPINE of an ancestor subs therefore declines and lets the
+        // outermost collapse the whole chain.
+        if parent_ctx.has_ancestor_matching(ctx, |ctx, ancestor| {
+            subs_target_spine_contains(ctx, ancestor, expr)
+        }) {
             return None;
         }
-        let (target, var, value) = (args[0], args[1], args[2]);
-        if !matches!(ctx.get(var), cas_ast::Expr::Variable(_)) {
+        let (base, bindings) = peel_subs_target_spine(ctx, expr)?;
+        if contains_unevaluated_calculus_call(ctx, base) {
             return None;
         }
-        if contains_unevaluated_calculus_call(ctx, target) {
-            return None;
+        // Apply the bindings innermost-first; a binding whose variable is not
+        // mentioned is a NO-OP and is skipped (substituting anyway would
+        // rebuild a content-equal copy — the other half of the false-cycle
+        // noise).
+        let mut result = base;
+        for (var_expr, var_sym, value) in bindings.into_iter().rev() {
+            if expr_mentions_variable(ctx, result, var_sym) {
+                result = cas_ast::traversal::substitute_expr_by_id(ctx, result, var_expr, value);
+            }
         }
-        let rewritten = cas_ast::traversal::substitute_expr_by_id(ctx, target, var, value);
-        Some(Rewrite::new(rewritten).desc("Sustituir la variable por el valor en la expresión"))
+        Some(Rewrite::new(result).desc("Sustituir la variable por el valor en la expresión"))
     }
 );
+
+/// Peel the nested-subs TARGET SPINE of `expr`: `subs(subs(T, x, v1), y, v2)`
+/// yields base `T` and bindings `[(y, v2), (x, v1)]` (outermost first). Every
+/// spine node must be a 3-argument `subs` with a pure `Variable` in second
+/// position; the outermost call itself must be one too (else `None`).
+#[allow(clippy::type_complexity)]
+fn peel_subs_target_spine(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<(ExprId, cas_ast::symbol::SymbolId, ExprId)>)> {
+    let mut bindings = Vec::new();
+    let mut current = expr;
+    loop {
+        let cas_ast::Expr::Function(fn_id, args) = ctx.get(current) else {
+            break;
+        };
+        let name = ctx.sym_name(*fn_id);
+        if name != "subs" || args.len() != 3 {
+            break;
+        }
+        let (target, var, value) = (args[0], args[1], args[2]);
+        let cas_ast::Expr::Variable(var_sym) = ctx.get(var) else {
+            break;
+        };
+        bindings.push((var, *var_sym, value));
+        current = target;
+    }
+    if bindings.is_empty() {
+        return None;
+    }
+    Some((current, bindings))
+}
+
+/// True when `needle` sits on the nested-subs TARGET SPINE of `ancestor`
+/// (i.e. `ancestor` is a 3-argument `subs` whose first argument — possibly
+/// through further nested `subs` targets — is `needle`).
+fn subs_target_spine_contains(ctx: &Context, ancestor: ExprId, needle: ExprId) -> bool {
+    let mut current = ancestor;
+    loop {
+        let cas_ast::Expr::Function(fn_id, args) = ctx.get(current) else {
+            return false;
+        };
+        let name = ctx.sym_name(*fn_id);
+        if name != "subs" || args.len() != 3 {
+            return false;
+        }
+        if args[0] == needle {
+            return true;
+        }
+        current = args[0];
+    }
+}
+
+/// True when `expr` mentions the variable symbol anywhere.
+fn expr_mentions_variable(ctx: &Context, expr: ExprId, var_sym: cas_ast::symbol::SymbolId) -> bool {
+    use cas_ast::Expr;
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Variable(sym) if *sym == var_sym => return true,
+            Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+        }
+    }
+    false
+}
 
 // EvaluateMetaFunctionsRule: Handles meta functions that operate on expressions
 // - simplify(expr) → expr (already simplified by bottom-up processing)
