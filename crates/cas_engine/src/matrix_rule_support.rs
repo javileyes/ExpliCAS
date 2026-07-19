@@ -1179,7 +1179,7 @@ fn matrix_dot(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
 }
 
 /// Cross product of two 3-vectors, returned as a 3×1 column.
-fn matrix_cross(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
+pub(crate) fn matrix_cross(ctx: &mut Context, u: &Matrix, v: &Matrix) -> Option<ExprId> {
     if u.data.len() != 3 || v.data.len() != 3 {
         return None;
     }

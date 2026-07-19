@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 642 (newest first)
+Active entries: 643 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -124,6 +124,7 @@ Active entries: 642 (newest first)
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`taylor_multivar_series_expr`: tabla de derivad... | CAPACIDAD (Fase 3 · F2, ciclo 2/4): taylor(f,[vars],[punto],n) multivariable — multi-índice por grado TOTAL, incremental desde el padre, narración keyed
 - 2026-07-19 | `retained` | `cas_engine/rules/functions.rs` (SubsRule reescrito: `peel_subs_target_spine`... | SUSTRATO (Fase 3 · F3, ciclo 3/4): las cadenas de subs colapsan en el nodo exterior (muere el hint-ruido de ciclo) + integrate DEFINIDO componentwise sobre Matrix
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LineIntegralRule` + extracto... | CAPACIDAD (Fase 3 · F4, ciclo 4/4): verbo lineintegral(F,[vars],r,t,a,b) — ensamblador puro sobre la composición ya limpia por F3
+- 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`SurfaceIntegralRule` + extra... | CAPACIDAD (Fase 3 · F5, tanda-2 ciclo 1/4): verbo surface_integral(F,[vars],r,[u,v],[a,b],[c,d]) — elemento de área r_u×r_v sobre iteradas definidas vivas
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20764,3 +20765,17 @@ Active entries: 642 (newest first)
 - retained learning:
   - **Un ensamblador que valida sus premisas estructurales (params libres de las vars del campo) convierte la sustitución secuencial en trivialmente sound** — la alternativa (sustitución simultánea con renombrado) es maquinaria que nadie necesita si el extractor rechaza el único caso que la exigiría.
   - PRÓXIMO PELDAÑO: F5 (surface_integral) y F6 (potential vía curl=0) completan el bloque B; después bloque C (F7 límites multivar sobre el canal de dominio de F0).
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F5, tanda-2 ciclo 1/4): verbo surface_integral(F,[vars],r,[u,v],[a,b],[c,d]) — elemento de área r_u×r_v sobre iteradas definidas vivas
+
+- area: `cas_engine/rules/calculus/vector_calculus.rs` (`SurfaceIntegralRule` + extractor posicional arity-6: 3 vars exactas — el elemento de área exige el cross 3D —, r de 3 componentes libre de las vars del campo, [u,v] distintos y fuera de las vars, rangos 2-entrada libres de las vars — el rango interior PUEDE mencionar u: las iteradas componen) + `matrix_rule_support::matrix_cross` promovido a pub(crate) (reuso V6) + gate `"surface_integral" => arity == 6` + narración keyed `surfaceintegral.formula_{vector,scalar}` es/en + e2e + 2 filas examples
+- status: `retained`. Bloque B: F3+F4+F5 aterrizados; queda F6.
+- capture:
+  - investment_class: capacidad curricular (la segunda mitad del par línea/superficie del scoping — octava repetición del patrón "verbo sobre máquina viva").
+  - cell: área lateral del cilindro → `2·pi`; patch plano `[u,v,u+v]` → `sqrt(3)`; flujo del cilindro `[x,y,0]` → `2·pi`; flujo plano `[0,0,1]` → `1`. **Residuales honestos pineados**: paraboloide → `∫∫(4u²+4v²+1)^(1/2)` (la forma EXACTA del spec — el verbo emite el integrate residual, jamás fuerza valor); esfera → `integrate(2·pi·|sin(u)|, u, 0, π)` — MEJOR que lo previsto por el scoping (esperaba early-stop del cross trig-rico): el interior computa y el residual es el exterior con `|sin u|` definido sin plegar (dueño nombrado: backlog abs-en-integral — plegarlo daría 4π, el área de la esfera unidad).
+  - Ensamblado interno completo sin re-entrar al pipeline: ∂r/∂u y ∂r/∂v componentwise → `matrix_cross` (V6) → escalar `f(r)·‖r_u×r_v‖` o flujo `Σ Fᵢ(r)·crossᵢ` → `integrate(integrate(·, v, c, d), u, a, b)` anidado (las dobles iteradas ya componen — verificado en el scoping).
+  - Declines pineados: r mencionando variable del campo; parámetro dentro de la lista de vars; aridad ≠ 6 conserva "función no definida" (mismo detector por (nombre, aridad) del F4).
+- validación: workspace failed:0; clippy --all-targets limpio; lint string-compares 0; engine-fast + scorecards verdes; huella contadores-idéntica (deltas filtered_out declarados si aparecen — tests nuevos).
+- retained learning:
+  - **Un residual "mejor de lo esperado" también se pinea**: el scoping predijo decline de la esfera y la realidad es un residual semi-evaluado más informativo (`∫2π|sin u|`) — pinear la forma REAL, no la prevista, convierte cualquier futura regresión (o mejora del abs-definido) en un delta visible con dueño.
+  - PRÓXIMO PELDAÑO: F6 (potential vía curl=0 + reconstrucción por camino interim) cierra el bloque B.

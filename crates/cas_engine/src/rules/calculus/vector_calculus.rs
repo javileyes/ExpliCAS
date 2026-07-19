@@ -327,3 +327,206 @@ define_rule!(
         )
     }
 );
+
+/// Positional extraction for
+/// `surface_integral(field, [vars], r, [u,v], [a,b], [c,d])` (F5, Fase 3 —
+/// arity-6 EXACT, 3D surfaces only: the area element needs the 3-component
+/// cross product). Validates like the line-integral extractor: `[vars]` three
+/// pure Variables; `r` a 3-component Matrix free of the field variables;
+/// `[u,v]` two DISTINCT parameter Variables outside the field variables; the
+/// two ranges 2-entry Matrices free of the field variables (the inner range
+/// may mention the outer parameter — iterated integrals compose).
+struct SurfaceIntegralCall {
+    field: cas_ast::ExprId,
+    var_entries: Vec<(cas_ast::ExprId, cas_ast::symbol::SymbolId)>,
+    r_comps: Vec<cas_ast::ExprId>,
+    u_expr: cas_ast::ExprId,
+    v_expr: cas_ast::ExprId,
+    u_range: (cas_ast::ExprId, cas_ast::ExprId),
+    v_range: (cas_ast::ExprId, cas_ast::ExprId),
+}
+
+fn try_extract_surface_integral_call(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<SurfaceIntegralCall> {
+    if !ctx.is_call_named(expr, "surface_integral") {
+        return None;
+    }
+    let cas_ast::Expr::Function(_, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 6 {
+        return None;
+    }
+    let args = args.clone();
+    let (field, vars_expr, r_expr, params_expr, u_range_expr, v_range_expr) =
+        (args[0], args[1], args[2], args[3], args[4], args[5]);
+    let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(vars_expr) else {
+        return None;
+    };
+    if (*rows != 1 && *cols != 1) || data.len() != 3 {
+        return None;
+    }
+    let mut var_entries = Vec::with_capacity(3);
+    for &v in data {
+        let cas_ast::Expr::Variable(sym) = ctx.get(v) else {
+            return None;
+        };
+        var_entries.push((v, *sym));
+    }
+    let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(params_expr) else {
+        return None;
+    };
+    if (*rows != 1 && *cols != 1) || data.len() != 2 {
+        return None;
+    }
+    let (u_expr, v_expr) = (data[0], data[1]);
+    let (cas_ast::Expr::Variable(u_sym), cas_ast::Expr::Variable(v_sym)) =
+        (ctx.get(u_expr), ctx.get(v_expr))
+    else {
+        return None;
+    };
+    let (u_sym, v_sym) = (*u_sym, *v_sym);
+    if u_sym == v_sym || var_entries.iter().any(|(_, s)| *s == u_sym || *s == v_sym) {
+        return None;
+    }
+    let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(r_expr) else {
+        return None;
+    };
+    if (*rows != 1 && *cols != 1) || data.len() != 3 {
+        return None;
+    }
+    let r_comps = data.clone();
+    let range_of = |ctx: &cas_ast::Context,
+                    e: cas_ast::ExprId|
+     -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+        let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(e) else {
+            return None;
+        };
+        if (*rows != 1 && *cols != 1) || data.len() != 2 {
+            return None;
+        }
+        Some((data[0], data[1]))
+    };
+    let u_range = range_of(ctx, u_range_expr)?;
+    let v_range = range_of(ctx, v_range_expr)?;
+    for &e in r_comps
+        .iter()
+        .chain([u_range.0, u_range.1, v_range.0, v_range.1].iter())
+    {
+        if var_entries
+            .iter()
+            .any(|(_, sym)| expr_mentions_symbol(ctx, e, *sym))
+        {
+            return None;
+        }
+    }
+    Some(SurfaceIntegralCall {
+        field,
+        var_entries,
+        r_comps,
+        u_expr,
+        v_expr,
+        u_range,
+        v_range,
+    })
+}
+
+define_rule!(
+    SurfaceIntegralRule,
+    "Surface Integral",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        // F5 (Fase 3): assembler over live composition — differentiate the
+        // parametrization, build the area element `r_u × r_v`, assemble
+        // `f(r)·‖r_u×r_v‖` (scalar) or `F(r)·(r_u×r_v)` (vector flux), and hand
+        // the ITERATED definite integral to the integration engine. A
+        // non-elementary integrand stays an honest residual integral
+        // (paraboloid pin) — the verb never forces a value.
+        let call = try_extract_surface_integral_call(ctx, expr)?;
+        let u_name = match ctx.get(call.u_expr) {
+            cas_ast::Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+            _ => return None,
+        };
+        let v_name = match ctx.get(call.v_expr) {
+            cas_ast::Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+            _ => return None,
+        };
+        let mut r_u = Vec::with_capacity(3);
+        let mut r_v = Vec::with_capacity(3);
+        for &comp in &call.r_comps {
+            r_u.push(
+                cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+                    ctx, comp, &u_name,
+                )?,
+            );
+            r_v.push(
+                cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+                    ctx, comp, &v_name,
+                )?,
+            );
+        }
+        let mk = |data: Vec<cas_ast::ExprId>| cas_math::matrix::Matrix {
+            rows: 3,
+            cols: 1,
+            data,
+        };
+        let (mu, mv) = (mk(r_u), mk(r_v));
+        let cross_expr = crate::matrix_rule_support::matrix_cross(ctx, &mu, &mv)?;
+        let cas_ast::Expr::Matrix { data: cross, .. } = ctx.get(cross_expr).clone() else {
+            return None;
+        };
+        let integrand = match ctx.get(call.field).clone() {
+            // Vector flux: ∫∫ F·(r_u×r_v) dv du — requires 3 components.
+            cas_ast::Expr::Matrix { rows, cols, data } => {
+                if (rows != 1 && cols != 1) || data.len() != 3 {
+                    return None;
+                }
+                let mut sum: Option<cas_ast::ExprId> = None;
+                for (&f_i, &c_i) in data.iter().zip(&cross) {
+                    let substituted =
+                        substitute_parametrization(ctx, f_i, &call.var_entries, &call.r_comps);
+                    let term = ctx.add(cas_ast::Expr::Mul(substituted, c_i));
+                    sum = Some(match sum {
+                        None => term,
+                        Some(acc) => ctx.add(cas_ast::Expr::Add(acc, term)),
+                    });
+                }
+                sum?
+            }
+            // Scalar: ∫∫ f(r)·‖r_u×r_v‖ dv du.
+            _ => {
+                let substituted =
+                    substitute_parametrization(ctx, call.field, &call.var_entries, &call.r_comps);
+                let mut norm_sq: Option<cas_ast::ExprId> = None;
+                for &c_i in &cross {
+                    let two = ctx.num(2);
+                    let sq = ctx.add(cas_ast::Expr::Pow(c_i, two));
+                    norm_sq = Some(match norm_sq {
+                        None => sq,
+                        Some(acc) => ctx.add(cas_ast::Expr::Add(acc, sq)),
+                    });
+                }
+                let area_element = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![norm_sq?]);
+                ctx.add(cas_ast::Expr::Mul(substituted, area_element))
+            }
+        };
+        let inner = ctx.call(
+            "integrate",
+            vec![integrand, call.v_expr, call.v_range.0, call.v_range.1],
+        );
+        let result = ctx.call(
+            "integrate",
+            vec![inner, call.u_expr, call.u_range.0, call.u_range.1],
+        );
+        Some(
+            Rewrite::new(result)
+                .desc(
+                    "Integral de superficie: parametrizar, ensamblar el elemento de área e iterar",
+                )
+                .budget_exempt(),
+        )
+    }
+);

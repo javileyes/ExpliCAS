@@ -187,3 +187,5 @@
 "sympy wrong","solve(sin(x)>1/2, x)","sympy trunca la solución a un periodo (π/6, 5π/6) y pierde el resto; aquí la unión periódica completa con k ∈ ℤ"
 "sympy wrong","solve(tan(x)>1, x)","sympy devuelve solo (π/4, π/2); aquí todos los periodos de la tangente: (π/4+kπ, π/2+kπ)"
 "sympy wrong","integrate(1/(x^3-x-1), x)","Cúbica con raíz irracional: sympy expande Cardano en un monstruo ILEGIBLE de miles de caracteres; aquí la suma limpia sobre las raíces de la resultante (RootSum de una línea)"
+"Analítico","surface_integral([x,y,0], [x,y,z], [cos(u),sin(u),v], [u,v], [0,2*pi], [0,1])","Flujo ∫∫F·dS a través del cilindro unidad → 2π"
+"Analítico","surface_integral(1, [x,y,z], [u,v,u+v], [u,v], [0,1], [0,1])","Área de un parche plano vía ‖r_u×r_v‖ → √3"

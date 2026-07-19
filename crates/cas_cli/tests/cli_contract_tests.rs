@@ -2670,6 +2670,61 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_surface_integral_verb_f5() {
+    // Fase 3 · F5: ensamblador de superficie — r_u×r_v como elemento de área,
+    // escalar via ‖·‖, flujo via producto punto; iteradas definidas anidadas.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Área lateral del cilindro, patch plano, flujo del cilindro, flujo plano.
+    assert_eq!(
+        eval_result("surface_integral(1,[x,y,z],[cos(u),sin(u),v],[u,v],[0,2*pi],[0,1])"),
+        "2·pi"
+    );
+    assert_eq!(
+        eval_result("surface_integral(1,[x,y,z],[u,v,u+v],[u,v],[0,1],[0,1])"),
+        "sqrt(3)"
+    );
+    assert_eq!(
+        eval_result("surface_integral([x,y,0],[x,y,z],[cos(u),sin(u),v],[u,v],[0,2*pi],[0,1])"),
+        "2·pi"
+    );
+    assert_eq!(
+        eval_result("surface_integral([0,0,1],[x,y,z],[u,v,0],[u,v],[0,1],[0,1])"),
+        "1"
+    );
+    // Residuales HONESTOS pineados: el verbo jamás fuerza valor.
+    assert_eq!(
+        eval_result("surface_integral(1,[x,y,z],[u,v,u^2+v^2],[u,v],[0,1],[0,1])"),
+        "integrate(integrate((4·u^2 + 4·v^2 + 1)^(1/2), v, 0, 1), u, 0, 1)"
+    );
+    // Esfera: el interior computa (2π·|sin u|) y el exterior queda residual —
+    // el |sin(u)| definido no pliega (dueño: backlog abs-en-integral).
+    assert_eq!(
+        eval_result(
+            "surface_integral(1,[x,y,z],[sin(u)*cos(v),sin(u)*sin(v),cos(u)],[u,v],[0,pi],[0,2*pi])"
+        ),
+        "integrate(2·pi·|sin(u)|, u, 0, pi)"
+    );
+    // Declines: r que menciona variable del campo, params dentro de vars.
+    for probe in [
+        "surface_integral(x,[x,y,z],[u,v,x],[u,v],[0,1],[0,1])",
+        "surface_integral(1,[x,y,u],[u,v,0],[u,v],[0,1],[0,1])",
+    ] {
+        let r = eval_result(probe);
+        assert!(
+            r.starts_with("surface_integral("),
+            "{probe} debe declinar a eco residual, got: {r}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_lineintegral_verb_f4() {
     // Fase 3 · F4: ensamblador puro sobre composición viva — parametrizar,
     // derivar, ensamblar el integrando y delegar en la integral definida.

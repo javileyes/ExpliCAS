@@ -166,7 +166,7 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 - **Depende:** F3 recomendado (limpia el terreno de composición que valida los fixtures); independiente de F0-F2.
 - **Retención (pins):** `lineintegral-eq-composicion` (2·pi por ambas vías); `arclength(x^2,x,0,1)` intacto; never-confirm bidireccional (surface/potential siguen declinando).
 
-#### F5 — `surface_integral(F,[vars],r,[u,v],[a,b],[c,d])` **[M]**
+#### F5 — `surface_integral(F,[vars],r,[u,v],[a,b],[c,d])` **[M]** ☑ GRADUADO 2026-07-19 (hash en el ledger; cilindro/patch/flujos exactos; paraboloide residual EXACTO del spec; esfera MEJOR que lo previsto — interior computa, `∫2π|sin u|` residual con dueño abs-en-integral)
 - **Gradúa:** escalar: área lateral del cilindro → `2·pi`, patch plano → `sqrt(3)` (∫∫f·dS vía ‖r_u×r_v‖); vector: flujo del cilindro → `2·pi`, flujo plano → `1` (∫∫F·(r_u×r_v)); paraboloide → integral residual honesta (el integrando `(4u²+4v²+1)^(1/2)` no tiene forma cerrada — el verbo emite el integrate residual, JAMÁS fuerza valor); esfera → residual honesto (el cross trig-rico no pliega — early-stop preexistente, backlog nombrado, pin de decline); narración keyed.
 - **Inserción:** mismos sitios que F4 (gate arity 6 + regla hermana + extractor posicional compartido); ensamblado interno `cross(∂r/∂u, ∂r/∂v)` + `norm`/`dot` + integrate doble anidado.
 - **Reuso:** extractor F4, `cross`/`norm` de `matrix_rule_support`, dobles iteradas con límites variables (ya componen).
