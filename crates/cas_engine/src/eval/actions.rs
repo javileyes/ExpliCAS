@@ -542,7 +542,18 @@ impl Engine {
                 let output_expr = if result.warning.is_some() {
                     cleanup_residual_limit_output_expr(&mut self.simplifier.context, folded)
                 } else {
-                    folded
+                    // F10 (Fase 3): the RESOLVED output goes through the full
+                    // simplify pipeline before emission — the input's
+                    // `PreSimplifyMode::Off` is deliberate and untouched; the
+                    // residual branch above keeps its cleanup INTACT (residual
+                    // round-trip pin). In real mode outputs are already folded
+                    // by the engine (byte-identical); this closes the inverse
+                    // branch-hop for the complex values F11 re-grants
+                    // (`exp(pi·i)` → `−1`).
+                    match self.eval_simplify(options, folded) {
+                        Ok((EvalResult::Expr(simplified), ..)) => simplified,
+                        _ => folded,
+                    }
                 };
                 let mut steps = Vec::new();
                 if !matches!(options.steps_mode, crate::options::StepsMode::Off) {

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 648 (newest first)
+Active entries: 649 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -130,6 +130,7 @@ Active entries: 648 (newest first)
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_multivar_dne_by_paths`: batería concreta `... | CAPACIDAD+SOUNDNESS (Fase 3 · F8, tanda-2 ciclo 4/4): DNE-por-caminos con testigos CITADOS — el motor univariado entero como oráculo por-camino; TANDA-2 4/4 COMPLETA
 - 2026-07-19 | `retained` | docs-only — `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` (nuevo, 320 líneas) + `docs... | SCOPING (Fase 4 · EDOs elementales): el norte se amplía por decisión del usuario — dsolve scopeado en O0-O9 con 17 decisiones y oráculo curricular verificado
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LimitUnivarExprRule`: forma ... | CAPACIDAD (Fase 3 · F9, tanda-3 ciclo 1/4): límites anidados/compuestos/iterados evalúan en posición de expresión — y el wire aprende a distinguir comando de expresión
+- 2026-07-19 | `retained` | `cas_engine/eval/actions.rs` (rama sin-warning de `eval_limit`: `fold_infinit... | PULIDO (Fase 3 · F10, tanda-3 ciclo 2/4): el output RESUELTO del límite pasa por el pipeline de simplify — muere el branch-hop inverso; el residual conserva su cleanup intacto
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20865,3 +20866,18 @@ Active entries: 648 (newest first)
 - retained learning:
   - **Un pre-pass de comando sobre prefijo debe clasificar la FORMA COMPLETA, no el prefijo**: `starts_with("limit(")` + `ends_with(')')` acepta/rechaza expresiones enteras que solo EMPIEZAN como el comando — el matching del paréntesis del prefijo es la clasificación correcta (tercera aparición del gate-léxico-colador, ahora en dirección inversa: interceptaba de más).
   - PRÓXIMO PELDAÑO: F10 (fold del output de limit, rama sin-warning).
+
+## 2026-07-19 - PULIDO (Fase 3 · F10, tanda-3 ciclo 2/4): el output RESUELTO del límite pasa por el pipeline de simplify — muere el branch-hop inverso; el residual conserva su cleanup intacto
+
+- area: `cas_engine/eval/actions.rs` (rama sin-warning de `eval_limit`: `fold_infinity_saturation` → `eval_simplify` del OUTPUT vía el molde de `equiv_difference_evaluates_to_zero`; la rama con warning conserva `cleanup_residual_limit_output_expr` INTACTA — pin round-trip; `PreSimplifyMode::Off` del INPUT no se toca) + pin migrado + e2e
+- status: `retained`. F10 cerrado; F11 desbloqueado (el fold del output es su prerequisito para que `exp(pi·i)` emita `−1`).
+- capture:
+  - investment_class: pulido de contrato (resultado-como-contrato, guardrail #5) + prerequisito de F11.
+  - cell: en real los outputs quedan byte-idénticos SALVO una canonización cazada por los pins: `limit(e^z,z,2)` emitía `exp(2)` mientras el eval directo canoniza a `e^2` — EXACTAMENTE el branch-hop inverso que F10 existe para eliminar; el pin de F0 migra con ese porqué (misma clase de valor, forma unificada con el resto del engine). Residual round-trip intacto (`limit(e^(i·x), x, infinity)` re-emitible byte-idéntico); DNE/undefined sin cambio de shape; multivar/laterales/paramétricos intactos.
+  - Segunda canonización cazada por la suite completa: `limit(arctan(x),x,∞)` emitía `pi / 2` y el eval directo canoniza `1/2·pi` — mismo branch-hop, pin migrado con el porqué. Dos pins migrados en total (exp(2)→e^2, pi/2→1/2·pi); el resto de las 209 formas del limit matrix byte-idénticas.
+  - **La migración completa de la lane limit-contract (189)**: 28 strings esperados canonizados (π-racionales `pi/2→1/2·pi` y familia, `atan→arctan`, `sqrt(y)→y^(1/2)`, `5^(3/2)`, identidades `ln(√5)→½ln5`/`log_b(√5)→½log_b(5)`, doble-ángulo `tanh(2)`, `exp(2)→e^2`, `1 / 2→1/2`) — cada una verificada contra el eval directo ANTES de migrar (todas coinciden: es la unificación, no drift). Las 3 lanes del COMANDO wire (`run_limit` → `limit_str_to_wire`, contexto fresco SIN pipeline) conservan su forma pre-canónica con nota de dueño — branch-hop residual NOMBRADO (unificación de la superficie standalone: ciclo futuro junto al eje de dominio del wire).
+  - El fold usa `self.eval_simplify(options, folded)` y toma solo el Expr (mismo patrón que el verificador de equiv) — con fallback al folded crudo si el pipeline declina; los steps del simplify interno se descartan (el paso didáctico del límite usa el output final).
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + scorecards verdes; huella contadores-idéntica (el limit matrix no cambió de shapes — los outputs reales ya plegaban).
+- retained learning:
+  - **Un branch-hop de display se detecta comparando el MISMO valor por las dos rutas** (`limit(e^z,z,2)` vs `eval exp(2)`): si dos superficies emiten formas distintas del mismo valor, una de las dos está fuera del pipeline de canonización — y el pin que fija la forma vieja está fijando el bug.
+  - PRÓXIMO PELDAÑO: F11 (re-otorgo complejo selectivo — sustitución entera, combinador gateado a solo-DNE, unlock del gate léxico).

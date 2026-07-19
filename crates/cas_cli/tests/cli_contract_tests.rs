@@ -2606,7 +2606,9 @@ fn test_eval_limit_imaginary_point_real_domain_residual() {
     }
     // Pins real byte-idénticos: el guard es invisible sin `i` en el punto.
     assert_eq!(eval_full("limit(sin(x)/x, x, 0)").0, "1");
-    assert_eq!(eval_full("limit(e^z, z, 2)").0, "exp(2)");
+    // F10 canonizó el output (branch-hop eliminado: el eval directo da e^2 y
+    // el límite emitía exp(2) — misma clase de valor, forma unificada).
+    assert_eq!(eval_full("limit(e^z, z, 2)").0, "e^2");
     let (r, w) = eval_full("limit(1/x, x, 0)");
     assert_eq!(r, "undefined");
     assert!(w.contains("one-sided limits disagree"));
@@ -2793,6 +2795,34 @@ fn test_eval_limit_multivar_continuity_f7() {
     assert!(eval_result("limit(x*y/(x^2+y^2), x, 0)").starts_with("limit("));
     assert_eq!(eval_result("limit(x^2, x, 2)"), "4");
     assert_eq!(eval_result("1+limit(x^2, x, 2)"), "5");
+}
+
+#[test]
+fn test_eval_limit_output_fold_f10() {
+    // Fase 3 · F10: el output RESUELTO del límite pasa por el pipeline de
+    // simplify antes de emitirse (la rama residual conserva su cleanup — pin
+    // round-trip); el input PreSimplifyMode::Off no se toca. En real: byte-
+    // idéntico o canonización (exp(2)→e^2, unificado con eval directo).
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(eval_result("limit(e^z, z, 2)"), "e^2");
+    assert_eq!(eval_result("limit((x^2-1)/(x-1), x, 1)"), "2");
+    assert_eq!(eval_result("limit((1+1/x)^x, x, infinity)"), "e");
+    assert_eq!(eval_result("limit(x*y, x, 2)"), "2·y");
+    // La rama RESIDUAL conserva su forma re-emitible (round-trip intacto).
+    assert_eq!(
+        eval_result("limit(e^(i*x), x, infinity)"),
+        "limit(e^(i·x), x, infinity)"
+    );
+    // Los DNE con testigos no cambian de shape.
+    assert_eq!(eval_result("limit(1/x, x, 0)"), "undefined");
+    assert_eq!(eval_result("limit(sin(1/x), x, 0)"), "undefined");
 }
 
 #[test]
@@ -4362,8 +4392,10 @@ fn test_eval_arctan_plus_log_boundary_limit_and_irreducible_quadratic_improper_i
     // Soundness preserved here too: pole at x=1 in range -> undefined; ~1/x tail -> +∞.
     assert_eq!(r("integrate(1/((x-1)*(x^2+1)), x, 0, oo)"), "undefined");
     assert_eq!(r("integrate(x^2/((x-1)*(x^2+1)), x, 2, oo)"), "infinity");
-    // Edge: a lone arctan and a pure arctan pair are left to the unary/additive rules (unchanged).
-    assert_eq!(r("limit(arctan(x), x, infinity)"), "pi / 2");
+    // Edge: a lone arctan and a pure arctan pair are left to the unary/additive rules.
+    // F10 canonizó el output del límite (branch-hop eliminado: eval directo de
+    // pi/2 da 1/2·pi — la forma canónica del pipeline).
+    assert_eq!(r("limit(arctan(x), x, infinity)"), "1/2·pi");
 }
 
 #[test]

@@ -216,7 +216,7 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 
 ### Bloque D — límites complejos (capacidad sobre el gate F0)
 
-#### F10 — Fold del output del límite **[S]**
+#### F10 — Fold del output del límite **[S]** ☑ GRADUADO 2026-07-19 (hash en el ledger; branch-hop inverso muerto — 28+9 expected canonizados verificados contra eval directo; residual round-trip intacto; las 3 lanes del comando wire conservan su forma con dueño nombrado)
 - **Gradúa:** el resultado de `limit` pasa por el pipeline de simplificación antes de emitirse: `limit(e^z,z,2)` → `exp(2)` intacto, y cuando F11 abra puntos complejos, `exp(pi·i)` → `−1`, `1+(2·i)^2` → `−3` (el frente complejo de Fase 2 se vuelve visible para límites). En real, los outputs actuales quedan byte-idénticos o mejoran solo en plegado (auditado caso a caso en el limit matrix).
 - **Inserción:** `actions.rs:534` (hoy solo `fold_infinity_saturation`) — añadir la pasada de simplify al output, **SOLO en la rama sin-warning** (eval_limit YA bifurca: con warning llama `cleanup_residual_limit_output_expr` `actions.rs:538`, que se conserva INTACTA — pin de round-trip del residual); NO al input (`PreSimplifyMode::Off` es deliberado — su cambio tendría blast en todo el subsistema univariado).
 - **Reuso:** pipeline de simplify existente.

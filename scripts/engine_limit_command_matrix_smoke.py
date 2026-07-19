@@ -813,7 +813,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="finite_inverse_trig_root_interior_special_angle",
         expr="limit(arcsin(sqrt(x)), x, 1/4)",
-        expected_result="pi / 6",
+        expected_result="1/6·pi",
         expected_required_display=("x ≤ 1", "x ≥ 0"),
         expected_step_substrings=("Evaluar límite finito",),
         family="inverse_trig_root",
@@ -1350,7 +1350,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="finite_exp_combination_ratio_of_derivatives",
         expr="limit((2^x-3^x)/(5^x-7^x), x, 0)",
-        expected_result="(ln(2) - ln(3)) / (ln(5) - ln(7))",
+        expected_result="ln(2/3) / ln(5/7)",
         expected_required_display=("5^x - 7^x ≠ 0",),
         expected_step_substrings=("Evaluar límite finito",),
         family="exp_zero_quotient",
@@ -1363,7 +1363,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="finite_general_exp_difference_quotient",
         expr="limit((2^x-3^x)/x, x, 0)",
-        expected_result="ln(2) - ln(3)",
+        expected_result="ln(2/3)",
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=("Evaluar límite finito",),
         family="general_exp_difference_quotient",
@@ -1839,7 +1839,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="finite_one_to_infinity_power_second_order",
         expr="limit(cos(x)^(1/x^2), x, 0)",
-        expected_result="e^(-1/2)",
+        expected_result="1 / sqrt(e)",
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=("Evaluar límite finito",),
         family="exponential_indeterminate",
@@ -2020,7 +2020,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="infinity_atan_polynomial_bounded_tail_standalone",
         expr="limit(atan(2 - x^4), x, infinity)",
-        expected_result="-pi / 2",
+        expected_result="-1/2·pi",
         expected_step_substrings=("Evaluar límite en infinito",),
         family="inverse_trig",
         point_regime="infinity",
@@ -2032,7 +2032,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="infinity_atan_sqrt_unbounded_tail_standalone",
         expr="limit(arctan(sqrt(x)), x, infinity)",
-        expected_result="pi / 2",
+        expected_result="1/2·pi",
         expected_step_substrings=("Evaluar límite en infinito",),
         family="inverse_trig",
         point_regime="infinity",
@@ -2056,7 +2056,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="infinity_scaled_arctan_symbolic_product_standalone",
         expr="limit(2*arctan(x), x, infinity)",
-        expected_result="(pi·2)/2",
+        expected_result="pi",
         expected_step_substrings=("Evaluar límite en infinito",),
         family="inverse_trig",
         point_regime="infinity",
@@ -2409,7 +2409,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="finite_saturating_arctan_to_half_pi",
         expr="limit(atan(1/x^2), x, 0)",
-        expected_result="pi / 2",
+        expected_result="1/2·pi",
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=("Evaluar límite finito",),
         family="saturating_composition",
@@ -2577,7 +2577,7 @@ DEFAULT_LIMIT_COMMAND_MATRIX_CASES = (
     LimitCommandMatrixCase(
         name="finite_one_sided_arctan_reciprocal_half_pi",
         expr="limit(atan(1/x), x, 0, +)",
-        expected_result="pi / 2",
+        expected_result="1/2·pi",
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=("Evaluar límite unilateral finito",),
         family="one_sided_saturating_composition",

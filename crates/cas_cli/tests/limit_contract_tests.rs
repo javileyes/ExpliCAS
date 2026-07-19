@@ -376,9 +376,9 @@ fn test_eval_one_sided_limit_orientation_policy_json() {
 
     for (input, expected_result, expected_condition) in [
         ("limit(acos(x), x, 1-)", "0", "-1 ≤ x ≤ 1"),
-        ("limit(asin(x), x, 1-)", "pi / 2", "-1 ≤ x ≤ 1"),
+        ("limit(asin(x), x, 1-)", "1/2·pi", "-1 ≤ x ≤ 1"),
         ("limit(acos(x), x, -1+)", "pi", "-1 ≤ x ≤ 1"),
-        ("limit(asin(x), x, -1+)", "-pi / 2", "-1 ≤ x ≤ 1"),
+        ("limit(asin(x), x, -1+)", "-1/2·pi", "-1 ≤ x ≤ 1"),
         ("limit(acos(2-x), x, 1+)", "0", "1 ≤ x ≤ 3"),
     ] {
         let (_success, stdout) = run_eval(input, "json");
@@ -858,11 +858,11 @@ fn test_eval_finite_total_real_elementary_polynomial_limits_json() {
         ("limit(sinh(x), x, 0)", "0"),
         ("limit(cosh(x), x, 0)", "1"),
         ("limit(tanh(x), x, 0)", "0"),
-        ("limit(tanh(x^2 + 1), x, -1)", "tanh(2)"),
+        ("limit(tanh(x^2 + 1), x, -1)", "(tanh(1)·2)/(tanh(1)^2 + 1)"),
         ("limit(atan(x), x, 0)", "0"),
         ("limit(arctan(x), x, 0)", "0"),
-        ("limit(arctan(x + 1), x, 0)", "pi / 4"),
-        ("limit(atan(x^2 + 1), x, -1)", "atan(2)"),
+        ("limit(arctan(x + 1), x, 0)", "1/4·pi"),
+        ("limit(atan(x^2 + 1), x, -1)", "arctan(2)"),
         ("limit(arctan(x^2 + 1), x, -1)", "arctan(2)"),
         ("limit(asinh(x), x, 0)", "0"),
         ("limit(asinh(x^2 + 1), x, -1)", "asinh(2)"),
@@ -871,15 +871,15 @@ fn test_eval_finite_total_real_elementary_polynomial_limits_json() {
         ("limit(cbrt(x^2 + 1), x, -1)", "cbrt(2)"),
         ("limit((x^2 - 9)^(1/3), x, 1)", "-2"),
         ("limit(sin(cbrt(x)), x, 8)", "sin(2)"),
-        ("limit(sin(x + pi/6), x, 0)", "1 / 2"),
-        ("limit(cos(x + pi/3), x, 0)", "1 / 2"),
-        ("limit(arctan(sqrt(x^2 + 3)), x, 0)", "pi / 3"),
+        ("limit(sin(x + pi/6), x, 0)", "1/2"),
+        ("limit(cos(x + pi/3), x, 0)", "1/2"),
+        ("limit(arctan(sqrt(x^2 + 3)), x, 0)", "1/3·pi"),
         ("limit(abs(x), x, -2)", "2"),
         ("limit(abs(x), x, 0)", "0"),
         ("limit(abs(x^2 - 1), x, 0)", "1"),
         ("limit(cos(sin(x)), x, 0)", "1"),
         ("limit(sin(sqrt(x^2 + 1)), x, -2)", "sin(sqrt(5))"),
-        ("limit(exp(abs(x)), x, -2)", "exp(2)"),
+        ("limit(exp(abs(x)), x, -2)", "e^2"),
     ];
 
     for (input, expected) in cases {
@@ -949,9 +949,9 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json(
 fn test_eval_finite_inverse_trig_bilateral_endpoint_policy_json() {
     for (input, expected_result, expected_required) in [
         ("limit(acos(1-x^2), x, 0)", "0", "-1 ≤ x^2 - 1 ≤ 1"),
-        ("limit(asin(1-x^2), x, 0)", "pi / 2", "-1 ≤ x^2 - 1 ≤ 1"),
+        ("limit(asin(1-x^2), x, 0)", "1/2·pi", "-1 ≤ x^2 - 1 ≤ 1"),
         ("limit(acos(-1+x^2), x, 0)", "pi", "-1 ≤ x^2 - 1 ≤ 1"),
-        ("limit(asin(-1+x^2), x, 0)", "-pi / 2", "-1 ≤ x^2 - 1 ≤ 1"),
+        ("limit(asin(-1+x^2), x, 0)", "-1/2·pi", "-1 ≤ x^2 - 1 ≤ 1"),
     ] {
         let (success, stdout) = run_eval(input, "json");
         assert!(
@@ -1004,20 +1004,20 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_inside_domain_json(
     let cases = [
         ("limit(arcsin(x/2), x, 0)", "0", json!(["-2 ≤ x ≤ 2"])),
         ("limit(atanh(x/2), x, 0)", "0", json!(["-2 < x < 2"])),
-        ("limit(acos(x/2), x, 0)", "pi / 2", json!(["-2 ≤ x ≤ 2"])),
+        ("limit(acos(x/2), x, 0)", "1/2·pi", json!(["-2 ≤ x ≤ 2"])),
         (
             "limit(arcsin(x/2 + 1/2), x, 0)",
-            "pi / 6",
+            "1/6·pi",
             json!(["-3 ≤ x ≤ 1"]),
         ),
         (
             "limit(arcsin(1/2-x/2), x, 0)",
-            "pi / 6",
+            "1/6·pi",
             json!(["-1 ≤ x ≤ 3"]),
         ),
         (
             "limit(arccos(x/2 + 1/2), x, 0)",
-            "pi / 3",
+            "1/3·pi",
             json!(["-3 ≤ x ≤ 1"]),
         ),
         ("limit(acosh(x+2), x, 0)", "acosh(2)", json!(["x ≥ -1"])),
@@ -1078,8 +1078,8 @@ fn test_eval_finite_atanh_sqrt_limit_inside_domain_uses_radicand_domain_json() {
 #[test]
 fn test_eval_finite_closed_inverse_sqrt_limits_use_radicand_domain_json() {
     let cases = [
-        ("limit(arcsin(sqrt(x)), x, 1/4)", "pi / 6"),
-        ("limit(acos(sqrt(x)), x, 1/4)", "pi / 3"),
+        ("limit(arcsin(sqrt(x)), x, 1/4)", "1/6·pi"),
+        ("limit(acos(sqrt(x)), x, 1/4)", "1/3·pi"),
     ];
 
     for (input, expected) in cases {
@@ -1106,25 +1106,25 @@ fn test_eval_finite_partial_inverse_sqrt_limits_accept_non_square_interior_json(
         ),
         (
             "limit(arcsin(sqrt(2*x+3)), x, -5/4)",
-            "pi / 4",
+            "1/4·pi",
             json!(["x ≤ -1", "x ≥ -3/2"]),
         ),
         (
             "limit(acos(sqrt(2*x+3)), x, -5/4)",
-            "pi / 4",
+            "1/4·pi",
             json!(["x ≤ -1", "x ≥ -3/2"]),
         ),
         (
             "limit(arcsin(sqrt(3*x+3)), x, -3/4)",
-            "pi / 3",
+            "1/3·pi",
             json!(["x ≤ -2/3", "x ≥ -1"]),
         ),
         (
             "limit(acos(sqrt(3*x+3)), x, -3/4)",
-            "pi / 6",
+            "1/6·pi",
             json!(["x ≤ -2/3", "x ≥ -1"]),
         ),
-        ("limit(arctan(sqrt(x/3)), x, 1)", "pi / 6", json!(["x ≥ 0"])),
+        ("limit(arctan(sqrt(x/3)), x, 1)", "1/6·pi", json!(["x ≥ 0"])),
     ];
 
     for (input, expected, expected_required) in cases {
@@ -1437,13 +1437,13 @@ fn test_eval_finite_discontinuous_elementary_limits_stay_residual_json() {
 #[test]
 fn test_eval_finite_positive_domain_unary_composition_limits_json() {
     let cases = [
-        ("limit(ln(sqrt(x^2 + 1)), x, -2)", "ln(sqrt(5))", json!([])),
+        ("limit(ln(sqrt(x^2 + 1)), x, -2)", "1/2·ln(5)", json!([])),
         ("limit(sqrt(abs(x) + 1), x, -2)", "sqrt(3)", json!([])),
         ("limit(ln(abs(x)), x, -2)", "ln(2)", json!(["x ≠ 0"])),
         ("limit(log2(x^2 + 1), x, -2)", "log2(5)", json!([])),
         (
             "limit(log10(sqrt(x^2 + 1)), x, -2)",
-            "log10(sqrt(5))",
+            "1/2·log10(5)",
             json!([]),
         ),
         ("limit(log2(abs(x)), x, -2)", "1", json!(["x ≠ 0"])),
@@ -1617,7 +1617,7 @@ fn test_eval_finite_binary_log_composition_limits_json() {
         ("limit(log(2, x^2 + 1), x, -2)", "log(2, 5)", json!([])),
         (
             "limit(log(1/2, sqrt(x^2 + 1)), x, -2)",
-            "log(1 / 2, sqrt(5))",
+            "1/2·log(1/2, 5)",
             json!([]),
         ),
         ("limit(log(2, abs(x)), x, -2)", "1", json!(["x ≠ 0"])),
@@ -1628,7 +1628,7 @@ fn test_eval_finite_binary_log_composition_limits_json() {
         ),
         (
             "limit(log(x^2 + 3, sqrt(x^2 + 1)), x, -2)",
-            "log(7, sqrt(5))",
+            "1/2·log(7, 5)",
             json!([]),
         ),
         ("limit(log(2, x^2 + 4), x, 2)", "3", json!([])),
@@ -1724,7 +1724,7 @@ fn test_eval_finite_integer_power_composition_limits_json() {
     let cases = [
         ("limit((abs(x)+1)^2, x, -2)", "9"),
         ("limit((sqrt(x^2 + 1))^2, x, -2)", "5"),
-        ("limit((sqrt(x^2 + 1))^3, x, -2)", "sqrt(5)^3"),
+        ("limit((sqrt(x^2 + 1))^3, x, -2)", "5^(3/2)"),
         ("limit((abs(x)+1)^(-2), x, -2)", "1/9"),
         ("limit((sqrt(x^2 + 1))^(-1), x, -2)", "1 / sqrt(5)"),
         ("limit((sqrt(x^2 + 1))^(-2), x, -2)", "1/5"),
@@ -1946,7 +1946,7 @@ fn test_eval_finite_independent_sqrt_limit_preserves_domain_requirements_json() 
     );
     let wire: Value = serde_json::from_str(&stdout).expect("eval json");
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "sqrt(y)");
+    assert_eq!(wire["result"], "y^(1/2)");
     assert_eq!(wire["warnings"], json!([]));
     assert_eq!(wire["required_conditions"][0]["kind"], "NonNegative");
     assert_eq!(wire["required_conditions"][0]["expr_display"], "y");
@@ -3965,6 +3965,11 @@ fn test_limit_asinh_dominance_nonlinear_argument_remains_residual() {
 
 #[test]
 fn test_limit_atan_of_linear_argument_at_infinity() {
+    // Estas 3 lanes ejercitan la superficie del COMANDO wire (run_limit →
+    // limit_str_to_wire, cas_solver): contexto fresco SIN pipeline — su output
+    // no pasa por el fold F10 y conserva la forma pre-canónica (pi / 2).
+    // Branch-hop residual NOMBRADO con dueño (unificación de la superficie
+    // standalone: ciclo futuro junto al eje de dominio del wire, F11+).
     for (expr, to, expected) in [
         ("atan(x)", "infinity", "pi / 2"),
         ("atan(x)", "-infinity", "-pi / 2"),
@@ -4032,7 +4037,8 @@ fn test_limit_atan_of_polynomial_argument_tails_at_infinity() {
     );
     let wire: Value = serde_json::from_str(&stdout).expect("eval json");
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "-pi / 2");
+    // Superficie EVAL (plegada por F10): forma canónica.
+    assert_eq!(wire["result"], "-1/2·pi");
     assert_eq!(wire["warnings"], json!([]));
     assert_eq!(wire["required_conditions"], json!([]));
     assert_eq!(wire["required_display"], json!([]));
