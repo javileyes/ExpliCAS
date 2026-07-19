@@ -4542,6 +4542,14 @@ pub fn taylor_series_at_point_expr(
         // leaks as an unfolded raw tree.
         let value = cas_ast::substitute_expr_by_id(ctx, derivative, var_id, point);
         let value = fold_constant_subexprs(ctx, value);
+        // F1 (Fase 3): a coefficient that is not a real finite value means the
+        // function is NOT smooth at the point — the definition does not apply.
+        // Decline to the honest residual instead of emitting a series that the
+        // simplifier collapses to `undefined` (`taylor(ln(x),x,0,2)` used to
+        // ANSWER `undefined`; the answer is "no Maclaurin expansion", an echo).
+        if taylor_coefficient_is_singular(ctx, value) {
+            return None;
+        }
         let factorial_expr = ctx.add(Expr::Number(BigRational::from_integer(factorial.clone())));
         let coefficient = ctx.add(Expr::Div(value, factorial_expr));
         // · (var − point)^k
@@ -4569,6 +4577,84 @@ pub fn taylor_series_at_point_expr(
         }
     }
     sum
+}
+
+/// True when a FOLDED Taylor coefficient (a constant tree — the expansion
+/// variable is already substituted out) is provably singular or non-real:
+/// division by a zero constant (`sin(0)/0`), a logarithm of a constant `<= 0`
+/// (`ln(0)` at the boundary, `ln(-1)` in the real domain), a zero base raised
+/// to a negative constant power, a non-finite sentinel, or an imaginary value
+/// (even root of a provably-negative constant). Symbolic coefficients (`e^y`
+/// in a parametric expansion) are NOT flagged — only decidable constants are.
+fn taylor_coefficient_is_singular(ctx: &Context, value: ExprId) -> bool {
+    use num_traits::Signed;
+    if crate::numeric_eval::expr_contains_imaginary(ctx, value) {
+        return true;
+    }
+    // `as_rational_const` does not fold `Pow` (so `0^2` — the shape a
+    // substituted `x^2` denominator takes — would slip through); recognise a
+    // zero base under a positive constant exponent explicitly.
+    fn is_zero_const(ctx: &Context, e: ExprId) -> bool {
+        use num_traits::{Signed, Zero};
+        if crate::numeric_eval::as_rational_const(ctx, e).is_some_and(|v| v.is_zero()) {
+            return true;
+        }
+        match ctx.get(e) {
+            Expr::Pow(base, exp) => {
+                is_zero_const(ctx, *base)
+                    && crate::numeric_eval::as_rational_const(ctx, *exp)
+                        .is_some_and(|v| v.is_positive())
+            }
+            _ => false,
+        }
+    }
+    let mut stack = vec![value];
+    while let Some(e) = stack.pop() {
+        match ctx.get(e) {
+            Expr::Constant(Constant::Undefined | Constant::Infinity) => return true,
+            Expr::Div(l, r) => {
+                if is_zero_const(ctx, *r) {
+                    return true;
+                }
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Pow(base, exp) => {
+                if is_zero_const(ctx, *base)
+                    && crate::numeric_eval::as_rational_const(ctx, *exp)
+                        .is_some_and(|v| v.is_negative())
+                {
+                    return true;
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Function(fn_id, args)
+                if args.len() == 1
+                    && (ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Ln)
+                        || ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Log)) =>
+            {
+                if crate::numeric_eval::as_rational_const(ctx, args[0])
+                    .is_some_and(|v| !v.is_positive())
+                {
+                    return true;
+                }
+                stack.push(args[0]);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => {
+                for a in args {
+                    stack.push(*a);
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Power-series reciprocal `1/den` to `order`, via the standard recurrence
@@ -4606,11 +4692,43 @@ fn taylor_at_zero_with_rational(
     }
     match ctx.get(expr).clone() {
         Expr::Div(num, den) => {
-            let num_series = taylor_at_zero_with_rational(ctx, num, var_name, order)?;
             let den_series = taylor_at_zero_with_rational(ctx, den, var_name, order)?;
-            let recip = reciprocal_series(&den_series, order, var_name)?;
+            // Valuation of the denominator series: den(0) = 0 means the plain
+            // reciprocal has no Maclaurin expansion, but a REMOVABLE singularity
+            // (num vanishing at least as fast — `sin(x)/x`) cancels the common
+            // power of the variable. Re-expand both to `order + s` first: the
+            // truncated tails of the raw series become the LOW-order terms after
+            // the shift (`sin(x)` to order 4 loses the x⁵ term that `sin(x)/x`
+            // needs for its x⁴ coefficient).
+            let den_valuation = den_series.coeffs.iter().position(|c| !c.is_zero())?;
+            if den_valuation == 0 {
+                let num_series = taylor_at_zero_with_rational(ctx, num, var_name, order)?;
+                let recip = reciprocal_series(&den_series, order, var_name)?;
+                return Some(truncate_polynomial(
+                    &num_series.mul(&recip),
+                    order,
+                    var_name,
+                ));
+            }
+            let extended = order + den_valuation;
+            let num_series = taylor_at_zero_with_rational(ctx, num, var_name, extended)?;
+            let den_series = taylor_at_zero_with_rational(ctx, den, var_name, extended)?;
+            let num_valuation = num_series.coeffs.iter().position(|c| !c.is_zero())?;
+            if num_valuation < den_valuation {
+                // Genuine pole: no Maclaurin expansion — decline honestly.
+                return None;
+            }
+            let num_shifted = Polynomial::new(
+                num_series.coeffs[den_valuation..].to_vec(),
+                var_name.to_string(),
+            );
+            let den_shifted = Polynomial::new(
+                den_series.coeffs[den_valuation..].to_vec(),
+                var_name.to_string(),
+            );
+            let recip = reciprocal_series(&den_shifted, order, var_name)?;
             Some(truncate_polynomial(
-                &num_series.mul(&recip),
+                &num_shifted.mul(&recip),
                 order,
                 var_name,
             ))
@@ -18008,6 +18126,50 @@ mod tests {
                 "must stay a residual limit call: {source} -> {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn taylor_removable_singularity_cancels_common_power() {
+        // F1 (Fase 3): num(0)=0 y den(0)=0 → cancelar la potencia común
+        // re-expandiendo a order+s (la cola truncada se vuelve término bajo).
+        let mut ctx = Context::new();
+        let render = |ctx: &mut Context, src: &str, order: usize| -> Option<String> {
+            let expr = cas_parser::parse(src, ctx).expect(src);
+            taylor_series_at_zero_expr(ctx, expr, "x", order)
+                .map(|id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }))
+        };
+        // sin(x)/x = 1 − x²/6 + x⁴/120
+        let s = render(&mut ctx, "sin(x)/x", 4).expect("sin(x)/x expands");
+        for coeff in ["1/120", "1/6", "1"] {
+            assert!(s.contains(coeff), "sin(x)/x: falta {coeff} en {s}");
+        }
+        // (1−cos x)/x² = 1/2 − x²/24 + x⁴/720
+        let s = render(&mut ctx, "(1-cos(x))/x^2", 4).expect("(1-cos)/x^2 expands");
+        for coeff in ["1/720", "1/24", "1/2"] {
+            assert!(s.contains(coeff), "(1-cos)/x^2: falta {coeff} en {s}");
+        }
+        // Polo genuino: valuación del num < valuación del den → decline.
+        assert_eq!(render(&mut ctx, "sin(x)/x^2", 3), None);
+        assert_eq!(render(&mut ctx, "cos(x)/x", 3), None);
+    }
+
+    #[test]
+    fn taylor_definitional_declines_singular_coefficients() {
+        // F1 (Fase 3): la definicional emitía series con coeficientes 0/0 ó
+        // ln(0) que el simplificador colapsaba a `undefined` — la respuesta
+        // honesta es declinar (eco residual del comando).
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        for src in ["ln(x)", "1/x", "sin(x)/x^2"] {
+            let expr = cas_parser::parse(src, &mut ctx).expect(src);
+            assert!(
+                taylor_series_at_point_expr(&mut ctx, expr, "x", zero, 2).is_none(),
+                "debe declinar en el punto singular: {src}"
+            );
+        }
+        // Pin: coeficientes SIMBÓLICOS (paramétricos) siguen pasando.
+        let expr = cas_parser::parse("e^(x+y)", &mut ctx).expect("param");
+        assert!(taylor_series_at_point_expr(&mut ctx, expr, "x", zero, 2).is_some());
     }
 
     #[test]

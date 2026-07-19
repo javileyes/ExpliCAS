@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 638 (newest first)
+Active entries: 639 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; br... | SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
 - 2026-07-19 | `retained` | `cas_solver_core/solve_outcome.rs` (`CALCULUS_BINDER_FN_NAMES` pub const + ex... | SOUNDNESS (chip del barrido F0): solve afirmaba "No solution" ante infinity en ARGS de binders de cálculo — la cota es notación, no valor
+- 2026-07-19 | `retained` | `cas_math/limits_support.rs` (Div-arm de `taylor_at_zero_with_rational`: canc... | CAPACIDAD+SOUNDNESS (Fase 3 · F1, ciclo 1/4): sustrato Taylor — singularidad evitable computa, punto singular deja de responder `undefined`, cap de orden explícito
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20697,3 +20698,19 @@ Active entries: 638 (newest first)
 - retained learning:
   - **Un walker "contiene X" aplicado a calls con estructura de BINDER necesita la distinción args-de-valor vs args-de-notación**: la cota/el punto de aproximación no participan del valor. Es la tercera aparición de la clase (order-guard de subs, gate léxico del wire, ahora los non-finite): al escribir un walker genérico sobre Function, preguntar SIEMPRE qué significan los args del binder.
   - PRÓXIMO PELDAÑO: F1 (sustrato Taylor) — la cola de chips del barrido queda vacía.
+
+## 2026-07-19 - CAPACIDAD+SOUNDNESS (Fase 3 · F1, ciclo 1/4): sustrato Taylor — singularidad evitable computa, punto singular deja de responder `undefined`, cap de orden explícito
+
+- area: `cas_math/limits_support.rs` (Div-arm de `taylor_at_zero_with_rational`: cancelación de potencia común re-expandiendo a `order+s` — la cola truncada se vuelve término bajo tras el shift; `taylor_coefficient_is_singular` en la definicional: Div-por-0 incl. `0^2` que `as_rational_const` no pliega, ln/log de ≤0, `0^neg`, no-finitos, imaginarios vía `expr_contains_imaginary`) + `cas_engine/rules/calculus/taylor.rs` (`MAX_TAYLOR_ORDER=32` documentado como techo) + tests 3 capas
+- status: `retained`. Primer ciclo del bloque A del scoping Fase 3 (F1 según spec).
+- capture:
+  - investment_class: capacidad curricular (los 3 evitables de libro) + soundness (la definicional EMITÍA series con coeficientes 0/0 ó ln(0) que simplify colapsaba a `undefined` — una RESPUESTA para una pregunta cuya respuesta honesta es "no hay desarrollo").
+  - cell: `taylor(sin(x)/x,x,0,4)` → `1 − x²/6 + x⁴/120`; `(1−cos x)/x²` → `1/2 − x²/24 + x⁴/720`; `x/sin(x)` → `1 + x²/6 + 7x⁴/360` (bonus: den analítico con valuación también cancela). Singulares (`ln(x)`, `1/x`, `sin(x)/x²`, `cos(x)/x`) → eco residual; orden >32 → decline.
+  - **La trampa de la cola truncada, cazada en diseño**: cancelar t^s sobre series calculadas a `order` pierde los términos altos (sin(x) a orden 4 trunca el x⁵ que sin(x)/x necesita para su x⁴) — re-expandir num y den a `order+s` ANTES del shift. Polo genuino (val(num) < val(den)) → decline.
+  - **`as_rational_const` no pliega `Pow`**: el denominador sustituido de `sin(x)/x²` llega como `Pow(0,2)` y el chequeo de cero racional lo dejaba pasar (el `undefined` sobrevivió al primer fix) — `is_zero_const` recursivo con base-cero^exp-positivo. Misma clase que la lección "`numeric_value` solo casa literales".
+  - Frontera respetada: la extensión vive SOLO en `taylor_at_zero_with_rational` (ruta comando); `taylor_at_zero` del limit evaluator intacta. Pins: `exp` n=6 byte-idéntico, paramétrico `e^(x+y)` (coeficientes SIMBÓLICOS pasan el guard — pin explícito), `series(sin)` n=5, punto no-cero `exp` en 1, `tan` n=25 bajo el techo.
+  - Residual nombrado: el warning KEYED `taylor.singular_residual` del spec NO entra en F1 — un rule que declina no tiene canal de warning (assumption_events viaja solo en Rewrite aplicado); la clave nace en F2 con la familia didáctica `taylor.term` (paso propio + substeps). Documentado aquí como decisión, no omisión.
+- validación: workspace failed:0; clippy --all-targets limpio; engine-fast + scorecards verdes; huella contadores-idéntica.
+- retained learning:
+  - **En series truncadas, toda cancelación de valuación exige re-expandir a `order+s` primero**: el shift convierte la cola truncada en términos bajos — un off-by-truncation silencioso que da coeficientes bien-formados pero INCOMPLETOS (wrong-answer de la peor clase: plausible).
+  - PRÓXIMO PELDAÑO: F2 (taylor multivariable multi-índice grado-total, cap C(n+d,d)≤64, narración keyed `taylor.term` — donde nace también `taylor.singular_residual`).

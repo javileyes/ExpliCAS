@@ -2670,6 +2670,61 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_taylor_substrate_f1() {
+    // Fase 3 · F1: (1) singularidad EVITABLE computa vía cancelación de la
+    // potencia común re-expandida a order+s; (2) punto singular → residual
+    // honesto (eco), JAMÁS `undefined` como respuesta; (3) cap de orden 32.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Evitables — los tres clásicos de libro.
+    assert_eq!(
+        eval_result("taylor(sin(x)/x, x, 0, 4)"),
+        "1/120·(x^4 + 120 - 20·x^2)"
+    );
+    assert_eq!(
+        eval_result("taylor((1-cos(x))/x^2, x, 0, 4)"),
+        "1/720·(x^4 + 360 - 30·x^2)"
+    );
+    assert_eq!(
+        eval_result("taylor(x/sin(x), x, 0, 4)"),
+        "1/6·(7/60·x^4 + x^2 + 6)"
+    );
+    // Singulares → eco residual (la política V5), nunca `undefined`.
+    for probe in [
+        "taylor(ln(x), x, 0, 2)",
+        "taylor(1/x, x, 0, 3)",
+        "taylor(sin(x)/x^2, x, 0, 3)",
+        "taylor(cos(x)/x, x, 0, 3)",
+    ] {
+        let r = eval_result(probe);
+        assert!(
+            r.starts_with("taylor("),
+            "{probe} debe quedar eco residual, got: {r}"
+        );
+    }
+    // Cap explícito: 33 declina, los pins de siempre intactos.
+    assert!(eval_result("taylor(exp(x), x, 0, 33)").starts_with("taylor("));
+    assert_eq!(
+        eval_result("taylor(exp(x), x, 0, 6)"),
+        "1/720·(x^6 + 6·x^5 + 30·x^4 + 120·x^3 + 360·x^2 + 720·x + 720)"
+    );
+    assert_eq!(
+        eval_result("taylor(e^(x+y), x, 0, 2)"),
+        "1/2·e^y·(x^2 + 2·x + 2)"
+    );
+    assert_eq!(
+        eval_result("series(sin(x), x, 0, 5)"),
+        "1/120·(x^5 + 120·x - 20·x^3)"
+    );
+}
+
+#[test]
 fn test_eval_solve_calculus_binder_solution_survives() {
     // Chip del barrido F0 (2026-07-19): `solve(limit(1/x,x,infinity)=y, y)`
     // afirmaba "No solution" — los walkers non-finite recursaban en los ARGS de

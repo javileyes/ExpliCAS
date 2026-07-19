@@ -11,6 +11,13 @@ use crate::rule::Rewrite;
 /// the truncation order. Matches the common textbook default (a Maclaurin expansion up to `x^6`).
 const DEFAULT_TAYLOR_ORDER: usize = 6;
 
+/// Explicit ceiling for the requested order (F1, Fase 3): beyond it the command declines to an
+/// honest residual instead of building an ever-deeper series tree. 32 sits far above any
+/// curricular use; note that from roughly order 20 the simplifier's depth budget already leaves
+/// some coefficients partially unfolded (cosmetic — the values are exact), which is the
+/// documented ceiling behaviour rather than a bug.
+const MAX_TAYLOR_ORDER: usize = 32;
+
 /// Parse `taylor(f, x)`, `taylor(f, x, n)` and `taylor(f, x, point, n)` (and the `series` alias).
 /// Returns `(target, var_name, point_expr, order)`. `point_expr` is the expansion point (the
 /// literal `0` node when the 2/3-argument forms omit it); the order defaults to
@@ -46,7 +53,7 @@ fn try_extract_taylor_call(
     let order = match order_expr {
         Some(order_expr) => {
             let order = cas_math::numeric::as_i64(ctx, order_expr)?;
-            if order < 0 {
+            if order < 0 || order as usize > MAX_TAYLOR_ORDER {
                 return None;
             }
             order as usize
@@ -103,6 +110,11 @@ mod tests {
             Some(("x".to_string(), 4))
         ); // point a = 1
         assert_eq!(extract("taylor(exp(x), x, -1)"), None); // negative order
+        assert_eq!(extract("taylor(exp(x), x, 33)"), None); // beyond MAX_TAYLOR_ORDER
+        assert_eq!(
+            extract("taylor(exp(x), x, 32)"),
+            Some(("x".to_string(), 32))
+        ); // at the ceiling
         assert_eq!(extract("diff(exp(x), x)"), None); // not a taylor/series call
         assert_eq!(extract("taylor(exp(x))"), None); // too few args (no variable)
     }
