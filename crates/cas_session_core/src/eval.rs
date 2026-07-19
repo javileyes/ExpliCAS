@@ -126,6 +126,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         // never-confirm fixture pins both surfaces).
         "lineintegral" => arity == 6,
         "surface_integral" => arity == 6,
+        "potential" => arity == 2,
         "poly_gcd" | "pgcd" => arity >= 2,
         // Numeric evaluator helper that is intentionally exposed as a function call.
         "round" => arity == 1,

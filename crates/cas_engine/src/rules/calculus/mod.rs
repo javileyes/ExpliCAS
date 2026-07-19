@@ -315,4 +315,5 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(vector_calculus::CurlRule));
     simplifier.add_rule(Box::new(vector_calculus::LineIntegralRule));
     simplifier.add_rule(Box::new(vector_calculus::SurfaceIntegralRule));
+    simplifier.add_rule(Box::new(vector_calculus::PotentialRule));
 }

@@ -174,7 +174,7 @@ Orden por **soundness-primero + dependencia + ROI**. Cinco bloques: **F0 soundne
 - **Depende:** F4 (extractor y patrón).
 - **Retención (pins):** `surface-paraboloide-residual`; `surface-esfera-residual` (decline pineado con su causa); pins F4.
 
-#### F6 — `potential(F,[vars])` **[S]**
+#### F6 — `potential(F,[vars])` **[S]** ☑ GRADUADO 2026-07-19 (hash en el ledger; emisión gateada por verificación exacta ∇φ≡F — subsume el test curl; metamórfico potential∘gradient; trig conservativo declina honesto con dueño; BLOQUE B COMPLETO)
 - **Gradúa:** `potential([2*x*y,x^2],[x,y])` → `x^2·y` (+ constante implícita documentada); `potential([y,x],[x,y])` → `x·y`; campo NO conservativo (`curl≠0` probado) → decline con motivo ("el campo no es conservativo: curl = ..."); curl no decidible → residual honesto; 3D vía el test `curl(F)=0` (V6 del frente vectorial); narración keyed `potential.conservativity_check`/`potential.reconstruct` es/en. Reconstrucción por el camino interim ya documentado en el doc vectorial (línea 11): `integrate` + resta + `integrate` — ahora ensamblado interno.
 - **Inserción:** gate `"potential" => arity == 2` + regla con el extractor field+[vars] EXISTENTE (`try_extract_field_vars_call` — aquí SÍ encaja); **el fixture never-confirm flip es limpio** (el assert ya prueba arity 2).
 - **Reuso:** `curl` (V6), integrate indefinido, diff — todo vivo.

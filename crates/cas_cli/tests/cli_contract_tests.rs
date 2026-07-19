@@ -2670,6 +2670,48 @@ fn test_eval_limit_matrix_componentwise() {
 }
 
 #[test]
+fn test_eval_potential_verb_f6() {
+    // Fase 3 · F6: potencial escalar por caminos con VERIFICACIÓN exacta
+    // (∂φ/∂xᵢ ≡ Fᵢ vía poly_eq) — la emisión la gatea la verificación, no la
+    // construcción: un campo no conservativo jamás verifica y declina.
+    let eval_result = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(eval_result("potential([2*x*y, x^2], [x,y])"), "y·x^2");
+    assert_eq!(eval_result("potential([y,x],[x,y])"), "x·y");
+    assert_eq!(eval_result("potential([y*z, x*z, x*y], [x,y,z])"), "x·y·z");
+    assert_eq!(eval_result("potential([2*x, 3*y^2], [x,y])"), "y^3 + x^2");
+    // Metamórfico: potential ∘ gradient recupera f (mod constante).
+    assert_eq!(
+        eval_result("potential(gradient(x^2*y + 3*x, [x,y]), [x,y])"),
+        "y·x^2 + 3·x"
+    );
+    // No conservativo → decline honesto; trig conservativo → decline honesto
+    // (el verificador es poly-only: residual NOMBRADO, no wrong-answer).
+    for probe in [
+        "potential([-y,x],[x,y])",
+        "potential([y,-x],[x,y])",
+        "potential([cos(y), -x*sin(y)], [x,y])",
+    ] {
+        let r = eval_result(probe);
+        assert!(
+            r.starts_with("potential("),
+            "{probe} debe declinar a eco residual, got: {r}"
+        );
+    }
+    // Pin metamórfico V6 intacto.
+    assert_eq!(
+        eval_result("curl(gradient(x^2*y, [x,y,z]), [x,y,z])"),
+        "[[0], [0], [0]]"
+    );
+}
+
+#[test]
 fn test_eval_surface_integral_verb_f5() {
     // Fase 3 · F5: ensamblador de superficie — r_u×r_v como elemento de área,
     // escalar via ‖·‖, flujo via producto punto; iteradas definidas anidadas.
@@ -3391,14 +3433,26 @@ fn test_eval_gradient_verb() {
     // el assert por aridad quedaría verde por accidente si no se migra): la
     // aridad-6 computa, cualquier OTRA aridad sigue "función no definida", y
     // los nombres aún fuera de alcance conservan su decline.
+    // Aridades NO registradas de los verbos Fase-3 (lineintegral/surface son
+    // arity-6; estas formas arity-2 declinan) — el detector por (nombre,aridad).
+    for probe in ["lineintegral(x^2, [x,y])", "surface_integral(x*y, [x,y,z])"] {
+        assert!(
+            err_of(probe).contains("no definida"),
+            "Fase-3 wrong-arity must stay 'función no definida': {probe}"
+        );
+    }
+    // potential GRADUÓ en F6 con su aridad real 2 (assert separado por
+    // semántica, decisión D10); las presas del never-confirm pasan a los
+    // nombres FUERA del norte, que jamás deben registrarse por accidente.
     for probe in [
-        "lineintegral(x^2, [x,y])",
-        "surface_integral(x*y, [x,y,z])",
-        "potential([2*x*y, x^2], [x,y])",
+        "dsolve(y, x)",
+        "erf(1)",
+        "gamma(5)",
+        "residue(1/z, z, 0)",
     ] {
         assert!(
             err_of(probe).contains("no definida"),
-            "Fase-3 scope-out name/arity must stay 'función no definida': {probe}"
+            "nombre fuera del norte debe seguir 'función no definida': {probe}"
         );
     }
     // Narration: rule name localizes es/en; one keyed substep per component.

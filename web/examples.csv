@@ -189,3 +189,5 @@
 "sympy wrong","integrate(1/(x^3-x-1), x)","Cúbica con raíz irracional: sympy expande Cardano en un monstruo ILEGIBLE de miles de caracteres; aquí la suma limpia sobre las raíces de la resultante (RootSum de una línea)"
 "Analítico","surface_integral([x,y,0], [x,y,z], [cos(u),sin(u),v], [u,v], [0,2*pi], [0,1])","Flujo ∫∫F·dS a través del cilindro unidad → 2π"
 "Analítico","surface_integral(1, [x,y,z], [u,v,u+v], [u,v], [0,1], [0,1])","Área de un parche plano vía ‖r_u×r_v‖ → √3"
+"Analítico","potential([2*x*y, x^2], [x,y])","Potencial escalar de un campo conservativo: φ = x²y (+C implícita), verificado ∇φ = F"
+"Analítico","potential(gradient(x^2*y + 3*x, [x,y]), [x,y])","Metamórfico: potential ∘ gradient recupera la función original (mod constante)"

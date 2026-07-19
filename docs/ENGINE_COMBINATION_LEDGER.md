@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 643 (newest first)
+Active entries: 644 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -125,6 +125,7 @@ Active entries: 643 (newest first)
 - 2026-07-19 | `retained` | `cas_engine/rules/functions.rs` (SubsRule reescrito: `peel_subs_target_spine`... | SUSTRATO (Fase 3 · F3, ciclo 3/4): las cadenas de subs colapsan en el nodo exterior (muere el hint-ruido de ciclo) + integrate DEFINIDO componentwise sobre Matrix
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LineIntegralRule` + extracto... | CAPACIDAD (Fase 3 · F4, ciclo 4/4): verbo lineintegral(F,[vars],r,t,a,b) — ensamblador puro sobre la composición ya limpia por F3
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`SurfaceIntegralRule` + extra... | CAPACIDAD (Fase 3 · F5, tanda-2 ciclo 1/4): verbo surface_integral(F,[vars],r,[u,v],[a,b],[c,d]) — elemento de área r_u×r_v sobre iteradas definidas vivas
+- 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`PotentialRule` + `try_potent... | CAPACIDAD (Fase 3 · F6, tanda-2 ciclo 2/4): verbo potential(F,[vars]) — reconstrucción por caminos con EMISIÓN GATEADA POR VERIFICACIÓN exacta ∇φ≡F — BLOQUE B COMPLETO
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20779,3 +20780,18 @@ Active entries: 643 (newest first)
 - retained learning:
   - **Un residual "mejor de lo esperado" también se pinea**: el scoping predijo decline de la esfera y la realidad es un residual semi-evaluado más informativo (`∫2π|sin u|`) — pinear la forma REAL, no la prevista, convierte cualquier futura regresión (o mejora del abs-definido) en un delta visible con dueño.
   - PRÓXIMO PELDAÑO: F6 (potential vía curl=0 + reconstrucción por camino interim) cierra el bloque B.
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F6, tanda-2 ciclo 2/4): verbo potential(F,[vars]) — reconstrucción por caminos con EMISIÓN GATEADA POR VERIFICACIÓN exacta ∇φ≡F — BLOQUE B COMPLETO
+
+- area: `cas_engine/rules/calculus/vector_calculus.rs` (`PotentialRule` + `try_potential_expr` testeable: φ=∫F₁dx₁ + por variable ∫(F_k−∂φ/∂x_k) con canonicalización MultiPoly del rest; verificación `poly_eq(∂φ/∂xᵢ, Fᵢ)` por componente gatea la emisión) + `cas_math/limits_support.rs` (`fold_constant_subexprs` promovido a pub — la derivada cruda lleva `x^(2-1)` que `multipoly_from_expr` rechaza) + gate `"potential" => arity == 2` + narración keyed `potential.{conservativity_check,reconstruct}` es/en + never-confirm MIGRADO a presas nuevas + e2e + 2 filas examples
+- status: `retained`. **BLOQUE B COMPLETO (F3+F4+F5+F6): los 3 verbos Fase-3 registrados.**
+- capture:
+  - investment_class: capacidad curricular (cierre del bloque B) con diseño soundness-first: **la emisión la gatea la VERIFICACIÓN, no la construcción** — un campo no conservativo JAMÁS verifica y declina; la conservatividad no se pre-testea con curl (el verificador la subsume: la doctrina "no re-derives el dominio: verifica" aplicada a campos).
+  - cell: `potential([2xy, x²],[x,y])` → `y·x²`; `[y,x]` → `x·y`; 3D `[yz,xz,xy]` → `x·y·z`; `[2x,3y²]` → `y³+x²`; **metamórfico** `potential(gradient(x²y+3x))` → `y·x²+3·x` (recupera f mod constante — el gemelo inverso del pin `curl∘gradient=0` V6, intacto). No-conservativos (`[-y,x]`, `[y,-x]`) → decline honesto; **trig conservativo (`[cos y, −x·sin y]`, φ=x·cos y) → decline honesto NOMBRADO** (el verificador es poly-only: `poly_eq` falla conversión y declina conservador — ensancharlo a trig es peldaño futuro con dueño, no wrong-answer).
+  - Dos fricciones cazadas por el unit test instrumentado (3 saltos): (1) el REST crudo (`x²−x²·1`) atasca al integrador → canonicalización MultiPoly round-trip antes de integrar; (2) la VERIFICACIÓN fallaba en silencio: la derivada cruda lleva `x^(2-1)` que el conversor polinomial rechaza — `fold_constant_subexprs` (ahora pub) antes de `poly_eq`. La lección "`numeric_value` solo casa literales" reaparece por TERCERA vez (V7d, F1, F6) — cada consumidor nuevo de derivadas crudas la re-paga.
+  - never-confirm D10 (2ª migración): potential gradúa con aridad real 2 → las presas pasan a los nombres FUERA del norte (`dsolve`/`erf`/`gamma`/`residue` — jamás deben registrarse por accidente) en assert separado por semántica; lineintegral/surface_integral arity-2 siguen declinando por aridad.
+- validación: workspace failed:0; clippy --all-targets limpio; lint string-compares 0; engine-fast + scorecards verdes; huella contadores-idéntica salvo UN delta declarado (`calculus_integrate_backend_mode_boundary.filtered_out` 2284→2285: el unit test nuevo del potential sube el total del binario cas_engine en 1 — passed 2/2 y status intactos). Fricción menor cazada por el propio detector: la presa `dsolve` con `=` dentro moría en el PARSER, no en el gate — el never-confirm debe morder la capa correcta (forma arity-2 limpia).
+- retained learning:
+  - **"Verifica, no pre-testees" también para campos vectoriales**: gatear la emisión con `∇φ≡Fᵢ` exacto por componente subsume el test de conservatividad Y los errores de construcción en un solo guard — el curl habría sido un pre-check redundante con su propio costo de decisión de cero.
+  - **Toda ruta nueva que consuma derivadas CRUDAS debe presupuestar el fold de constantes** — tercera reaparición; si aparece una cuarta, el fold pertenece DENTRO de `differentiate_symbolic_expr` como post-pass opcional (candidato de arquitectura).
+  - PRÓXIMO PELDAÑO: F7 (límites multivar: superficie + continuidad probada — bloque C sobre el canal de dominio de F0).

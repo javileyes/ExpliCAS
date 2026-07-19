@@ -530,3 +530,119 @@ define_rule!(
         )
     }
 );
+
+/// Canonical polynomial rebuild (MultiPoly round-trip): collapses raw
+/// derivative litter like `x² − x²·1` to its normal form. `None` when the
+/// expression is not polynomial under the comparator's budget.
+fn canonicalize_poly(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
+    let budget = cas_math::multipoly::PolyBudget::default();
+    let poly = cas_math::multipoly::conversion::multipoly_from_expr(ctx, expr, &budget).ok()?;
+    Some(cas_math::multipoly::conversion::multipoly_to_expr(
+        &poly, ctx,
+    ))
+}
+
+/// The interim-path reconstruction + exact verification behind
+/// [`PotentialRule`], split out for unit testing. `None` = honest decline.
+pub(crate) fn try_potential_expr(
+    ctx: &mut cas_ast::Context,
+    comps: &[cas_ast::ExprId],
+    var_names: &[String],
+) -> Option<cas_ast::ExprId> {
+    let clean_integral = |ctx: &mut cas_ast::Context,
+                          target: cas_ast::ExprId,
+                          var: &str|
+     -> Option<cas_ast::ExprId> {
+        let outcome = super::integration::integrate_with_trace(ctx, target, var)?;
+        if !outcome.required_conditions.is_empty() {
+            return None;
+        }
+        Some(outcome.result)
+    };
+    let mut candidate = clean_integral(ctx, comps[0], &var_names[0])?;
+    for k in 1..comps.len() {
+        let partial = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+            ctx,
+            candidate,
+            &var_names[k],
+        )?;
+        let rest = ctx.add(cas_ast::Expr::Sub(comps[k], partial));
+        // The raw difference carries unsimplified litter (`x² − x²·1`) that
+        // stalls the integrator — canonicalize through MultiPoly when the
+        // field is polynomial (the verifier's normal form); a non-polynomial
+        // rest integrates raw or declines honest.
+        let rest = canonicalize_poly(ctx, rest).unwrap_or(rest);
+        let piece = clean_integral(ctx, rest, &var_names[k])?;
+        candidate = ctx.add(cas_ast::Expr::Add(candidate, piece));
+    }
+    // Exact verification: ∂φ/∂xᵢ ≡ Fᵢ for EVERY component, or decline. The raw
+    // derivative carries non-literal exponents (`x^(2-1)`) that the polynomial
+    // converter rejects — fold constants first (the recorded lesson).
+    for (comp, var) in comps.iter().zip(var_names) {
+        let derived = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+            ctx, candidate, var,
+        )?;
+        let derived = cas_math::limits_support::fold_constant_subexprs(ctx, derived);
+        let comp_folded = cas_math::limits_support::fold_constant_subexprs(ctx, *comp);
+        if !cas_math::poly_compare::poly_eq(ctx, derived, comp_folded) {
+            return None;
+        }
+    }
+    Some(candidate)
+}
+
+define_rule!(
+    PotentialRule,
+    "Scalar Potential",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    |ctx, expr| {
+        // F6 (Fase 3): scalar potential of a conservative field by the interim
+        // path — φ = ∫F₁ dx₁, then for each further variable integrate the
+        // difference F_k − ∂φ/∂x_k. EMISSION IS GATED BY VERIFICATION, not by
+        // the construction: every component must satisfy `∂φ/∂xᵢ ≡ Fᵢ` under
+        // the EXACT polynomial comparator (`poly_eq` — conversion failure
+        // declines conservatively). A non-conservative field can never verify,
+        // so it declines to the honest residual; the additive constant is
+        // implicit (documented in the examples row).
+        let call = try_extract_field_vars_call(ctx, expr, &["potential"])?;
+        let cas_ast::Expr::Matrix { rows, cols, data } = ctx.get(call.target) else {
+            return None;
+        };
+        if (*rows != 1 && *cols != 1)
+            || data.len() != call.var_names.len()
+            || !(2..=3).contains(&data.len())
+        {
+            return None;
+        }
+        let comps = data.clone();
+        let var_names = call.var_names.clone();
+        let candidate = try_potential_expr(ctx, &comps, &var_names)?;
+        Some(
+            Rewrite::new(candidate)
+                .desc("Potencial escalar: reconstruir por caminos y verificar \u{2207}\u{3c6} = F")
+                .budget_exempt(),
+        )
+    }
+);
+
+#[cfg(test)]
+mod potential_tests {
+    use super::*;
+
+    #[test]
+    fn potential_reconstructs_polynomial_fields() {
+        let mut ctx = cas_ast::Context::new();
+        let f1 = cas_parser::parse("2*x*y", &mut ctx).expect("f1");
+        let f2 = cas_parser::parse("x^2", &mut ctx).expect("f2");
+        let vars = vec!["x".to_string(), "y".to_string()];
+        let got = try_potential_expr(&mut ctx, &[f1, f2], &vars);
+        match got {
+            Some(id) => {
+                let s = format!("{}", cas_formatter::DisplayExpr { context: &ctx, id });
+                assert!(s.contains('x') && s.contains('y'), "{s}");
+            }
+            None => panic!("debe reconstruir el potencial de [2xy, x^2]"),
+        }
+    }
+}

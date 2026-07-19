@@ -4336,7 +4336,11 @@ const MAX_LHOPITAL_DEPTH: usize = 4;
 /// reject; folding `2-1` to `1` (via `as_rational_const`, which evaluates
 /// arithmetic, unlike literal-only matchers) makes the differentiated form
 /// consumable. Structure with the variable is preserved.
-fn fold_constant_subexprs(ctx: &mut Context, expr: ExprId) -> ExprId {
+/// Fold every fully-numeric subtree to its exact rational literal (`x^(2-1)` →
+/// `x^1` → handled by the Pow arm, `6-3·2` → `0`). Public: raw-derivative
+/// consumers (Taylor, the potential verifier) need it before polynomial
+/// conversion — `multipoly_from_expr` rejects non-literal exponents.
+pub fn fold_constant_subexprs(ctx: &mut Context, expr: ExprId) -> ExprId {
     if let Some(value) = crate::numeric_eval::as_rational_const(ctx, expr) {
         return ctx.add(Expr::Number(value));
     }

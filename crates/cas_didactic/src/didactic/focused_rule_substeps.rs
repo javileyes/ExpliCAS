@@ -82,6 +82,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return surface_integral_substeps;
     }
 
+    let potential_substeps = generate_potential_substeps(ctx, step);
+    if !potential_substeps.is_empty() {
+        return potential_substeps;
+    }
+
     let integral_residual_policy_substeps = generate_integral_residual_policy_substeps(ctx, step);
     if !integral_residual_policy_substeps.is_empty() {
         return integral_residual_policy_substeps;
@@ -12051,6 +12056,40 @@ fn generate_lineintegral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         display_expr(ctx, field),
         display_expr(ctx, after),
     )]
+}
+
+/// Formula-level narration for the scalar-potential verb (F6, Fase 3).
+fn generate_potential_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Scalar Potential" | "Reconstruir el potencial escalar"
+    ) {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    let fn_name = ctx.sym_name(*fn_id);
+    if fn_name != "potential" || args.len() != 2 {
+        return Vec::new();
+    }
+    let field = args[0];
+    vec![
+        SubStep::keyed(
+            "potential.conservativity_check",
+            vec![],
+            display_expr(ctx, field),
+            display_expr(ctx, after),
+        ),
+        SubStep::keyed(
+            "potential.reconstruct",
+            vec![],
+            display_expr(ctx, after),
+            display_expr(ctx, after),
+        ),
+    ]
 }
 
 /// Formula-level narration for the surface-integral verb (F5, Fase 3).
