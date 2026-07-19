@@ -199,7 +199,7 @@ Orden por dependencia + ROI. El costo fijo grande va primero (O0); después cada
 - **Depende:** nada. Prohibición O0: `#N` en condiciones/ecuación NO se resuelve dentro de la acción (R-B) — declinar con motivo.
 - **Retención (pins):** `solve(x^2=4,x)`→`{−2,2}` y todo el pipeline solve byte-idéntico; `diff(y,x)`→`0` en eval plano SIGUE (es el contrato de diff, no de dsolve); no-colisión `solve(`/`dsolve(`; `1+dsolve(...)` declina; `erf`/`gamma`/`residue` presas; metamórfico anti-colapso.
 
-#### O1 — Lineal 1er orden (factor integrante) **[S]**
+#### O1 — Lineal 1er orden (factor integrante) **[S]** ☑ *(graduado 2026-07-19, hash en el ledger: L8-L11 + siblings del barrido — forma reordenada `y'=x−y`, coef no-unitario, `a(x)=x`, paramétrico `k`; pin L9 μ=x cumplido vía strip-abs; candidata en forma SPLIT `∫μq/μ + C/μ` con cancelación estructural de μ — la forma split es a la vez textbook y la única que el verificador reduce; familia `lineal_1o` en la matrix)*
 - **Gradúa:** L8-L11; μ=e^∫p con strip-abs D12 (pin explícito L9: μ=x, no |x|); resonancia de 1er orden L10 sale sola (∫e^0·e^x); narración D13 lineal; familia `lineal_1o` en la matrix.
 - **Inserción:** orquestador μ→∫μq→despeje dentro de `eval_dsolve` (glue); clave locale "Identificar forma lineal: y' + p·y = q con p = {0}, q = {1}" (molde template cuadrático existente).
 - **Reuso:** kernels ∫μq verificados (`x·e^x`, `sin(2x)e^(3x)`, `e^(2x)sin x` — todos exactos); despeje trivial (y = (∫μq + C)/μ).

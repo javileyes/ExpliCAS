@@ -17,14 +17,19 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_o0_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        # O0 registry: 7 supported separable rows + 4 honest residual rows.
-        self.assertEqual(len(cases), 11)
+        # O0+O1 registry: 7 separable + 4 linear supported rows + 4 honest
+        # residual rows.
+        self.assertEqual(len(cases), 15)
         names = {case.name for case in cases}
         self.assertIn("separable_growth_textbook", names)
         self.assertIn("separable_implicit_circle", names)
         self.assertIn("separable_parametric_rate", names)
         self.assertIn("separable_direct_integration", names)
         self.assertIn("separable_arity2_sugar", names)
+        self.assertIn("linear_basic_integrating_factor", names)
+        self.assertIn("linear_mu_display_strip_abs", names)
+        self.assertIn("linear_first_order_resonance", names)
+        self.assertIn("linear_trig_rhs", names)
         self.assertIn("residual_riccati_never_fabricate", names)
         self.assertIn("residual_airy_higher_order", names)
         self.assertIn("residual_ivp_conditions_future_cycle", names)
@@ -32,7 +37,7 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
 
         supported = [case for case in cases if case.outcome == "supported"]
         residual = [case for case in cases if case.outcome == "residual"]
-        self.assertEqual(len(supported), 7)
+        self.assertEqual(len(supported), 11)
         self.assertEqual(len(residual), 4)
 
         # Verification-gated emission: every supported row is verified; every
@@ -49,9 +54,9 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
             self.assertTrue(case.expected_result.startswith("dsolve("), case.name)
             self.assertNotEqual(case.residual_cause, "not_applicable", case.name)
 
-        # Axis coverage minimums for O0.
+        # Axis coverage minimums for O0+O1.
         families = {case.family for case in cases}
-        self.assertEqual(families, {"separable"})
+        self.assertEqual(families, {"separable", "lineal_1o"})
         self.assertEqual(
             {case.order_regime for case in cases}, {"first", "second"}
         )

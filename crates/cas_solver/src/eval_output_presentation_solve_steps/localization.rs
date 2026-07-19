@@ -118,6 +118,11 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — linear first-order method narration (D13, O1).
+    SolveDesc { template: "Identificar forma lineal: y' + p·y = q con p = {0}, q = {1}", es: "Identificar forma lineal: y' + p·y = q con p = {0}, q = {1}", en: "Identify linear form: y' + p·y = q with p = {0}, q = {1}" },
+    SolveDesc { template: "Calcular el factor integrante: μ = e^(∫p dx) = {0}", es: "Calcular el factor integrante: μ = e^(∫p dx) = {0}", en: "Compute the integrating factor: μ = e^(∫p dx) = {0}" },
+    SolveDesc { template: "Multiplicar por μ: el lado izquierdo se vuelve la derivada del producto μ·y", es: "Multiplicar por μ: el lado izquierdo se vuelve la derivada del producto μ·y", en: "Multiply by μ: the left-hand side becomes the derivative of the product μ·y" },
+    SolveDesc { template: "Integrar ambos lados: μ·y = ∫ μ·q dx + C", es: "Integrar ambos lados: μ·y = ∫ μ·q dx + C", en: "Integrate both sides: μ·y = ∫ μ·q dx + C" },
     // dsolve (Fase 4) — separable method narration (D13).
     SolveDesc { template: "Identificar EDO separable: y' = f(x)·g(y) con f = {0}, g = {1}", es: "Identificar EDO separable: y' = f(x)·g(y) con f = {0}, g = {1}", en: "Identify separable ODE: y' = f(x)·g(y) with f = {0}, g = {1}" },
     SolveDesc { template: "Separar las variables: dy/g(y) = f(x)·dx", es: "Separar las variables: dy/g(y) = f(x)·dx", en: "Separate the variables: dy/g(y) = f(x)·dx" },

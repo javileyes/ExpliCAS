@@ -8918,3 +8918,115 @@ fn dsolve_separable_o0_contract() {
         "round-trip #1: la solución debe emitirse en dsolve Y en el recall: {repl_text}"
     );
 }
+
+#[test]
+fn dsolve_linear_first_order_o1_contract() {
+    // Fase 4 · O1: lineal de primer orden por factor integrante μ = e^(∫p dx),
+    // con la emisión gateada por verificación (D5) y el pin D12 de μ (L9:
+    // μ = x, jamás |x|).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // L8-L11 (formas split textbook: término particular + C/μ).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y=x, y, x)"),
+        "y = C / e^x + x - 1"
+    ); // L8
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y/x=x^2, y, x)"),
+        "y = C / x + 1/4·x^3"
+    ); // L9 — el PIN μ-display: μ = x (sin |x| en ninguna parte)
+    assert!(
+        !r("dsolve(diff(y,x)+y/x=x^2, y, x)").contains('|'),
+        "L9: μ=x, no |x|"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)-y=exp(x), y, x)"),
+        "y = C·e^x + x·e^x"
+    ); // L10 resonancia 1er orden
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+2*y=sin(x), y, x)"),
+        "y = 1/5·(2·sin(x) - cos(x)) + C / e^(2·x)"
+    ); // L11
+       // Forma reordenada `y' = x − y` (el matcher lineal la captura tras el
+       // decline del separable).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x-y, y, x)"),
+        "y = C / e^x + x - 1"
+    );
+    // Homogénea lineal y coeficiente no-unitario (pelar coef, lección 2026-07-08b).
+    assert_eq!(first_line("dsolve(diff(y,x)+y=0, y, x)"), "y = C / e^x");
+    assert_eq!(
+        first_line("dsolve(2*diff(y,x)+4*y=x, y, x)"),
+        "y = 1/4·(x - 1/2) + C / e^(2·x)"
+    );
+    // Coeficiente variable a(x) = x y parámetro simbólico k.
+    assert_eq!(
+        first_line("dsolve(x*diff(y,x)+y=x, y, x)"),
+        "y = C / x + 1/2·x"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+k*y=0, y, x)"),
+        "y = C / e^(k·x)"
+    );
+
+    // No-lineales declinan honesto nombrando los ciclos dueños.
+    for probe in [
+        "dsolve(y*diff(y,x)+y=x, y, x)",
+        "dsolve(diff(y,x)+y^2=x, y, x)",
+    ] {
+        let out = r(probe);
+        assert!(out.starts_with("dsolve("), "no-lineal declina a eco: {out}");
+        assert!(
+            err_of(probe).contains("O2/O8"),
+            "decline nombra ciclos dueños"
+        );
+    }
+
+    // Pins de no-robo: los separables S1/S2 siguen byte-idénticos (el
+    // dispatcher prueba separable ANTES de lineal).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=y^2, y, x)"),
+        "y = -1 / (C + x)"
+    );
+
+    // Narración lineal keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(diff(y,x)+y=x, y, x)", None);
+    assert!(es.contains("Identificar forma lineal"), "{es}");
+    assert!(es.contains("factor integrante"), "{es}");
+    let en = steps_of("dsolve(diff(y,x)+y=x, y, x)", Some("en"));
+    assert!(en.contains("Identify linear form"), "{en}");
+    assert!(en.contains("integrating factor"), "{en}");
+}

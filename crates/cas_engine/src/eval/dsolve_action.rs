@@ -43,7 +43,13 @@ const DSOLVE_RULE: &str = "dsolve";
 /// degrade to an honest "unverified → residual" decline, never block the eval.
 /// Time may only ever turn "would verify" into "declined" — a conservative
 /// under-answer — so it stays outside the exact-soundness rule for drop/keep.
-const VERIFY_TIME_BUDGET_MS: u64 = 3_000;
+/// Sized as a TERMINATION net, not a performance bound: every legitimate
+/// candidate of the phase verifies far below it on both debug and release
+/// profiles (a 3s cap made L11's emission depend on the compile profile —
+/// debug verified slower than the cap), while the known genuine hang (the O23
+/// constant-attached oscillation) exceeds it on every profile and O4 dodges it
+/// by design (linearity-split verification).
+const VERIFY_TIME_BUDGET_MS: u64 = 30_000;
 
 /// Product-factor decomposition entry: (factor, lives_in_denominator).
 type Factors = Vec<(ExprId, bool)>;
@@ -189,6 +195,26 @@ fn scan_diff_calls_of(
     max_arity
 }
 
+/// True when `id` is exactly the 2-arg call `diff(func, var)`.
+fn is_first_order_diff_call(
+    ctx: &Context,
+    id: ExprId,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> bool {
+    if let cas_ast::Expr::Function(fn_id, args) = ctx.get(id) {
+        if *fn_id == diff_sym && args.len() == 2 {
+            if let (cas_ast::Expr::Variable(f), cas_ast::Expr::Variable(v)) =
+                (ctx.get(args[0]), ctx.get(args[1]))
+            {
+                return ctx.sym_name(*f) == func && ctx.sym_name(*v) == var;
+            }
+        }
+    }
+    false
+}
+
 /// `Some(rhs)` when one side of the equation is exactly `diff(func, var)` and
 /// the other side is the RHS `f(x, y)` (O0 shape). Linear/exact rearrangements
 /// (`y' + p·y = q`, `M + N·y' = 0`) are later cycles.
@@ -199,25 +225,156 @@ fn match_isolated_first_order(
     func: &str,
     var: &str,
 ) -> Option<ExprId> {
-    let is_diff_call = |id: ExprId| -> bool {
-        if let cas_ast::Expr::Function(fn_id, args) = ctx.get(id) {
-            if *fn_id == diff_sym && args.len() == 2 {
-                if let (cas_ast::Expr::Variable(f), cas_ast::Expr::Variable(v)) =
-                    (ctx.get(args[0]), ctx.get(args[1]))
-                {
-                    return ctx.sym_name(*f) == func && ctx.sym_name(*v) == var;
-                }
-            }
-        }
-        false
-    };
-    if is_diff_call(eq.lhs) {
+    if is_first_order_diff_call(ctx, eq.lhs, diff_sym, func, var) {
         return Some(eq.rhs);
     }
-    if is_diff_call(eq.rhs) {
+    if is_first_order_diff_call(ctx, eq.rhs, diff_sym, func, var) {
         return Some(eq.lhs);
     }
     None
+}
+
+/// Split `e` into additive terms with a sign flag (`true` = positive).
+fn collect_signed_terms(ctx: &Context, e: ExprId, positive: bool, out: &mut Vec<(ExprId, bool)>) {
+    match ctx.get(e) {
+        cas_ast::Expr::Add(a, b) => {
+            let (a, b) = (*a, *b);
+            collect_signed_terms(ctx, a, positive, out);
+            collect_signed_terms(ctx, b, positive, out);
+        }
+        cas_ast::Expr::Sub(a, b) => {
+            let (a, b) = (*a, *b);
+            collect_signed_terms(ctx, a, positive, out);
+            collect_signed_terms(ctx, b, !positive, out);
+        }
+        cas_ast::Expr::Neg(a) => {
+            let a = *a;
+            collect_signed_terms(ctx, a, !positive, out);
+        }
+        _ => out.push((e, positive)),
+    }
+}
+
+/// Normalized linear first-order form `y' + p(x)·y = q(x)`.
+struct LinearOde {
+    p: ExprId,
+    q: ExprId,
+}
+
+/// Match `a(x)·y' + b(x)·y = c(x)` on the RAW tree (additive terms of
+/// `LHS − RHS`, product factors per term) and normalize to `y' + p·y = q`.
+/// Declines on any nonlinear appearance of the unknown (`y²`, `sin(y)`, `y` in
+/// a denominator, `y·y'`, a diff nested deeper than a plain product factor).
+fn try_match_linear_first_order(
+    ctx: &mut Context,
+    eq: &Equation,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<LinearOde> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, eq.lhs, true, &mut terms);
+    collect_signed_terms(ctx, eq.rhs, false, &mut terms);
+
+    let mut a_parts: Vec<ExprId> = Vec::new(); // Σ coef(y')
+    let mut b_parts: Vec<ExprId> = Vec::new(); // Σ coef(y)
+    let mut c_parts: Vec<ExprId> = Vec::new(); // Σ free terms moved to the RHS
+    for (term, positive) in terms {
+        // Peel outer Negs folded into the sign, then factor the product.
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut diff_count = 0usize;
+        let mut y_count = 0usize;
+        let mut coef_num: Vec<ExprId> = Vec::new();
+        let mut coef_den: Vec<ExprId> = Vec::new();
+        let mut ok = true;
+        for (f, is_den) in factors {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            if is_first_order_diff_call(ctx, g, diff_sym, func, var) {
+                if is_den {
+                    ok = false; // y' in a denominator: not linear
+                    break;
+                }
+                diff_count += 1;
+                continue;
+            }
+            let vars = collect_variables(ctx, g);
+            if vars.contains(func) {
+                if let cas_ast::Expr::Variable(s) = ctx.get(g) {
+                    if ctx.sym_name(*s) == func && !is_den {
+                        y_count += 1;
+                        continue;
+                    }
+                }
+                ok = false; // nonlinear/nested unknown (y², sin(y), y in denom)
+                break;
+            }
+            if is_den {
+                coef_den.push(g)
+            } else {
+                coef_num.push(g)
+            }
+        }
+        if !ok || diff_count + y_count > 1 {
+            return None;
+        }
+
+        let build_product = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+            let mut it = parts.iter();
+            let first = *it.next()?;
+            Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Mul(acc, p))))
+        };
+        let num = build_product(ctx, &coef_num).unwrap_or_else(|| ctx.num(1));
+        let mut coef = match build_product(ctx, &coef_den) {
+            Some(d) => ctx.add(cas_ast::Expr::Div(num, d)),
+            None => num,
+        };
+        if !sign {
+            coef = ctx.add(cas_ast::Expr::Neg(coef));
+        }
+        if diff_count == 1 {
+            a_parts.push(coef);
+        } else if y_count == 1 {
+            b_parts.push(coef);
+        } else {
+            // Free term: moving it to the RHS flips its sign.
+            let negated = ctx.add(cas_ast::Expr::Neg(coef));
+            c_parts.push(negated);
+        }
+    }
+    if a_parts.is_empty() {
+        return None;
+    }
+    let sum = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+        let mut it = parts.iter();
+        let first = *it.next()?;
+        Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Add(acc, p))))
+    };
+    let a = sum(ctx, &a_parts).expect("nonempty");
+    let b = sum(ctx, &b_parts).unwrap_or_else(|| ctx.num(0));
+    let c = sum(ctx, &c_parts).unwrap_or_else(|| ctx.num(0));
+    let p = if is_literal_one(ctx, a) {
+        b
+    } else {
+        ctx.add(cas_ast::Expr::Div(b, a))
+    };
+    let q = if is_literal_one(ctx, a) {
+        c
+    } else {
+        ctx.add(cas_ast::Expr::Div(c, a))
+    };
+    Some(LinearOde { p, q })
 }
 
 /// Decompose `e` into additive terms with rational multipliers, distributing
@@ -426,6 +583,63 @@ fn contains_surd_over_c(ctx: &Context, root: ExprId, c: ExprId) -> bool {
     false
 }
 
+/// `Some(numerator/f with one literal factor `f` removed)` when `f` appears as
+/// an exact numerator product factor of `e`. Structural cancellation only —
+/// used to peel `μ` out of `∫μq` before building the display quotient.
+fn cancel_literal_factor(ctx: &mut Context, e: ExprId, f: ExprId) -> Option<ExprId> {
+    if e == f {
+        return Some(ctx.num(1));
+    }
+    let mut factors: Factors = Vec::new();
+    collect_product_factors(ctx, e, false, &mut factors);
+    let pos = factors.iter().position(|(g, is_den)| !is_den && *g == f)?;
+    factors.remove(pos);
+    let mut num: Vec<ExprId> = Vec::new();
+    let mut den: Vec<ExprId> = Vec::new();
+    for (g, is_den) in factors {
+        if is_den {
+            den.push(g)
+        } else {
+            num.push(g)
+        }
+    }
+    let build_product = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+        let mut it = parts.iter();
+        let first = *it.next()?;
+        Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Mul(acc, p))))
+    };
+    let n = build_product(ctx, &num).unwrap_or_else(|| ctx.num(1));
+    Some(match build_product(ctx, &den) {
+        Some(d) => ctx.add(cas_ast::Expr::Div(n, d)),
+        None => n,
+    })
+}
+
+/// Honest residual (D8): a re-emittable `dsolve(...)` echo plus the warning
+/// naming why the command declined and which cycle owns the missing method.
+fn residual_action_result(
+    ctx: &mut Context,
+    resolved: ExprId,
+    y_var: ExprId,
+    x_var: ExprId,
+    reason: &str,
+) -> ActionResult {
+    let eco = ctx.call(DSOLVE_RULE, vec![resolved, y_var, x_var]);
+    (
+        EvalResult::SolutionSet(SolutionSet::Residual(eco)),
+        vec![DomainWarning {
+            message: reason.to_string(),
+            rule_name: DSOLVE_RULE.to_string(),
+        }],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+}
+
 /// Normalize an implicit potential for display: strip a global rational
 /// denominator (`(x²+y²)/2 = C ⇒ x²+y² = C`, the constant absorbs it).
 fn clear_global_rational_factor(ctx: &mut Context, e: ExprId) -> ExprId {
@@ -484,20 +698,7 @@ impl Engine {
 
         // Honest residual scaffolding shared by every decline path (D8).
         let mk_residual = |ctx: &mut Context, reason: &str| -> ActionResult {
-            let eco = ctx.call(DSOLVE_RULE, vec![resolved, y_var, x_var]);
-            (
-                EvalResult::SolutionSet(SolutionSet::Residual(eco)),
-                vec![DomainWarning {
-                    message: reason.to_string(),
-                    rule_name: DSOLVE_RULE.to_string(),
-                }],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-            )
+            residual_action_result(ctx, resolved, y_var, x_var, reason)
         };
 
         // Initial conditions parse but resolve in a future cycle (O3).
@@ -517,19 +718,21 @@ impl Engine {
             return Ok(r);
         }
 
-        // O0 method: separable with the derivative isolated on one side.
-        let Some(rhs) = match_isolated_first_order(ctx, &ode_eq, diff_sym, func, var) else {
+        // Method dispatch: separable first (O0 — the S1-S9 pins stay
+        // byte-identical), then linear first-order (O1). A form that fits
+        // neither declines honestly naming the owner cycles (O2 exact, O8
+        // Bernoulli/homogeneous).
+        let isolated_rhs = match_isolated_first_order(ctx, &ode_eq, diff_sym, func, var);
+        let split = isolated_rhs
+            .and_then(|rhs| split_separable(ctx, rhs, func, var).map(|split| (rhs, split)));
+        let Some((rhs, split)) = split else {
+            // O1: linear first-order via integrating factor.
+            if let Some(linear) = try_match_linear_first_order(ctx, &ode_eq, diff_sym, func, var) {
+                return self.eval_dsolve_linear(options, resolved, func, var, &ode_eq, linear);
+            }
             let r = mk_residual(
-                ctx,
-                "Forma no soportada todavía: la EDO no tiene diff aislado en un lado (lineal/exactas llegan en O1/O2); se declina honesto",
-            );
-            return Ok(r);
-        };
-
-        let Some(split) = split_separable(ctx, rhs, func, var) else {
-            let r = mk_residual(
-                ctx,
-                "La EDO no es separable (f(x)·g(y)); los métodos lineal/exactas/Bernoulli llegan en ciclos futuros",
+                &mut self.simplifier.context,
+                "La EDO no es separable ni lineal de primer orden; exactas/Bernoulli/homogéneas llegan en ciclos futuros (O2/O8)",
             );
             return Ok(r);
         };
@@ -861,6 +1064,170 @@ impl Engine {
         self.simplifier.allow_numerical_verification = saved_numeric;
         reduced
     }
+
+    /// Full simplify of a y-free subtree (coefficients, μ, candidates): the
+    /// D4 invariant allows the pipeline only on trees without `diff(y,·)`.
+    fn fold_free_subtree(&mut self, options: &crate::options::EvalOptions, e: ExprId) -> ExprId {
+        match self.eval_simplify(options, e) {
+            Ok((EvalResult::Expr(simplified), ..)) => simplified,
+            _ => e,
+        }
+    }
+
+    /// O1: linear first-order `y' + p·y = q` via the integrating factor
+    /// μ = e^(∫p dx); emission stays verification-gated (D5).
+    fn eval_dsolve_linear(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+        linear: LinearOde,
+    ) -> Result<ActionResult, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        // Normalize p, q (y-free subtrees — safe to fold under D4).
+        let p = self.fold_free_subtree(&verify_options, linear.p);
+        let q = self.fold_free_subtree(&verify_options, linear.q);
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+
+        // μ = e^(∫p dx). A p whose antiderivative does not close declines.
+        let p_int = if matches!(ctx.get(p), cas_ast::Expr::Number(n) if n.is_zero()) {
+            ctx.num(0)
+        } else {
+            match crate::rules::calculus::integrate_with_trace(ctx, p, var) {
+                Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+                _ => {
+                    let r = residual_action_result(
+                        ctx,
+                        resolved,
+                        y_var,
+                        x_var,
+                        "La integral ∫ p(x) dx del factor integrante no cierra en forma elemental; se declina honesto",
+                    );
+                    return Ok(r);
+                }
+            }
+        };
+        let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+        let mu_raw = ctx.add(cas_ast::Expr::Pow(e_const, p_int));
+        let mu_folded = self.fold_free_subtree(&verify_options, mu_raw);
+        // D12 (pin L9): μ = e^(ln|x|) folds to |x|; any functional μ works, so
+        // presentation takes the textbook μ = x (strip unknown-free abs).
+        let ctx = &mut self.simplifier.context;
+        let mu = strip_free_abs(ctx, mu_folded, func);
+
+        // ∫ μ·q dx.
+        let mu_q_raw = ctx.add(cas_ast::Expr::Mul(mu, q));
+        let mu_q = self.fold_free_subtree(&verify_options, mu_q_raw);
+        let ctx = &mut self.simplifier.context;
+        let g_int = if matches!(ctx.get(mu_q), cas_ast::Expr::Number(n) if n.is_zero()) {
+            ctx.num(0)
+        } else {
+            match crate::rules::calculus::integrate_with_trace(ctx, mu_q, var) {
+                Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+                _ => {
+                    let r = residual_action_result(
+                        ctx,
+                        resolved,
+                        y_var,
+                        x_var,
+                        "La integral ∫ μ·q dx no cierra en forma elemental; se declina honesto",
+                    );
+                    return Ok(r);
+                }
+            }
+        };
+
+        // Arbitrary constant (D7).
+        let input_vars = collect_variables(ctx, resolved);
+        let c_name = if input_vars.contains("C") { "K1" } else { "C" };
+        let c_var = ctx.var(c_name);
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c_name != "C" {
+            warnings.push(DomainWarning {
+                message: "La entrada ya usa el nombre C; la constante arbitraria se emite como K1"
+                    .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+
+        // y = ∫μq/μ + C/μ — the SPLIT form: each term folds canonically
+        // (`C/e^(2x)`, `x³/4`) and the verifier reduces the residue by
+        // linearity; the joined `(G+C)/μ` quotient leaves an uncancelled
+        // double-denominator combination the evaluator cannot always close.
+        // The exponential cancellation `e^x·(…)/e^x` is peeled STRUCTURALLY
+        // (μ as a literal product factor of ∫μq) so the simplifier never sees
+        // the depth-hostile quotient.
+        let part_g = match cancel_literal_factor(ctx, g_int, mu) {
+            Some(cancelled) => cancelled,
+            None => ctx.add(cas_ast::Expr::Div(g_int, mu)),
+        };
+        let part_c = ctx.add(cas_ast::Expr::Div(c_var, mu));
+        // Fold each part SEPARATELY and sum without a final fold: the full
+        // pipeline would re-join the fractions over μ (AddFractions), which
+        // both un-does the textbook split form and rebuilds the quotient the
+        // verifier cannot reduce.
+        let part_g = self.fold_free_subtree(&verify_options, part_g);
+        let part_c = self.fold_free_subtree(&verify_options, part_c);
+        let ctx = &mut self.simplifier.context;
+        let candidate = if matches!(ctx.get(part_g), cas_ast::Expr::Number(n) if n.is_zero()) {
+            part_c
+        } else {
+            ctx.add(cas_ast::Expr::Add(part_g, part_c))
+        };
+
+        // D5: substitute into the RAW ODE; the residue must reduce to exact 0.
+        let ctx = &mut self.simplifier.context;
+        let ode_residue_raw = ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs));
+        let substituted = substitute_power_aware(
+            ctx,
+            ode_residue_raw,
+            y_var,
+            candidate,
+            SubstituteOptions::exact(),
+        );
+        if !self.reduces_to_zero_exact(&verify_options, substituted) {
+            let ctx = &mut self.simplifier.context;
+            let r = residual_action_result(
+                ctx,
+                resolved,
+                y_var,
+                x_var,
+                "La candidata no verificó (el residuo LHS−RHS no se redujo a 0 exacto); se declina honesto en lugar de emitir sin red",
+            );
+            return Ok(r);
+        }
+
+        let ctx = &mut self.simplifier.context;
+        warnings.push(DomainWarning {
+            message: format!("Solución general: {c_name} es una constante arbitraria"),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+
+        let solve_steps =
+            build_linear_steps(ctx, ode_eq, p, q, mu, g_int, y_var, x_var, candidate, c_var);
+        let result = EvalResult::Expr(wrap_eq(ctx, y_var, candidate));
+        Ok((
+            result,
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ))
+    }
 }
 
 /// Narrated solve steps for the separable method (D13). Every description
@@ -944,6 +1311,90 @@ fn build_separable_steps(
                 rhs: explicit.first().copied().unwrap_or(y_var),
                 op: RelOp::Eq,
             }
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    steps
+}
+
+/// Narrated solve steps for the linear first-order method (D13). Every
+/// description template must have an es/en entry in `SOLVE_DESCRIPTIONS`.
+#[allow(clippy::too_many_arguments)]
+fn build_linear_steps(
+    ctx: &mut Context,
+    ode_eq: &Equation,
+    p: ExprId,
+    q: ExprId,
+    mu: ExprId,
+    g_int: ExprId,
+    y_var: ExprId,
+    x_var: ExprId,
+    candidate: ExprId,
+    c_var: ExprId,
+) -> Vec<crate::api::SolveStep> {
+    let mut steps: Vec<crate::api::SolveStep> = Vec::new();
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Identificar forma lineal: y' + p·y = q con p = {}, q = {}",
+            render_expr(ctx, p),
+            render_expr(ctx, q)
+        ),
+        equation_after: ode_eq.clone(),
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Calcular el factor integrante: μ = e^(∫p dx) = {}",
+            render_expr(ctx, mu)
+        ),
+        equation_after: ode_eq.clone(),
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    // (μ·y)' = μ·q, shown with a raw diff call (readable equation state).
+    let mu_y = ctx.add(cas_ast::Expr::Mul(mu, y_var));
+    let d_mu_y = ctx.call("diff", vec![mu_y, x_var]);
+    let mu_q = ctx.add(cas_ast::Expr::Mul(mu, q));
+    steps.push(crate::api::SolveStep {
+        description: "Multiplicar por μ: el lado izquierdo se vuelve la derivada del producto μ·y"
+            .to_string(),
+        equation_after: Equation {
+            lhs: d_mu_y,
+            rhs: mu_q,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    let rhs_int = ctx.add(cas_ast::Expr::Add(g_int, c_var));
+    steps.push(crate::api::SolveStep {
+        description: "Integrar ambos lados: μ·y = ∫ μ·q dx + C".to_string(),
+        equation_after: Equation {
+            lhs: mu_y,
+            rhs: rhs_int,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Despejar la incógnita de la relación integrada".to_string(),
+        equation_after: Equation {
+            lhs: y_var,
+            rhs: candidate,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Verificar por sustitución: el residuo de la EDO se reduce a 0".to_string(),
+        equation_after: Equation {
+            lhs: y_var,
+            rhs: candidate,
+            op: RelOp::Eq,
         },
         importance: ImportanceLevel::Medium,
         substeps: vec![],
