@@ -276,10 +276,52 @@ propio post-Fase 3. Estimación original de abajo (histórica) superada por el s
 
 **FUERA del norte (no cuenta como faltante):** análisis complejo completo / multivaluado /
 Riemann (cambiar `BranchPolicy::Principal` por Riemann sería la ÚNICA reescritura profunda —
-deliberadamente fuera de scope); EDOs; funciones especiales (erf/Γ/Si/Ei/LambertW) como
+deliberadamente fuera de scope); funciones especiales (erf/Γ/Si/Ei/LambertW) como
 valores de salida. Y los residuales no-elementales protegidos (`e^(-x^2)` (indefinida —
 la DEFINIDA gaussiana ya está soportada), `sin(x)/x`,
 `1/ln(x)`, oscilantes, divergentes): **resolverlos sería un bug de soundness, no un avance.**
+*(Las EDOs SALIERON de esta lista el 2026-07-19 por decisión del usuario — ver Fase 4.)*
+
+---
+
+## Fase 4 — Ecuaciones diferenciales elementales  **[ENTRA AL NORTE 2026-07-19 por decisión del usuario — SCOPING EN CURSO]**
+
+**Decisión del usuario 2026-07-19** ("quiero que nuestro engine sea realmente universal"):
+las EDOs dejan de ser fuera-del-norte y se convierten en la Fase 4. Alcance: el **curso
+elemental de EDOs, universal Y educativo** — separables, lineales de primer orden (factor
+integrante), exactas (la maquinaria de `potential` F6 ES el corazón: `M dx + N dy = 0`
+exacta ⟺ ∃φ con ∇φ=(M,N), con la emisión gateada por verificación), segundo orden
+homogéneas de coeficientes constantes (polinomio característico → `solve` exacto;
+`wronskian` verifica independencia), no-homogéneas por coeficientes indeterminados
+(familias acotadas), condiciones iniciales, y sistemas lineales 2×2 por autovalores
+(exactos racionales ya vivos). Soluciones en serie vía Taylor como opcional tardío.
+
+**Los dos hallazgos estructurales del sondeo previo (2026-07-19, CLI vivo):**
+1. **La maquinaria actual COLAPSA la notación de EDOs**: `diff(y,x)` → `0` (la incógnita
+   se trata como constante) y `solve(diff(y,x)=y, y)` → `{0}` — el comando `dsolve` DEBE
+   interceptar a nivel WIRE (el molde de `solve`/`solve_system`, que ya parsea ecuaciones
+   textualmente antes de que simplify las toque) y mantener las derivadas de la incógnita
+   opacas hasta el despachador de métodos.
+2. **`dsolve` como ACCIÓN, no como rule**: la verificación por sustitución (derivar la
+   solución candidata y comprobar la EDO) necesita el evaluador COMPLETO (el molde
+   `equiv_difference_evaluates_to_zero` de `actions.rs`) y el canal de warnings — ambos
+   viven en la capa de acción, no en las rules (lección F1/F7/F8: un rule que declina no
+   tiene canal, y `poly_eq` no cubre soluciones trig/exp).
+
+**Guardrails de la fase** (heredan los inter-fase + los específicos): (a) la EMISIÓN la
+gatea la VERIFICACIÓN por sustitución con el evaluador completo — jamás se emite una
+solución no verificada (doctrina F6); (b) familia de soluciones con constante(s) `C` como
+CONTRATO del wire; (c) lo no-elemental queda residual honesto (Riccati general, coeficientes
+variables no-triviales, no-lineales sin método — la política de siempre); (d) `dsolve` se
+registra SOLO en su ciclo O0 con migración documentada del never-confirm (decisión D10 —
+hoy es PRESA del detector y así sigue hasta ese ciclo).
+
+**Secuenciación**: scoping workflow multi-agente propio → `docs/FASE4_ODE_ELEMENTAL_SCOPING.md`
+(secuencia O0..On de sub-ciclos acotados). **Ejecución recomendada tras cerrar el núcleo
+restante de la Fase 3** (F9 iterados, F8b squeeze, bloque D F10/F11 — ~4-5 ciclos): las
+dependencias de la Fase 4 (Fase 1 + F6) YA están cumplidas, así que el usuario puede
+reordenar sin coste técnico; la regla de oro se mantiene con el umbral de cierre de Fase 3
+como frontera por defecto.
 
 ---
 

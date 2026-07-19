@@ -8,6 +8,12 @@
 
 Abrir este frente gradúa la Fase 3 del norte: **Taylor multivariable** (multi-índice `∂^α/α!`), **límites multivariables** (detectar no-existencia / punt honesto, NUNCA fabricar — mandato literal del doc de fases), **límites complejos** (hoy P0), e **integrales de línea/superficie** (parametrización + pullback — las primitivas ya existen).
 
+> **ACTUALIZACIÓN 2026-07-19**: las **EDOs** SALIERON del scope-out por decisión del usuario
+> ("quiero que nuestro engine sea realmente universal") — ver la **Fase 4** en el doc de fases
+> y su scoping propio `docs/FASE4_ODE_ELEMENTAL_SCOPING.md`. `dsolve` sigue SIN registrar y
+> el never-confirm sigue vigilándolo hasta el ciclo O0 de esa fase (migración D10). El resto
+> del scope-out de abajo permanece intacto.
+
 **SCOPE-OUT explícito (FUERA del norte, permanente — ningún sub-ciclo de este doc lo toca):** análisis complejo multivaluado / Riemann (cambiar `BranchPolicy::Principal` sería la única reescritura profunda; consecuencia aquí: **NO se introduce ∞ compleja de esfera de Riemann** — decisión D6); **EDOs** (`dsolve` jamás se registra); **funciones especiales como valores de salida** (`erf`/`Γ`/`Si`/`Ei`/`LambertW` — Dirichlet `∫₀^∞ sin(x)/x` queda punt permanente); los **residuales no-elementales protegidos** (`e^(-x²)` indefinida, `sin(x)/x`, `1/ln(x)`, oscilantes, divergentes — resolverlos sería un bug de soundness, no un avance); **residuos / contornos** SIN decisión explícita del usuario (mapper 5 confirmó el único caso curricular donde la vía real no llega: `∫ cos(x)/(x²+1) = π/e` — pregunta abierta #1; el gemelo `x²/(x⁴+1) = π/√2` NO necesita residuos, ver F12). Los nombres fuera-del-norte quedan **SIN registrar** en el gate: su decline "función no definida" es contrato (probes verificados: `dsolve`/`residue`/`erf`/`gamma` declinan hoy).
 
 ---
