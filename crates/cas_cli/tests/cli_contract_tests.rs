@@ -2798,6 +2798,70 @@ fn test_eval_limit_multivar_continuity_f7() {
 }
 
 #[test]
+fn test_eval_limit_complex_selective_regrant_f11() {
+    // Fase 3 · F11: re-otorgo SELECTIVO bajo complex para formas ANALÍTICAS
+    // (meromorfas sin singularidades esenciales), decidido exacto: sustitución
+    // directa con den≠0 Gaussiano probado; forma ENTERA en cualquier punto
+    // finito; punto real 0/0 delega al motor real (meromorfa + límite real
+    // finito ⇒ límite complejo). Los 7 WRONG de F0 son never-fabricate
+    // PERMANENTES — sus formas fallan el shape por construcción.
+    let eval_complex = |input: &str| -> String {
+        let out = cli()
+            .args([
+                "eval",
+                input,
+                "--value-domain",
+                "complex",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Re-otorgados con justificación analítica.
+    assert_eq!(eval_complex("limit(z^2+1, z, i)"), "0");
+    assert_eq!(eval_complex("limit(sin(z), z, i)"), "i·sinh(1)");
+    assert_eq!(eval_complex("limit(1/(z^2+1), z, 2*i)"), "-1/3");
+    assert_eq!(eval_complex("limit(sin(z)/z, z, 0)"), "1");
+    assert_eq!(eval_complex("limit((z^2-1)/(z-1), z, 1)"), "2");
+    assert_eq!(eval_complex("limit(exp(z), z, i*pi)"), "-1");
+    assert_eq!(eval_complex("limit(e^(2*z), z, i*pi)"), "1");
+    // NEVER-FABRICATE permanentes (los 7 WRONG de F0 + conjugate).
+    for probe in [
+        "limit(e^(-1/z^2), z, 0)",
+        "limit(z*sin(1/z), z, 0)",
+        "limit(tanh(z), z, i*pi/2)",
+        "limit(atan(z), z, 2*i)",
+        "limit(1/(z^2+1), z, i)",
+        "limit(1/z^2, z, 0)",
+        "limit(e^z, z, infinity)",
+        "limit(conjugate(z)/z, z, 0)",
+    ] {
+        let r = eval_complex(probe);
+        assert!(
+            r.starts_with("limit("),
+            "{probe} JAMÁS fabrica bajo complex, got: {r}"
+        );
+    }
+    // Unlock del wire: `i` desnudo ya parsea; en REAL declina con warning (F0).
+    let out = cli()
+        .args(["eval", "limit(x, x, i)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    assert!(wire["result"].as_str().unwrap_or("").starts_with("limit("));
+    // Real byte-idéntico.
+    let out = cli()
+        .args(["eval", "limit(sin(x)/x, x, 0)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    assert_eq!(wire["result"].as_str().unwrap_or(""), "1");
+}
+
+#[test]
 fn test_eval_limit_output_fold_f10() {
     // Fase 3 · F10: el output RESUELTO del límite pasa por el pipeline de
     // simplify antes de emitirse (la rama residual conserva su cleanup — pin

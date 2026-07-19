@@ -926,8 +926,16 @@ fn has_finite_limit_point_signal(raw: &str) -> bool {
 }
 
 fn contains_named_finite_constant_token(raw: &str) -> bool {
+    // F11: `i` cuenta como señal de punto finito — el gate deja de ser un
+    // colador léxico (rechazaba `i` pero dejaba pasar `2*i`): el MOTOR decide
+    // semánticamente (F0 declina con warning en real; el camino selectivo F11
+    // evalúa bajo complex).
     raw.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
-        .any(|token| token.eq_ignore_ascii_case("pi") || token.eq_ignore_ascii_case("e"))
+        .any(|token| {
+            token.eq_ignore_ascii_case("pi")
+                || token.eq_ignore_ascii_case("e")
+                || token.eq_ignore_ascii_case("i")
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

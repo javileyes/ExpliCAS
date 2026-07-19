@@ -193,3 +193,5 @@
 "Analítico","potential(gradient(x^2*y + 3*x, [x,y]), [x,y])","Metamórfico: potential ∘ gradient recupera la función original (mod constante)"
 "Analítico","limit(x*y/(x^2+y^2), [x,y], [1,1])","Límite multivariable por continuidad probada: denominador ≠ 0 exacto → 1/2"
 "Analítico","limit(x*y/(x^2+y^2), [x,y], [0,0])","DNE por caminos con testigos citados: por y=0 el límite es 0, por y=x es 1/2 → no existe"
+"Analítico","limit(sin(z)/z, z, 0)","Límite complejo re-otorgado con justificación analítica (serie entera) → 1 bajo dominio complejo"
+"Analítico","limit(exp(z), z, i*pi)","Límite complejo por sustitución entera: e^(iπ) → −1 (Euler) bajo dominio complejo"

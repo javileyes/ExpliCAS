@@ -10435,6 +10435,278 @@ fn bounded_noise_rational_limit_at_infinity(
     Some(mk_infinity(ctx, sign))
 }
 
+/// Exact GAUSSIAN-rational evaluation of a fully-numeric tree: `(re, im)` as
+/// `BigRational` pairs, with `i` as a first-class value (F11, Fase 3). `None`
+/// for anything transcendental (E, Pi, function calls) — the complex selective
+/// path only decides what it can prove exactly.
+fn eval_gaussian_const_deep(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
+    use num_traits::{ToPrimitive, Zero};
+    let zero = || BigRational::from_integer(0.into());
+    match ctx.get(expr) {
+        Expr::Number(n) => Some((n.clone(), zero())),
+        Expr::Constant(Constant::I) => Some((zero(), BigRational::from_integer(1.into()))),
+        Expr::Add(l, r) => {
+            let (a, b) = eval_gaussian_const_deep(ctx, *l)?;
+            let (c, d) = eval_gaussian_const_deep(ctx, *r)?;
+            Some((a + c, b + d))
+        }
+        Expr::Sub(l, r) => {
+            let (a, b) = eval_gaussian_const_deep(ctx, *l)?;
+            let (c, d) = eval_gaussian_const_deep(ctx, *r)?;
+            Some((a - c, b - d))
+        }
+        Expr::Mul(l, r) => {
+            let (a, b) = eval_gaussian_const_deep(ctx, *l)?;
+            let (c, d) = eval_gaussian_const_deep(ctx, *r)?;
+            Some((a.clone() * c.clone() - b.clone() * d.clone(), a * d + b * c))
+        }
+        Expr::Div(l, r) => {
+            let (a, b) = eval_gaussian_const_deep(ctx, *l)?;
+            let (c, d) = eval_gaussian_const_deep(ctx, *r)?;
+            let norm = c.clone() * c.clone() + d.clone() * d.clone();
+            if norm.is_zero() {
+                return None;
+            }
+            Some((
+                (a.clone() * c.clone() + b.clone() * d.clone()) / norm.clone(),
+                (b * c - a * d) / norm,
+            ))
+        }
+        Expr::Neg(inner) => {
+            let (a, b) = eval_gaussian_const_deep(ctx, *inner)?;
+            Some((-a, -b))
+        }
+        Expr::Hold(inner) => eval_gaussian_const_deep(ctx, *inner),
+        Expr::Pow(base, exp) => {
+            let e = crate::numeric_eval::as_rational_const(ctx, *exp)?;
+            if !e.is_integer() {
+                return None;
+            }
+            let n = e.to_integer().to_i64().filter(|n| (0..=32).contains(n))?;
+            let (mut ra, mut rb) = (BigRational::from_integer(1.into()), zero());
+            let (a, b) = eval_gaussian_const_deep(ctx, *base)?;
+            for _ in 0..n {
+                let na = ra.clone() * a.clone() - rb.clone() * b.clone();
+                let nb = ra * b.clone() + rb * a.clone();
+                ra = na;
+                rb = nb;
+            }
+            Some((ra, rb))
+        }
+        _ => None,
+    }
+}
+
+/// ANALYTIC-shape check for the complex selective path (F11): the tree may use
+/// polynomials over the variable, Gaussian constants, `exp/sin/cos/sinh/cosh`
+/// with POLYNOMIAL (entire) arguments, and `Div` of such — a meromorphic
+/// function with no essential singularities. Anything else (abs, conjugate,
+/// tanh/atan, transcendental compositions like `e^(1/z²)` whose exp-argument
+/// carries a pole) fails the shape and stays residual under complex.
+fn expr_is_analytic_shape(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::Signed;
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) => true,
+        Expr::Constant(c) => !matches!(c, Constant::Infinity | Constant::Undefined),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            expr_is_analytic_shape(ctx, *l) && expr_is_analytic_shape(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_is_analytic_shape(ctx, *inner),
+        Expr::Pow(base, exp) => {
+            // `e^g` (the parser normalizes `exp(g)` to `Pow(E, g)`): entire
+            // iff g is entire — this is exactly what EXCLUDES `e^(-1/z²)`
+            // (its exponent carries a pole → essential singularity).
+            if matches!(ctx.get(*base), Expr::Constant(Constant::E)) {
+                return expr_is_entire_polynomial_shape(ctx, *exp);
+            }
+            crate::numeric_eval::as_rational_const(ctx, *exp)
+                .is_some_and(|e| e.is_integer() && !e.is_negative())
+                && expr_is_analytic_shape(ctx, *base)
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            use cas_ast::BuiltinFn;
+            let entire = ctx.is_builtin(*fn_id, BuiltinFn::Exp)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Cos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Sinh)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Cosh);
+            // The transcendental's ARGUMENT must itself be entire (no Div):
+            // `e^(-1/z²)` has an essential singularity precisely because its
+            // exp-argument carries a pole.
+            entire && expr_is_entire_polynomial_shape(ctx, args[0])
+        }
+        _ => false,
+    }
+}
+
+/// Entire sub-shape: polynomial tree (no `Div`, no calls).
+fn expr_is_entire_polynomial_shape(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::Signed;
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) => true,
+        Expr::Constant(c) => !matches!(c, Constant::Infinity | Constant::Undefined),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            expr_is_entire_polynomial_shape(ctx, *l) && expr_is_entire_polynomial_shape(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_is_entire_polynomial_shape(ctx, *inner),
+        Expr::Pow(base, exp) => {
+            crate::numeric_eval::as_rational_const(ctx, *exp)
+                .is_some_and(|e| e.is_integer() && !e.is_negative())
+                && expr_is_entire_polynomial_shape(ctx, *base)
+        }
+        _ => false,
+    }
+}
+
+/// Every `Div` denominator in the tree, substituted at the point, must
+/// evaluate to a NONZERO Gaussian rational — the exact meromorphy gate of the
+/// direct-substitution case. A transcendental denominator (cosh at a Gaussian
+/// point) is not decidable here and fails conservatively.
+fn all_denominators_provably_nonzero_at(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> bool {
+    use num_traits::Zero;
+    let node = ctx.get(expr).clone();
+    match node {
+        Expr::Div(l, r) => {
+            let substituted = cas_ast::substitute_expr_by_id(ctx, r, var, point);
+            let Some((re, im)) = eval_gaussian_const_deep(ctx, substituted) else {
+                return false;
+            };
+            if re.is_zero() && im.is_zero() {
+                return false;
+            }
+            all_denominators_provably_nonzero_at(ctx, l, var, point)
+                && all_denominators_provably_nonzero_at(ctx, r, var, point)
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            all_denominators_provably_nonzero_at(ctx, l, var, point)
+                && all_denominators_provably_nonzero_at(ctx, r, var, point)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            all_denominators_provably_nonzero_at(ctx, inner, var, point)
+        }
+        Expr::Pow(base, _) => all_denominators_provably_nonzero_at(ctx, base, var, point),
+        Expr::Function(_, args) => args
+            .iter()
+            .all(|&a| all_denominators_provably_nonzero_at(ctx, a, var, point)),
+        _ => true,
+    }
+}
+
+/// F11 (Fase 3): SELECTIVE complex re-grant inside the F0 kill-switch — only
+/// for ANALYTIC shapes, decided exactly:
+/// - Direct substitution at a GAUSSIAN point when every denominator proves
+///   nonzero (meromorphic and analytic at the point): `sin(z)` at `i`,
+///   `1/(z²+1)` at `2i`.
+/// - Delegation to the REAL engine at a REAL rational point: the shape is
+///   meromorphic with no essential singularities, so a FINITE real limit IS
+///   the complex limit (`sin(z)/z → 1`, `(z²−1)/(z−1) → 2`); a real ±∞ marks
+///   a pole (no complex ∞ under decision D7 — residual), and `undefined`
+///   verdicts are NOT re-emitted (real-lateral reasoning does not transfer).
+///
+/// Everything else keeps the honest kill-switch residual — the 7 F0 WRONGs
+/// remain never-fabricate pins by construction (their shapes fail here).
+fn try_complex_limit_selective(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: Approach,
+) -> Option<ExprId> {
+    use num_traits::Zero;
+    let Approach::Finite(point) = approach else {
+        return None;
+    };
+    if !expr_is_analytic_shape(ctx, expr) {
+        return None;
+    }
+    // ENTIRE shape (no Div anywhere): continuous on all of ℂ — direct
+    // substitution is valid at ANY finite point, including transcendental
+    // ones like `i·π` (`exp(z)` at `i·π` → Euler folds to −1 downstream).
+    if !expr_contains_div(ctx, expr) {
+        if expr_contains_nonfinite_sentinel(ctx, point) {
+            return None;
+        }
+        let mut value = cas_ast::substitute_expr_by_id(ctx, expr, var, point);
+        value = fold_constant_subexprs(ctx, value);
+        return Some(tidy_taylor_units(ctx, value));
+    }
+    let (_re, im) = eval_gaussian_const_deep(ctx, point)?;
+    if !all_denominators_provably_nonzero_at(ctx, expr, var, point) {
+        // Some denominator vanishes (or is undecidable) at the point. At a
+        // REAL rational point, delegate to the real engine: meromorphy makes
+        // a finite real limit the complex limit (removable singularity).
+        if !im.is_zero() {
+            return None;
+        }
+        let opts = LimitOptions::default();
+        let outcome = eval_limit_at_infinity(ctx, expr, var, Approach::Finite(point), &opts);
+        if outcome.warning.is_some() {
+            return None;
+        }
+        if matches!(
+            ctx.get(outcome.expr),
+            Expr::Constant(Constant::Infinity | Constant::Undefined)
+        ) {
+            return None;
+        }
+        if matches!(ctx.get(outcome.expr), Expr::Neg(inner) if matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)))
+        {
+            return None;
+        }
+        return Some(outcome.expr);
+    }
+    // Analytic at the point: the limit IS the substituted value.
+    let mut value = cas_ast::substitute_expr_by_id(ctx, expr, var, point);
+    value = fold_constant_subexprs(ctx, value);
+    Some(tidy_taylor_units(ctx, value))
+}
+
+/// True when the tree contains any `Div` node.
+fn expr_contains_div(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Div(_, _) => return true,
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            _ => {}
+        }
+    }
+    false
+}
+
+/// True when the tree contains an `Infinity`/`Undefined` sentinel.
+fn expr_contains_nonfinite_sentinel(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Constant(Constant::Infinity | Constant::Undefined) => return true,
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Emitted by the entry kill-switch when the ambient value domain is complex:
 /// the rules below reason with the real order, which does not decide complex
 /// limits (`e^(-1/z²)` has no limit at 0 in ℂ although every real-order rule
@@ -10796,6 +11068,14 @@ pub fn eval_limit_at_infinity(
     // the honest residual BEFORE any rule sees the expression; complex-domain
     // capability is re-granted selectively with analytic justification (F10/F11).
     if opts.complex_enabled {
+        // F11: selective re-grant for ANALYTIC shapes (exact meromorphy gate);
+        // everything else keeps the F0 kill-switch residual.
+        if let Some(value) = try_complex_limit_selective(ctx, expr, var, approach) {
+            return LimitEvalOutcome {
+                expr: value,
+                warning: None,
+            };
+        }
         let residual = mk_limit_for_approach(ctx, expr, var, approach);
         return LimitEvalOutcome {
             expr: residual,

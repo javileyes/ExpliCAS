@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 649 (newest first)
+Active entries: 650 (newest first)
 
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
@@ -131,6 +131,7 @@ Active entries: 649 (newest first)
 - 2026-07-19 | `retained` | docs-only — `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` (nuevo, 320 líneas) + `docs... | SCOPING (Fase 4 · EDOs elementales): el norte se amplía por decisión del usuario — dsolve scopeado en O0-O9 con 17 decisiones y oráculo curricular verificado
 - 2026-07-19 | `retained` | `cas_engine/rules/calculus/vector_calculus.rs` (`LimitUnivarExprRule`: forma ... | CAPACIDAD (Fase 3 · F9, tanda-3 ciclo 1/4): límites anidados/compuestos/iterados evalúan en posición de expresión — y el wire aprende a distinguir comando de expresión
 - 2026-07-19 | `retained` | `cas_engine/eval/actions.rs` (rama sin-warning de `eval_limit`: `fold_infinit... | PULIDO (Fase 3 · F10, tanda-3 ciclo 2/4): el output RESUELTO del límite pasa por el pipeline de simplify — muere el branch-hop inverso; el residual conserva su cleanup intacto
+- 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`try_complex_limit_selective` DENTRO del kill-s... | CAPACIDAD (Fase 3 · F11, tanda-3 ciclo 3/4): re-otorgo complejo SELECTIVO en límites — formas analíticas decididas exactas dentro del kill-switch; el gate léxico deja de ser colador
 - 2026-07-18 | `retained` | `docs/FASE2_VECTORIAL_MULTIVARIABLE_SCOPING.md` (NUEVO) + `docs/CALCULUS_ENGI... | SCOPING (Fase 2 · frente VECTORIAL multivariable): secuencia V0-V8 con doble verificación adversarial
 - 2026-07-18 | `retained` | `cas_math/matrix.rs` (`norm` → `norm_in_domain(ctx, complex_enabled)`) + `cas... | SOUNDNESS (Fase 2 vectorial · V0): la capa métrica de Matrix aprende dominio — norm deja de plegar `i` en real y de emitir fórmula real para símbolos ℂ
 - 2026-07-18 | `retained` | `cas_engine/matrix_rule_support.rs` (NUEVOS `map_matrix_components` + `try_co... | CAPACIDAD (Fase 2 vectorial · V1): `diff` distribuye componentwise sobre `Matrix` — el primitivo de los 6 verbos — y matmul cierra su gate-sin-regla
@@ -20881,3 +20882,18 @@ Active entries: 649 (newest first)
 - retained learning:
   - **Un branch-hop de display se detecta comparando el MISMO valor por las dos rutas** (`limit(e^z,z,2)` vs `eval exp(2)`): si dos superficies emiten formas distintas del mismo valor, una de las dos está fuera del pipeline de canonización — y el pin que fija la forma vieja está fijando el bug.
   - PRÓXIMO PELDAÑO: F11 (re-otorgo complejo selectivo — sustitución entera, combinador gateado a solo-DNE, unlock del gate léxico).
+
+## 2026-07-19 - CAPACIDAD (Fase 3 · F11, tanda-3 ciclo 3/4): re-otorgo complejo SELECTIVO en límites — formas analíticas decididas exactas dentro del kill-switch; el gate léxico deja de ser colador
+
+- area: `cas_math/limits_support.rs` (`try_complex_limit_selective` DENTRO del kill-switch F0: shape ANALÍTICO — polinomios/Gaussianos, `exp/sin/cos/sinh/cosh` con argumento polinomial-entero, brazo `E^g` con g entera — lo que excluye EXACTAMENTE `e^(-1/z²)` —, `Div` meromorfa; tres casos: forma ENTERA (sin Div) sustituye en CUALQUIER punto finito; sustitución directa con den≠0 GAUSSIANO probado (`eval_gaussian_const_deep` — aritmética (re,im) BigRational exacta, `i` como valor); punto real-racional 0/0 delega al motor REAL — meromorfa + límite real finito ⇒ límite complejo; polos (real ±∞) y undefined NO se re-emiten — D7 sin ∞ compleja) + `cas_api_models/wire_types.rs` (`i` cuenta como señal de punto finito — el colador léxico muere: el MOTOR decide en ambos dominios) + e2e con los 8 never-fabricate + 2 filas examples
+- status: `retained`. **Bloque D COMPLETO (F10+F11) — el núcleo F0-F11 de la Fase 3 CERRADO** (quedan F8b y los opcionales F11b/F12).
+- capture:
+  - investment_class: capacidad compleja con justificación analítica POR CASO (la relajación controlada que F0 prometió) — cada camino re-otorgado lleva su teorema: entera⇒continua en ℂ; meromorfa analítica en el punto⇒valor sustituido; meromorfa sin esenciales + límite real finito⇒límite complejo (continuación analítica).
+  - cell bajo complex: `limit(z²+1,z,i)` → `0`; `limit(sin(z),z,i)` → `i·sinh(1)` (el puente trig-de-i de Fase 2 pliega el output — composición de fases); `limit(1/(z²+1),z,2i)` → `−1/3`; `limit(sin(z)/z,z,0)` → `1`; `limit((z²−1)/(z−1),z,1)` → `2`; `limit(exp(z),z,iπ)` → `−1` (Euler vía el fold F10 — la dependencia F10→F11 era exactamente esto); `e^(2z)` en iπ → `1`. **Los 7 WRONG de F0 + `conjugate(z)/z` = never-fabricate PERMANENTES** — sus formas fallan el shape POR CONSTRUCCIÓN (no por lista): `e^(-1/z²)` exponente con polo (esencial), `tanh` den transcendental indecidible, `atan`/`conjugate` fuera del shape, `1/(z²+1)` en i den=0, `1/z²` polo real, at-infinity fuera del caso.
+  - Fricción de representación cazada por probe: el parser normaliza `exp(z)` → `Pow(E,z)` y el shape lo rechazaba (exponente simbólico) — el brazo `E^g` con g entera-polinomial lo admite Y es la línea exacta que separa `e^z` (entera) de `e^(-1/z²)` (esencial): el mismo brazo es capacidad y guard.
+  - Wire unlock mínimo: en vez del "wire nuevo sin precedente" que el scoping temía (enhebrar semantics al parse), `i` pasa a ser señal léxica de punto finito y la DECISIÓN vive en el motor — F0 declina con warning en real (ya pineado), F11 evalúa bajo complex. El colador (rechazaba `i`, dejaba pasar `2*i`) muere sin threading nuevo.
+  - Real byte-idéntico (el camino selectivo solo corre bajo complex_enabled); solo-DNE del combinador queda VACUO dentro del shape analítico (laterales de una analítica no discrepan finitos — documentado, no implementado a ciegas).
+- validación: workspace failed:0; clippy --all-targets limpio; lint 0; engine-fast + scorecards verdes; huella contadores-idéntica salvo filtered_out declarados.
+- retained learning:
+  - **"Never-fabricate por construcción" > "never-fabricate por lista"**: los 8 pins complejos no son excepciones enumeradas sino consecuencias del shape analítico (esencial⇔exponente-con-polo, etc.) — un guard cuya matemática EXCLUYE la clase entera de fabricaciones no necesita mantenimiento cuando aparezca el noveno caso.
+  - PRÓXIMO PELDAÑO: F8b (squeeze positivo, scoping fino) cierra la tanda; tras él la Fase 3 queda con solo los opcionales F11b/F12.
