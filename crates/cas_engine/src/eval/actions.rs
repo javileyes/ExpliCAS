@@ -382,6 +382,11 @@ impl Engine {
             EvalAction::Limit { var, approach } => {
                 self.eval_limit(options, resolved, &var, approach)
             }
+            EvalAction::Dsolve {
+                func,
+                var,
+                conditions,
+            } => self.eval_dsolve(options, resolved, &func, &var, &conditions),
         }
     }
 

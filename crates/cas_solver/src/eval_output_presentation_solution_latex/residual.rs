@@ -12,7 +12,9 @@ pub(super) fn render_residual_solution(ctx: &Context, expr: ExprId) -> String {
     // relation (operator included), matching the `integrate(...)` residual
     // convention. The old "Solve: … = 0" wrapper appended a dangling "= 0"
     // that misdescribed inequalities.
-    if matches!(ctx.get(expr), Expr::Function(name, _) if ctx.sym_name(*name) == "solve") {
+    // `dsolve(...)` residual echoes (Fase 4) are self-describing too.
+    if matches!(ctx.get(expr), Expr::Function(name, _) if matches!(ctx.sym_name(*name), "solve" | "dsolve"))
+    {
         expr_latex
     } else {
         format!(r"\text{{Solve: }} {} = 0", expr_latex)

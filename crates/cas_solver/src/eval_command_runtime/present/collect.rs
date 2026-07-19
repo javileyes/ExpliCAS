@@ -52,7 +52,10 @@ where
     let solve_steps_raw = prepared.output_view.solve_steps.as_slice();
     let solve_special_command = matches!(
         cas_api_models::parse_eval_special_command(raw_input),
-        Some(cas_api_models::EvalSpecialCommand::Solve { .. })
+        Some(
+            cas_api_models::EvalSpecialCommand::Solve { .. }
+                | cas_api_models::EvalSpecialCommand::Dsolve { .. }
+        )
     );
     let filtered_primary_steps = if solve_special_command && !solve_steps_raw.is_empty() {
         Some(

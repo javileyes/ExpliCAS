@@ -284,7 +284,12 @@ la DEFINIDA gaussiana ya está soportada), `sin(x)/x`,
 
 ---
 
-## Fase 4 — Ecuaciones diferenciales elementales  **[ENTRA AL NORTE 2026-07-19 por decisión del usuario — SCOPING EN CURSO]**
+## Fase 4 — Ecuaciones diferenciales elementales  **[ABIERTA — O0 GRADUADO 2026-07-19 (hash en el ledger); scoping completo en `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` (secuencia O0-O9, 17 decisiones, 5 preguntas resueltas por el usuario)]**
+
+*(Actualización 2026-07-19: O0 cerró el sustrato — `dsolve` parsea en wire+REPL con paridad,
+separables S1-S9+L12 emiten SOLO tras verificación exacta a `Number(0)`, Z1-Z7 pineados
+never-fabricate, lane `calculus_dsolve_command_matrix_smoke` en 4 perfiles. Siguientes:
+O1 lineal 1er orden → O2 exactas → O3 IVP.)*
 
 **Decisión del usuario 2026-07-19** ("quiero que nuestro engine sea realmente universal"):
 las EDOs dejan de ser fuera-del-norte y se convierten en la Fase 4. Alcance: el **curso

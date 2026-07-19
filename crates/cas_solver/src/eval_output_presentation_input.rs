@@ -162,6 +162,24 @@ pub(crate) fn format_output_input_latex(
             EvalSpecialCommand::Solve { equation, var } => {
                 return format_solve_input_latex(&equation, &var);
             }
+            EvalSpecialCommand::Dsolve { func, var, .. } => {
+                // The parsed tree IS the ODE equation (`Equal(lhs, rhs)`); render
+                // it as the equation with the unknown/variable named.
+                let eq_latex = if let cas_ast::Expr::Function(fn_id, args) = ctx.get(parsed) {
+                    if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Equal) && args.len() == 2 {
+                        let lhs_latex = style_latex_for_input(ctx, args[0], signals);
+                        let rhs_latex = style_latex_for_input(ctx, args[1], signals);
+                        format!("{lhs_latex} = {rhs_latex}")
+                    } else {
+                        style_latex_for_input(ctx, parsed, signals)
+                    }
+                } else {
+                    style_latex_for_input(ctx, parsed, signals)
+                };
+                return format!(
+                    "\\operatorname{{dsolve}}\\left({eq_latex},\\; {func},\\; {var}\\right)"
+                );
+            }
         }
     }
 

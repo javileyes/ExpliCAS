@@ -9,6 +9,15 @@ fn map_non_solve_action(action: EvalNonSolveAction) -> crate::EvalAction {
         EvalNonSolveAction::Simplify => crate::EvalAction::Simplify,
         EvalNonSolveAction::Equiv { other } => crate::EvalAction::Equiv { other },
         EvalNonSolveAction::Limit { var, approach } => crate::EvalAction::Limit { var, approach },
+        EvalNonSolveAction::Dsolve {
+            func,
+            var,
+            conditions,
+        } => crate::EvalAction::Dsolve {
+            func,
+            var,
+            conditions,
+        },
     }
 }
 

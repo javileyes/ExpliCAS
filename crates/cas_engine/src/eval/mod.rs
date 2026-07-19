@@ -8,6 +8,7 @@
 mod actions;
 mod diagnostics;
 mod dispatch;
+mod dsolve_action;
 mod simplify_action;
 
 /// Result type for individual action handlers in `Engine.eval()`.

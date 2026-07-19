@@ -238,6 +238,7 @@ use exponential_derivative_presentation::sqrt_shifted_exp_derivative_presentatio
 pub(crate) use hyperbolic_primitive_derivative_presentation::affine_hyperbolic_odd_primitive_derivative_presentation;
 pub(crate) use hyperbolic_reciprocal_derivative_presentation::constant_scaled_hyperbolic_reciprocal_derivative_quotient_presentation_with_domain;
 pub use integrate_rule::IntegrateRule;
+pub(crate) use integration::integrate_with_trace;
 pub(crate) use integration::{
     is_public_algorithmic_backend_symbolic_indefinite_square_fallback_shape,
     is_public_algorithmic_backend_symbolic_positive_quadratic_fallback_shape,

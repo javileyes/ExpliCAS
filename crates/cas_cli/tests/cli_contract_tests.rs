@@ -3720,12 +3720,34 @@ fn test_eval_gradient_verb() {
     // potential GRADUÓ en F6 con su aridad real 2 (assert separado por
     // semántica, decisión D10); las presas del never-confirm pasan a los
     // nombres FUERA del norte, que jamás deben registrarse por accidente.
-    for probe in ["dsolve(y, x)", "erf(1)", "gamma(5)", "residue(1/z, z, 0)"] {
+    // dsolve GRADUÓ en Fase 4 · O0 como special-command (decisión D10 del
+    // scoping Fase 4): su pin migra BIDIRECCIONAL abajo — la forma comando
+    // computa, el malformado da usage-error EXPLÍCITO, y la forma embebida
+    // en expresión sigue declinando por el eval genérico.
+    for probe in ["erf(1)", "gamma(5)", "residue(1/z, z, 0)"] {
         assert!(
             err_of(probe).contains("no definida"),
             "nombre fuera del norte debe seguir 'función no definida': {probe}"
         );
     }
+    // (a) the well-formed command computes (verification-gated emission).
+    let out = err_of("dsolve(diff(y,x)=y^2, y, x)");
+    assert!(
+        out.contains("y = -1 / (C + x)"),
+        "dsolve command form must compute: {out}"
+    );
+    // (b) malformed `dsolve(y, x)` is an EXPLICIT usage error (pre-pass), no
+    // longer the cryptic unknown-function decline.
+    let err = err_of("dsolve(y, x)");
+    assert!(
+        err.contains("contains no diff"),
+        "malformed dsolve must be an explicit usage error: {err}"
+    );
+    // (c) embedded-in-expression form still declines through generic eval.
+    assert!(
+        err_of("dsolve(y)+1").contains("no definida"),
+        "embedded dsolve stays declined by generic eval"
+    );
     // Narration: rule name localizes es/en; one keyed substep per component.
     let steps_json = |input: &str, lang: Option<&str>| -> Value {
         let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
@@ -8733,4 +8755,166 @@ fn test_eval_reciprocal_root_laurent_combined_fraction_and_higher_roots() {
     assert_eq!(r("solve(sqrt(x) + 1/sqrt(x) = 5/2, x)"), "{ 1/4, 4 }");
     // No regression: an ordinary rational `(x^2-1)/x = 0` is untouched.
     assert_eq!(r("solve((x^2-1)/x = 0, x)"), "{ -1, 1 }");
+}
+
+#[test]
+fn dsolve_separable_o0_contract() {
+    // Fase 4 · O0: sustrato dsolve — separables con verificación-gate (D5),
+    // residual honesto (D8), anti-colapso (D4) y never-fabricate (Z1-Z7).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // --- Graduados S1-S9 + L12 (formas textbook; verificadas a Number(0)
+    // exacto antes de emitir — la emisión ES el certificado).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    ); // S1
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=y^2, y, x)"),
+        "y = -1 / (C + x)"
+    ); // S2
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=1+y^2, y, x)"),
+        "arctan(y) - x = C"
+    ); // S3 implícita honesta (despeje arctan: gap del solve, peldaño nombrado)
+    assert_eq!(first_line("dsolve(diff(y,x)=-x/y, y, x)"), "x^2 + y^2 = C"); // S4 implícita textbook
+    assert_eq!(first_line("dsolve(diff(y,x)=x/y, y, x)"), "y^2 - x^2 = C"); // S5 implícita (no pierde la rama ±)
+    assert_eq!(first_line("dsolve(diff(y,x)=y/x, y, x)"), "y = C·x"); // S6
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=2*x*y^2, y, x)"),
+        "y = -1 / (x^2 + C)"
+    ); // S7
+    assert_eq!(first_line("dsolve(diff(y,x)=-y, y, x)"), "y = C / e^x"); // L12 (≡ C·e^(−x))
+    assert_eq!(first_line("dsolve(diff(y,x)=k*y, y, x)"), "y = C·e^(k·x)"); // S8 paramétrico
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=cos(x), y, x)"),
+        "y = sin(x) + C"
+    ); // S9 integración directa
+
+    // Azúcar aridad-2 (pregunta resuelta #1): misma salida que la canónica.
+    assert_eq!(first_line("dsolve(diff(y,x)=x*y, y)"), "y = C·e^(x^2 / 2)");
+
+    // Warnings didácticos D7/D12 presentes (constante arbitraria; singular).
+    // Los warnings viajan por stderr: capturar ambos streams.
+    let s1_full = err_of("dsolve(diff(y,x)=x*y, y, x)");
+    assert!(s1_full.contains("constante arbitraria"), "{s1_full}");
+    assert!(s1_full.contains("solución singular"), "{s1_full}");
+
+    // --- Z1-Z7 never-fabricate: residual honesto eco re-emitible, jamás valor.
+    for z in [
+        "dsolve(diff(y,x)=x^2+y^2, y, x)",  // Z1 Riccati
+        "dsolve(diff(y,x,2)+x*y=0, y, x)",  // Z2 Airy
+        "dsolve(diff(y,x)=sin(x*y), y, x)", // Z3 sin método
+        "dsolve(diff(y,x,2)=y^2, y, x)",    // Z4 no-lineal
+        "dsolve(diff(y,x)=y^2-x, y, x)",    // Z5 Riccati
+        "dsolve(x^2*diff(y,x,2)+x*diff(y,x)+(x^2-1)*y=0, y, x)", // Z6 Bessel
+        "dsolve(diff(y,x,2)+sin(y)=0, y, x)", // Z7 péndulo
+    ] {
+        let out = r(z);
+        assert!(
+            out.starts_with("dsolve("),
+            "never-fabricate: {z} debe declinar a eco residual, no a valor: {out}"
+        );
+        // El colapso sería el output ENTERO `y = 0` / `{ 0 }` (el eco legítimo
+        // puede contener `= 0` como parte de la EDO re-emitida).
+        let first = out.lines().next().unwrap_or_default().trim();
+        assert!(
+            first != "y = 0" && first != "{ 0 }",
+            "never-fabricate: {z} jamás emite el colapso: {out}"
+        );
+    }
+
+    // --- Metamórfico anti-colapso (D4): dsolve JAMÁS emite las formas del
+    // colapso de diff, y los contratos de diff/solve planos SIGUEN intactos.
+    let s2 = r("dsolve(diff(y,x)=y^2, y, x)");
+    assert!(!s2.contains("{ 0 }"), "anti-colapso: {s2}");
+    assert_eq!(
+        first_line("diff(y,x)"),
+        "0",
+        "contrato de diff plano intacto"
+    );
+    assert_eq!(
+        first_line("solve(diff(y,x)=y, y)"),
+        "{ 0 }",
+        "contrato del solve plano (colapso conocido) intacto"
+    );
+
+    // --- No-colisión de prefijo solve(/dsolve( en ambas direcciones.
+    assert_eq!(first_line("solve(x^2=4, x)"), "{ -2, 2 }");
+
+    // --- Condiciones iniciales: parsean y declinan honesto (ciclo O3).
+    // Eco por stdout; el warning con el motivo viaja por stderr.
+    let ivp = r("dsolve(diff(y,x)=-y, y, x, y(0)=3)");
+    assert!(ivp.starts_with("dsolve("), "IVP declina a residual: {ivp}");
+    let ivp_full = err_of("dsolve(diff(y,x)=-y, y, x, y(0)=3)");
+    assert!(
+        ivp_full.contains("ciclo O3") || ivp_full.contains("Condiciones iniciales"),
+        "{ivp_full}"
+    );
+
+    // --- 2º orden: residual honesto nombrado (ciclo O4).
+    let o2 = r("dsolve(diff(y,x,2)+4*y=0, y, x)");
+    assert!(
+        o2.starts_with("dsolve("),
+        "2º orden declina a residual: {o2}"
+    );
+
+    // --- Usage-errors del pre-pass (D2): malformado, sympy-style, ambiguo.
+    assert!(err_of("dsolve(y, x)").contains("contains no diff"));
+    assert!(err_of("dsolve(diff(y(x),x)=y(x), y(x))").contains("not y(x)"));
+    assert!(err_of("dsolve(diff(y,x)+diff(y,t)=0, y)").contains("Ambiguous"));
+    assert!(err_of("dsolve(diff(y,t)=y, y, x)").contains("with respect to t"));
+
+    // --- Narración D13 keyed es/en: rule names localizan en ambos idiomas.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(diff(y,x)=x*y, y, x)", None);
+    assert!(es.contains("Identificar EDO separable"), "{es}");
+    assert!(es.contains("Integrar ambos lados"), "{es}");
+    assert!(es.contains("Verificar por sustituci"), "{es}");
+    let en = steps_of("dsolve(diff(y,x)=x*y, y, x)", Some("en"));
+    assert!(en.contains("Identify separable ODE"), "{en}");
+    assert!(en.contains("Integrate both sides"), "{en}");
+    assert!(en.contains("Verify by substitution"), "{en}");
+
+    // --- Round-trip storability (guardrail #5): la solución wrap_eq se
+    // almacena como #N y se recupera sin colapsar ni declinar.
+    let repl_out = cli()
+        .arg("repl")
+        .write_stdin("dsolve(diff(y,x)=x*y, y, x)\n#1\nexit\n")
+        .output()
+        .expect("Failed to run CLI repl");
+    let repl_text = String::from_utf8_lossy(&repl_out.stdout).to_string();
+    let occurrences = repl_text.matches("y = C·e^(x^2 / 2)").count();
+    assert!(
+        occurrences >= 2,
+        "round-trip #1: la solución debe emitirse en dsolve Y en el recall: {repl_text}"
+    );
 }

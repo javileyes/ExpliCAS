@@ -550,6 +550,26 @@ SUITES: dict[str, SuiteSpec] = {
             "and residual regimes."
         ),
     ),
+    "calculus_dsolve_command_matrix_smoke": SuiteSpec(
+        name="calculus_dsolve_command_matrix_smoke",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            sys.executable,
+            str(ROOT / "scripts" / "engine_dsolve_command_matrix_smoke.py"),
+            "--ensure-release-cas-cli",
+            "--timeout-seconds",
+            "10",
+            "--json",
+            "--summary-json",
+        ],
+        env={},
+        parser="calculus_dsolve_command_matrix",
+        description=(
+            "Command-level dsolve (Fase 4) matrix over separable families, "
+            "verification-gated emission, and honest residual declines."
+        ),
+    ),
     "calculus_integrate_compact_contract": SuiteSpec(
         name="calculus_integrate_compact_contract",
         category="calculus",
@@ -6178,6 +6198,75 @@ def add_residual_shape_orientation_problem_summary(
             summary[target] = value
 
 
+def parse_calculus_dsolve_command_matrix(output: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid dsolve command matrix json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("dsolve command matrix json output is not an object")
+
+    total = raw.get("total")
+    status = raw.get("status")
+    status_counts = raw.get("status_counts")
+    if not isinstance(total, int):
+        raise ValueError("missing dsolve command matrix total")
+    if not isinstance(status, str):
+        raise ValueError("missing dsolve command matrix status")
+    if not isinstance(status_counts, dict):
+        raise ValueError("missing dsolve command matrix status_counts")
+
+    passed = status_counts.get("pass", 0)
+    raw_failed = status_counts.get("fail", 0)
+    slow = status_counts.get("slow", 0)
+    timeouts = status_counts.get("timeout", 0)
+    if not all(isinstance(value, int) for value in (passed, raw_failed, slow, timeouts)):
+        raise ValueError("invalid dsolve command matrix status_counts")
+
+    problem_cases_raw = raw.get("problem_cases")
+    problem_cases = []
+    if isinstance(problem_cases_raw, list):
+        for entry in problem_cases_raw:
+            if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+                problem_cases.append(
+                    {
+                        "name": entry["name"],
+                        "status": entry.get("status"),
+                        "error": entry.get("error"),
+                    }
+                )
+
+    metrics: dict[str, Any] = {
+        "matrix_status": status,
+        "total_cases": total,
+        "passed": passed,
+        "failed": raw_failed + slow + timeouts,
+        "raw_failed": raw_failed,
+        "slow": slow,
+        "timeouts": timeouts,
+        "problem_case_count": len(problem_cases),
+        "problem_cases": problem_cases,
+    }
+    for raw_key, metric_key in (
+        ("family_counts", "dsolve_family_counts"),
+        ("order_regime_counts", "dsolve_order_regime_counts"),
+        ("verification_regime_counts", "dsolve_verification_regime_counts"),
+        ("constant_regime_counts", "dsolve_constant_regime_counts"),
+        ("outcome_counts", "dsolve_outcome_counts"),
+        ("residual_cause_counts", "dsolve_residual_cause_counts"),
+        ("trace_regime_counts", "dsolve_trace_regime_counts"),
+        ("presentation_regime_counts", "dsolve_presentation_regime_counts"),
+    ):
+        value = raw.get(raw_key)
+        if isinstance(value, dict):
+            metrics[metric_key] = {
+                name: count
+                for name, count in value.items()
+                if isinstance(name, str) and isinstance(count, int)
+            }
+    return metrics
+
+
 def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
     try:
         raw = json.loads(output)
@@ -8147,6 +8236,7 @@ PARSERS = {
     "calculus_residual_matrix": parse_calculus_residual_matrix,
     "calculus_diff_command_matrix": parse_calculus_diff_command_matrix,
     "calculus_limit_command_matrix": parse_calculus_limit_command_matrix,
+    "calculus_dsolve_command_matrix": parse_calculus_dsolve_command_matrix,
     "calculus_integrate_command_matrix": parse_calculus_integrate_command_matrix,
     "algorithmic_backend_observability": parse_algorithmic_backend_observability,
     "algorithmic_backend_mode_boundary": parse_algorithmic_backend_mode_boundary,

@@ -19,6 +19,14 @@ pub enum EvalAction {
         var: String,
         approach: cas_math::limit_types::Approach,
     },
+    /// Solve an elementary ODE for `func(var)` (Fase 4). The parsed equation
+    /// travels as the request expression; conditions stay textual (their heads
+    /// like `y(0)` are not parseable expressions).
+    Dsolve {
+        func: String,
+        var: String,
+        conditions: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug)]

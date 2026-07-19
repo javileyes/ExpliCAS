@@ -118,6 +118,13 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — separable method narration (D13).
+    SolveDesc { template: "Identificar EDO separable: y' = f(x)·g(y) con f = {0}, g = {1}", es: "Identificar EDO separable: y' = f(x)·g(y) con f = {0}, g = {1}", en: "Identify separable ODE: y' = f(x)·g(y) with f = {0}, g = {1}" },
+    SolveDesc { template: "Separar las variables: dy/g(y) = f(x)·dx", es: "Separar las variables: dy/g(y) = f(x)·dx", en: "Separate the variables: dy/g(y) = f(x)·dx" },
+    SolveDesc { template: "Integrar ambos lados de la ecuación separada", es: "Integrar ambos lados de la ecuación separada", en: "Integrate both sides of the separated equation" },
+    SolveDesc { template: "Despejar la incógnita de la relación integrada", es: "Despejar la incógnita de la relación integrada", en: "Solve the integrated relation for the unknown" },
+    SolveDesc { template: "Combinar en una solución implícita φ(x,y) = C", es: "Combinar en una solución implícita φ(x,y) = C", en: "Combine into an implicit solution φ(x,y) = C" },
+    SolveDesc { template: "Verificar por sustitución: el residuo de la EDO se reduce a 0", es: "Verificar por sustitución: el residuo de la EDO se reduce a 0", en: "Verify by substitution: the ODE residue reduces to 0" },
     SolveDesc { template: "Combine fractions on RHS (common denominator)", es: "Combina las fracciones del lado derecho (común denominador)", en: "Combine fractions on RHS (common denominator)" },
     SolveDesc { template: "Take reciprocal", es: "Toma el recíproco", en: "Take reciprocal" },
     SolveDesc { template: "Case 1: Assume {0} > 0. Multiply by {1} (positive). Inequality direction preserved (flipped from isolation logic).", es: "Caso 1: Supón {0} > 0. Multiplica por {1} (positivo). Se preserva el sentido de la desigualdad (invertido respecto a la lógica de aislamiento).", en: "Case 1: Assume {0} > 0. Multiply by {1} (positive). Inequality direction preserved (flipped from isolation logic)." },

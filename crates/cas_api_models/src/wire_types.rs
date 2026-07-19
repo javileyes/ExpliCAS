@@ -511,6 +511,18 @@ pub enum EvalSpecialCommand {
         var: String,
         approach: EvalLimitApproach,
     },
+    /// `dsolve(<equation>, <func>[, <var>[, <condition>...]])` — elementary ODE
+    /// solving (Fase 4). The equation travels as RAW text: the ODE tree must
+    /// never touch the general simplifier before the dsolve action extracts its
+    /// structure (`diff(y,x)` collapses to `0` under plain eval). Conditions
+    /// (initial values like `y(0)=3`) also stay textual: their heads (`y(0)`,
+    /// `y'(0)`) are not parseable expressions.
+    Dsolve {
+        equation: String,
+        func: String,
+        var: String,
+        conditions: Vec<String>,
+    },
 }
 
 /// Parse special eval command forms:
@@ -551,7 +563,210 @@ pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
             approach,
         });
     }
+    if let Some((equation, func, var, conditions)) = parse_dsolve_command(input) {
+        return Some(EvalSpecialCommand::Dsolve {
+            equation,
+            func,
+            var,
+            conditions,
+        });
+    }
     None
+}
+
+/// Scan the raw equation text for `diff(<func>, <var>...)` calls and collect the
+/// distinct differentiation variables attached to `func`. Textual on purpose: the
+/// ODE must not be parsed/simplified at the wire layer (the tree would collapse).
+/// Word-boundary guarded so `mydiff(...)` never matches.
+fn scan_dsolve_diff_vars(equation: &str, func: &str) -> Vec<String> {
+    let bytes = equation.as_bytes();
+    let mut vars: Vec<String> = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = equation[search_from..].find("diff") {
+        let start = search_from + rel;
+        search_from = start + 4;
+        // Word boundary: previous char must not be alphanumeric or '_'.
+        if start > 0 {
+            let prev = bytes[start - 1] as char;
+            if prev.is_alphanumeric() || prev == '_' {
+                continue;
+            }
+        }
+        // Skip whitespace, expect '('.
+        let mut i = start + 4;
+        while i < equation.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= equation.len() || bytes[i] as char != '(' {
+            continue;
+        }
+        // Extract the full argument list of THIS call by paren depth.
+        let args_start = i + 1;
+        let mut depth = 1i32;
+        let mut j = args_start;
+        while j < equation.len() && depth > 0 {
+            match bytes[j] as char {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                _ => {}
+            }
+            j += 1;
+        }
+        if depth != 0 {
+            continue;
+        }
+        let args = split_top_level_commas(&equation[args_start..j - 1]);
+        if args.len() < 2 {
+            continue;
+        }
+        if args[0].trim() != func {
+            continue;
+        }
+        let var = args[1].trim();
+        if !var.is_empty()
+            && var.chars().next().is_some_and(|c| c.is_alphabetic())
+            && var.chars().all(|c| c.is_alphanumeric() || c == '_')
+            && !vars.iter().any(|v| v == var)
+        {
+            vars.push(var.to_string());
+        }
+    }
+    vars
+}
+
+fn is_plain_identifier(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_alphabetic())
+        && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// Parse `dsolve(<equation>, <func>[, <var>[, <condition>...]])`.
+///
+/// Accepted shapes (D1 + resolved question #1 of the Fase 4 scoping):
+/// - canonical: `dsolve(diff(y,x)=x*y, y, x)` (+ trailing textual conditions);
+/// - arity-2 sugar: `dsolve(diff(y,x)=x*y, y)` — the variable is inferred from
+///   the unique `diff(y, <var>)` occurrence in the equation text;
+/// - a third argument that is not a plain identifier is treated as the first
+///   condition with the variable inferred (`dsolve(eq, y, y(0)=3)`).
+///
+/// Returns `None` for every malformed `dsolve(` form; the companion
+/// `parse_eval_dsolve_command_error` pre-pass owns the usage message so the
+/// input never falls through to the cryptic statement-parse error.
+fn parse_dsolve_command(input: &str) -> Option<(String, String, String, Vec<String>)> {
+    let trimmed = input.trim();
+    if !trimmed.to_lowercase().starts_with("dsolve(") || !trimmed.ends_with(')') {
+        return None;
+    }
+    let content = trimmed["dsolve(".len()..trimmed.len() - 1].trim();
+    let parts = split_top_level_commas(content);
+    if parts.len() < 2 {
+        return None;
+    }
+    let equation = parts[0].trim().to_string();
+    let func = parts[1].trim().to_string();
+    if equation.is_empty() || !is_plain_identifier(&func) {
+        return None;
+    }
+    let diff_vars = scan_dsolve_diff_vars(&equation, &func);
+    let (var, conditions_start) = if parts.len() >= 3 && is_plain_identifier(parts[2].trim()) {
+        (parts[2].trim().to_string(), 3)
+    } else {
+        // Arity-2 sugar: infer the variable; ambiguous/missing diff declines to
+        // the error pre-pass.
+        if diff_vars.len() != 1 {
+            return None;
+        }
+        (diff_vars[0].clone(), 2)
+    };
+    // The equation must contain diff(func, var): otherwise it is not an ODE in
+    // the declared unknown/variable (wrong-variable mismatches decline too).
+    if !diff_vars.contains(&var) {
+        return None;
+    }
+    let conditions: Vec<String> = parts[conditions_start..]
+        .iter()
+        .map(|c| c.trim().to_string())
+        .collect();
+    if conditions.iter().any(|c| c.is_empty()) {
+        return None;
+    }
+    Some((equation, func, var, conditions))
+}
+
+fn dsolve_command_usage_error() -> String {
+    "Invalid dsolve command. Expected dsolve(diff(y,x) = f(x,y), y, x[, conditions...]), e.g. dsolve(diff(y,x)=x*y, y, x).".to_string()
+}
+
+/// Usage-error pre-pass for malformed `dsolve(` inputs (molde: the limit
+/// pre-pass). Without it, a malformed dsolve falls to statement-parse and dies
+/// with a cryptic parse error on the inner `=`. Returns `None` for well-formed
+/// commands (already captured by `parse_dsolve_command`) and for inputs that do
+/// not start with `dsolve(` (composed expressions like `1+dsolve(...)` keep
+/// their generic-eval decline).
+pub fn parse_eval_dsolve_command_error(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if !trimmed.to_lowercase().starts_with("dsolve(") {
+        return None;
+    }
+    if parse_dsolve_command(trimmed).is_some() {
+        return None;
+    }
+    if !trimmed.ends_with(')') {
+        // `dsolve(...)+1` and other composed heads: general eval owns them.
+        let mut depth = 0i32;
+        for (i, ch) in trimmed.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 && i + 1 < trimmed.len() {
+                        return None;
+                    }
+                }
+                _ => {}
+            }
+        }
+        return Some(dsolve_command_usage_error());
+    }
+    let content = trimmed["dsolve(".len()..trimmed.len() - 1].trim();
+    let parts = split_top_level_commas(content);
+    // SymPy-style `y(x)` heads: name the fix explicitly (today this dies in the
+    // unknown-function gate with no guidance).
+    if parts.len() >= 2 {
+        let func_part = parts[1].trim();
+        let sympy_func = func_part
+            .split_once('(')
+            .map(|(head, _)| head.trim().to_string())
+            .filter(|head| is_plain_identifier(head));
+        if let Some(head) = sympy_func {
+            return Some(format!(
+                "Invalid dsolve unknown `{func_part}`: write the function as a bare name. Use dsolve(diff({head},x)=..., {head}, x), not {head}(x)."
+            ));
+        }
+        if is_plain_identifier(func_part) {
+            let diff_vars = scan_dsolve_diff_vars(parts[0].trim(), func_part);
+            if diff_vars.is_empty() {
+                return Some(format!(
+                    "Invalid dsolve equation: it contains no diff({func_part}, ...) — not an ODE in `{func_part}`. Expected dsolve(diff(y,x) = f(x,y), y, x), e.g. dsolve(diff(y,x)=x*y, y, x)."
+                ));
+            }
+            if parts.len() >= 3 && is_plain_identifier(parts[2].trim()) {
+                let var = parts[2].trim();
+                if !diff_vars.iter().any(|v| v == var) {
+                    return Some(format!(
+                        "Invalid dsolve variable `{var}`: the equation differentiates {func_part} with respect to {}, not `{var}`.",
+                        diff_vars.join(", ")
+                    ));
+                }
+            } else if diff_vars.len() > 1 {
+                return Some(format!(
+                    "Ambiguous dsolve variable: the equation contains diff({func_part}, ...) in several variables ({}). Pass the variable explicitly: dsolve(equation, {func_part}, var).",
+                    diff_vars.join(", ")
+                ));
+            }
+        }
+    }
+    Some(dsolve_command_usage_error())
 }
 
 pub fn parse_eval_limit_command_error(input: &str) -> Option<String> {
@@ -2520,6 +2735,119 @@ mod tests {
         assert!(parse_solve_system_list_command("solve([], [])").is_none());
         // The single-equation `solve(eq, var)` form is NOT captured by the list parser.
         assert!(parse_solve_system_list_command("solve(x+y=3, x)").is_none());
+    }
+
+    #[test]
+    fn parse_eval_special_command_parses_dsolve_forms() {
+        // Canonical 3-arg form.
+        assert_eq!(
+            super::parse_eval_special_command("dsolve(diff(y,x)=x*y, y, x)"),
+            Some(super::EvalSpecialCommand::Dsolve {
+                equation: "diff(y,x)=x*y".to_string(),
+                func: "y".to_string(),
+                var: "x".to_string(),
+                conditions: vec![],
+            })
+        );
+        // Arity-2 sugar: the variable is inferred from diff(y, <var>).
+        assert_eq!(
+            super::parse_eval_special_command("dsolve(diff(y,x)=x*y, y)"),
+            Some(super::EvalSpecialCommand::Dsolve {
+                equation: "diff(y,x)=x*y".to_string(),
+                func: "y".to_string(),
+                var: "x".to_string(),
+                conditions: vec![],
+            })
+        );
+        // Conditions stay textual; a non-identifier third arg is a condition.
+        assert_eq!(
+            super::parse_eval_special_command("dsolve(diff(y,x)=-y, y, x, y(0)=3)"),
+            Some(super::EvalSpecialCommand::Dsolve {
+                equation: "diff(y,x)=-y".to_string(),
+                func: "y".to_string(),
+                var: "x".to_string(),
+                conditions: vec!["y(0)=3".to_string()],
+            })
+        );
+        assert_eq!(
+            super::parse_eval_special_command("dsolve(diff(y,x)=-y, y, y(0)=3)"),
+            Some(super::EvalSpecialCommand::Dsolve {
+                equation: "diff(y,x)=-y".to_string(),
+                func: "y".to_string(),
+                var: "x".to_string(),
+                conditions: vec!["y(0)=3".to_string()],
+            })
+        );
+        // Second-order raw shape still parses at the wire (the action owns the
+        // higher-order decline).
+        assert_eq!(
+            super::parse_eval_special_command("dsolve(diff(y,x,2)+4*y=0, y, x)"),
+            Some(super::EvalSpecialCommand::Dsolve {
+                equation: "diff(y,x,2)+4*y=0".to_string(),
+                func: "y".to_string(),
+                var: "x".to_string(),
+                conditions: vec![],
+            })
+        );
+        // No prefix collision in either direction.
+        assert!(matches!(
+            super::parse_eval_special_command("solve(x^2=4, x)"),
+            Some(super::EvalSpecialCommand::Solve { .. })
+        ));
+    }
+
+    #[test]
+    fn parse_eval_dsolve_command_error_reports_usage_and_sympy_style() {
+        use super::parse_eval_dsolve_command_error as err_of;
+        // Well-formed commands produce no pre-pass error.
+        assert!(err_of("dsolve(diff(y,x)=x*y, y, x)").is_none());
+        assert!(err_of("dsolve(diff(y,x)=x*y, y)").is_none());
+        // Non-dsolve inputs are untouched.
+        assert!(err_of("solve(x^2=4, x)").is_none());
+        // Composed expressions decline to general eval (no wire error).
+        assert!(err_of("dsolve(diff(y,x)=y, y, x)+1").is_none());
+        // The D10 prey: `dsolve(y, x)` is now an EXPLICIT usage error (no diff).
+        assert!(err_of("dsolve(y, x)")
+            .expect("usage error")
+            .contains("contains no diff"));
+        // SymPy-style `y(x)` unknown names the fix.
+        assert!(err_of("dsolve(diff(y(x),x)=y(x), y(x))")
+            .expect("usage error")
+            .contains("not y(x)"));
+        // Wrong explicit variable names the mismatch.
+        assert!(err_of("dsolve(diff(y,t)=y, y, x)")
+            .expect("usage error")
+            .contains("with respect to t"));
+        // Ambiguous arity-2 inference asks for the explicit variable.
+        assert!(err_of("dsolve(diff(y,x)+diff(y,t)=0, y)")
+            .expect("usage error")
+            .contains("Ambiguous"));
+        // Bare malformed head.
+        assert!(err_of("dsolve(y)")
+            .expect("usage error")
+            .contains("Invalid dsolve"));
+    }
+
+    #[test]
+    fn scan_dsolve_diff_vars_respects_word_boundaries_and_nesting() {
+        assert_eq!(
+            super::scan_dsolve_diff_vars("diff(y,x)=x*y", "y"),
+            vec!["x"]
+        );
+        // Nested diff(diff(y,x),x): the inner call carries the variable.
+        assert_eq!(
+            super::scan_dsolve_diff_vars("diff(diff(y,x),x)=0", "y"),
+            vec!["x"]
+        );
+        // Word boundary: mydiff does not match.
+        assert!(super::scan_dsolve_diff_vars("mydiff(y,x)=0", "y").is_empty());
+        // Other-function diffs do not attach to y.
+        assert!(super::scan_dsolve_diff_vars("diff(z,x)=z", "y").is_empty());
+        // Spaces tolerated.
+        assert_eq!(
+            super::scan_dsolve_diff_vars("diff( y , x ) = y", "y"),
+            vec!["x"]
+        );
     }
 
     #[test]

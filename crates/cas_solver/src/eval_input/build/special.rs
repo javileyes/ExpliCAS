@@ -76,5 +76,28 @@ pub(super) fn build_special_command_request(
                 auto_store,
             })
         }
+        EvalSpecialCommand::Dsolve {
+            equation,
+            func,
+            var,
+            conditions,
+        } => {
+            // The ODE equation parses to an `Equal(lhs, rhs)` tree that the
+            // dsolve action reads RAW (never pre-simplified: `diff(y,x)` would
+            // collapse to `0`).
+            let (parsed, _original_equation) =
+                parse_solve_input_for_eval_request(ctx, &equation)
+                    .map_err(|e| format!("Parse error in dsolve equation: {e}"))?;
+            Ok(PreparedEvalRequest::Eval {
+                raw_input: raw_input.to_string(),
+                parsed,
+                action: EvalNonSolveAction::Dsolve {
+                    func,
+                    var,
+                    conditions,
+                },
+                auto_store,
+            })
+        }
     }
 }

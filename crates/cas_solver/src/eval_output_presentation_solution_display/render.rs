@@ -50,7 +50,8 @@ pub(crate) fn format_output_solution_set(ctx: &Context, solution_set: &SolutionS
             // `integrate(...)` residual convention. The old "Solve: … = 0"
             // wrapper both duplicated the framing and appended a dangling
             // "= 0" that misdescribed inequalities.
-            if matches!(ctx.get(*expr), cas_ast::Expr::Function(name, _) if ctx.sym_name(*name) == "solve")
+            // `dsolve(...)` residual echoes (Fase 4) are self-describing too.
+            if matches!(ctx.get(*expr), cas_ast::Expr::Function(name, _) if matches!(ctx.sym_name(*name), "solve" | "dsolve"))
             {
                 expr_str
             } else {

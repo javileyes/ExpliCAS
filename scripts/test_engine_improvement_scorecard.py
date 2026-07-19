@@ -244,6 +244,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "calculus_limit_compact_contract",
                 "calculus_limit_presimplify_contract",
                 "calculus_limit_command_matrix_smoke",
+                "calculus_dsolve_command_matrix_smoke",
                 "calculus_integrate_compact_contract",
                 "calculus_integrate_backend_observability",
                 "calculus_integrate_backend_mode_boundary",
@@ -257,6 +258,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("calculus_limit_compact_contract", fast_embedded_names)
         self.assertIn("calculus_limit_presimplify_contract", fast_embedded_names)
         self.assertIn("calculus_limit_command_matrix_smoke", fast_embedded_names)
+        self.assertIn("calculus_dsolve_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
         self.assertIn("calculus_integrate_backend_observability", fast_embedded_names)
         self.assertIn("calculus_integrate_backend_mode_boundary", fast_embedded_names)
@@ -288,6 +290,8 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("calculus_limit_presimplify_contract", full_names)
         self.assertIn("calculus_limit_command_matrix_smoke", guardrail_names)
         self.assertIn("calculus_limit_command_matrix_smoke", full_names)
+        self.assertIn("calculus_dsolve_command_matrix_smoke", guardrail_names)
+        self.assertIn("calculus_dsolve_command_matrix_smoke", full_names)
         self.assertIn("calculus_integrate_backend_observability", guardrail_names)
         self.assertIn("calculus_integrate_backend_observability", full_names)
         self.assertIn("calculus_integrate_backend_mode_boundary", guardrail_names)

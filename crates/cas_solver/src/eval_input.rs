@@ -14,6 +14,11 @@ pub enum EvalNonSolveAction {
         var: String,
         approach: cas_math::limit_types::Approach,
     },
+    Dsolve {
+        func: String,
+        var: String,
+        conditions: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
