@@ -22602,8 +22602,18 @@ fn try_standard_exact_additive_pair_chain_pipeline_shortcut(
 
     let needs_domain_resimplify =
         exact_additive_pair_chain_result_needs_domain_resimplify(options, ctx, expr, rewritten);
+    // A VARIABLE-FREE, non-literal residual (`1/e^0 - 1`, `ln(1)`, `sin(0)`)
+    // always takes the re-pass: the cancellation can strand a foldable
+    // constant one pass short of the fixpoint (caught by the dsolve O3
+    // verification gate), and the shape-list triggers below cannot enumerate
+    // every constant head. By construction, not by list: a constant tree is
+    // small, the re-pass runs once, and a non-foldable constant (`pi - e`)
+    // comes back unchanged.
+    let constant_residual_needs_fold = !matches!(ctx.get(rewritten), Expr::Number(_))
+        && cas_ast::traversal::collect_variables(ctx, rewritten).is_empty();
     let should_resimplify =
         expr_contains_any_builtin_local(ctx, rewritten, &[BuiltinFn::Atan, BuiltinFn::Arctan])
+            || constant_residual_needs_fold
             || matches_direct_small_zero_identity_root(ctx, rewritten)
             || matches_direct_small_zero_or_known_pair_base_root(ctx, rewritten)
             || cas_math::numeric_eval::contains_i(ctx, rewritten)
@@ -37939,6 +37949,39 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         assert_eq!(render(&simplifier.context, rewritten), "1/2 * pi");
+    }
+
+    #[test]
+    fn simplify_pipeline_revisits_constant_residual_after_additive_zero_cancellation_regression() {
+        // Fixpoint gap caught by the dsolve O3 verification gate: the ±0
+        // cancellation shortcut left a VARIABLE-FREE residual (`1/e^0 - 1`,
+        // `ln(1)`, `sin(0)`, `sqrt(1) - 1`) un-folded because the resimplify
+        // trigger was an enumerated shape list. A constant, non-literal
+        // residual must always take the (cheap, single) re-pass.
+        for (input, expected) in [
+            ("(1/e^0 + 0 - 1) - 0", "0"),
+            ("(ln(1) + 0) - 0", "0"),
+            ("(sin(0) + 0) - 0", "0"),
+            ("(sqrt(1) + 0 - 1) - 0", "0"),
+            ("(1/ln(e) + 0 - 1) - 0", "0"),
+            // Non-foldable constant residuals stay put (the re-pass is a
+            // no-op, never a fabrication).
+            ("(pi - e + 0) - 0", "pi - e"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let expr = parse(input, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            let mut orchestrator = Orchestrator::new();
+            let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+            assert_eq!(render(&simplifier.context, rewritten), expected, "{input}");
+        }
+        // Variable-bearing forms keep their existing path (no new trigger).
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("(x + 0) - 0", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "x");
     }
 
     #[test]

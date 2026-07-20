@@ -1201,10 +1201,11 @@ impl Engine {
 
     /// True when the FULL evaluator reduces `e` to exactly `Number(0)`, with
     /// numeric verification disabled (the D5 ritual: a probe never confirms).
-    /// Runs up to TWO passes: the pipeline can stop one step short of the
-    /// fixpoint (`(1/e^0 + 0 - 1) - 0` folds to `1/e^0 - 1` in one pass and
-    /// to `0` only on the next — a named engine-coverage candidate); iterating
-    /// the exact evaluator never changes semantics, only reaches the fixpoint.
+    /// Runs up to TWO passes as defense in depth: the root fixpoint gap that
+    /// motivated this (`(1/e^0 + 0 - 1) - 0` stranded at `1/e^0 - 1` by the
+    /// additive-pair shortcut) is CLOSED in the orchestrator (constant
+    /// residuals always re-pass), but iterating the exact evaluator never
+    /// changes semantics and the second pass only runs when the first fails.
     fn reduces_to_zero_exact(&mut self, options: &crate::options::EvalOptions, e: ExprId) -> bool {
         let saved_numeric = self.simplifier.allow_numerical_verification;
         self.simplifier.allow_numerical_verification = false;

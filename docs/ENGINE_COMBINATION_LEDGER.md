@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 655 (newest first)
+Active entries: 656 (newest first)
 
 - 2026-07-20 | `retained` | `cas_engine/eval/dsolve_action.rs` (`try_extract_exact_form`: extractor M,N s... | CAPACIDAD (Fase 4 · O2, tanda-4 ciclo 3/4): exactas M + N·y′ = 0 por delegación en el potencial F6 — y el nivel-2 D11 (full-eval) GRADÚA el trascendente en vez de solo pinearlo
 - 2026-07-20 | `retained` | `cas_api_models/wire_types.rs` (`split_dsolve_initial_condition`: split textu... | CAPACIDAD (Fase 4 · O3, tanda-4 ciclo 4/4): condiciones iniciales — la constante se fija con verificación DOBLE; el gate de cero caza un gap de fixpoint del pipeline; TANDA-4 4/4 COMPLETA
+- 2026-07-20 | `retained` | `cas_engine/orchestrator.rs` (`try_standard_exact_additive_pair_chain_pipelin... | ROBUSTEZ (chip task_ccb403fd, post tanda-4): el shortcut de pares aditivos re-pasa TODO residuo constante — muere otro colador por lista; el fixpoint ±0 queda cerrado en la raíz
 - 2026-07-19 | `retained` | `cas_math/limit_types.rs` (`LimitOptions.complex_enabled`) + `cas_math/limits... | SOUNDNESS P0 (Fase 3 · F0): kill-switch de dominio del motor de límites — bajo complex TODO límite declina honesto; punto-con-I en real deja de sustituirse
 - 2026-07-19 | `retained` | `cas_math/numeric_eval.rs` (`expr_contains_imaginary::is_neg_const` ampliado ... | SOUNDNESS (Fase 3 · F0b): el barrido adversarial post-commit cazó 2 agujeros del kill-switch — detector exacto de punto-imaginario + threading del eje de dominio al comando limit del REPL
 - 2026-07-19 | `retained` | `cas_math/limits_support.rs` (`depends_on` atraviesa `Expr::Matrix::data`; br... | SOUNDNESS P0 (chip del barrido F0): limit(Matrix) afirmaba la matriz con la variable DENTRO como su propio "valor" — fix raíz en depends_on + límite componentwise all-or-nothing
@@ -20976,3 +20977,17 @@ Active entries: 655 (newest first)
 - retained learning:
   - **Un gate exacto es un detector de gaps del pipeline gratis**: la verificación por-residuo-a-cero ejercita el evaluador sobre formas que ningún test unitario escribe (subs de puntos en árboles construidos), y cada decline "imposible" es un bug de canonización cazado — segunda vez en la tanda (L11 dobles-denominadores, ahora fixpoint-±0). El patrón dos-pasadas es la mitigación local sound; el fix de orquestación es el chip.
   - PRÓXIMO PELDAÑO: O4 (2º orden homogénea coef. constantes — discriminante exacto interno D9; V31 con el 2×2 de constantes post-D16 ya desbloqueado).
+
+## 2026-07-20 - ROBUSTEZ (chip task_ccb403fd, post tanda-4): el shortcut de pares aditivos re-pasa TODO residuo constante — muere otro colador por lista; el fixpoint ±0 queda cerrado en la raíz
+
+- area: `cas_engine/orchestrator.rs` (`try_standard_exact_additive_pair_chain_pipeline_shortcut`: nuevo disparador `constant_residual_needs_fold` en `should_resimplify` — un residuo LIBRE DE VARIABLES y no-literal SIEMPRE toma la re-pasada; antes la decisión era una lista de 43 matchers de forma (`matches_direct_small_zero_identity_root`) + arctan/i/diff/abs-sqrt que no podía enumerar cada cabeza constante) + test de regresión con la familia completa + comentario del gate dsolve actualizado (la doble pasada queda como defensa en profundidad)
+- status: `retained`. El chip del gap de fixpoint cerrado en la CAUSA raíz.
+- capture:
+  - investment_class: robustness/engine-cobertura (candidato nombrado por el gate de dsolve O3 — quinta aparición del patrón "gate exacto caza gap del pipeline").
+  - cell: `(1/e^0 + 0 - 1) - 0` → `0` (era `1/e^0 - 1` atascado); familia adversarial COMPLETA cerrada: `(ln(1)+0)-0` → `0` (era `ln(1)`), `(sin(0)+0)-0` → `0` (era `sin(0)`), `(sqrt(1)+0-1)-0` → `0` (era `sqrt(1)-1`), `(1/ln(e)+0-1)-0` → `0`, `(cos(0)+0-1)-0` → `0`, `(e^(2·0)+0-1)-0` → `0`; los no-plegables intactos (`(pi-e+0)-0` → `pi-e`) y las formas con variables sin ruta nueva (`(x+0)-0` → `x`).
+  - **Mecánica del bug**: el shortcut de raíz cancela los pares ±0 ANTES de las fases per-nodo y emite su resultado DIRECTO; la re-simplificación solo se disparaba por una lista enumerada de formas. `1/e^0 − 1` (residuo constante con cabeza no enumerada) quedaba varado a UNA pasada del fixpoint. El sondeo mostró que la condición exacta era ±0 interno Y externo simultáneos con átomo función-constante — cualquier nivel único cerraba por otras rutas.
+  - **El fix es por-construcción, no por lista** (doctrina F11): "residuo constante no-literal ⇒ re-pasa" cubre toda cabeza presente y futura; el árbol es pequeño por naturaleza de la cancelación, la re-pasada corre UNA vez, y un constante no-plegable vuelve idéntico (jamás fabrica). El disparador nuevo NO toca formas con variables (cero drift fuera de la familia).
+  - La doble pasada del gate dsolve (`reduces_to_zero_exact`) se CONSERVA como defensa en profundidad: coste cero en camino feliz (solo corre si la primera falla) y protege de otras formas del mismo fenómeno aún no descubiertas.
+- validación: workspace failed:0; clippy --all-targets limpio; contratos dsolve 4/4 verdes; engine-fast + scorecards guardrail/pressure verdes con huella contador-idéntica (el disparador solo actúa sobre residuos constantes varados — ninguna lane pineaba una forma atascada).
+- retained learning:
+  - **"Constante no-literal tras una cancelación" es el disparador de re-visita universal que las listas de formas aproximaban**: 43 matchers enumerados intentaban predecir qué residuos merecen re-pasada; la propiedad semántica (libre-de-variables ⇒ plegable o inocuo) los subsume para esta clase entera — sexta muerte de un colador léxico/por-lista en el repo.
