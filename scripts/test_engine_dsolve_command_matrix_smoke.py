@@ -17,9 +17,10 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_o0_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        # O0-O5 registry: 7 separable + 4 linear + 3 exact + 3 first-order-IVP
-        # + 5 second-order + 5 UC supported rows + 8 honest residual rows.
-        self.assertEqual(len(cases), 35)
+        # O0-O8 registry: 7 separable + 4 linear + 3 exact + 3 first-order-IVP
+        # + 5 second-order + 5 UC + 3 Bernoulli + 2 homogeneous supported rows
+        # + 8 honest residual rows.
+        self.assertEqual(len(cases), 40)
         names = {case.name for case in cases}
         self.assertIn("separable_growth_textbook", names)
         self.assertIn("separable_implicit_circle", names)
@@ -32,7 +33,10 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("linear_trig_rhs", names)
         self.assertIn("exact_polynomial_potential", names)
         self.assertIn("exact_transcendental_full_eval_level2", names)
-        self.assertIn("residual_nonexact_nonlinear", names)
+        self.assertIn("bernoulli_basic_n2", names)
+        self.assertIn("homogeneous_explicit_h18", names)
+        self.assertIn("homogeneous_implicit_h19", names)
+        self.assertIn("residual_bernoulli_n3_branch_verification", names)
         self.assertIn("residual_riccati_never_fabricate", names)
         self.assertIn("residual_airy_variable_coefficients", names)
         self.assertIn("second_order_complex_envelope_o23", names)
@@ -49,7 +53,7 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
 
         supported = [case for case in cases if case.outcome == "supported"]
         residual = [case for case in cases if case.outcome == "residual"]
-        self.assertEqual(len(supported), 27)
+        self.assertEqual(len(supported), 32)
         self.assertEqual(len(residual), 8)
 
         # Verification-gated emission: every supported row is verified; every
@@ -76,7 +80,15 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         families = {case.family for case in cases}
         self.assertEqual(
             families,
-            {"separable", "lineal_1o", "exacta", "coef_const_2o", "UC"},
+            {
+                "separable",
+                "lineal_1o",
+                "exacta",
+                "coef_const_2o",
+                "UC",
+                "bernoulli",
+                "homogenea",
+            },
         )
         self.assertEqual(
             {case.order_regime for case in cases},

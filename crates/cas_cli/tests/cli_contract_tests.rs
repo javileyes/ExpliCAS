@@ -8994,7 +8994,10 @@ fn dsolve_linear_first_order_o1_contract() {
     ] {
         let out = r(probe);
         assert!(out.starts_with("dsolve("), "no-lineal declina a eco: {out}");
-        assert!(err_of(probe).contains("O8"), "decline nombra ciclo dueño");
+        assert!(
+            err_of(probe).contains("método clásico"),
+            "decline nombra el contrato residual"
+        );
     }
 
     // Pins de no-robo: los separables S1/S2 siguen byte-idénticos (el
@@ -9083,11 +9086,13 @@ fn dsolve_exact_o2_contract() {
         "y = C / sqrt(2·x)"
     );
 
-    // No-exacta no-lineal no-separable → residual honesto (un campo no
-    // conservativo JAMÁS verifica: la detección de exactitud es gratis).
-    let neg = r("dsolve((y + x*y^2) + x*diff(y,x) = 0, y, x)");
-    assert!(neg.starts_with("dsolve("), "no-exacta declina a eco: {neg}");
-    assert!(err_of("dsolve((y + x*y^2) + x*diff(y,x) = 0, y, x)").contains("O8"));
+    // La no-exacta (y+xy²)+x·y' = 0 GRADUÓ en O8: es Bernoulli n=2 (el pin
+    // de decline migró a resolución — el camino exacto sigue declinando y el
+    // dispatcher cae a Bernoulli).
+    assert_eq!(
+        first_line("dsolve((y + x*y^2) + x*diff(y,x) = 0, y, x)"),
+        "y = 1 / (x·ln(x) + C·x)"
+    );
 
     // Pins de no-robo: separable y lineal byte-idénticos.
     assert_eq!(
@@ -9492,4 +9497,109 @@ fn dsolve_undetermined_coefficients_o5_contract() {
     assert!(es.contains("coeficientes indeterminados"), "{es}");
     let en = steps_of("dsolve(diff(y,x,2)+y=x, y, x)", Some("en"));
     assert!(en.contains("undetermined coefficients"), "{en}");
+}
+
+#[test]
+fn dsolve_bernoulli_homogeneous_o8_contract() {
+    // Fase 4 · O8: Bernoulli (v = y^(1−n) → lineal compartido → back-subs) y
+    // homogéneas (v = y/x → separable en v) — composición de métodos ya
+    // graduados, emisión gateada (D5) en todas las rutas.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // B16/B17 (n = 2, la forma explícita textbook y = 1/v).
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y=y^2, y, x)"),
+        "y = 1 / (C·e^x + 1)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y/x=x*y^2, y, x)"),
+        "y = 1 / (C·x - x^2)"
+    );
+    // Warning de solución singular (D12: y = 0 descartada al dividir por yⁿ).
+    assert!(err_of("dsolve(diff(y,x)+y=y^2, y, x)").contains("solución singular"));
+
+    // H18: homogénea con despeje explícito textbook.
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=(x+y)/x, y, x)"),
+        "y = x·ln(x) + C·x"
+    );
+    // H19: la ruta implícita RACIONAL esquiva el residuo surd del scoping.
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=(x^2+y^2)/(x*y), y, x)"),
+        "y^2 / (2·x^2) - ln(x) = C"
+    );
+
+    // Bernoulli + IVP (la condición fija C con verificación doble).
+    let ivp = first_line("dsolve(diff(y,x)+y=y^2, y, x, y(0)=2)");
+    assert!(ivp.starts_with("y = 1 /"), "Bernoulli IVP resuelve: {ivp}");
+
+    // n ≠ 2: decline honesto nombrando el peldaño (verificación por rama).
+    let n3 = r("dsolve(diff(y,x)+y=y^3, y, x)");
+    assert!(n3.starts_with("dsolve("), "n=3 declina: {n3}");
+    assert!(err_of("dsolve(diff(y,x)+y=y^3, y, x)").contains("verificación por rama"));
+
+    // Riccati sigue residual honesto permanente (Z1/Z5 never-fabricate).
+    let riccati = r("dsolve(diff(y,x)=x^2+y^2, y, x)");
+    assert!(
+        riccati.starts_with("dsolve("),
+        "Riccati residual: {riccati}"
+    );
+    assert!(err_of("dsolve(diff(y,x)=x^2+y^2, y, x)").contains("Riccati"));
+
+    // Homogénea cuya reducción no cierra en el integrador → residual honesto
+    // CON DUEÑO (el peldaño es del integrador racional, no de dsolve).
+    let hard = r("dsolve(diff(y,x)=(2*x*y)/(x^2-y^2), y, x)");
+    assert!(hard.starts_with("dsolve("), "reducción no cierra: {hard}");
+    assert!(err_of("dsolve(diff(y,x)=(2*x*y)/(x^2-y^2), y, x)").contains("F(v)−v"));
+
+    // Pins de no-robo del dispatcher: separable/lineal byte-idénticos.
+    assert_eq!(first_line("dsolve(diff(y,x)=y/x, y, x)"), "y = C·x");
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y=x, y, x)"),
+        "y = C / e^x + x - 1"
+    );
+
+    // Narración O8 keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(diff(y,x)+y=y^2, y, x)", None);
+    assert!(es.contains("forma de Bernoulli"), "{es}");
+    assert!(es.contains("se vuelve lineal"), "{es}");
+    let en = steps_of("dsolve(diff(y,x)+y=y^2, y, x)", Some("en"));
+    assert!(en.contains("Bernoulli form"), "{en}");
+    let es_h = steps_of("dsolve(diff(y,x)=(x+y)/x, y, x)", None);
+    assert!(es_h.contains("EDO homogénea"), "{es_h}");
+    let en_h = steps_of("dsolve(diff(y,x)=(x+y)/x, y, x)", Some("en"));
+    assert!(en_h.contains("homogeneous ODE"), "{en_h}");
 }

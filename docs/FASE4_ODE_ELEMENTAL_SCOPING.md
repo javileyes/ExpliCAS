@@ -253,7 +253,7 @@ Orden por dependencia + ROI. El costo fijo grande va primero (O0); después cada
 - **Depende:** O0-O6 (audita lo existente).
 - **Retención (pins):** smoke de examples con resultados esperados; help/completer no rompen tests de CLI.
 
-#### O8 — Bernoulli + homogéneas-sustitución **[S-M / M] — cierre curricular, NO opcional (probes graduate)**
+#### O8 — Bernoulli + homogéneas-sustitución **[S-M / M] — cierre curricular, NO opcional (probes graduate)** ☑ *(graduado 2026-07-22, hash en el ledger: B16/B17 (n=2 explícita 1/v, gateada) + H18 explícita textbook + H19 implícita RACIONAL `y²/(2x²)−ln(x)=C` — la mitigación D5 no hizo falta: la ruta implícita esquiva el surd por diseño; núcleo lineal EXTRAÍDO y compartido; bonus: la E-neg de O2 `(y+xy²)+x·y'=0` graduó como Bernoulli; n≠2 declina intencional (la relación y^(1−n)=v no es identidad libre — verificación por rama como peldaño); el cero aparcado del RHS mató el matcher hasta descartarlo explícito (5ª aparición de la lección); 1er orden clásico COMPLETO; familias `bernoulli`/`homogenea` 40 casos)*
 - **Gradúa:** B16-B17 (matcher y'+py=qy^n pelando coef; v=y^(1−n) → lineal O1 → back-subs); H18-H19 (detector subs+free-vars verificado; v=y/x → separable O0 en v → back-subs); H19 con la mitigación D5 (base atomizada o verificación al cuadrado) — si aún no verifica, residual honesto CON DUEÑO (jamás emitir sin gate); ∫1/(F(v)−v) que declina → residual honesto; familias `bernoulli`/`homogenea`.
 - **Inserción:** dos matchers + dos transformaciones dentro del dispatcher de métodos.
 - **Reuso:** O0 (separables) + O1 (lineal) COMPLETOS — cero primitivas nuevas.

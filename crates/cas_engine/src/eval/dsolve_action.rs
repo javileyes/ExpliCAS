@@ -1089,9 +1089,47 @@ impl Engine {
                     ));
                 }
             }
+            // O8a: Bernoulli y' + p·y = q·yⁿ.
+            if let Some(bern) =
+                try_match_bernoulli(&mut self.simplifier.context, &ode_eq, diff_sym, func, var)
+            {
+                let general =
+                    self.eval_dsolve_bernoulli(options, resolved, func, var, &ode_eq, bern)?;
+                return Ok(self.maybe_apply_initial_condition(
+                    options,
+                    general,
+                    initial_condition.as_ref(),
+                    resolved,
+                    func,
+                    var,
+                    &ode_eq,
+                ));
+            }
+            // O8b: homogeneous y' = F(y/x) on the isolated RHS.
+            if let Some(iso_rhs) = isolated_rhs {
+                let mut verify_options = options.clone();
+                verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+                if let Some((v_var, f_v)) =
+                    try_match_homogeneous_rhs(self, &verify_options, iso_rhs, func, var)
+                {
+                    if let Some(general) = self.eval_dsolve_homogeneous(
+                        options, resolved, func, var, &ode_eq, iso_rhs, v_var, f_v,
+                    )? {
+                        return Ok(self.maybe_apply_initial_condition(
+                            options,
+                            general,
+                            initial_condition.as_ref(),
+                            resolved,
+                            func,
+                            var,
+                            &ode_eq,
+                        ));
+                    }
+                }
+            }
             let r = mk_residual(
                 &mut self.simplifier.context,
-                "La EDO no es separable, lineal ni exacta; Bernoulli/homogéneas llegan en el ciclo O8",
+                "La EDO de 1er orden no casa ningún método clásico (separable/lineal/exacta/Bernoulli/homogénea); Riccati y formas sin método clásico son residuales honestos permanentes",
             );
             return Ok(r);
         };
@@ -1471,6 +1509,76 @@ impl Engine {
 
     /// O1: linear first-order `y' + p·y = q` via the integrating factor
     /// μ = e^(∫p dx); emission stays verification-gated (D5).
+    /// Core of the integrating-factor method: μ = e^(∫p dx) (abs stripped —
+    /// D12), candidate = ∫μq/μ + C/μ in the SPLIT per-term-folded form (the
+    /// O1 lesson: the joined quotient defeats the verifier and the full fold
+    /// re-joins it). Shared by the linear path (O1) and the Bernoulli
+    /// reduction (O8). `Err` = the honest-decline reason.
+    fn linear_general_candidate(
+        &mut self,
+        verify_options: &crate::options::EvalOptions,
+        p: ExprId,
+        q: ExprId,
+        func: &str,
+        var: &str,
+        c_var: ExprId,
+    ) -> Result<(ExprId, ExprId, ExprId), &'static str> {
+        let ctx = &mut self.simplifier.context;
+        let p_int = if matches!(ctx.get(p), cas_ast::Expr::Number(n) if n.is_zero()) {
+            ctx.num(0)
+        } else {
+            match crate::rules::calculus::integrate_with_trace(ctx, p, var) {
+                Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+                _ => return Err(
+                    "La integral ∫ p(x) dx del factor integrante no cierra en forma elemental; se declina honesto",
+                ),
+            }
+        };
+        let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+        let mu_raw = ctx.add(cas_ast::Expr::Pow(e_const, p_int));
+        let mu_folded = self.fold_free_subtree(verify_options, mu_raw);
+        // D12 (pin L9): μ = e^(ln|x|) folds to |x|; any functional μ works, so
+        // presentation takes the textbook μ = x (strip unknown-free abs).
+        let ctx = &mut self.simplifier.context;
+        let mu = strip_free_abs(ctx, mu_folded, func);
+
+        let mu_q_raw = ctx.add(cas_ast::Expr::Mul(mu, q));
+        let mu_q = self.fold_free_subtree(verify_options, mu_q_raw);
+        let ctx = &mut self.simplifier.context;
+        let g_int = if matches!(ctx.get(mu_q), cas_ast::Expr::Number(n) if n.is_zero()) {
+            ctx.num(0)
+        } else {
+            match crate::rules::calculus::integrate_with_trace(ctx, mu_q, var) {
+                Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+                _ => {
+                    return Err(
+                        "La integral ∫ μ·q dx no cierra en forma elemental; se declina honesto",
+                    )
+                }
+            }
+        };
+        // D12 (same doctrine as μ): ∫μq may carry `ln|x|` — textbook display
+        // takes ln(x); the exact verification gate remains the judge.
+        let ctx = &mut self.simplifier.context;
+        let g_int = strip_free_abs(ctx, g_int, func);
+        let ctx = &mut self.simplifier.context;
+
+        let part_g = match cancel_literal_factor(ctx, g_int, mu) {
+            Some(cancelled) => cancelled,
+            None => ctx.add(cas_ast::Expr::Div(g_int, mu)),
+        };
+        let part_c = ctx.add(cas_ast::Expr::Div(c_var, mu));
+        let part_g = self.fold_free_subtree(verify_options, part_g);
+        let part_c = self.fold_free_subtree(verify_options, part_c);
+        let ctx = &mut self.simplifier.context;
+        let candidate = if matches!(ctx.get(part_g), cas_ast::Expr::Number(n) if n.is_zero()) {
+            part_c
+        } else {
+            ctx.add(cas_ast::Expr::Add(part_g, part_c))
+        };
+        Ok((mu, g_int, candidate))
+    }
+
     fn eval_dsolve_linear(
         &mut self,
         options: &crate::options::EvalOptions,
@@ -1495,54 +1603,6 @@ impl Engine {
         let y_var = ctx.var(func);
         let x_var = ctx.var(var);
 
-        // μ = e^(∫p dx). A p whose antiderivative does not close declines.
-        let p_int = if matches!(ctx.get(p), cas_ast::Expr::Number(n) if n.is_zero()) {
-            ctx.num(0)
-        } else {
-            match crate::rules::calculus::integrate_with_trace(ctx, p, var) {
-                Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
-                _ => {
-                    let r = residual_action_result(
-                        ctx,
-                        resolved,
-                        y_var,
-                        x_var,
-                        "La integral ∫ p(x) dx del factor integrante no cierra en forma elemental; se declina honesto",
-                    );
-                    return Ok(r);
-                }
-            }
-        };
-        let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
-        let mu_raw = ctx.add(cas_ast::Expr::Pow(e_const, p_int));
-        let mu_folded = self.fold_free_subtree(&verify_options, mu_raw);
-        // D12 (pin L9): μ = e^(ln|x|) folds to |x|; any functional μ works, so
-        // presentation takes the textbook μ = x (strip unknown-free abs).
-        let ctx = &mut self.simplifier.context;
-        let mu = strip_free_abs(ctx, mu_folded, func);
-
-        // ∫ μ·q dx.
-        let mu_q_raw = ctx.add(cas_ast::Expr::Mul(mu, q));
-        let mu_q = self.fold_free_subtree(&verify_options, mu_q_raw);
-        let ctx = &mut self.simplifier.context;
-        let g_int = if matches!(ctx.get(mu_q), cas_ast::Expr::Number(n) if n.is_zero()) {
-            ctx.num(0)
-        } else {
-            match crate::rules::calculus::integrate_with_trace(ctx, mu_q, var) {
-                Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
-                _ => {
-                    let r = residual_action_result(
-                        ctx,
-                        resolved,
-                        y_var,
-                        x_var,
-                        "La integral ∫ μ·q dx no cierra en forma elemental; se declina honesto",
-                    );
-                    return Ok(r);
-                }
-            }
-        };
-
         // Arbitrary constant (D7).
         let input_vars = collect_variables(ctx, resolved);
         let c_name = if input_vars.contains("C") { "K1" } else { "C" };
@@ -1555,31 +1615,14 @@ impl Engine {
                 rule_name: DSOLVE_RULE.to_string(),
             });
         }
-
-        // y = ∫μq/μ + C/μ — the SPLIT form: each term folds canonically
-        // (`C/e^(2x)`, `x³/4`) and the verifier reduces the residue by
-        // linearity; the joined `(G+C)/μ` quotient leaves an uncancelled
-        // double-denominator combination the evaluator cannot always close.
-        // The exponential cancellation `e^x·(…)/e^x` is peeled STRUCTURALLY
-        // (μ as a literal product factor of ∫μq) so the simplifier never sees
-        // the depth-hostile quotient.
-        let part_g = match cancel_literal_factor(ctx, g_int, mu) {
-            Some(cancelled) => cancelled,
-            None => ctx.add(cas_ast::Expr::Div(g_int, mu)),
-        };
-        let part_c = ctx.add(cas_ast::Expr::Div(c_var, mu));
-        // Fold each part SEPARATELY and sum without a final fold: the full
-        // pipeline would re-join the fractions over μ (AddFractions), which
-        // both un-does the textbook split form and rebuilds the quotient the
-        // verifier cannot reduce.
-        let part_g = self.fold_free_subtree(&verify_options, part_g);
-        let part_c = self.fold_free_subtree(&verify_options, part_c);
-        let ctx = &mut self.simplifier.context;
-        let candidate = if matches!(ctx.get(part_g), cas_ast::Expr::Number(n) if n.is_zero()) {
-            part_c
-        } else {
-            ctx.add(cas_ast::Expr::Add(part_g, part_c))
-        };
+        let (mu, g_int, candidate) =
+            match self.linear_general_candidate(&verify_options, p, q, func, var, c_var) {
+                Ok(core) => core,
+                Err(reason) => {
+                    let ctx = &mut self.simplifier.context;
+                    return Ok(residual_action_result(ctx, resolved, y_var, x_var, reason));
+                }
+            };
 
         // D5: substitute into the RAW ODE; the residue must reduce to exact 0.
         let ctx = &mut self.simplifier.context;
@@ -2353,6 +2396,414 @@ impl Engine {
     /// evaluator folding the intermediate pieces (the internal F6 path only
     /// canonicalizes polynomial rests). All pieces are diff-free ordinary
     /// expressions in (x, y), so the D4 invariant allows the pipeline.
+    /// O8a: Bernoulli `y' + p·y = q·yⁿ` — substitute `v = y^(1−n)` to get the
+    /// LINEAR `v' + (1−n)p·v = (1−n)q`, solve with the shared integrating-
+    /// factor core, and back-substitute. `n = 2` emits the explicit textbook
+    /// `y = 1/v`; other integer n emit the branch-complete IMPLICIT relation
+    /// `y^(1−n) = v(x)` (a fractional back-power would silently drop the ±
+    /// branch). Emission stays verification-gated (D5).
+    fn eval_dsolve_bernoulli(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+        bern: BernoulliOde,
+    ) -> Result<ActionResult, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let one = num_rational::BigRational::from_integer(1.into());
+        let one_minus_n = &one - &bern.n;
+        let p = self.fold_free_subtree(&verify_options, bern.p);
+        let q = self.fold_free_subtree(&verify_options, bern.q);
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+
+        // v' + (1−n)·p·v = (1−n)·q.
+        let factor = ctx.add(cas_ast::Expr::Number(one_minus_n.clone()));
+        let p_v_raw = ctx.add(cas_ast::Expr::Mul(factor, p));
+        let q_v_raw = ctx.add(cas_ast::Expr::Mul(factor, q));
+        let p_v = self.fold_free_subtree(&verify_options, p_v_raw);
+        let q_v = self.fold_free_subtree(&verify_options, q_v_raw);
+
+        // Arbitrary constant (D7).
+        let ctx = &mut self.simplifier.context;
+        let input_vars = collect_variables(ctx, resolved);
+        let c_name = if input_vars.contains("C") { "K1" } else { "C" };
+        let c_var = ctx.var(c_name);
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c_name != "C" {
+            warnings.push(DomainWarning {
+                message: "La entrada ya usa el nombre C; la constante arbitraria se emite como K1"
+                    .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+
+        let (_mu, _g_int, v_general) =
+            match self.linear_general_candidate(&verify_options, p_v, q_v, func, var, c_var) {
+                Ok(core) => core,
+                Err(reason) => {
+                    let ctx = &mut self.simplifier.context;
+                    return Ok(residual_action_result(ctx, resolved, y_var, x_var, reason));
+                }
+            };
+
+        // Back-substitution and verification.
+        let ctx = &mut self.simplifier.context;
+        let neg_one = -&one;
+        let ode_residue = ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs));
+        let (result_expr, verified_form) = if one_minus_n == neg_one {
+            // n = 2: y = 1/v, the explicit textbook form.
+            let one_lit = ctx.num(1);
+            let y_cand = ctx.add(cas_ast::Expr::Div(one_lit, v_general));
+            let substituted =
+                substitute_power_aware(ctx, ode_residue, y_var, y_cand, SubstituteOptions::exact());
+            if !self.reduces_to_zero_exact(&verify_options, substituted) {
+                let ctx = &mut self.simplifier.context;
+                return Ok(residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "La candidata Bernoulli no verificó (residuo ≠ 0 exacto); se declina honesto",
+                ));
+            }
+            let ctx = &mut self.simplifier.context;
+            (wrap_eq(ctx, y_var, y_cand), y_cand)
+        } else {
+            // n ≠ 2: the back-power 1/(1−n) is fractional (branch-dropping)
+            // and the implicit relation y^(1−n) = v(x) is NOT a free-variable
+            // identity (its residue vanishes only ON the solution curve), so
+            // the D5 gate cannot certify it as-is. Honest decline with the
+            // step named — never an unverified emission.
+            let _ = ode_residue;
+            let ctx = &mut self.simplifier.context;
+            return Ok(residual_action_result(
+                ctx,
+                resolved,
+                y_var,
+                x_var,
+                "Bernoulli con n ≠ 2: la relación y^(1−n) = v(x) requiere verificación por rama (peldaño futuro); se declina honesto",
+            ));
+        };
+
+        let ctx = &mut self.simplifier.context;
+        warnings.push(DomainWarning {
+            message: format!("Solución general: {c_name} es una constante arbitraria"),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+        if bern.n.is_positive() {
+            warnings.push(DomainWarning {
+                message: format!(
+                    "{func} = 0 es solución singular (descartada al dividir por {func}^n)"
+                ),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+
+        let solve_steps = build_bernoulli_steps(
+            ctx,
+            ode_eq,
+            p,
+            q,
+            &bern.n,
+            &one_minus_n,
+            y_var,
+            v_general,
+            verified_form,
+        );
+        Ok((
+            EvalResult::Expr(result_expr),
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ))
+    }
+
+    /// O8b: first-order homogeneous `y' = F(y/x)` — substitute `v = y/x` to
+    /// reduce to the separable `dv/(F(v)−v) = dx/x`, integrate both sides,
+    /// solve back for `v`, and emit `y = x·v(x)` (or the implicit
+    /// `G(y/x) − ln x = C` when the inverse does not close cleanly — which
+    /// also dodges the known H19 surd-residue problem entirely). Emission
+    /// stays verification-gated (D5).
+    #[allow(clippy::too_many_arguments)]
+    fn eval_dsolve_homogeneous(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+        rhs: ExprId,
+        v_var: ExprId,
+        f_v: ExprId,
+    ) -> Result<Option<ActionResult>, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+        let v_name = match ctx.get(v_var) {
+            cas_ast::Expr::Variable(s) => ctx.sym_name(*s).to_string(),
+            _ => return Ok(None),
+        };
+
+        // F(v) − v: zero would mean y' = y/x (the separable path owns it).
+        let fv_minus_v_raw = ctx.add(cas_ast::Expr::Sub(f_v, v_var));
+        let fv_minus_v = self.fold_free_subtree(&verify_options, fv_minus_v_raw);
+        let ctx = &mut self.simplifier.context;
+        if matches!(ctx.get(fv_minus_v), cas_ast::Expr::Number(n) if n.is_zero()) {
+            return Ok(None);
+        }
+
+        // G(v) = ∫ dv/(F(v)−v); honest residual when it does not close.
+        let one_lit = ctx.num(1);
+        let integrand = ctx.add(cas_ast::Expr::Div(one_lit, fv_minus_v));
+        let g_int = match crate::rules::calculus::integrate_with_trace(ctx, integrand, &v_name) {
+            Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+            _ => {
+                let r = residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "La integral ∫ dv/(F(v)−v) de la reducción homogénea no cierra en forma elemental; se declina honesto",
+                );
+                return Ok(Some(r));
+            }
+        };
+        // ln(x) side (abs stripped for textbook display — D12).
+        let one_lit = ctx.num(1);
+        let inv_x = ctx.add(cas_ast::Expr::Div(one_lit, x_var));
+        let ln_side_raw = match crate::rules::calculus::integrate_with_trace(ctx, inv_x, var) {
+            Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+            _ => return Ok(None),
+        };
+        let ln_folded = self.fold_free_subtree(&verify_options, ln_side_raw);
+        let ctx = &mut self.simplifier.context;
+        let ln_side = strip_free_abs(ctx, ln_folded, func);
+
+        // Arbitrary constant (D7).
+        let input_vars = collect_variables(ctx, resolved);
+        let c_name = if input_vars.contains("C") { "K1" } else { "C" };
+        let c_var = ctx.var(c_name);
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c_name != "C" {
+            warnings.push(DomainWarning {
+                message: "La entrada ya usa el nombre C; la constante arbitraria se emite como K1"
+                    .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+
+        // Singular rays: roots of F(v) − v = 0 give y = v0·x (dropped when
+        // dividing).
+        let mut singular_notes: Vec<String> = Vec::new();
+        {
+            let zero = ctx.num(0);
+            let sing_eq = Equation {
+                lhs: fv_minus_v,
+                rhs: zero,
+                op: RelOp::Eq,
+            };
+            let solver_opts = cas_solver_core::solver_options::SolverOptions::from_eval_config(
+                options.shared.semantics,
+                options.budget,
+            );
+            if let Ok((SolutionSet::Discrete(roots), _, _)) = crate::api::solve_with_display_steps(
+                &sing_eq,
+                &v_name,
+                &mut self.simplifier,
+                solver_opts,
+            ) {
+                let ctx = &self.simplifier.context;
+                for r in roots {
+                    singular_notes.push(format!(
+                        "{func} = {}·{var} es solución singular (recta descartada al dividir por F(v)−v)",
+                        render_expr(ctx, r)
+                    ));
+                }
+            }
+        }
+        let ctx = &mut self.simplifier.context;
+
+        // Relation G(v) = ln(x) + C; try the explicit solve for v.
+        let rhs_with_c = ctx.add(cas_ast::Expr::Add(ln_side, c_var));
+        let rel_eq = Equation {
+            lhs: g_int,
+            rhs: rhs_with_c,
+            op: RelOp::Eq,
+        };
+        let solver_opts = cas_solver_core::solver_options::SolverOptions::from_eval_config(
+            options.shared.semantics,
+            options.budget,
+        );
+        let solve_outcome = crate::api::solve_with_display_steps(
+            &rel_eq,
+            &v_name,
+            &mut self.simplifier,
+            solver_opts,
+        );
+        let ctx_ref = &self.simplifier.context;
+        let explicit_roots = match &solve_outcome {
+            Ok((SolutionSet::Discrete(roots), _, _))
+                if !roots.is_empty()
+                    && roots.len() <= 2
+                    && !roots
+                        .iter()
+                        .any(|r| contains_surd_over_c(ctx_ref, *r, c_var)) =>
+            {
+                Some(roots.clone())
+            }
+            _ => None,
+        };
+
+        let ode_residue = {
+            let ctx = &mut self.simplifier.context;
+            ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs))
+        };
+
+        if let Some(roots) = explicit_roots {
+            // y = x·v(x), verified per branch.
+            let mut verified: Vec<ExprId> = Vec::new();
+            for v_sol in &roots {
+                let ctx = &mut self.simplifier.context;
+                let y_raw = ctx.add(cas_ast::Expr::Mul(x_var, *v_sol));
+                let y_cand = self.fold_free_subtree(&verify_options, y_raw);
+                let ctx = &mut self.simplifier.context;
+                let substituted = substitute_power_aware(
+                    ctx,
+                    ode_residue,
+                    y_var,
+                    y_cand,
+                    SubstituteOptions::exact(),
+                );
+                if self.reduces_to_zero_exact(&verify_options, substituted) {
+                    verified.push(y_cand);
+                }
+            }
+            if verified.len() == roots.len() {
+                let ctx = &mut self.simplifier.context;
+                warnings.push(DomainWarning {
+                    message: format!("Solución general: {c_name} es una constante arbitraria"),
+                    rule_name: DSOLVE_RULE.to_string(),
+                });
+                for note in &singular_notes {
+                    warnings.push(DomainWarning {
+                        message: note.clone(),
+                        rule_name: DSOLVE_RULE.to_string(),
+                    });
+                }
+                let solve_steps = build_homogeneous_steps(
+                    ctx, ode_eq, f_v, v_var, g_int, ln_side, y_var, &verified, None, c_var,
+                );
+                let result = if verified.len() == 1 {
+                    EvalResult::Expr(wrap_eq(ctx, y_var, verified[0]))
+                } else {
+                    let eqs: Vec<ExprId> =
+                        verified.iter().map(|r| wrap_eq(ctx, y_var, *r)).collect();
+                    EvalResult::SolutionSet(SolutionSet::Discrete(eqs))
+                };
+                return Ok(Some((
+                    result,
+                    warnings,
+                    vec![],
+                    solve_steps,
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                )));
+            }
+        }
+
+        // Implicit fallback: φ(x,y) = G(y/x) − ln(x), verified by implicit
+        // differentiation (this rational route dodges the H19 surd residue).
+        let ctx = &mut self.simplifier.context;
+        let y_over_x = ctx.add(cas_ast::Expr::Div(y_var, x_var));
+        let g_subbed =
+            substitute_power_aware(ctx, g_int, v_var, y_over_x, SubstituteOptions::exact());
+        let phi_raw = ctx.add(cas_ast::Expr::Sub(g_subbed, ln_side));
+        let phi = self.fold_free_subtree(&verify_options, phi_raw);
+        let ctx = &mut self.simplifier.context;
+        let phi = clear_global_rational_factor(ctx, phi);
+
+        let dphi_dx = ctx.call("diff", vec![phi, x_var]);
+        let dphi_dy = ctx.call("diff", vec![phi, y_var]);
+        let dy_term = ctx.add(cas_ast::Expr::Mul(dphi_dy, rhs));
+        let implicit_residue = ctx.add(cas_ast::Expr::Add(dphi_dx, dy_term));
+        if !self.reduces_to_zero_exact(&verify_options, implicit_residue) {
+            let ctx = &mut self.simplifier.context;
+            let r = residual_action_result(
+                ctx,
+                resolved,
+                y_var,
+                x_var,
+                "La reducción homogénea no verificó ni explícita ni implícita; se declina honesto",
+            );
+            return Ok(Some(r));
+        }
+        let ctx = &mut self.simplifier.context;
+        warnings.push(DomainWarning {
+            message: format!(
+                "Solución implícita: se emite φ({var},{func}) = {c_name} porque el despeje explícito no cierra limpio"
+            ),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+        warnings.push(DomainWarning {
+            message: format!("Solución general: {c_name} es una constante arbitraria"),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+        for note in &singular_notes {
+            warnings.push(DomainWarning {
+                message: note.clone(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+        let solve_steps = build_homogeneous_steps(
+            ctx,
+            ode_eq,
+            f_v,
+            v_var,
+            g_int,
+            ln_side,
+            y_var,
+            &[],
+            Some(phi),
+            c_var,
+        );
+        let result = EvalResult::Expr(wrap_eq(ctx, phi, c_var));
+        Ok(Some((
+            result,
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        )))
+    }
+
     /// O5: particular solution by undetermined coefficients. The RHS is
     /// classified into UC families `P_d(x)·e^(kx)·{1|sin(bx)|cos(bx)}`, one
     /// trial block per (k, b) family with the resonance shift `x^s` (s = the
@@ -2418,8 +2869,8 @@ impl Engine {
         let mut fresh_syms: Vec<cas_ast::symbol::SymbolId> = Vec::new();
         let mut fresh_vars: Vec<ExprId> = Vec::new();
         let next_fresh = |ctx: &mut Context,
-                              fresh_syms: &mut Vec<cas_ast::symbol::SymbolId>,
-                              fresh_vars: &mut Vec<ExprId>|
+                          fresh_syms: &mut Vec<cas_ast::symbol::SymbolId>,
+                          fresh_vars: &mut Vec<ExprId>|
          -> ExprId {
             let name = format!("{prefix}{}", fresh_syms.len());
             let sym = ctx.intern_symbol(&name);
@@ -3671,4 +4122,327 @@ fn solve_rational_system(
         u[col] = d[row].clone();
     }
     Some(u)
+}
+
+// ===================== O8: Bernoulli + homogeneous substitution =====================
+
+/// Bernoulli form `y' + p(x)·y = q(x)·yⁿ` with a literal integer n ∉ {0, 1}.
+struct BernoulliOde {
+    p: ExprId,
+    q: ExprId,
+    n: num_rational::BigRational,
+}
+
+/// Match `a(x)·y' + b(x)·y + c(x)·yⁿ = 0` on the RAW tree (additive terms of
+/// `LHS − RHS`): exactly ONE distinct power n ∉ {0,1}, coefficients free of
+/// the unknown, no free forcing term. Normalizes to `y' + p·y = q·yⁿ` with
+/// `p = b/a`, `q = −c/a`.
+fn try_match_bernoulli(
+    ctx: &mut Context,
+    eq: &Equation,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<BernoulliOde> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, eq.lhs, true, &mut terms);
+    collect_signed_terms(ctx, eq.rhs, false, &mut terms);
+
+    let mut a_parts: Vec<ExprId> = Vec::new();
+    let mut b_parts: Vec<ExprId> = Vec::new();
+    let mut c_parts: Vec<ExprId> = Vec::new();
+    let mut n_seen: Option<num_rational::BigRational> = None;
+    for (term, positive) in terms {
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        // The moved-over RHS leaves a literal `0` term (`… = 0`): a zero
+        // constant is NOT a forcing term — discard it explicitly (recorded
+        // repo lesson: structural collectors must drop the parked zero).
+        if matches!(cas_math::numeric_eval::as_rational_const(ctx, core), Some(r) if r.is_zero()) {
+            continue;
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut diff_count = 0usize;
+        let mut y_lin = 0usize;
+        let mut y_pow: Option<num_rational::BigRational> = None;
+        let mut coef_num: Vec<ExprId> = Vec::new();
+        let mut coef_den: Vec<ExprId> = Vec::new();
+        for (f, is_den) in factors {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            if is_first_order_diff_call(ctx, g, diff_sym, func, var) {
+                if is_den {
+                    return None;
+                }
+                diff_count += 1;
+                continue;
+            }
+            if matches!(ctx.get(g), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == func) {
+                if is_den {
+                    // y in a denominator is y^(−1): a Bernoulli power.
+                    let neg_one = -num_rational::BigRational::from_integer(1.into());
+                    if y_pow.is_some() {
+                        return None;
+                    }
+                    y_pow = Some(neg_one);
+                    continue;
+                }
+                y_lin += 1;
+                continue;
+            }
+            if let cas_ast::Expr::Pow(base, exp) = ctx.get(g) {
+                let (base, exp) = (*base, *exp);
+                if matches!(ctx.get(base), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == func) {
+                    let n = cas_math::numeric_eval::as_rational_const(ctx, exp)
+                        .filter(|n| n.is_integer())?;
+                    let n = if is_den { -n } else { n };
+                    if y_pow.is_some() {
+                        return None;
+                    }
+                    y_pow = Some(n);
+                    continue;
+                }
+            }
+            let vars = collect_variables(ctx, g);
+            if vars.contains(func) {
+                return None;
+            }
+            if is_den {
+                coef_den.push(g)
+            } else {
+                coef_num.push(g)
+            }
+        }
+        if diff_count + y_lin + usize::from(y_pow.is_some()) > 1 {
+            return None;
+        }
+        let build_product = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+            let mut it = parts.iter();
+            let first = *it.next()?;
+            Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Mul(acc, p))))
+        };
+        let num = build_product(ctx, &coef_num).unwrap_or_else(|| ctx.num(1));
+        let mut coef = match build_product(ctx, &coef_den) {
+            Some(d) => ctx.add(cas_ast::Expr::Div(num, d)),
+            None => num,
+        };
+        if !sign {
+            coef = ctx.add(cas_ast::Expr::Neg(coef));
+        }
+        if diff_count == 1 {
+            a_parts.push(coef);
+        } else if y_lin == 1 {
+            b_parts.push(coef);
+        } else if let Some(n) = y_pow {
+            let one = num_rational::BigRational::from_integer(1.into());
+            if n.is_zero() || n == one {
+                return None;
+            }
+            match &n_seen {
+                None => n_seen = Some(n),
+                Some(seen) if *seen == n => {}
+                Some(_) => return None, // two distinct powers: not Bernoulli
+            }
+            c_parts.push(coef);
+        } else {
+            // Free forcing term: not the pure Bernoulli shape.
+            return None;
+        }
+    }
+    let n = n_seen?;
+    if a_parts.is_empty() || c_parts.is_empty() {
+        return None;
+    }
+    let sum = |ctx: &mut Context, parts: &[ExprId]| -> Option<ExprId> {
+        let mut it = parts.iter();
+        let first = *it.next()?;
+        Some(it.fold(first, |acc, &p| ctx.add(cas_ast::Expr::Add(acc, p))))
+    };
+    let a = sum(ctx, &a_parts).expect("nonempty");
+    let b = sum(ctx, &b_parts).unwrap_or_else(|| ctx.num(0));
+    let c = sum(ctx, &c_parts).expect("nonempty");
+    let p = if is_literal_one(ctx, a) {
+        b
+    } else {
+        ctx.add(cas_ast::Expr::Div(b, a))
+    };
+    let neg_c = ctx.add(cas_ast::Expr::Neg(c));
+    let q = if is_literal_one(ctx, a) {
+        neg_c
+    } else {
+        ctx.add(cas_ast::Expr::Div(neg_c, a))
+    };
+    Some(BernoulliOde { p, q, n })
+}
+
+/// Homogeneous-in-degree form `y' = F(y/x)`: substitute `y → v·x` in the
+/// isolated RHS and check the fold is x-free. Returns `(v_var, F(v))`.
+fn try_match_homogeneous_rhs(
+    engine: &mut Engine,
+    verify_options: &crate::options::EvalOptions,
+    rhs: ExprId,
+    func: &str,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let ctx = &mut engine.simplifier.context;
+    let input_vars = collect_variables(ctx, rhs);
+    let v_name = if input_vars.contains("v") { "vh" } else { "v" };
+    let v_var = ctx.var(v_name);
+    let x_var = ctx.var(var);
+    let y_var = ctx.var(func);
+    let vx = ctx.add(cas_ast::Expr::Mul(v_var, x_var));
+    let substituted = substitute_power_aware(ctx, rhs, y_var, vx, SubstituteOptions::exact());
+    let folded = engine.fold_free_subtree(verify_options, substituted);
+    let ctx = &engine.simplifier.context;
+    let vars = collect_variables(ctx, folded);
+    if vars.contains(var) {
+        return None;
+    }
+    Some((v_var, folded))
+}
+
+/// Narrated solve steps for the Bernoulli method (D13).
+#[allow(clippy::too_many_arguments)]
+fn build_bernoulli_steps(
+    ctx: &mut Context,
+    ode_eq: &Equation,
+    p: ExprId,
+    q: ExprId,
+    n: &num_rational::BigRational,
+    one_minus_n: &num_rational::BigRational,
+    y_var: ExprId,
+    v_general: ExprId,
+    final_form: ExprId,
+) -> Vec<crate::api::SolveStep> {
+    let mut steps: Vec<crate::api::SolveStep> = Vec::new();
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Identificar forma de Bernoulli: y' + p·y = q·y^n con p = {}, q = {}, n = {}",
+            render_expr(ctx, p),
+            render_expr(ctx, q),
+            n
+        ),
+        equation_after: ode_eq.clone(),
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    let v_name = ctx.var("v");
+    let exp_num = ctx.add(cas_ast::Expr::Number(one_minus_n.clone()));
+    let y_pow = ctx.add(cas_ast::Expr::Pow(y_var, exp_num));
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Sustituir v = y^(1−n) = y^({one_minus_n}): la EDO se vuelve lineal v' + (1−n)·p·v = (1−n)·q"
+        ),
+        equation_after: Equation {
+            lhs: v_name,
+            rhs: y_pow,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Resolver la lineal en v por factor integrante".to_string(),
+        equation_after: Equation {
+            lhs: v_name,
+            rhs: v_general,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Deshacer la sustitución y verificar por sustitución en la EDO".to_string(),
+        equation_after: Equation {
+            lhs: y_var,
+            rhs: final_form,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    steps
+}
+
+/// Narrated solve steps for the homogeneous-substitution method (D13).
+#[allow(clippy::too_many_arguments)]
+fn build_homogeneous_steps(
+    ctx: &mut Context,
+    ode_eq: &Equation,
+    f_v: ExprId,
+    v_var: ExprId,
+    g_int: ExprId,
+    ln_side: ExprId,
+    y_var: ExprId,
+    explicit: &[ExprId],
+    implicit_phi: Option<ExprId>,
+    c_var: ExprId,
+) -> Vec<crate::api::SolveStep> {
+    let mut steps: Vec<crate::api::SolveStep> = Vec::new();
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Identificar EDO homogénea: y' = F(y/x) con F(v) = {}",
+            render_expr(ctx, f_v)
+        ),
+        equation_after: ode_eq.clone(),
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Sustituir v = y/x: la EDO se vuelve separable dv/(F(v)−v) = dx/x".to_string(),
+        equation_after: ode_eq.clone(),
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    let rhs_c = ctx.add(cas_ast::Expr::Add(ln_side, c_var));
+    steps.push(crate::api::SolveStep {
+        description: "Integrar ambos lados de la reducción separable".to_string(),
+        equation_after: Equation {
+            lhs: g_int,
+            rhs: rhs_c,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    let _ = v_var;
+    if let Some(phi) = implicit_phi {
+        steps.push(crate::api::SolveStep {
+            description: "Combinar en una solución implícita φ(x,y) = C".to_string(),
+            equation_after: Equation {
+                lhs: phi,
+                rhs: c_var,
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+    } else if let Some(first) = explicit.first() {
+        steps.push(crate::api::SolveStep {
+            description: "Deshacer la sustitución: y = x·v(x)".to_string(),
+            equation_after: Equation {
+                lhs: y_var,
+                rhs: *first,
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+    }
+    steps.push(crate::api::SolveStep {
+        description: "Verificar por sustitución: el residuo de la EDO se reduce a 0".to_string(),
+        equation_after: ode_eq.clone(),
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    steps
 }

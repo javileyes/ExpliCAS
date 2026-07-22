@@ -118,6 +118,15 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — Bernoulli + homogeneous narration (D13, O8).
+    SolveDesc { template: "Identificar forma de Bernoulli: y' + p·y = q·y^n con p = {0}, q = {1}, n = {2}", es: "Identificar forma de Bernoulli: y' + p·y = q·y^n con p = {0}, q = {1}, n = {2}", en: "Identify Bernoulli form: y' + p·y = q·y^n with p = {0}, q = {1}, n = {2}" },
+    SolveDesc { template: "Sustituir v = y^(1−n) = y^({0}): la EDO se vuelve lineal v' + (1−n)·p·v = (1−n)·q", es: "Sustituir v = y^(1−n) = y^({0}): la EDO se vuelve lineal v' + (1−n)·p·v = (1−n)·q", en: "Substitute v = y^(1−n) = y^({0}): the ODE becomes linear v' + (1−n)·p·v = (1−n)·q" },
+    SolveDesc { template: "Resolver la lineal en v por factor integrante", es: "Resolver la lineal en v por factor integrante", en: "Solve the linear equation in v by integrating factor" },
+    SolveDesc { template: "Deshacer la sustitución y verificar por sustitución en la EDO", es: "Deshacer la sustitución y verificar por sustitución en la EDO", en: "Undo the substitution and verify by substitution into the ODE" },
+    SolveDesc { template: "Identificar EDO homogénea: y' = F(y/x) con F(v) = {0}", es: "Identificar EDO homogénea: y' = F(y/x) con F(v) = {0}", en: "Identify homogeneous ODE: y' = F(y/x) with F(v) = {0}" },
+    SolveDesc { template: "Sustituir v = y/x: la EDO se vuelve separable dv/(F(v)−v) = dx/x", es: "Sustituir v = y/x: la EDO se vuelve separable dv/(F(v)−v) = dx/x", en: "Substitute v = y/x: the ODE becomes separable dv/(F(v)−v) = dx/x" },
+    SolveDesc { template: "Integrar ambos lados de la reducción separable", es: "Integrar ambos lados de la reducción separable", en: "Integrate both sides of the separable reduction" },
+    SolveDesc { template: "Deshacer la sustitución: y = x·v(x)", es: "Deshacer la sustitución: y = x·v(x)", en: "Undo the substitution: y = x·v(x)" },
     // dsolve (Fase 4) — undetermined-coefficients narration (D13, O5).
     SolveDesc { template: "Proponer y resolver la solución particular por coeficientes indeterminados (tabla UC con corrección de resonancia x^s)", es: "Proponer y resolver la solución particular por coeficientes indeterminados (tabla UC con corrección de resonancia x^s)", en: "Propose and solve the particular solution by undetermined coefficients (UC table with x^s resonance correction)" },
     // dsolve (Fase 4) — second-order characteristic narration (D13, O4).
