@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 660 (newest first)
+Active entries: 661 (newest first)
 
+- 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`diff_call_order`/`scan_max_diff_order`: ... | CAPACIDAD (Fase 4 · O4, tanda-5 ciclo 1/2): 2º orden homogénea por discriminante exacto INTERNO — la linealidad no es solo el gate: también las ecuaciones del IVP salen de las BASES
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`distribute_structural`: distribución Mul... | CAPACIDAD (Fase 4 · O5, tanda-5 ciclo 2/2): coeficientes indeterminados — el collector por función-base sobre derivadas ESTRUCTURALES; Gauss racional propio; el gate por-base verificaba contra la ecuación equivocada; TANDA-5 COMPLETA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (refactor extraer-antes-de-abstraer: `line... | CAPACIDAD (Fase 4 · O8, tanda-6 ciclo 1/2): Bernoulli + homogéneas por composición de métodos graduados — el cero aparcado mata otro colector; la ruta implícita racional esquiva el surd H19 por diseño
@@ -21053,3 +21054,17 @@ Active entries: 660 (newest first)
 - retained learning:
   - **"Solución real por Re/Im" es la misma decisión de contrato que "disc interno"**: el dominio complejo se usa como CÁLCULO INTERMEDIO (el autovector complejo jamás toca la salida) — guardrail inter-fase #1 en su forma no-ceremonial: ni gate de sesión ni `i` en el resultado, la matemática compleja vive y muere dentro del método.
   - PRÓXIMO PELDAÑO: O7 (superficie: help/completer/examples.csv + filtro smoke + LaTeX d/dx audit — cierra el checklist mecánico de la fase) y después los opcionales O9.
+
+## 2026-07-23 - SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
+
+- area: `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias soportadas POR ORDEN, sintaxis canónica `y` no `y(x)`, y **la sección "Honest residuals (never fabricated)" como parte del contrato público** — Riccati/Airy/Bessel/no-lineales/fuera-de-tabla-UC) + `cas_cli/completer.rs` (entrada `dsolve`) + `web/examples.csv` (grupo "Ecuaciones diferenciales": 9 filas — una por familia graduada MÁS el residual Riccati publicado como ejemplo de honestidad) + `scripts/test_web_examples_smoke.py` (`EXPECTED_DSOLVE_RESULTS` + test propio — sin el filtro las filas no se auto-verifican, riesgo mapper 6 #5 cerrado) + `cas_solver/eval_output_presentation_input.rs` (`ode_input_latex`: D14 — dentro del canal de INPUT de dsolve toda derivada es ORDINARIA por definición del comando (la incógnita es dependiente): `∂`→`d` scoped a los DOS brazos (escalar+sistema); el render general de diff multivariable fuera de dsolve conserva `∂` — pin del contrato del formatter) + auditoría grep-gate de narración COMPLETA (11 familias × --lang en → cero fugas de español) + contrato e2e O7
+- status: `retained`. O7 cerrado — el checklist mecánico de la fase queda con los 8 puntos cubiertos.
+- capture:
+  - investment_class: superficie/educativo (la mitad didáctica cuenta lo mismo que la universal — cadencia del prompt maestro).
+  - cell: `help dsolve` con familias/residuales/ejemplos; el completer autocompleta; 9 examples web AUTO-VERIFICADOS byte-exactos (S1 separable, L8 lineal, E14 exacta, V30 IVP, O21 2º orden, N28 resonancia, B16 Bernoulli, Y35 sistema complejo→real, Z1 Riccati residual); `dsolve(diff(y,x,2)+4*y=0, y, x)` emite `\frac{d^{2}}{d x^{2}}(y)` (era `\frac{\partial^{2}}{\partial x^{2}}`); `diff(x^2*y, x)` FUERA de dsolve conserva `∂` (decisión vectorial #3 intacta — pin).
+  - **Publicar el residual como ejemplo**: la fila Riccati del grupo web enseña el CONTRATO de honestidad (eco re-emitible, jamás fabricación) — el residual honesto es capacidad publicable, no vergüenza que esconder.
+  - El fix D14 es un replace `∂→d` SCOPED al canal (no toca `diff_is_partial`): la heurística general multi-var⇒∂ es correcta en su dominio; la excepción vive donde vive el CONTEXTO que la justifica (dentro del comando la dependencia es información del canal, no del árbol).
+- validación: workspace failed:0; clippy --all-targets limpio; lint 0; smoke web examples 3/3 (test dsolve nuevo); grep-gate narración 11/11 limpio; contrato O7 verde (help+LaTeX+pins); engine-fast + scorecards verdes huella contador-idéntica (superficie: cero drift de lanes).
+- retained learning:
+  - **La superficie es donde el contrato de honestidad se vuelve visible**: help y examples que NOMBRAN los residuales honestos convierten los declines en documentación de diseño — el usuario aprende qué NO hace el engine y por qué, en vez de descubrirlo por sorpresa.
+  - PRÓXIMO PELDAÑO: O9 Cauchy-Euler (pre-aprobado — S puro sobre el molde D9: característica r(r−1)+ar+b, mismas 3 ramas con x^r/ln x).

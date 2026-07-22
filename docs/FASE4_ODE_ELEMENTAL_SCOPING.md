@@ -247,7 +247,7 @@ Orden por dependencia + ROI. El costo fijo grande va primero (O0); después cada
 - **Depende:** O0 (+O4 por el molde disc; independiente de O5 — **intercambiables O5↔O6**).
 - **Retención (pins):** `eigenvalues([[0,-1],[1,0]])` SIGUE residual (el verbo no cambia — pin de contrato D17); Y35 emite sin `i` en el resultado final (solución real).
 
-#### O7 — Superficie de usuario + pulido de narración **[S/M]**
+#### O7 — Superficie de usuario + pulido de narración **[S/M]** ☑ *(graduado 2026-07-23, hash en el ledger: help con la sección de residuales honestos como contrato público; completer; 9 examples web AUTO-verificados byte-exactos incluido el eco Riccati publicado como ejemplo de honestidad; D14 `∂→d` scoped a los dos brazos del canal input — el ∂ general fuera de dsolve conserva su contrato con pin; grep-gate de narración 11 familias × --lang en limpio; el hint opcional "¿quisiste decir dsolve?" queda como chip futuro)*
 - **Gradúa:** brazo `"dsolve"` en `help_topics.rs` (moldes solve :149 / limit :395, con sección de residuales honestos); `completer.rs` (:16-79); grupo nuevo en `web/examples.csv` ("Ecuaciones diferenciales") + filtro `EXPECTED_DSOLVE_RESULTS` en `scripts/test_web_examples_smoke.py` (sin él las filas NO se auto-verifican — riesgo mapper 6 #5); render LaTeX `d/dx` para la incógnita (D14); auditoría de narración completa es/en (ninguna descripción pasa cruda por `localize_solve_description` — grep-gate); OPCIONAL: hint didáctico "¿quisiste decir dsolve?" cubriendo las DOS entradas del colapso — `solve(diff(y,·)=…)` Y la ecuación-statement top-level (auto-Solve de `statement.rs:5-31`) — por la vía didáctica, no tocando solve.
 - **Inserción / Reuso / Blast:** superficies conocidas, BAJO.
 - **Depende:** O0-O6 (audita lo existente).

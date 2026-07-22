@@ -11,6 +11,15 @@ fn style_latex_for_input(ctx: &Context, id: ExprId, signals: &ParseStyleSignals)
     )
 }
 
+/// LaTeX for a dsolve INPUT equation: inside an ODE command the unknown is a
+/// DEPENDENT function of the single independent variable, so every derivative
+/// is ORDINARY — `d/dx`, never `∂/∂x` (D14, Fase 4). The general
+/// `diff_is_partial` heuristic (multi-variable ⇒ ∂) is right everywhere else;
+/// this rewrite is scoped to the dsolve input channel only.
+fn ode_input_latex(ctx: &Context, id: ExprId, signals: &ParseStyleSignals) -> String {
+    style_latex_for_input(ctx, id, signals).replace("\\partial", "d")
+}
+
 fn split_solve_system_parts(input: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0_i32;
@@ -163,7 +172,7 @@ pub(crate) fn format_output_input_latex(
                 return format_solve_input_latex(&equation, &var);
             }
             EvalSpecialCommand::DsolveSystem { funcs, var, .. } => {
-                let eq_latex = style_latex_for_input(ctx, parsed, signals);
+                let eq_latex = ode_input_latex(ctx, parsed, signals);
                 let f_list = funcs.join(", ");
                 return format!(
                     "\\operatorname{{dsolve}}\\left(\\left[{eq_latex}, \\ldots\\right],\\; \\left[{f_list}\\right],\\; {var}\\right)"
@@ -174,14 +183,14 @@ pub(crate) fn format_output_input_latex(
                 // it as the equation with the unknown/variable named.
                 let eq_latex = if let cas_ast::Expr::Function(fn_id, args) = ctx.get(parsed) {
                     if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Equal) && args.len() == 2 {
-                        let lhs_latex = style_latex_for_input(ctx, args[0], signals);
-                        let rhs_latex = style_latex_for_input(ctx, args[1], signals);
+                        let lhs_latex = ode_input_latex(ctx, args[0], signals);
+                        let rhs_latex = ode_input_latex(ctx, args[1], signals);
                         format!("{lhs_latex} = {rhs_latex}")
                     } else {
-                        style_latex_for_input(ctx, parsed, signals)
+                        ode_input_latex(ctx, parsed, signals)
                     }
                 } else {
-                    style_latex_for_input(ctx, parsed, signals)
+                    ode_input_latex(ctx, parsed, signals)
                 };
                 return format!(
                     "\\operatorname{{dsolve}}\\left({eq_latex},\\; {func},\\; {var}\\right)"

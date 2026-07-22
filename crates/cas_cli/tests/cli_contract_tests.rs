@@ -9701,3 +9701,50 @@ fn dsolve_systems_2x2_o6_contract() {
     assert!(en.contains("linear system X'"), "{en}");
     assert!(en.contains("Complex conjugate eigenvalues"), "{en}");
 }
+
+#[test]
+fn dsolve_surface_o7_contract() {
+    // Fase 4 · O7: superficie de usuario — help topic, LaTeX d/dx (D14: la
+    // incógnita es DEPENDIENTE, jamás ∂ en el canal dsolve), y las claves de
+    // narración es/en completas (grep-gate por familia en el ciclo).
+    let repl_out = |input: &str| -> String {
+        let out = cli()
+            .arg("repl")
+            .write_stdin(format!("{input}\nexit\n"))
+            .output()
+            .expect("Failed to run CLI repl");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    // Help topic presente con las secciones clave.
+    let help = repl_out("help dsolve");
+    assert!(help.contains("Command: dsolve"), "{help}");
+    assert!(help.contains("Supported families"), "{help}");
+    assert!(help.contains("Honest residuals"), "{help}");
+    assert!(help.contains("VERIFIED"), "{help}");
+
+    // D14: el input LaTeX usa d/dx (ordinaria), jamás ∂, en escalar y sistema.
+    let latex_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let v: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        v["input_latex"].as_str().unwrap_or_default().to_string()
+    };
+    let scalar = latex_of("dsolve(diff(y,x,2)+4*y=0, y, x)");
+    assert!(scalar.contains("\\frac{d^{2}}{d x^{2}}"), "{scalar}");
+    assert!(
+        !scalar.contains("\\partial"),
+        "sin ∂ en el canal dsolve: {scalar}"
+    );
+    let system = latex_of("dsolve([diff(x,t)=-y, diff(y,t)=x], [x,y], t)");
+    assert!(!system.contains("\\partial"), "sin ∂ en sistemas: {system}");
+    // El render general de diff multivariable FUERA de dsolve conserva ∂
+    // (decisión vectorial #3 — contrato del formatter, no de dsolve).
+    let generic = latex_of("diff(x^2*y, x)");
+    assert!(
+        generic.contains("\\partial"),
+        "∂ intacto fuera de dsolve: {generic}"
+    );
+}

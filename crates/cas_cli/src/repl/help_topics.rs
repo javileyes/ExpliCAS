@@ -152,6 +152,28 @@ Description: Solves an equation for a variable.
 Example: solve x + 2 = 5, x -> x = 3"
             .to_string(),
 
+        "dsolve" => "\
+Command: dsolve(<ODE>, <unknown>[, <var>[, conditions...]])
+Description: Solves elementary ordinary differential equations. The unknown is
+             a bare name (y, not y(x)); derivatives are written diff(y,x) and
+             diff(y,x,2). Every emitted solution is VERIFIED exactly against
+             the ODE before being shown; anything unverified declines to an
+             honest residual echo.
+Supported families:
+  1st order:  separable, linear (integrating factor), exact (potential),
+              Bernoulli (n=2), homogeneous y' = F(y/x)
+  2nd order:  constant coefficients (homogeneous + undetermined coefficients
+              with resonance), initial value problems y(x0)=a, y'(x0)=b
+  Systems:    2x2 linear X' = A·X -> dsolve([eq1, eq2], [x, y], t)
+Honest residuals (never fabricated): Riccati, Airy/Bessel (variable
+  coefficients), nonlinear forms (y'' = y^2, pendulum), RHS outside the
+  undetermined-coefficients table (variation of parameters).
+Examples:
+  dsolve(diff(y,x) = x*y, y, x)          -> y = C·e^(x^2/2)
+  dsolve(diff(y,x,2) + 4*y = 0, y, x)    -> y = C1·sin(2·x) + C2·cos(2·x)
+  dsolve(diff(y,x) = -y, y, x, y(0) = 3) -> y = 3/e^x"
+            .to_string(),
+
         "steps" => "\
 Command: steps <level>
 Description: Controls the verbosity of simplification steps.

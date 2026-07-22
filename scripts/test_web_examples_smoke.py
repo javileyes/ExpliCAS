@@ -14,6 +14,18 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES_CSV = ROOT / "web" / "examples.csv"
 CAS_CLI_BIN = ROOT / "target" / "release" / "cas_cli"
 
+EXPECTED_DSOLVE_RESULTS = {
+    "dsolve(diff(y,x) = x*y, y, x)": "y = C\u00b7e^(x^2 / 2)",
+    "dsolve(diff(y,x) + y = x, y, x)": "y = C / e^x + x - 1",
+    "dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)": "y\u00b7x^2 + y^2 + x = C",
+    "dsolve(diff(y,x) = -y, y, x, y(0) = 3)": "y = 3 / e^x",
+    "dsolve(diff(y,x,2) + 4*y = 0, y, x)": "y = C1\u00b7sin(2\u00b7x) + C2\u00b7cos(2\u00b7x)",
+    "dsolve(diff(y,x,2) + y = cos(x), y, x)": "y = 1/2\u00b7x\u00b7sin(x) + C1\u00b7sin(x) + C2\u00b7cos(x)",
+    "dsolve(diff(y,x) + y = y^2, y, x)": "y = 1 / (C\u00b7e^x + 1)",
+    "dsolve([diff(x,t) = -y, diff(y,t) = x], [x,y], t)": "{ x = -C1\u00b7cos(t) - C2\u00b7sin(t), y = C2\u00b7cos(t) - C1\u00b7sin(t) }",
+    "dsolve(diff(y,x) = x^2 + y^2, y, x)": "dsolve(diff(y, x) = x^2 + y^2, y, x)",
+}
+
 EXPECTED_LIMIT_RESULTS = {
     "limit((x^2+1)/(2*x^2-3), x, infinity)": "1/2",
     "limit(x^2/exp(2*x), x, infinity)": "0",
@@ -109,6 +121,16 @@ class WebExamplesSmokeTests(unittest.TestCase):
         expressions = set(load_example_expressions())
 
         for expression, expected_result in EXPECTED_LIMIT_RESULTS.items():
+            with self.subTest(expression=expression):
+                self.assertIn(expression, expressions)
+                self.assertEqual(eval_result(expression), expected_result)
+
+    def test_public_dsolve_examples_keep_expected_results(self) -> None:
+        # Fase 4 · O7: every published ODE example auto-verifies its exact
+        # emitted result (including the honest Riccati residual echo).
+        expressions = set(load_example_expressions())
+
+        for expression, expected_result in EXPECTED_DSOLVE_RESULTS.items():
             with self.subTest(expression=expression):
                 self.assertIn(expression, expressions)
                 self.assertEqual(eval_result(expression), expected_result)
