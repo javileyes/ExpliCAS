@@ -17,10 +17,10 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_o0_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        # O0-O8 + O6 registry: 7 separable + 4 linear + 3 exact +
-        # 3 first-order-IVP + 5 second-order + 5 UC + 3 Bernoulli +
-        # 2 homogeneous + 3 system supported rows + 10 honest residual rows.
-        self.assertEqual(len(cases), 45)
+        # O0-O9 registry: 7 separable + 4 linear + 3 exact + 3 first-order-IVP
+        # + 5 second-order + 5 UC + 3 Bernoulli + 2 homogeneous + 3 system +
+        # 3 Cauchy-Euler supported rows + 10 honest residual rows.
+        self.assertEqual(len(cases), 48)
         names = {case.name for case in cases}
         self.assertIn("separable_growth_textbook", names)
         self.assertIn("separable_implicit_circle", names)
@@ -42,6 +42,8 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("system_2x2_defective_generalized_vector", names)
         self.assertIn("residual_system_nonlinear", names)
         self.assertIn("residual_system_ivp_future_cycle", names)
+        self.assertIn("cauchy_euler_distinct_roots", names)
+        self.assertIn("cauchy_euler_complex_trig_ln", names)
         self.assertIn("residual_riccati_never_fabricate", names)
         self.assertIn("residual_airy_variable_coefficients", names)
         self.assertIn("second_order_complex_envelope_o23", names)
@@ -58,7 +60,7 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
 
         supported = [case for case in cases if case.outcome == "supported"]
         residual = [case for case in cases if case.outcome == "residual"]
-        self.assertEqual(len(supported), 35)
+        self.assertEqual(len(supported), 38)
         self.assertEqual(len(residual), 10)
 
         # Verification-gated emission: every supported row is verified; every
@@ -94,6 +96,7 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
                 "bernoulli",
                 "homogenea",
                 "sistema",
+                "cauchy_euler",
             },
         )
         self.assertEqual(

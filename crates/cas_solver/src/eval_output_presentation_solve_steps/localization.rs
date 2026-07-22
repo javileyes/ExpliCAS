@@ -118,6 +118,12 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — Cauchy-Euler narration (D13, O9).
+    SolveDesc { template: "Identificar ecuación de Cauchy-Euler: x²·y'' + a·x·y' + b·y = 0 con a = {0}, b = {1}", es: "Identificar ecuación de Cauchy-Euler: x²·y'' + a·x·y' + b·y = 0 con a = {0}, b = {1}", en: "Identify Cauchy-Euler equation: x²·y'' + a·x·y' + b·y = 0 with a = {0}, b = {1}" },
+    SolveDesc { template: "Plantear la ecuación indicial: r·(r−1) + a·r + b = 0 con discriminante Δ = {0}", es: "Plantear la ecuación indicial: r·(r−1) + a·r + b = 0 con discriminante Δ = {0}", en: "Set up the indicial equation: r·(r−1) + a·r + b = 0 with discriminant Δ = {0}" },
+    SolveDesc { template: "Raíces indiciales reales distintas: base {x^r1, x^r2}", es: "Raíces indiciales reales distintas: base {x^r1, x^r2}", en: "Distinct real indicial roots: basis {x^r1, x^r2}" },
+    SolveDesc { template: "Raíz indicial doble: base {x^r, x^r·ln(x)}", es: "Raíz indicial doble: base {x^r, x^r·ln(x)}", en: "Repeated indicial root: basis {x^r, x^r·ln(x)}" },
+    SolveDesc { template: "Raíces indiciales complejas: base {x^α·cos(β·ln x), x^α·sin(β·ln x)}", es: "Raíces indiciales complejas: base {x^α·cos(β·ln x), x^α·sin(β·ln x)}", en: "Complex indicial roots: basis {x^α·cos(β·ln x), x^α·sin(β·ln x)}" },
     // dsolve (Fase 4) — 2×2 system narration (D13, O6).
     SolveDesc { template: "Identificar sistema lineal X' = A·X con A = [[{0}, {1}], [{2}, {3}]]", es: "Identificar sistema lineal X' = A·X con A = [[{0}, {1}], [{2}, {3}]]", en: "Identify linear system X' = A·X with A = [[{0}, {1}], [{2}, {3}]]" },
     SolveDesc { template: "Característica del sistema: λ² − tr(A)·λ + det(A) = 0 con tr = {0}, det = {1}", es: "Característica del sistema: λ² − tr(A)·λ + det(A) = 0 con tr = {0}, det = {1}", en: "System characteristic: λ² − tr(A)·λ + det(A) = 0 with tr = {0}, det = {1}" },

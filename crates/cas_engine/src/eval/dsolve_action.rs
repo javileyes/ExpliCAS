@@ -1030,7 +1030,7 @@ impl Engine {
             return Ok(r);
         }
 
-        // O4: second order with constant coefficients.
+        // O4: second order with constant coefficients; O9: Cauchy-Euler.
         if max_diff_order == 2 {
             if let Some(second) = try_match_second_order_constant(ctx, &ode_eq, diff_sym, func, var)
             {
@@ -1044,9 +1044,20 @@ impl Engine {
                     &parsed_conditions,
                 );
             }
+            if let Some(ce) = try_match_cauchy_euler(ctx, &ode_eq, diff_sym, func, var) {
+                return self.eval_dsolve_cauchy_euler(
+                    options,
+                    resolved,
+                    func,
+                    var,
+                    &ode_eq,
+                    ce,
+                    &parsed_conditions,
+                );
+            }
             let r = mk_residual(
                 &mut self.simplifier.context,
-                "2º orden con coeficientes variables o forma no-lineal (Cauchy-Euler/Bessel/no-homogénea con RHS funcional: ciclos futuros); se declina honesto",
+                "2º orden con coeficientes variables o forma no-lineal (Bessel/no-homogénea con RHS funcional: ciclos futuros); se declina honesto",
             );
             return Ok(r);
         }
@@ -2380,6 +2391,268 @@ impl Engine {
             substeps: vec![],
         });
         let result = EvalResult::Expr(wrap_eq(ctx, y_var, y_p));
+        Ok((
+            result,
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ))
+    }
+
+    /// O9 (pre-approved optional): Cauchy-Euler `x²y'' + a·x·y' + b·y = 0` by
+    /// the indicial equation `r(r−1) + (c1/c2)·r + (c0/c2) = 0` — the same
+    /// exact-discriminant mould as D9 with `x^r`/`ln x` bases instead of
+    /// exponentials. Emission stays basis-gated (D5).
+    #[allow(clippy::too_many_arguments)]
+    fn eval_dsolve_cauchy_euler(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+        ce: CauchyEulerOde,
+        conditions: &[InitialCondition],
+    ) -> Result<ActionResult, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+        if !conditions.is_empty() {
+            let r = residual_action_result(
+                ctx,
+                resolved,
+                y_var,
+                x_var,
+                "IVP de Cauchy-Euler: peldaño futuro (x0 = 0 es singular); se declina honesto",
+            );
+            return Ok(r);
+        }
+
+        // Indicial r² + (a−1)·r + b with a = c1/c2, b = c0/c2.
+        let one = num_rational::BigRational::from_integer(1.into());
+        let p = &ce.c1 / &ce.c2 - &one;
+        let q = &ce.c0 / &ce.c2;
+        let disc = &p * &p - num_rational::BigRational::from_integer(4.into()) * &q;
+        let two = num_rational::BigRational::from_integer(2.into());
+
+        let x_pow_rat = |ctx: &mut Context, r: &num_rational::BigRational| -> ExprId {
+            if r.is_zero() {
+                return ctx.num(1);
+            }
+            if *r == one {
+                return ctx.var(var);
+            }
+            let x = ctx.var(var);
+            let e = ctx.add(cas_ast::Expr::Number(r.clone()));
+            ctx.add(cas_ast::Expr::Pow(x, e))
+        };
+
+        enum CeShape {
+            Distinct,
+            Double,
+            Complex,
+        }
+        let (u1, u2, shape) = if disc.is_positive() {
+            let Some(s) = cas_math::perfect_square_support::rational_sqrt(&disc) else {
+                let ctx = &mut self.simplifier.context;
+                let r = residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "Raíces indiciales irracionales: peldaño futuro; se declina honesto",
+                );
+                return Ok(r);
+            };
+            let r1 = (-&p + &s) / &two;
+            let r2 = (-&p - &s) / &two;
+            let ctx = &mut self.simplifier.context;
+            let u1 = x_pow_rat(ctx, &r1);
+            let u2 = x_pow_rat(ctx, &r2);
+            (u1, u2, CeShape::Distinct)
+        } else if disc.is_zero() {
+            let r = -&p / &two;
+            let ctx = &mut self.simplifier.context;
+            let xr = x_pow_rat(ctx, &r);
+            let ln_x = {
+                let x = ctx.var(var);
+                ctx.call("ln", vec![x])
+            };
+            let u2 = ctx.add(cas_ast::Expr::Mul(xr, ln_x));
+            (xr, u2, CeShape::Double)
+        } else {
+            let neg_disc = -&disc;
+            let Some(s) = cas_math::perfect_square_support::rational_sqrt(&neg_disc) else {
+                let ctx = &mut self.simplifier.context;
+                let r = residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "Parte imaginaria indicial irracional: peldaño futuro; se declina honesto",
+                );
+                return Ok(r);
+            };
+            let alpha = -&p / &two;
+            let beta = &s / &two;
+            let ctx = &mut self.simplifier.context;
+            let x = ctx.var(var);
+            let ln_x = ctx.call("ln", vec![x]);
+            let b_num = ctx.add(cas_ast::Expr::Number(beta));
+            let arg = ctx.add(cas_ast::Expr::Mul(b_num, ln_x));
+            let cos_part = ctx.call("cos", vec![arg]);
+            let sin_part = ctx.call("sin", vec![arg]);
+            let (u1, u2) = if alpha.is_zero() {
+                (cos_part, sin_part)
+            } else {
+                let xa = x_pow_rat(ctx, &alpha);
+                let u1 = ctx.add(cas_ast::Expr::Mul(xa, cos_part));
+                let u2 = ctx.add(cas_ast::Expr::Mul(xa, sin_part));
+                (u1, u2)
+            };
+            (u1, u2, CeShape::Complex)
+        };
+        let u1 = self.fold_free_subtree(&verify_options, u1);
+        let u2 = self.fold_free_subtree(&verify_options, u2);
+
+        // D5 basis gate against the raw ODE residue.
+        let ctx = &mut self.simplifier.context;
+        let ode_residue = ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs));
+        for u in [u1, u2] {
+            let ctx = &mut self.simplifier.context;
+            let substituted =
+                substitute_power_aware(ctx, ode_residue, y_var, u, SubstituteOptions::exact());
+            if !self.reduces_to_zero_exact(&verify_options, substituted) {
+                let ctx = &mut self.simplifier.context;
+                return Ok(residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "Una base de Cauchy-Euler no verificó contra la EDO; se declina honesto",
+                ));
+            }
+        }
+
+        // Fresh constants + textbook display (mul_basis rules).
+        let ctx = &mut self.simplifier.context;
+        let input_vars = collect_variables(ctx, resolved);
+        let (c1_name, c2_name) = if input_vars.contains("C1") || input_vars.contains("C2") {
+            ("K1", "K2")
+        } else {
+            ("C1", "C2")
+        };
+        let c1 = ctx.var(c1_name);
+        let c2 = ctx.var(c2_name);
+        let mul_basis = |ctx: &mut Context, coef: ExprId, u: ExprId| -> ExprId {
+            if is_literal_one(ctx, u) {
+                return coef;
+            }
+            if let cas_ast::Expr::Div(num, den) = ctx.get(u) {
+                let (num, den) = (*num, *den);
+                if is_literal_one(ctx, num) {
+                    return ctx.add(cas_ast::Expr::Div(coef, den));
+                }
+            }
+            ctx.add(cas_ast::Expr::Mul(coef, u))
+        };
+        let general = match shape {
+            CeShape::Double => {
+                // x^r·(C1 + C2·ln x).
+                let c2ln = {
+                    let x = ctx.var(var);
+                    let ln_x = ctx.call("ln", vec![x]);
+                    ctx.add(cas_ast::Expr::Mul(c2, ln_x))
+                };
+                let head = ctx.add(cas_ast::Expr::Add(c1, c2ln));
+                if is_literal_one(ctx, u1) {
+                    head
+                } else {
+                    mul_basis(ctx, head, u1)
+                }
+            }
+            _ => {
+                let t1 = mul_basis(ctx, c1, u1);
+                let t2 = mul_basis(ctx, c2, u2);
+                ctx.add(cas_ast::Expr::Add(t1, t2))
+            }
+        };
+
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c1_name != "C1" {
+            warnings.push(DomainWarning {
+                message:
+                    "La entrada ya usa C1/C2; las constantes arbitrarias se emiten como K1, K2"
+                        .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+        warnings.push(DomainWarning {
+            message: format!(
+                "Solución general de Cauchy-Euler (dominio x > 0): {c1_name} y {c2_name} son constantes arbitrarias"
+            ),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+
+        let branch_desc = match shape {
+            CeShape::Distinct => "Raíces indiciales reales distintas: base {x^r1, x^r2}",
+            CeShape::Double => "Raíz indicial doble: base {x^r, x^r·ln(x)}",
+            CeShape::Complex => {
+                "Raíces indiciales complejas: base {x^α·cos(β·ln x), x^α·sin(β·ln x)}"
+            }
+        };
+        let mut solve_steps: Vec<crate::api::SolveStep> = Vec::new();
+        solve_steps.push(crate::api::SolveStep {
+            description: format!(
+                "Identificar ecuación de Cauchy-Euler: x²·y'' + a·x·y' + b·y = 0 con a = {}, b = {}",
+                &ce.c1 / &ce.c2,
+                q
+            ),
+            equation_after: ode_eq.clone(),
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description: format!(
+                "Plantear la ecuación indicial: r·(r−1) + a·r + b = 0 con discriminante Δ = {disc}"
+            ),
+            equation_after: ode_eq.clone(),
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description: branch_desc.to_string(),
+            equation_after: Equation {
+                lhs: y_var,
+                rhs: general,
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description: "Verificar por sustitución: cada función de la base anula la EDO"
+                .to_string(),
+            equation_after: Equation {
+                lhs: y_var,
+                rhs: general,
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::Medium,
+            substeps: vec![],
+        });
+        let result = EvalResult::Expr(wrap_eq(ctx, y_var, general));
         Ok((
             result,
             warnings,
@@ -4992,4 +5265,122 @@ fn try_extract_system_row(
 /// One basis solution of the 2×2 system: component expressions (x(t), y(t)).
 struct SystemBasis {
     comp: [ExprId; 2],
+}
+
+// ===================== O9: Cauchy-Euler x²y'' + a·x·y' + b·y = 0 =====================
+
+/// Cauchy-Euler match `c2·x²·y'' + c1·x·y' + c0·y = 0` (exact rational
+/// c-coefficients; the x-power must match the derivative order EXACTLY —
+/// Bessel's `(x²−1)·y` term declines because y carries x_pow 2).
+struct CauchyEulerOde {
+    c2: num_rational::BigRational,
+    c1: num_rational::BigRational,
+    c0: num_rational::BigRational,
+}
+
+fn try_match_cauchy_euler(
+    ctx: &mut Context,
+    eq: &Equation,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<CauchyEulerOde> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, eq.lhs, true, &mut terms);
+    collect_signed_terms(ctx, eq.rhs, false, &mut terms);
+
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let mut c2 = zero.clone();
+    let mut c1 = zero.clone();
+    let mut c0 = zero.clone();
+    for (term, positive) in terms {
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        if matches!(cas_math::numeric_eval::as_rational_const(ctx, core), Some(r) if r.is_zero()) {
+            continue; // the parked zero
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut order: Option<usize> = None; // 0 = bare y, 1 = y', 2 = y''
+        let mut x_pow = 0usize;
+        let mut coef = num_rational::BigRational::from_integer(1.into());
+        for (f, is_den) in factors {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            match diff_call_order(ctx, g, diff_sym, func, var) {
+                Some(n @ (1 | 2)) if !is_den => {
+                    if order.is_some() {
+                        return None;
+                    }
+                    order = Some(n);
+                    continue;
+                }
+                Some(_) => return None,
+                None => {}
+            }
+            if matches!(ctx.get(g), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == func) {
+                if is_den || order.is_some() {
+                    return None;
+                }
+                order = Some(0);
+                continue;
+            }
+            if matches!(ctx.get(g), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == var) {
+                if is_den {
+                    return None;
+                }
+                x_pow += 1;
+                continue;
+            }
+            if let cas_ast::Expr::Pow(base, exp) = ctx.get(g) {
+                let (base, exp) = (*base, *exp);
+                if matches!(ctx.get(base), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == var)
+                    && !is_den
+                {
+                    let n: Option<usize> = cas_math::numeric_eval::as_rational_const(ctx, exp)
+                        .filter(|n| n.is_integer() && !n.is_negative())
+                        .and_then(|n| usize::try_from(n.to_integer()).ok());
+                    if let Some(n) = n {
+                        x_pow += n;
+                        continue;
+                    }
+                    return None;
+                }
+            }
+            let vars = collect_variables(ctx, g);
+            if vars.contains(func) || vars.contains(var) {
+                return None;
+            }
+            match cas_math::numeric_eval::as_rational_const(ctx, g) {
+                Some(r) if is_den && !r.is_zero() => coef /= r,
+                Some(r) if !is_den => coef *= r,
+                _ => return None,
+            }
+        }
+        let Some(ord) = order else {
+            return None; // a free forcing term: not the homogeneous CE shape
+        };
+        // The Euler structure: x-power EQUALS the derivative order.
+        if x_pow != ord {
+            return None;
+        }
+        let signed = if sign { coef } else { -coef };
+        match ord {
+            2 => c2 += signed,
+            1 => c1 += signed,
+            _ => c0 += signed,
+        }
+    }
+    if c2.is_zero() {
+        return None;
+    }
+    Some(CauchyEulerOde { c2, c1, c0 })
 }

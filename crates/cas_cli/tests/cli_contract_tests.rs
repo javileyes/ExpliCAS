@@ -9748,3 +9748,80 @@ fn dsolve_surface_o7_contract() {
         "∂ intacto fuera de dsolve: {generic}"
     );
 }
+
+#[test]
+fn dsolve_cauchy_euler_o9_contract() {
+    // Fase 4 · O9 (opcional pre-aprobado): Cauchy-Euler por la ecuación
+    // indicial r(r−1)+a·r+b sobre el molde D9 — bases x^r / x^r·ln x /
+    // x^α·trig(β·ln x), emisión gateada por base (D5).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // Las tres ramas indiciales.
+    assert_eq!(
+        first_line("dsolve(x^2*diff(y,x,2)+x*diff(y,x)-y=0, y, x)"),
+        "y = C2 / x + C1·x"
+    ); // r = ±1 — el colapso probado del scoping MIGRÓ a resolución
+    assert_eq!(
+        first_line("dsolve(x^2*diff(y,x,2)-x*diff(y,x)+y=0, y, x)"),
+        "y = x·(C2·ln(x) + C1)"
+    ); // doble r = 1
+    assert_eq!(
+        first_line("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+y=0, y, x)"),
+        "y = C1·cos(ln(x)) + C2·sin(ln(x))"
+    ); // complejas ±i
+    assert_eq!(
+        first_line("dsolve(x^2*diff(y,x,2)-2*y=0, y, x)"),
+        "y = C2 / x + C1·x^2"
+    ); // sin término y'
+    assert!(err_of("dsolve(x^2*diff(y,x,2)+x*diff(y,x)-y=0, y, x)").contains("dominio x > 0"));
+
+    // Z6 Bessel SIGUE residual ((x²−1)·y no es estructura Euler — pin
+    // never-fabricate intacto).
+    let bessel = r("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+(x^2-1)*y=0, y, x)");
+    assert!(bessel.starts_with("dsolve("), "Bessel residual: {bessel}");
+    // IVP de Cauchy-Euler declina honesto (x0 = 0 singular).
+    let ivp = r("dsolve(x^2*diff(y,x,2)+x*diff(y,x)-y=0, y, x, y(1)=2, y'(1)=0)");
+    assert!(ivp.starts_with("dsolve("), "CE IVP declina: {ivp}");
+
+    // Pins de no-robo: coeficientes constantes byte-idénticos.
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
+    );
+
+    // Narración O9 keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+y=0, y, x)", None);
+    assert!(es.contains("Cauchy-Euler"), "{es}");
+    assert!(es.contains("ecuación indicial"), "{es}");
+    let en = steps_of("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+y=0, y, x)", Some("en"));
+    assert!(en.contains("indicial equation"), "{en}");
+}
