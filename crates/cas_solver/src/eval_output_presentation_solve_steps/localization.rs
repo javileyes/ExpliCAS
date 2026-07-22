@@ -118,6 +118,15 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — second-order characteristic narration (D13, O4).
+    SolveDesc { template: "Plantear la ecuación característica: a·r² + b·r + c = 0 con a = {0}, b = {1}, c = {2}", es: "Plantear la ecuación característica: a·r² + b·r + c = 0 con a = {0}, b = {1}, c = {2}", en: "Set up the characteristic equation: a·r² + b·r + c = 0 with a = {0}, b = {1}, c = {2}" },
+    SolveDesc { template: "Calcular el discriminante de la característica: Δ = {0}", es: "Calcular el discriminante de la característica: Δ = {0}", en: "Compute the characteristic discriminant: Δ = {0}" },
+    SolveDesc { template: "Raíces reales distintas (Δ > 0): la base es {e^(r1·x), e^(r2·x)}", es: "Raíces reales distintas (Δ > 0): la base es {e^(r1·x), e^(r2·x)}", en: "Distinct real roots (Δ > 0): the basis is {e^(r1·x), e^(r2·x)}" },
+    SolveDesc { template: "Raíz real doble (Δ = 0): la base es {e^(r·x), x·e^(r·x)}", es: "Raíz real doble (Δ = 0): la base es {e^(r·x), x·e^(r·x)}", en: "Repeated real root (Δ = 0): the basis is {e^(r·x), x·e^(r·x)}" },
+    SolveDesc { template: "Raíces complejas conjugadas (Δ < 0): la base es {e^(α·x)·cos(β·x), e^(α·x)·sin(β·x)}", es: "Raíces complejas conjugadas (Δ < 0): la base es {e^(α·x)·cos(β·x), e^(α·x)·sin(β·x)}", en: "Complex conjugate roots (Δ < 0): the basis is {e^(α·x)·cos(β·x), e^(α·x)·sin(β·x)}" },
+    SolveDesc { template: "Solución general: combinación lineal de la base con C1 y C2", es: "Solución general: combinación lineal de la base con C1 y C2", en: "General solution: linear combination of the basis with C1 and C2" },
+    SolveDesc { template: "Verificar por sustitución: cada función de la base anula la EDO", es: "Verificar por sustitución: cada función de la base anula la EDO", en: "Verify by substitution: each basis function annihilates the ODE" },
+    SolveDesc { template: "Aplicar las condiciones iniciales en {0} = {1}: resolver el sistema 2×2 en {2}, {3}", es: "Aplicar las condiciones iniciales en {0} = {1}: resolver el sistema 2×2 en {2}, {3}", en: "Apply the initial conditions at {0} = {1}: solve the 2×2 system in {2}, {3}" },
     // dsolve (Fase 4) — initial-condition narration (D13, O3).
     SolveDesc { template: "Aplicar la condición inicial {0}({1}) = {2}: sustituir el punto y fijar la constante", es: "Aplicar la condición inicial {0}({1}) = {2}: sustituir el punto y fijar la constante", en: "Apply the initial condition {0}({1}) = {2}: substitute the point and pin the constant" },
     SolveDesc { template: "Solución particular con la condición aplicada", es: "Solución particular con la condición aplicada", en: "Particular solution with the condition applied" },

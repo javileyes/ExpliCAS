@@ -8871,11 +8871,10 @@ fn dsolve_separable_o0_contract() {
         "y = 3 / e^x"
     );
 
-    // --- 2º orden: residual honesto nombrado (ciclo O4).
-    let o2 = r("dsolve(diff(y,x,2)+4*y=0, y, x)");
-    assert!(
-        o2.starts_with("dsolve("),
-        "2º orden declina a residual: {o2}"
+    // --- 2º orden: GRADUÓ en O4 (el pin de decline migró a resolución).
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
     );
 
     // --- Usage-errors del pre-pass (D2): malformado, sympy-style, ambiguo.
@@ -9188,10 +9187,12 @@ fn dsolve_initial_conditions_o3_contract() {
     assert!(bad.starts_with("dsolve("), "inconsistente declina: {bad}");
     assert!(err_of("dsolve(diff(y,x)=y^2, y, x, y(0)=0)").contains("inconsistente"));
 
-    // Condición de derivada y'(x0): declina honesto hasta O4.
+    // Condición de derivada y'(x0) sobre una EDO de 1er orden: inválida por
+    // ORDEN (una condición solo fija derivadas de orden menor que la EDO) —
+    // el mensaje migró al graduar O4.
     let deriv = r("dsolve(diff(y,x)=-y, y, x, y'(0)=3)");
     assert!(deriv.starts_with("dsolve("), "y'(0) declina: {deriv}");
-    assert!(err_of("dsolve(diff(y,x)=-y, y, x, y'(0)=3)").contains("O4"));
+    assert!(err_of("dsolve(diff(y,x)=-y, y, x, y'(0)=3)").contains("orden MENOR"));
 
     // Dos condiciones en 1er orden: sobredeterminado → declina honesto.
     let two = r("dsolve(diff(y,x)=-y, y, x, y(0)=3, y(1)=1)");
@@ -9233,4 +9234,151 @@ fn dsolve_initial_conditions_o3_contract() {
     let en = steps_of("dsolve(diff(y,x)=-y, y, x, y(0)=3)", Some("en"));
     assert!(en.contains("Apply the initial condition"), "{en}");
     assert!(en.contains("Particular solution"), "{en}");
+}
+
+#[test]
+fn dsolve_second_order_o4_contract() {
+    // Fase 4 · O4: 2º orden homogénea de coeficientes constantes por el
+    // discriminante exacto INTERNO (D9 — jamás solve desnudo) con la emisión
+    // gateada por LINEALIDAD (D5: cada base verifica sola; la combinación con
+    // constantes jamás se sustituye — ahí vive el HANG O23).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // O20-O25: las tres ramas del discriminante.
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)-y=0, y, x)"),
+        "y = C1·e^x + C2 / e^x"
+    ); // O20 Δ>0
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
+    ); // O21 Δ<0 α=0
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+2*diff(y,x)+y=0, y, x)"),
+        "y = (C2·x + C1) / e^x"
+    ); // O22 Δ=0
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+2*diff(y,x)+5*y=0, y, x)"),
+        "y = e^(-x)·(C1·sin(2·x) + C2·cos(2·x))"
+    ); // O23 — EMITE Y VERIFICA (el pin del ciclo: la linealidad esquiva el hang)
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)-3*diff(y,x)+2*y=0, y, x)"),
+        "y = C1·e^(2·x) + C2·e^x"
+    ); // O24
+    assert_eq!(first_line("dsolve(diff(y,x,2)=0, y, x)"), "y = C2·x + C1"); // O25
+
+    // Surds exactos: β=√3 y raíces áureas (verificadas por el gate).
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+3*y=0, y, x)"),
+        "y = C1·sin(x·sqrt(3)) + C2·cos(x·sqrt(3))"
+    );
+    let golden = first_line("dsolve(diff(y,x,2)-diff(y,x)-y=0, y, x)");
+    assert!(golden.starts_with("y = C1·e^(phi·x)"), "{golden}");
+
+    // Shape anidado diff(diff(y,x),x) ≡ diff(y,x,2).
+    assert_eq!(
+        first_line("dsolve(diff(diff(y,x),x)+4*y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
+    );
+    // Coeficientes pelados (no-unitarios y divisor).
+    assert_eq!(
+        first_line("dsolve(2*diff(y,x,2)+4*diff(y,x)+2*y=0, y, x)"),
+        "y = (C2·x + C1) / e^x"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)/4+y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
+    );
+
+    // IVP de 2º orden en las tres ramas (verificación de AMBAS condiciones).
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=0, y, x, y(0)=0, y'(0)=2)"),
+        "y = sin(2·x)"
+    ); // V31
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)=0, y, x, y(0)=1, y'(0)=2)"),
+        "y = 2·x + 1"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)-3*diff(y,x)+2*y=0, y, x, y(0)=1, y'(0)=0)"),
+        "y = 2·e^x - e^(2·x)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+2*diff(y,x)+y=0, y, x, y(0)=1, y'(0)=0)"),
+        "y = (x + 1) / e^x"
+    );
+    // La envelope compleja: el caso que quemaba el budget derivando la
+    // general con constantes — las ecuaciones salen de las BASES.
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+2*diff(y,x)+5*y=0, y, x, y(0)=1, y'(0)=1)"),
+        "y = (sin(2·x) + cos(2·x)) / e^x"
+    );
+
+    // Constantes frescas cuando la entrada usa C1/C2 (D7).
+    let fresh = first_line("dsolve(diff(y,x,2)+C1*y=0, y, x)");
+    assert!(
+        fresh.starts_with("dsolve("),
+        "coef simbólico declina: {fresh}"
+    );
+
+    // Declines honestos: 1 condición (faltan), coef variables (Airy/Bessel),
+    // no-lineal (y''=y²), no-homogénea (O5), orden ≥3.
+    assert!(r("dsolve(diff(y,x,2)-y=0, y, x, y(0)=1)").starts_with("dsolve("));
+    assert!(err_of("dsolve(diff(y,x,2)-y=0, y, x, y(0)=1)").contains("DOS condiciones"));
+    assert!(r("dsolve(diff(y,x,2)+x*y=0, y, x)").starts_with("dsolve(")); // Z2 Airy
+    assert!(r("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+(x^2-1)*y=0, y, x)").starts_with("dsolve(")); // Z6 Bessel
+    assert!(r("dsolve(diff(y,x,2)=y^2, y, x)").starts_with("dsolve(")); // Z4
+    assert!(r("dsolve(diff(y,x,2)+sin(y)=0, y, x)").starts_with("dsolve(")); // Z7
+    assert!(err_of("dsolve(diff(y,x,2)+y=x, y, x)").contains("O5")); // no-homogénea nombra O5
+    assert!(err_of("dsolve(diff(y,x,3)+y=0, y, x)").contains("orden ≥3"));
+
+    // El verbo solve NO cambia (D9: el set colapsa multiplicidad — contrato).
+    assert_eq!(first_line("solve(r^2+2*r+1=0, r)"), "{ -1 }");
+    // Spot checks O0-O3 byte-idénticos.
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)+y=x, y, x)"),
+        "y = C / e^x + x - 1"
+    );
+
+    // Narración O4 keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(diff(y,x,2)+4*y=0, y, x)", None);
+    assert!(es.contains("ecuación característica"), "{es}");
+    assert!(es.contains("discriminante"), "{es}");
+    assert!(es.contains("Raíces complejas conjugadas"), "{es}");
+    let en = steps_of("dsolve(diff(y,x,2)+4*y=0, y, x)", Some("en"));
+    assert!(en.contains("characteristic equation"), "{en}");
+    assert!(en.contains("Complex conjugate roots"), "{en}");
 }

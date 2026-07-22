@@ -17,7 +17,7 @@ use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_formatter::render_expr;
 use cas_math::substitute::{substitute_power_aware, SubstituteOptions};
 use cas_solver_core::step_types::ImportanceLevel;
-use num_traits::{One, Zero};
+use num_traits::{One, Signed, Zero};
 
 /// Push every direct child of `id` onto `stack` (local traversal helper).
 fn push_children(ctx: &Context, id: ExprId, stack: &mut Vec<ExprId>) {
@@ -193,6 +193,198 @@ fn scan_diff_calls_of(
         }
     }
     max_arity
+}
+
+/// Differentiation order of `id` when it is a diff-call on `func` w.r.t.
+/// `var`: `diff(y,x)` → 1, `diff(y,x,n)` (literal integer n ≥ 1) → n,
+/// nested `diff(diff(y,x),x)` → inner + 1. `usize::MAX` encodes a symbolic
+/// (non-literal) order. `None` when it is not a diff-of-func call at all.
+fn diff_call_order(
+    ctx: &Context,
+    id: ExprId,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<usize> {
+    let cas_ast::Expr::Function(fn_id, args) = ctx.get(id) else {
+        return None;
+    };
+    if *fn_id != diff_sym || args.len() < 2 {
+        return None;
+    }
+    // Variable check on the differentiation variable.
+    let var_ok = matches!(ctx.get(args[1]), cas_ast::Expr::Variable(v) if ctx.sym_name(*v) == var);
+    if !var_ok {
+        return None;
+    }
+    // Target: the bare unknown, or a nested diff-of-func (one order deeper).
+    let base_order = match ctx.get(args[0]) {
+        cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == func => 0usize,
+        _ => diff_call_order(ctx, args[0], diff_sym, func, var)?,
+    };
+    match args.len() {
+        2 => Some(base_order + 1),
+        3 => {
+            let n: Option<usize> = cas_math::numeric_eval::as_rational_const(ctx, args[2])
+                .filter(|n| {
+                    n.is_integer() && *n >= num_rational::BigRational::from_integer(1.into())
+                })
+                .and_then(|n| n.to_integer().try_into().ok());
+            match n {
+                Some(count) => Some(base_order + count),
+                None => Some(usize::MAX), // symbolic order
+            }
+        }
+        _ => Some(usize::MAX),
+    }
+}
+
+/// Maximum differentiation order of `func` found anywhere in the tree.
+/// `None` = no diff-of-func at all; `usize::MAX` = a symbolic order appears.
+fn scan_max_diff_order(
+    ctx: &Context,
+    root: ExprId,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<usize> {
+    let mut max_order: Option<usize> = None;
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        if let Some(order) = diff_call_order(ctx, id, diff_sym, func, var) {
+            max_order = Some(max_order.map_or(order, |m| m.max(order)));
+            // Do not descend into a recognized diff-call (its target is part
+            // of the call itself).
+            continue;
+        }
+        push_children(ctx, id, &mut stack);
+    }
+    max_order
+}
+
+/// Constant-coefficient second-order homogeneous match
+/// `a·y'' + b·y' + c·y = 0` (a, b, c exact rationals).
+struct SecondOrderOde {
+    a: num_rational::BigRational,
+    b: num_rational::BigRational,
+    c: num_rational::BigRational,
+    /// False when a nonzero unknown-free term remains (non-homogeneous — O5).
+    homogeneous: bool,
+}
+
+/// Match `a·y'' + b·y' + c·y = rhs` on the RAW tree with RATIONAL constant
+/// coefficients. Declines (None) on any variable coefficient (`x·y''` —
+/// Cauchy-Euler/Bessel stay honest residuals), nonlinear unknown (`y²`,
+/// `sin(y)`), or non-product diff placement.
+fn try_match_second_order_constant(
+    ctx: &mut Context,
+    eq: &Equation,
+    diff_sym: cas_ast::symbol::SymbolId,
+    func: &str,
+    var: &str,
+) -> Option<SecondOrderOde> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, eq.lhs, true, &mut terms);
+    collect_signed_terms(ctx, eq.rhs, false, &mut terms);
+
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let mut a = zero.clone();
+    let mut b = zero.clone();
+    let mut c = zero.clone();
+    let mut free_sum = zero.clone();
+    let mut nonhomogeneous_functional = false;
+    for (term, positive) in terms {
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut order2 = 0usize;
+        let mut order1 = 0usize;
+        let mut y_count = 0usize;
+        let mut coef = num_rational::BigRational::from_integer(1.into());
+        let mut rational_coef = true;
+        let mut ok = true;
+        for (f, is_den) in factors {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            match diff_call_order(ctx, g, diff_sym, func, var) {
+                Some(2) if !is_den => {
+                    order2 += 1;
+                    continue;
+                }
+                Some(1) if !is_den => {
+                    order1 += 1;
+                    continue;
+                }
+                Some(_) => {
+                    ok = false;
+                    break;
+                }
+                None => {}
+            }
+            if matches!(ctx.get(g), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == func) {
+                if is_den {
+                    ok = false;
+                    break;
+                }
+                y_count += 1;
+                continue;
+            }
+            let vars = collect_variables(ctx, g);
+            if vars.contains(func) {
+                ok = false; // nonlinear/nested unknown
+                break;
+            }
+            // Coefficient factor: must fold to an exact rational (constant
+            // coefficients only — variable coefficients decline).
+            match cas_math::numeric_eval::as_rational_const(ctx, g) {
+                Some(r) if is_den && !r.is_zero() => coef /= r,
+                Some(r) if !is_den => coef *= r,
+                _ => rational_coef = false,
+            }
+        }
+        if !ok || order2 + order1 + y_count > 1 {
+            return None;
+        }
+        if !rational_coef {
+            // A y'/y''/y term with a NON-rational coefficient is a variable
+            // coefficient — decline. A free term that is a FUNCTION of x
+            // (`y'' + y = x`) makes the ODE non-homogeneous: report that
+            // precisely so the residual names O5 (which will consume the RHS).
+            if order2 + order1 + y_count > 0 {
+                return None;
+            }
+            nonhomogeneous_functional = true;
+            continue;
+        }
+        let signed = if sign { coef } else { -coef };
+        if order2 == 1 {
+            a += signed;
+        } else if order1 == 1 {
+            b += signed;
+        } else if y_count == 1 {
+            c += signed;
+        } else {
+            free_sum += signed;
+        }
+    }
+    if a.is_zero() {
+        return None;
+    }
+    Some(SecondOrderOde {
+        a,
+        b,
+        c,
+        homogeneous: free_sum.is_zero() && !nonhomogeneous_functional,
+    })
 }
 
 /// True when `id` is exactly the 2-arg call `diff(func, var)`.
@@ -776,8 +968,10 @@ impl Engine {
         let diff_sym = ctx.intern_symbol("diff");
 
         // The wire guarantees a diff(func,·) exists textually; re-check on the
-        // tree so envelope/JSON callers get the same honest contract.
-        let Some(max_diff_arity) = scan_diff_calls_of(ctx, resolved, diff_sym, func) else {
+        // tree so envelope/JSON callers get the same honest contract. The
+        // ORDER (not the arity) drives the dispatch: `diff(y,x,2)` and nested
+        // `diff(diff(y,x),x)` are both order 2.
+        let Some(max_diff_order) = scan_max_diff_order(ctx, resolved, diff_sym, func, var) else {
             return Err(anyhow::anyhow!(
                 "dsolve: the equation contains no diff({func}, ...) — not an ODE in `{func}`"
             ));
@@ -796,32 +990,60 @@ impl Engine {
             residual_action_result(ctx, resolved, y_var, x_var, reason)
         };
 
-        // Initial conditions (O3): already parsed by the solver layer.
-        let parsed_conditions: Vec<InitialCondition> = conditions.to_vec();
-        if parsed_conditions.iter().any(|c| c.order > 0) {
+        // Order ≥3 (or a symbolic order) stays an honest residual.
+        if max_diff_order > 2 {
             let r = mk_residual(
                 ctx,
-                "Condiciones sobre la derivada (y'(x0)=v0) llegan con el 2º orden (ciclo O4); se declina honesto",
+                "EDO de orden ≥3 (o de orden simbólico): fuera del alcance elemental; se declina honesto",
             );
             return Ok(r);
         }
-        if parsed_conditions.len() > 1 {
+
+        // Initial conditions (O3/O4): already parsed by the solver layer.
+        let parsed_conditions: Vec<InitialCondition> = conditions.to_vec();
+        if parsed_conditions.iter().any(|c| c.order >= max_diff_order) {
             let r = mk_residual(
                 ctx,
-                "Una EDO de primer orden admite UNA condición inicial; el sistema de constantes de 2º orden llega en O4",
+                "Una condición inicial solo puede fijar derivadas de orden MENOR que el de la EDO (y(x0) para 1er orden; y(x0)/y'(x0) para 2º)",
+            );
+            return Ok(r);
+        }
+        if parsed_conditions.len() > max_diff_order {
+            let r = mk_residual(
+                ctx,
+                "Más condiciones iniciales que constantes libres (sobredeterminado); se declina honesto",
+            );
+            return Ok(r);
+        }
+
+        // O4: second order with constant coefficients.
+        if max_diff_order == 2 {
+            if let Some(second) = try_match_second_order_constant(ctx, &ode_eq, diff_sym, func, var)
+            {
+                if second.homogeneous {
+                    return self.eval_dsolve_second_order(
+                        options,
+                        resolved,
+                        func,
+                        var,
+                        &ode_eq,
+                        second,
+                        &parsed_conditions,
+                    );
+                }
+                let r = mk_residual(
+                    &mut self.simplifier.context,
+                    "2º orden no-homogénea: los coeficientes indeterminados llegan en el ciclo O5; se declina honesto",
+                );
+                return Ok(r);
+            }
+            let r = mk_residual(
+                &mut self.simplifier.context,
+                "2º orden con coeficientes variables o forma no-lineal (Cauchy-Euler/Bessel/no-homogénea con RHS funcional: ciclos futuros); se declina honesto",
             );
             return Ok(r);
         }
         let initial_condition = parsed_conditions.into_iter().next();
-
-        // Higher-order ODEs are future cycles (O4+).
-        if max_diff_arity > 2 {
-            let r = mk_residual(
-                ctx,
-                "EDO de orden superior: la característica de 2º orden llega en el ciclo O4; se declina honesto",
-            );
-            return Ok(r);
-        }
 
         // Method dispatch: separable first (O0 — the S1-S9 pins stay
         // byte-identical), then linear first-order (O1), then exact (O2). A
@@ -1490,6 +1712,559 @@ impl Engine {
         )))
     }
 
+    /// O4: second-order homogeneous with constant coefficients — the
+    /// characteristic equation is solved by an INTERNAL exact discriminant
+    /// (D9: never a bare `solve`, whose solution SET collapses multiplicity
+    /// and whose complex roots depend on the session value-domain). The three
+    /// branches assemble the textbook basis; emission is gated by LINEARITY
+    /// (D5): each basis function verifies against the ODE separately — the
+    /// C1/C2-attached combination is NEVER substituted (the known O23
+    /// expand↔factor hang lives exactly there).
+    #[allow(clippy::too_many_arguments)]
+    fn eval_dsolve_second_order(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+        second: SecondOrderOde,
+        conditions: &[InitialCondition],
+    ) -> Result<ActionResult, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let ctx = &mut self.simplifier.context;
+        let x_var = ctx.var(var);
+
+        // Normalized characteristic r² + p·r + q = 0 and its exact discriminant.
+        let p = &second.b / &second.a;
+        let q = &second.c / &second.a;
+        let disc = &p * &p - num_rational::BigRational::from_integer(4.into()) * &q;
+
+        let two = num_rational::BigRational::from_integer(2.into());
+        let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+
+        // exp(r·x) with a RATIONAL rate, folded per-basis for clean display.
+        fn exp_rate(
+            ctx: &mut Context,
+            e_const: ExprId,
+            x_var: ExprId,
+            rate: &num_rational::BigRational,
+        ) -> ExprId {
+            let r_num = ctx.add(cas_ast::Expr::Number(rate.clone()));
+            let arg = ctx.add(cas_ast::Expr::Mul(r_num, x_var));
+            ctx.add(cas_ast::Expr::Pow(e_const, arg))
+        }
+
+        enum Basis {
+            DistinctReal {
+                u1: ExprId,
+                u2: ExprId,
+            },
+            Double {
+                rate: num_rational::BigRational,
+                u1: ExprId,
+                u2: ExprId,
+            },
+            Complex {
+                alpha: num_rational::BigRational,
+                u1: ExprId,
+                u2: ExprId,
+                trig_cos: ExprId,
+                trig_sin: ExprId,
+            },
+        }
+
+        let basis = if disc.is_positive() {
+            let (r1, r2) = match cas_math::perfect_square_support::rational_sqrt(&disc) {
+                Some(s) => ((-&p + &s) / &two, (-&p - &s) / &two),
+                None => {
+                    // Surd roots r = (−p ± √disc)/2: build the exact trees.
+                    let d_num = ctx.add(cas_ast::Expr::Number(disc.clone()));
+                    let sqrt_d = ctx.call("sqrt", vec![d_num]);
+                    let neg_p = ctx.add(cas_ast::Expr::Number(-&p));
+                    let two_num = ctx.add(cas_ast::Expr::Number(two.clone()));
+                    let sum1 = ctx.add(cas_ast::Expr::Add(neg_p, sqrt_d));
+                    let r1e = ctx.add(cas_ast::Expr::Div(sum1, two_num));
+                    let diff1 = ctx.add(cas_ast::Expr::Sub(neg_p, sqrt_d));
+                    let r2e = ctx.add(cas_ast::Expr::Div(diff1, two_num));
+                    let a1 = ctx.add(cas_ast::Expr::Mul(r1e, x_var));
+                    let u1 = ctx.add(cas_ast::Expr::Pow(e_const, a1));
+                    let a2 = ctx.add(cas_ast::Expr::Mul(r2e, x_var));
+                    let u2 = ctx.add(cas_ast::Expr::Pow(e_const, a2));
+                    let u1 = self.fold_free_subtree(&verify_options, u1);
+                    let u2 = self.fold_free_subtree(&verify_options, u2);
+                    return self.finish_second_order(
+                        options,
+                        &verify_options,
+                        resolved,
+                        func,
+                        var,
+                        ode_eq,
+                        &second,
+                        &disc,
+                        SecondOrderShape::DistinctReal,
+                        u1,
+                        u2,
+                        None,
+                        conditions,
+                    );
+                }
+            };
+            let u1_raw = exp_rate(ctx, e_const, x_var, &r1);
+            let u2_raw = exp_rate(ctx, e_const, x_var, &r2);
+            let u1 = self.fold_free_subtree(&verify_options, u1_raw);
+            let u2 = self.fold_free_subtree(&verify_options, u2_raw);
+            Basis::DistinctReal { u1, u2 }
+        } else if disc.is_zero() {
+            let rate = -&p / &two;
+            let ctx = &mut self.simplifier.context;
+            let u1_raw = exp_rate(ctx, e_const, x_var, &rate);
+            let u1 = self.fold_free_subtree(&verify_options, u1_raw);
+            let ctx = &mut self.simplifier.context;
+            let u2_raw = ctx.add(cas_ast::Expr::Mul(x_var, u1));
+            let u2 = self.fold_free_subtree(&verify_options, u2_raw);
+            Basis::Double { rate, u1, u2 }
+        } else {
+            let alpha = -&p / &two;
+            let neg_disc = -&disc;
+            let ctx = &mut self.simplifier.context;
+            let beta_arg = match cas_math::perfect_square_support::rational_sqrt(&neg_disc) {
+                Some(s) => {
+                    let beta = &s / &two;
+                    let b_num = ctx.add(cas_ast::Expr::Number(beta));
+                    ctx.add(cas_ast::Expr::Mul(b_num, x_var))
+                }
+                None => {
+                    let d_num = ctx.add(cas_ast::Expr::Number(neg_disc));
+                    let sqrt_d = ctx.call("sqrt", vec![d_num]);
+                    let two_num = ctx.add(cas_ast::Expr::Number(two.clone()));
+                    let beta = ctx.add(cas_ast::Expr::Div(sqrt_d, two_num));
+                    ctx.add(cas_ast::Expr::Mul(beta, x_var))
+                }
+            };
+            let trig_cos_raw = ctx.call("cos", vec![beta_arg]);
+            let trig_sin_raw = ctx.call("sin", vec![beta_arg]);
+            let trig_cos = self.fold_free_subtree(&verify_options, trig_cos_raw);
+            let trig_sin = self.fold_free_subtree(&verify_options, trig_sin_raw);
+            let ctx = &mut self.simplifier.context;
+            let (u1, u2) = if alpha.is_zero() {
+                (trig_cos, trig_sin)
+            } else {
+                let envelope = exp_rate(ctx, e_const, x_var, &alpha);
+                let u1 = ctx.add(cas_ast::Expr::Mul(envelope, trig_cos));
+                let u2 = ctx.add(cas_ast::Expr::Mul(envelope, trig_sin));
+                (u1, u2)
+            };
+            Basis::Complex {
+                alpha,
+                u1,
+                u2,
+                trig_cos,
+                trig_sin,
+            }
+        };
+
+        match basis {
+            Basis::DistinctReal { u1, u2 } => self.finish_second_order(
+                options,
+                &verify_options,
+                resolved,
+                func,
+                var,
+                ode_eq,
+                &second,
+                &disc,
+                SecondOrderShape::DistinctReal,
+                u1,
+                u2,
+                None,
+                conditions,
+            ),
+            Basis::Double { rate, u1, u2 } => self.finish_second_order(
+                options,
+                &verify_options,
+                resolved,
+                func,
+                var,
+                ode_eq,
+                &second,
+                &disc,
+                SecondOrderShape::DoubleRoot { rate },
+                u1,
+                u2,
+                None,
+                conditions,
+            ),
+            Basis::Complex {
+                alpha,
+                u1,
+                u2,
+                trig_cos,
+                trig_sin,
+            } => self.finish_second_order(
+                options,
+                &verify_options,
+                resolved,
+                func,
+                var,
+                ode_eq,
+                &second,
+                &disc,
+                SecondOrderShape::ComplexPair { alpha },
+                u1,
+                u2,
+                Some((trig_cos, trig_sin)),
+                conditions,
+            ),
+        }
+    }
+
+    /// Verification, assembly, narration, and (optional) IVP application for
+    /// the second-order path. Every basis function must reduce the ODE residue
+    /// to exact 0 before anything is emitted.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_second_order(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        verify_options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        ode_eq: &Equation,
+        second: &SecondOrderOde,
+        disc: &num_rational::BigRational,
+        shape: SecondOrderShape,
+        u1: ExprId,
+        u2: ExprId,
+        trig_parts: Option<(ExprId, ExprId)>,
+        conditions: &[InitialCondition],
+    ) -> Result<ActionResult, anyhow::Error> {
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+        let ode_residue = ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs));
+
+        // D5 linearity gate: each basis function alone must annihilate the ODE.
+        for u in [u1, u2] {
+            let ctx = &mut self.simplifier.context;
+            let substituted =
+                substitute_power_aware(ctx, ode_residue, y_var, u, SubstituteOptions::exact());
+            if !self.reduces_to_zero_exact(verify_options, substituted) {
+                let ctx = &mut self.simplifier.context;
+                return Ok(residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "Una función de la base no verificó contra la EDO (residuo ≠ 0 exacto); se declina honesto",
+                ));
+            }
+        }
+
+        // Fresh constants (D7): C1/C2, or K1/K2 when the input already uses them.
+        let ctx = &mut self.simplifier.context;
+        let input_vars = collect_variables(ctx, resolved);
+        let (c1_name, c2_name) = if input_vars.contains("C1") || input_vars.contains("C2") {
+            ("K1", "K2")
+        } else {
+            ("C1", "C2")
+        };
+        let c1 = ctx.var(c1_name);
+        let c2 = ctx.var(c2_name);
+
+        // Textbook display form per branch. A reciprocal basis (`e^(-x)`
+        // canonizes to `1/e^x`) multiplies as a clean quotient — `C2/e^x`,
+        // never `(1·C2)/e^x` (structural, no fold: folding the product would
+        // distribute and break the textbook shape).
+        let mul_basis = |ctx: &mut Context, coef: ExprId, u: ExprId| -> ExprId {
+            if let cas_ast::Expr::Div(num, den) = ctx.get(u) {
+                let (num, den) = (*num, *den);
+                if is_literal_one(ctx, num) {
+                    return ctx.add(cas_ast::Expr::Div(coef, den));
+                }
+            }
+            ctx.add(cas_ast::Expr::Mul(coef, u))
+        };
+        let general = match &shape {
+            SecondOrderShape::DistinctReal => {
+                let t1 = mul_basis(ctx, c1, u1);
+                let t2 = mul_basis(ctx, c2, u2);
+                ctx.add(cas_ast::Expr::Add(t1, t2))
+            }
+            SecondOrderShape::DoubleRoot { rate } => {
+                let c2x = ctx.add(cas_ast::Expr::Mul(c2, x_var));
+                let head = ctx.add(cas_ast::Expr::Add(c1, c2x));
+                if rate.is_zero() {
+                    head
+                } else {
+                    mul_basis(ctx, head, u1)
+                }
+            }
+            SecondOrderShape::ComplexPair { alpha } => {
+                let (trig_cos, trig_sin) = trig_parts.expect("complex branch carries trig parts");
+                let t1 = ctx.add(cas_ast::Expr::Mul(c1, trig_sin));
+                let t2 = ctx.add(cas_ast::Expr::Mul(c2, trig_cos));
+                let combo = ctx.add(cas_ast::Expr::Add(t1, t2));
+                if alpha.is_zero() {
+                    combo
+                } else {
+                    let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+                    let a_num = ctx.add(cas_ast::Expr::Number(alpha.clone()));
+                    let arg = ctx.add(cas_ast::Expr::Mul(a_num, x_var));
+                    let envelope = ctx.add(cas_ast::Expr::Pow(e_const, arg));
+                    ctx.add(cas_ast::Expr::Mul(envelope, combo))
+                }
+            }
+        };
+
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c1_name != "C1" {
+            warnings.push(DomainWarning {
+                message:
+                    "La entrada ya usa C1/C2; las constantes arbitrarias se emiten como K1, K2"
+                        .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+        warnings.push(DomainWarning {
+            message: format!("Solución general: {c1_name} y {c2_name} son constantes arbitrarias"),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+
+        let mut solve_steps =
+            build_second_order_steps(ctx, func, var, second, disc, &shape, u1, u2, y_var, general);
+
+        // No conditions: emit the general solution.
+        if conditions.is_empty() {
+            let ctx = &mut self.simplifier.context;
+            let result = EvalResult::Expr(wrap_eq(ctx, y_var, general));
+            return Ok((
+                result,
+                warnings,
+                vec![],
+                solve_steps,
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+            ));
+        }
+        if conditions.len() != 2 {
+            let ctx = &mut self.simplifier.context;
+            return Ok(residual_action_result(
+                ctx,
+                resolved,
+                y_var,
+                x_var,
+                "Un IVP de 2º orden necesita DOS condiciones (y(x0)=y0 y y'(x0)=v0) para fijar C1 y C2; se declina honesto",
+            ));
+        }
+
+        // Build one linear equation in (C1, C2) per condition FROM THE BASES:
+        // y = C1·b1 + C2·b2 ⇒ y^(k)(x0) = C1·b1^(k)(x0) + C2·b2^(k)(x0). The
+        // general WITH attached constants is never differentiated nor folded —
+        // that is exactly the constant×exp×trig oscillation family (C5) the
+        // linearity doctrine (D5) exists to dodge; each bare basis folds fast.
+        let (b1, b2) = match &shape {
+            SecondOrderShape::DistinctReal | SecondOrderShape::DoubleRoot { .. } => (u1, u2),
+            // Complex display is C1·(e^{αx}·sin) + C2·(e^{αx}·cos).
+            SecondOrderShape::ComplexPair { .. } => (u2, u1),
+        };
+        let mut cond_equations: Vec<Equation> = Vec::new();
+        for cond in conditions {
+            let (f1, f2) = if cond.order == 0 {
+                (b1, b2)
+            } else {
+                let ctx = &mut self.simplifier.context;
+                let d1_call = ctx.call("diff", vec![b1, x_var]);
+                let d1 = self.fold_free_subtree(verify_options, d1_call);
+                let ctx = &mut self.simplifier.context;
+                let d2_call = ctx.call("diff", vec![b2, x_var]);
+                let d2 = self.fold_free_subtree(verify_options, d2_call);
+                (d1, d2)
+            };
+            let ctx = &mut self.simplifier.context;
+            let f1_at =
+                substitute_power_aware(ctx, f1, x_var, cond.point, SubstituteOptions::exact());
+            let a1 = self.fold_free_subtree(verify_options, f1_at);
+            let ctx = &mut self.simplifier.context;
+            let f2_at =
+                substitute_power_aware(ctx, f2, x_var, cond.point, SubstituteOptions::exact());
+            let a2 = self.fold_free_subtree(verify_options, f2_at);
+            let ctx = &mut self.simplifier.context;
+            let t1 = ctx.add(cas_ast::Expr::Mul(c1, a1));
+            let t2 = ctx.add(cas_ast::Expr::Mul(c2, a2));
+            let lhs = ctx.add(cas_ast::Expr::Add(t1, t2));
+            cond_equations.push(Equation {
+                lhs,
+                rhs: cond.value,
+                op: RelOp::Eq,
+            });
+        }
+
+        // Solve the 2×2 by univariate elimination: C1 from eq1 (C2 symbolic),
+        // substitute into eq2, solve C2, back-substitute.
+        let solver_opts = cas_solver_core::solver_options::SolverOptions::from_eval_config(
+            options.shared.semantics,
+            options.budget,
+        );
+        let mut solved: Option<(ExprId, ExprId)> = None;
+        'orders: for (first_name, second_name, first_var, second_var) in
+            [(c1_name, c2_name, c1, c2), (c2_name, c1_name, c2, c1)]
+        {
+            let Ok((SolutionSet::Discrete(first_roots), _, _)) =
+                crate::api::solve_with_display_steps(
+                    &cond_equations[0],
+                    first_name,
+                    &mut self.simplifier,
+                    solver_opts,
+                )
+            else {
+                continue;
+            };
+            for first_expr in first_roots {
+                let ctx = &mut self.simplifier.context;
+                let eq2_lhs = substitute_power_aware(
+                    ctx,
+                    cond_equations[1].lhs,
+                    first_var,
+                    first_expr,
+                    SubstituteOptions::exact(),
+                );
+                let eq2 = Equation {
+                    lhs: eq2_lhs,
+                    rhs: cond_equations[1].rhs,
+                    op: RelOp::Eq,
+                };
+                let Ok((SolutionSet::Discrete(second_roots), _, _)) =
+                    crate::api::solve_with_display_steps(
+                        &eq2,
+                        second_name,
+                        &mut self.simplifier,
+                        solver_opts,
+                    )
+                else {
+                    continue;
+                };
+                if let Some(second_expr) = second_roots.into_iter().next() {
+                    let ctx = &mut self.simplifier.context;
+                    let first_back = substitute_power_aware(
+                        ctx,
+                        first_expr,
+                        second_var,
+                        second_expr,
+                        SubstituteOptions::exact(),
+                    );
+                    let first_val = self.fold_free_subtree(verify_options, first_back);
+                    let second_val = self.fold_free_subtree(verify_options, second_expr);
+                    // Map back to (C1, C2) order.
+                    let (c1_val, c2_val) = if first_name == c1_name {
+                        (first_val, second_val)
+                    } else {
+                        (second_val, first_val)
+                    };
+                    solved = Some((c1_val, c2_val));
+                    break 'orders;
+                }
+            }
+        }
+        let Some((c1_val, c2_val)) = solved else {
+            let ctx = &mut self.simplifier.context;
+            return Ok(residual_action_result(
+                ctx,
+                resolved,
+                y_var,
+                x_var,
+                "Las condiciones iniciales no determinaron C1 y C2 (sistema inconsistente o degenerado); se declina honesto",
+            ));
+        };
+
+        // Particular solution. The ODE itself needs NO re-verification for
+        // y_p: both basis functions already reduced L[b_i] to exact 0, and L
+        // is linear with constant coefficients, so L[c1·b1 + c2·b2] ≡ 0 by
+        // THEOREM for any constants — substituting the combination back walks
+        // straight into the constant×exp×trig oscillation family the D5
+        // linearity doctrine exists to dodge (the complex-envelope IVP burned
+        // its whole verify budget exactly there). The CONDITIONS are what the
+        // constants must satisfy — those verify directly below.
+        let ctx = &mut self.simplifier.context;
+        let with_c1 = substitute_power_aware(ctx, general, c1, c1_val, SubstituteOptions::exact());
+        let y_p_raw = substitute_power_aware(ctx, with_c1, c2, c2_val, SubstituteOptions::exact());
+        let y_p = self.fold_free_subtree(verify_options, y_p_raw);
+
+        for cond in conditions {
+            let lhs_fn = if cond.order == 0 {
+                y_p
+            } else {
+                let ctx = &mut self.simplifier.context;
+                let d_call = ctx.call("diff", vec![y_p, x_var]);
+                self.fold_free_subtree(verify_options, d_call)
+            };
+            let ctx = &mut self.simplifier.context;
+            let at_point =
+                substitute_power_aware(ctx, lhs_fn, x_var, cond.point, SubstituteOptions::exact());
+            let residue = ctx.add(cas_ast::Expr::Sub(at_point, cond.value));
+            if !self.reduces_to_zero_exact(verify_options, residue) {
+                let ctx = &mut self.simplifier.context;
+                return Ok(residual_action_result(
+                    ctx,
+                    resolved,
+                    y_var,
+                    x_var,
+                    "La solución particular no verificó una condición inicial; se declina honesto",
+                ));
+            }
+        }
+
+        // Drop the free-constant warnings (both constants got pinned).
+        let warnings: Vec<DomainWarning> = warnings
+            .into_iter()
+            .filter(|w| !w.message.contains("constantes arbitrarias"))
+            .collect();
+        let ctx = &mut self.simplifier.context;
+        let point_str = render_expr(ctx, conditions[0].point);
+        solve_steps.push(crate::api::SolveStep {
+            description: format!(
+                "Aplicar las condiciones iniciales en {var} = {point_str}: resolver el sistema 2×2 en {c1_name}, {c2_name}"
+            ),
+            equation_after: Equation {
+                lhs: c1,
+                rhs: c1_val,
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description: "Solución particular con la condición aplicada".to_string(),
+            equation_after: Equation {
+                lhs: y_var,
+                rhs: y_p,
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        let result = EvalResult::Expr(wrap_eq(ctx, y_var, y_p));
+        Ok((
+            result,
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ))
+    }
+
     /// D11 level 2: reconstruct φ = ∫M dx + ∫(N − ∂y∫M) dy with the FULL
     /// evaluator folding the intermediate pieces (the internal F6 path only
     /// canonicalizes polynomial rests). All pieces are diff-free ordinary
@@ -2061,6 +2836,114 @@ fn build_exact_steps(
         equation_after: Equation {
             lhs: phi,
             rhs: c_var,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    steps
+}
+
+/// Which characteristic-discriminant branch produced the basis.
+enum SecondOrderShape {
+    DistinctReal,
+    DoubleRoot { rate: num_rational::BigRational },
+    ComplexPair { alpha: num_rational::BigRational },
+}
+
+/// Narrated solve steps for the second-order constant-coefficient method
+/// (D13). Every template must have an es/en entry in `SOLVE_DESCRIPTIONS`.
+#[allow(clippy::too_many_arguments)]
+fn build_second_order_steps(
+    ctx: &mut Context,
+    func: &str,
+    var: &str,
+    second: &SecondOrderOde,
+    disc: &num_rational::BigRational,
+    shape: &SecondOrderShape,
+    u1: ExprId,
+    u2: ExprId,
+    y_var: ExprId,
+    general: ExprId,
+) -> Vec<crate::api::SolveStep> {
+    // Characteristic polynomial in a fresh symbol (r, or s when taken).
+    let r_name = if func == "r" || var == "r" { "s" } else { "r" };
+    let r_var = ctx.var(r_name);
+    let a_num = ctx.add(cas_ast::Expr::Number(second.a.clone()));
+    let b_num = ctx.add(cas_ast::Expr::Number(second.b.clone()));
+    let c_num = ctx.add(cas_ast::Expr::Number(second.c.clone()));
+    let two = ctx.num(2);
+    let r_sq = ctx.add(cas_ast::Expr::Pow(r_var, two));
+    let ar2 = ctx.add(cas_ast::Expr::Mul(a_num, r_sq));
+    let br = ctx.add(cas_ast::Expr::Mul(b_num, r_var));
+    let sum1 = ctx.add(cas_ast::Expr::Add(ar2, br));
+    let poly = ctx.add(cas_ast::Expr::Add(sum1, c_num));
+    let zero = ctx.num(0);
+    let char_eq = Equation {
+        lhs: poly,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+
+    let mut steps: Vec<crate::api::SolveStep> = Vec::new();
+    steps.push(crate::api::SolveStep {
+        description: format!(
+            "Plantear la ecuación característica: a·r² + b·r + c = 0 con a = {}, b = {}, c = {}",
+            second.a, second.b, second.c
+        ),
+        equation_after: char_eq.clone(),
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    let disc_num = ctx.add(cas_ast::Expr::Number(disc.clone()));
+    let disc_var = ctx.var("Δ");
+    steps.push(crate::api::SolveStep {
+        description: format!("Calcular el discriminante de la característica: Δ = {disc}"),
+        equation_after: Equation {
+            lhs: disc_var,
+            rhs: disc_num,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::Medium,
+        substeps: vec![],
+    });
+    let branch_desc = match shape {
+        SecondOrderShape::DistinctReal => {
+            "Raíces reales distintas (Δ > 0): la base es {e^(r1·x), e^(r2·x)}"
+        }
+        SecondOrderShape::DoubleRoot { .. } => {
+            "Raíz real doble (Δ = 0): la base es {e^(r·x), x·e^(r·x)}"
+        }
+        SecondOrderShape::ComplexPair { .. } => {
+            "Raíces complejas conjugadas (Δ < 0): la base es {e^(α·x)·cos(β·x), e^(α·x)·sin(β·x)}"
+        }
+    };
+    let u_sum = ctx.add(cas_ast::Expr::Add(u1, u2));
+    steps.push(crate::api::SolveStep {
+        description: branch_desc.to_string(),
+        equation_after: Equation {
+            lhs: y_var,
+            rhs: u_sum,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Solución general: combinación lineal de la base con C1 y C2".to_string(),
+        equation_after: Equation {
+            lhs: y_var,
+            rhs: general,
+            op: RelOp::Eq,
+        },
+        importance: ImportanceLevel::High,
+        substeps: vec![],
+    });
+    steps.push(crate::api::SolveStep {
+        description: "Verificar por sustitución: cada función de la base anula la EDO".to_string(),
+        equation_after: Equation {
+            lhs: y_var,
+            rhs: general,
             op: RelOp::Eq,
         },
         importance: ImportanceLevel::Medium,

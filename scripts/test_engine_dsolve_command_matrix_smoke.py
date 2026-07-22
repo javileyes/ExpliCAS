@@ -17,9 +17,9 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_o0_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        # O0-O3 registry: 7 separable + 4 linear + 3 exact + 3 IVP supported
-        # rows + 6 honest residual rows.
-        self.assertEqual(len(cases), 23)
+        # O0-O4 registry: 7 separable + 4 linear + 3 exact + 3 first-order-IVP
+        # + 5 second-order supported rows + 7 honest residual rows.
+        self.assertEqual(len(cases), 29)
         names = {case.name for case in cases}
         self.assertIn("separable_growth_textbook", names)
         self.assertIn("separable_implicit_circle", names)
@@ -34,17 +34,20 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("exact_transcendental_full_eval_level2", names)
         self.assertIn("residual_nonexact_nonlinear", names)
         self.assertIn("residual_riccati_never_fabricate", names)
-        self.assertIn("residual_airy_higher_order", names)
+        self.assertIn("residual_airy_variable_coefficients", names)
+        self.assertIn("second_order_complex_envelope_o23", names)
+        self.assertIn("second_order_ivp_v31", names)
+        self.assertIn("residual_third_order", names)
         self.assertIn("ivp_separable_pinned_constant", names)
         self.assertIn("ivp_implicit_circle", names)
-        self.assertIn("residual_ivp_derivative_condition_future_cycle", names)
+        self.assertIn("residual_ivp_derivative_condition_order_mismatch", names)
         self.assertIn("residual_ivp_inconsistent_condition", names)
         self.assertIn("residual_pendulum_never_fabricate", names)
 
         supported = [case for case in cases if case.outcome == "supported"]
         residual = [case for case in cases if case.outcome == "residual"]
-        self.assertEqual(len(supported), 17)
-        self.assertEqual(len(residual), 6)
+        self.assertEqual(len(supported), 22)
+        self.assertEqual(len(residual), 7)
 
         # Verification-gated emission: every supported row is verified; every
         # residual row is declined (never fabricated).
@@ -55,6 +58,7 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
                     "verified_by_substitution",
                     "verified_by_implicit_differentiation",
                     "verified_per_component",
+                    "verified_per_basis",
                 ),
                 case.name,
             )
@@ -66,14 +70,17 @@ class DsolveCommandMatrixSmokeTests(unittest.TestCase):
 
         # Axis coverage minimums for O0+O1+O2.
         families = {case.family for case in cases}
-        self.assertEqual(families, {"separable", "lineal_1o", "exacta"})
         self.assertEqual(
-            {case.order_regime for case in cases}, {"first", "second"}
+            families, {"separable", "lineal_1o", "exacta", "coef_const_2o"}
+        )
+        self.assertEqual(
+            {case.order_regime for case in cases},
+            {"first", "second", "third_plus"},
         )
         self.assertIn("implicit", {case.presentation_regime for case in cases})
         self.assertIn("sugar_arity2", {case.presentation_regime for case in cases})
         self.assertIn(
-            "derivative_condition_future_cycle",
+            "condition_order_mismatch",
             {case.residual_cause for case in cases},
         )
         self.assertIn("ivp_resolved", {case.constant_regime for case in cases})
