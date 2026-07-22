@@ -9350,7 +9350,11 @@ fn dsolve_second_order_o4_contract() {
     assert!(r("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+(x^2-1)*y=0, y, x)").starts_with("dsolve(")); // Z6 Bessel
     assert!(r("dsolve(diff(y,x,2)=y^2, y, x)").starts_with("dsolve(")); // Z4
     assert!(r("dsolve(diff(y,x,2)+sin(y)=0, y, x)").starts_with("dsolve(")); // Z7
-    assert!(err_of("dsolve(diff(y,x,2)+y=x, y, x)").contains("O5")); // no-homogénea nombra O5
+                                                                             // La no-homogénea GRADUÓ en O5 (el pin de decline migró a resolución).
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+y=x, y, x)"),
+        "y = C1·sin(x) + C2·cos(x) + x"
+    );
     assert!(err_of("dsolve(diff(y,x,3)+y=0, y, x)").contains("orden ≥3"));
 
     // El verbo solve NO cambia (D9: el set colapsa multiplicidad — contrato).
@@ -9381,4 +9385,111 @@ fn dsolve_second_order_o4_contract() {
     let en = steps_of("dsolve(diff(y,x,2)+4*y=0, y, x)", Some("en"));
     assert!(en.contains("characteristic equation"), "{en}");
     assert!(en.contains("Complex conjugate roots"), "{en}");
+}
+
+#[test]
+fn dsolve_undetermined_coefficients_o5_contract() {
+    // Fase 4 · O5: no-homogénea por coeficientes indeterminados — collector
+    // de coeficientes por función-base sobre derivadas ESTRUCTURALES (jamás
+    // el simplificador: la familia fresh×exp×trig es C5-hostil), Gauss
+    // racional exacto, shift de resonancia x^s por multiplicidad
+    // característica exacta, y el gate afín L[y_p]−RHS → 0.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // N26-N29 (el catálogo del scoping).
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+y=x, y, x)"),
+        "y = C1·sin(x) + C2·cos(x) + x"
+    ); // N26 UC polinomio
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)-y=exp(2*x), y, x)"),
+        "y = 1/3·e^(2·x) + C1·e^x + C2 / e^x"
+    ); // N27 UC exponencial
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+y=cos(x), y, x)"),
+        "y = 1/2·x·sin(x) + C1·sin(x) + C2·cos(x)"
+    ); // N28 resonancia trig (s=1)
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)-3*diff(y,x)+2*y=exp(x), y, x)"),
+        "y = C1·e^(2·x) + C2·e^x - x·e^x"
+    ); // N29 resonancia raíz simple
+
+    // Siblings del barrido: resonancia DOBLE (s=2), trig con β resonante,
+    // RHS constante, polinomio cuadrático, producto x·e^x.
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+2*diff(y,x)+y=exp(-x), y, x)"),
+        "y = x^2 / (2·e^x) + (C2·x + C1) / e^x"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=sin(2*x), y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x) - 1/4·x·cos(2·x)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+y=5, y, x)"),
+        "y = C1·sin(x) + C2·cos(x) + 5"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)-y=x^2+1, y, x)"),
+        "y = C1·e^x + C2 / e^x - x^2 - 3"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=4*x*exp(x), y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x) + e^x·(4/5·x - 8/25)"
+    );
+
+    // IVP no-homogéneo: las ecuaciones de condición incluyen y_p^(k)(x0).
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+y=x, y, x, y(0)=0, y'(0)=2)"),
+        "y = sin(x) + x"
+    );
+
+    // Fuera de la tabla UC → residual honesto nombrando variación de parámetros.
+    let tan = r("dsolve(diff(y,x,2)+y=tan(x), y, x)");
+    assert!(tan.starts_with("dsolve("), "tan(x) declina: {tan}");
+    assert!(err_of("dsolve(diff(y,x,2)+y=tan(x), y, x)").contains("variación de parámetros"));
+
+    // Pins de no-regresión: homogéneas O4 y primer orden byte-idénticos.
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    );
+
+    // Narración O5 keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve(diff(y,x,2)+y=x, y, x)", None);
+    assert!(es.contains("coeficientes indeterminados"), "{es}");
+    let en = steps_of("dsolve(diff(y,x,2)+y=x, y, x)", Some("en"));
+    assert!(en.contains("undetermined coefficients"), "{en}");
 }

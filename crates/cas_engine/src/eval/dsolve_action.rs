@@ -262,14 +262,16 @@ fn scan_max_diff_order(
     max_order
 }
 
-/// Constant-coefficient second-order homogeneous match
-/// `a·y'' + b·y' + c·y = 0` (a, b, c exact rationals).
+/// Constant-coefficient second-order match `a·y'' + b·y' + c·y = rhs`
+/// (a, b, c exact rationals; `rhs` is the unknown-free forcing term moved to
+/// the right side — `None` for the homogeneous case).
 struct SecondOrderOde {
     a: num_rational::BigRational,
     b: num_rational::BigRational,
     c: num_rational::BigRational,
-    /// False when a nonzero unknown-free term remains (non-homogeneous — O5).
-    homogeneous: bool,
+    /// Unknown-free forcing term (already sign-flipped to the RHS). `None`
+    /// when the equation is homogeneous.
+    rhs: Option<ExprId>,
 }
 
 /// Match `a·y'' + b·y' + c·y = rhs` on the RAW tree with RATIONAL constant
@@ -292,7 +294,7 @@ fn try_match_second_order_constant(
     let mut b = zero.clone();
     let mut c = zero.clone();
     let mut free_sum = zero.clone();
-    let mut nonhomogeneous_functional = false;
+    let mut free_terms: Vec<ExprId> = Vec::new();
     for (term, positive) in terms {
         let mut sign = positive;
         let mut core = term;
@@ -303,6 +305,10 @@ fn try_match_second_order_constant(
         let mut factors: Factors = Vec::new();
         collect_product_factors(ctx, core, false, &mut factors);
 
+        // Sign at the TERM level (before factor-level Neg peeling): the free
+        // branch re-uses the whole `core` tree, whose inner Negs must NOT be
+        // double-counted through `sign`.
+        let term_sign = sign;
         let mut order2 = 0usize;
         let mut order1 = 0usize;
         let mut y_count = 0usize;
@@ -357,12 +363,16 @@ fn try_match_second_order_constant(
         if !rational_coef {
             // A y'/y''/y term with a NON-rational coefficient is a variable
             // coefficient — decline. A free term that is a FUNCTION of x
-            // (`y'' + y = x`) makes the ODE non-homogeneous: report that
-            // precisely so the residual names O5 (which will consume the RHS).
+            // (`y'' + y = x`) is forcing: collect it (sign-flipped) as RHS.
             if order2 + order1 + y_count > 0 {
                 return None;
             }
-            nonhomogeneous_functional = true;
+            let flipped = if term_sign {
+                ctx.add(cas_ast::Expr::Neg(core))
+            } else {
+                core
+            };
+            free_terms.push(flipped);
             continue;
         }
         let signed = if sign { coef } else { -coef };
@@ -379,12 +389,16 @@ fn try_match_second_order_constant(
     if a.is_zero() {
         return None;
     }
-    Some(SecondOrderOde {
-        a,
-        b,
-        c,
-        homogeneous: free_sum.is_zero() && !nonhomogeneous_functional,
-    })
+    // Assemble the forcing RHS: functional free terms plus any nonzero
+    // rational free sum, all sign-flipped to the right side.
+    if !free_sum.is_zero() {
+        let n = ctx.add(cas_ast::Expr::Number(-free_sum.clone()));
+        free_terms.push(n);
+    }
+    let rhs = free_terms
+        .into_iter()
+        .reduce(|acc, t| ctx.add(cas_ast::Expr::Add(acc, t)));
+    Some(SecondOrderOde { a, b, c, rhs })
 }
 
 /// True when `id` is exactly the 2-arg call `diff(func, var)`.
@@ -1020,22 +1034,15 @@ impl Engine {
         if max_diff_order == 2 {
             if let Some(second) = try_match_second_order_constant(ctx, &ode_eq, diff_sym, func, var)
             {
-                if second.homogeneous {
-                    return self.eval_dsolve_second_order(
-                        options,
-                        resolved,
-                        func,
-                        var,
-                        &ode_eq,
-                        second,
-                        &parsed_conditions,
-                    );
-                }
-                let r = mk_residual(
-                    &mut self.simplifier.context,
-                    "2º orden no-homogénea: los coeficientes indeterminados llegan en el ciclo O5; se declina honesto",
+                return self.eval_dsolve_second_order(
+                    options,
+                    resolved,
+                    func,
+                    var,
+                    &ode_eq,
+                    second,
+                    &parsed_conditions,
                 );
-                return Ok(r);
             }
             let r = mk_residual(
                 &mut self.simplifier.context,
@@ -1949,13 +1956,30 @@ impl Engine {
         let ctx = &mut self.simplifier.context;
         let y_var = ctx.var(func);
         let x_var = ctx.var(var);
-        let ode_residue = ctx.add(cas_ast::Expr::Sub(ode_eq.lhs, ode_eq.rhs));
+        let _ = ode_eq;
 
-        // D5 linearity gate: each basis function alone must annihilate the ODE.
+        // Canonical residue of the ASSOCIATED HOMOGENEOUS operator L[y] =
+        // a·y'' + b·y' + c·y, built from the exact coefficients: the per-basis
+        // gate must check L[u_i] ≡ 0 — substituting into the user's full
+        // equation would wrongly include the forcing RHS (D5: bases verify
+        // against the homogeneous; y_p verifies against the complete).
+        let a_num = ctx.add(cas_ast::Expr::Number(second.a.clone()));
+        let b_num = ctx.add(cas_ast::Expr::Number(second.b.clone()));
+        let c_num = ctx.add(cas_ast::Expr::Number(second.c.clone()));
+        let two_lit = ctx.num(2);
+        let d2_call = ctx.call("diff", vec![y_var, x_var, two_lit]);
+        let d1_call = ctx.call("diff", vec![y_var, x_var]);
+        let t2 = ctx.add(cas_ast::Expr::Mul(a_num, d2_call));
+        let t1 = ctx.add(cas_ast::Expr::Mul(b_num, d1_call));
+        let t0 = ctx.add(cas_ast::Expr::Mul(c_num, y_var));
+        let sum21 = ctx.add(cas_ast::Expr::Add(t2, t1));
+        let homog_residue = ctx.add(cas_ast::Expr::Add(sum21, t0));
+
+        // D5 linearity gate: each basis function alone must annihilate L.
         for u in [u1, u2] {
             let ctx = &mut self.simplifier.context;
             let substituted =
-                substitute_power_aware(ctx, ode_residue, y_var, u, SubstituteOptions::exact());
+                substitute_power_aware(ctx, homog_residue, y_var, u, SubstituteOptions::exact());
             if !self.reduces_to_zero_exact(verify_options, substituted) {
                 let ctx = &mut self.simplifier.context;
                 return Ok(residual_action_result(
@@ -1963,7 +1987,7 @@ impl Engine {
                     resolved,
                     y_var,
                     x_var,
-                    "Una función de la base no verificó contra la EDO (residuo ≠ 0 exacto); se declina honesto",
+                    "Una función de la base no verificó contra la homogénea asociada (residuo ≠ 0 exacto); se declina honesto",
                 ));
             }
         }
@@ -2024,6 +2048,32 @@ impl Engine {
             }
         };
 
+        // O5: non-homogeneous forcing → particular solution by undetermined
+        // coefficients, appended to the homogeneous general (superposition).
+        let y_particular = match second.rhs {
+            None => None,
+            Some(rhs_expr) => {
+                match self.uc_particular(verify_options, second, rhs_expr, func, var, resolved) {
+                    Some(y_p) => Some(y_p),
+                    None => {
+                        let ctx = &mut self.simplifier.context;
+                        return Ok(residual_action_result(
+                            ctx,
+                            resolved,
+                            y_var,
+                            x_var,
+                            "RHS fuera de la tabla UC (polinomio·e^(kx)·sin/cos con coeficientes racionales): variación de parámetros queda fuera de fase; se declina honesto",
+                        ));
+                    }
+                }
+            }
+        };
+        let ctx = &mut self.simplifier.context;
+        let general = match y_particular {
+            None => general,
+            Some(y_p) => ctx.add(cas_ast::Expr::Add(y_p, general)),
+        };
+
         let mut warnings: Vec<DomainWarning> = Vec::new();
         if c1_name != "C1" {
             warnings.push(DomainWarning {
@@ -2040,6 +2090,20 @@ impl Engine {
 
         let mut solve_steps =
             build_second_order_steps(ctx, func, var, second, disc, &shape, u1, u2, y_var, general);
+        if let Some(y_p) = y_particular {
+            solve_steps.push(crate::api::SolveStep {
+                description:
+                    "Proponer y resolver la solución particular por coeficientes indeterminados (tabla UC con corrección de resonancia x^s)"
+                        .to_string(),
+                equation_after: Equation {
+                    lhs: y_var,
+                    rhs: y_p,
+                    op: RelOp::Eq,
+                },
+                importance: ImportanceLevel::High,
+                substeps: vec![],
+            });
+        }
 
         // No conditions: emit the general solution.
         if conditions.is_empty() {
@@ -2101,7 +2165,27 @@ impl Engine {
             let ctx = &mut self.simplifier.context;
             let t1 = ctx.add(cas_ast::Expr::Mul(c1, a1));
             let t2 = ctx.add(cas_ast::Expr::Mul(c2, a2));
-            let lhs = ctx.add(cas_ast::Expr::Add(t1, t2));
+            let mut lhs = ctx.add(cas_ast::Expr::Add(t1, t2));
+            // Non-homogeneous: the particular contributes y_p^(k)(x0) as a
+            // plain constant term (y_p is fresh-free and numeric-coefficient,
+            // so its derivative and point-fold are C5-safe).
+            if let Some(y_p) = y_particular {
+                let f = if cond.order == 0 {
+                    y_p
+                } else {
+                    let ctx = &mut self.simplifier.context;
+                    let d_call = ctx.call("diff", vec![y_p, x_var]);
+                    self.fold_free_subtree(verify_options, d_call)
+                };
+                let ctx = &mut self.simplifier.context;
+                let at =
+                    substitute_power_aware(ctx, f, x_var, cond.point, SubstituteOptions::exact());
+                let at_folded = self.fold_free_subtree(verify_options, at);
+                let ctx = &mut self.simplifier.context;
+                lhs = ctx.add(cas_ast::Expr::Add(lhs, at_folded));
+            }
+            let ctx = &mut self.simplifier.context;
+            let _ = ctx;
             cond_equations.push(Equation {
                 lhs,
                 rhs: cond.value,
@@ -2269,6 +2353,278 @@ impl Engine {
     /// evaluator folding the intermediate pieces (the internal F6 path only
     /// canonicalizes polynomial rests). All pieces are diff-free ordinary
     /// expressions in (x, y), so the D4 invariant allows the pipeline.
+    /// O5: particular solution by undetermined coefficients. The RHS is
+    /// classified into UC families `P_d(x)·e^(kx)·{1|sin(bx)|cos(bx)}`, one
+    /// trial block per (k, b) family with the resonance shift `x^s` (s = the
+    /// EXACT characteristic multiplicity — all-rational, no root extraction),
+    /// `L[trial]` is differentiated symbolically and flattened STRUCTURALLY
+    /// (never through the simplifier — the fresh-constant×exp×trig family is
+    /// C5-hostile), coefficients are collected per basis atom, and the linear
+    /// system solves by exact rational Gauss. `None` = outside the UC table.
+    fn uc_particular(
+        &mut self,
+        verify_options: &crate::options::EvalOptions,
+        second: &SecondOrderOde,
+        rhs: ExprId,
+        func: &str,
+        var: &str,
+        resolved: ExprId,
+    ) -> Option<ExprId> {
+        let p = &second.b / &second.a;
+        let q = &second.c / &second.a;
+        // Normalize the forcing to the monic operator: y'' + p·y' + q·y = rhs/a.
+        let inv_a = num_rational::BigRational::from_integer(1.into()) / &second.a;
+
+        // Classify the RHS.
+        let ctx = &mut self.simplifier.context;
+        let rhs_dist = distribute_structural(ctx, rhs);
+        let mut rhs_map: std::collections::HashMap<UcBase, UcComb> =
+            std::collections::HashMap::new();
+        if !uc_decompose(ctx, rhs_dist, var, &[], &inv_a, &mut rhs_map) {
+            return None;
+        }
+        if rhs_map.is_empty() {
+            return None;
+        }
+
+        // Group by (k, |b|) family; track max polynomial degree per family.
+        #[derive(Clone, PartialEq, Eq, Hash)]
+        struct Family {
+            k: num_rational::BigRational,
+            b: Option<num_rational::BigRational>,
+        }
+        let mut families: std::collections::HashMap<Family, usize> =
+            std::collections::HashMap::new();
+        for base in rhs_map.keys() {
+            let fam = Family {
+                k: base.k.clone(),
+                b: match &base.trig {
+                    UcTrig::None => None,
+                    UcTrig::Sin(b) | UcTrig::Cos(b) => Some(b.clone()),
+                },
+            };
+            let entry = families.entry(fam).or_insert(0);
+            *entry = (*entry).max(base.x_pow);
+        }
+
+        // Fresh coefficient symbols (D7 freshness against the ODE's vars).
+        let ctx = &mut self.simplifier.context;
+        let input_vars = collect_variables(ctx, resolved);
+        let prefix = if input_vars.iter().any(|v| v.starts_with("uc")) {
+            "ucoef"
+        } else {
+            "uc"
+        };
+        let mut fresh_syms: Vec<cas_ast::symbol::SymbolId> = Vec::new();
+        let mut fresh_vars: Vec<ExprId> = Vec::new();
+        let next_fresh = |ctx: &mut Context,
+                              fresh_syms: &mut Vec<cas_ast::symbol::SymbolId>,
+                              fresh_vars: &mut Vec<ExprId>|
+         -> ExprId {
+            let name = format!("{prefix}{}", fresh_syms.len());
+            let sym = ctx.intern_symbol(&name);
+            let v = ctx.var(&name);
+            fresh_syms.push(sym);
+            fresh_vars.push(v);
+            v
+        };
+
+        // Build the trial: Σ_families x^s · (Σ_j u_j·x^j) · e^(kx) · trig-part.
+        let x_var = ctx.var(var);
+        let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+        let mut trial: Option<ExprId> = None;
+        // Deterministic family order for reproducible fresh-symbol numbering.
+        let mut fam_list: Vec<(Family, usize)> = families.into_iter().collect();
+        fam_list.sort_by_key(|(f, _)| {
+            (
+                f.k.clone(),
+                f.b.clone()
+                    .unwrap_or_else(|| num_rational::BigRational::from_integer(0.into())),
+                f.b.is_some(),
+            )
+        });
+        for (fam, degree) in fam_list {
+            let s = match &fam.b {
+                None => real_char_multiplicity(&p, &q, &fam.k),
+                Some(b) => {
+                    if complex_char_is_root(&p, &q, &fam.k, b) {
+                        1
+                    } else {
+                        0
+                    }
+                }
+            };
+            // Polynomial block(s): one for the no-trig case, two (cos+sin)
+            // when b is present.
+            let blocks: Vec<Option<UcTrig>> = match &fam.b {
+                None => vec![None],
+                Some(b) => vec![Some(UcTrig::Cos(b.clone())), Some(UcTrig::Sin(b.clone()))],
+            };
+            for block_trig in blocks {
+                let mut poly: Option<ExprId> = None;
+                for j in 0..=degree {
+                    let u = next_fresh(
+                        &mut self.simplifier.context,
+                        &mut fresh_syms,
+                        &mut fresh_vars,
+                    );
+                    let ctx = &mut self.simplifier.context;
+                    let total_pow = j + s;
+                    let term = if total_pow == 0 {
+                        u
+                    } else {
+                        let xp = if total_pow == 1 {
+                            x_var
+                        } else {
+                            let n = ctx.num(total_pow as i64);
+                            ctx.add(cas_ast::Expr::Pow(x_var, n))
+                        };
+                        ctx.add(cas_ast::Expr::Mul(u, xp))
+                    };
+                    poly = Some(match poly {
+                        None => term,
+                        Some(acc) => {
+                            let ctx = &mut self.simplifier.context;
+                            ctx.add(cas_ast::Expr::Add(acc, term))
+                        }
+                    });
+                }
+                let ctx = &mut self.simplifier.context;
+                let mut block = poly.expect("degree ≥ 0 always yields a term");
+                if !fam.k.is_zero() {
+                    let k_num = ctx.add(cas_ast::Expr::Number(fam.k.clone()));
+                    let arg = ctx.add(cas_ast::Expr::Mul(k_num, x_var));
+                    let envelope = ctx.add(cas_ast::Expr::Pow(e_const, arg));
+                    block = ctx.add(cas_ast::Expr::Mul(block, envelope));
+                }
+                if let Some(trig) = block_trig {
+                    let (name, b) = match trig {
+                        UcTrig::Cos(b) => ("cos", b),
+                        UcTrig::Sin(b) => ("sin", b),
+                        UcTrig::None => unreachable!(),
+                    };
+                    let b_num = ctx.add(cas_ast::Expr::Number(b));
+                    let arg = ctx.add(cas_ast::Expr::Mul(b_num, x_var));
+                    let t = ctx.call(name, vec![arg]);
+                    block = ctx.add(cas_ast::Expr::Mul(block, t));
+                }
+                trial = Some(match trial {
+                    None => block,
+                    Some(acc) => {
+                        let ctx = &mut self.simplifier.context;
+                        ctx.add(cas_ast::Expr::Add(acc, block))
+                    }
+                });
+            }
+        }
+        let trial = trial?;
+
+        // L[trial]/a = trial'' + p·trial' + q·trial, differentiated by the
+        // PURE symbolic differ and flattened structurally.
+        let ctx = &mut self.simplifier.context;
+        let d1 = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+            ctx, trial, var,
+        )?;
+        let d2 =
+            cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, d1, var)?;
+        let one = num_rational::BigRational::from_integer(1.into());
+        let mut lhs_map: std::collections::HashMap<UcBase, UcComb> =
+            std::collections::HashMap::new();
+        let d2_dist = distribute_structural(ctx, d2);
+        if !uc_decompose(ctx, d2_dist, var, &fresh_syms, &one, &mut lhs_map) {
+            return None;
+        }
+        let d1_dist = distribute_structural(ctx, d1);
+        if !uc_decompose(ctx, d1_dist, var, &fresh_syms, &p, &mut lhs_map) {
+            return None;
+        }
+        let trial_dist = distribute_structural(ctx, trial);
+        if !uc_decompose(ctx, trial_dist, var, &fresh_syms, &q, &mut lhs_map) {
+            return None;
+        }
+
+        // Assemble the linear system over every basis atom seen on either side.
+        let mut all_bases: Vec<UcBase> = lhs_map
+            .keys()
+            .chain(rhs_map.keys())
+            .cloned()
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        all_bases.sort_by_key(|b| {
+            (
+                b.k.clone(),
+                match &b.trig {
+                    UcTrig::None => (0u8, num_rational::BigRational::from_integer(0.into())),
+                    UcTrig::Cos(v) => (1u8, v.clone()),
+                    UcTrig::Sin(v) => (2u8, v.clone()),
+                },
+                b.x_pow,
+            )
+        });
+        let n = fresh_syms.len();
+        let mut matrix: Vec<Vec<num_rational::BigRational>> = Vec::new();
+        let mut rhs_vec: Vec<num_rational::BigRational> = Vec::new();
+        for base in &all_bases {
+            let row = lhs_map
+                .get(base)
+                .map(|c| c.fresh.clone())
+                .unwrap_or_else(|| UcComb::zero(n).fresh);
+            let mut target = rhs_map
+                .get(base)
+                .map(|c| c.constant.clone())
+                .unwrap_or_else(|| num_rational::BigRational::from_integer(0.into()));
+            if let Some(c) = lhs_map.get(base) {
+                // L[trial] is linear-homogeneous in the fresh symbols; a
+                // nonzero constant here would be a collector bug — decline.
+                if !c.constant.is_zero() {
+                    return None;
+                }
+            }
+            target = target.clone();
+            matrix.push(row);
+            rhs_vec.push(target);
+        }
+        let solution = solve_rational_system(matrix, rhs_vec)?;
+
+        // Substitute the solved coefficients into the trial and fold (numeric
+        // constants only — no symbolic-constant hostility).
+        let mut y_p = trial;
+        for (idx, value) in solution.iter().enumerate() {
+            let ctx = &mut self.simplifier.context;
+            let v_num = ctx.add(cas_ast::Expr::Number(value.clone()));
+            y_p = substitute_power_aware(
+                ctx,
+                y_p,
+                fresh_vars[idx],
+                v_num,
+                SubstituteOptions::exact(),
+            );
+        }
+        let y_p = self.fold_free_subtree(verify_options, y_p);
+
+        // Affine verification gate (D5): L[y_p] − rhs must reduce to exact 0
+        // — the final net over the whole collector/Gauss pipeline.
+        let ctx = &mut self.simplifier.context;
+        let a_num = ctx.add(cas_ast::Expr::Number(second.a.clone()));
+        let b_num = ctx.add(cas_ast::Expr::Number(second.b.clone()));
+        let c_num = ctx.add(cas_ast::Expr::Number(second.c.clone()));
+        let d1_call = ctx.call("diff", vec![y_p, x_var]);
+        let two_lit = ctx.num(2);
+        let d2_call = ctx.call("diff", vec![y_p, x_var, two_lit]);
+        let t2 = ctx.add(cas_ast::Expr::Mul(a_num, d2_call));
+        let t1 = ctx.add(cas_ast::Expr::Mul(b_num, d1_call));
+        let t0 = ctx.add(cas_ast::Expr::Mul(c_num, y_p));
+        let sum01 = ctx.add(cas_ast::Expr::Add(t2, t1));
+        let l_yp = ctx.add(cas_ast::Expr::Add(sum01, t0));
+        let residue = ctx.add(cas_ast::Expr::Sub(l_yp, rhs));
+        if !self.reduces_to_zero_exact(verify_options, residue) {
+            return None;
+        }
+        let _ = func;
+        Some(y_p)
+    }
+
     fn reconstruct_potential_full_eval(
         &mut self,
         verify_options: &crate::options::EvalOptions,
@@ -2950,4 +3306,369 @@ fn build_second_order_steps(
         substeps: vec![],
     });
     steps
+}
+
+// ===================== O5: undetermined coefficients =====================
+
+/// Structural distribution of products over sums (`a·(b+c) → a·b + a·c`,
+/// recursive, Sub/Neg normalized into Add-of-Neg). Purely structural — never
+/// touches the simplifier, so trial derivatives (fresh-constant × exp × trig,
+/// the C5-hostile family) flatten deterministically without oscillation risk.
+fn distribute_structural(ctx: &mut Context, e: ExprId) -> ExprId {
+    match ctx.get(e).clone() {
+        cas_ast::Expr::Add(a, b) => {
+            let da = distribute_structural(ctx, a);
+            let db = distribute_structural(ctx, b);
+            ctx.add(cas_ast::Expr::Add(da, db))
+        }
+        cas_ast::Expr::Sub(a, b) => {
+            let da = distribute_structural(ctx, a);
+            let db = distribute_structural(ctx, b);
+            let nb = ctx.add(cas_ast::Expr::Neg(db));
+            ctx.add(cas_ast::Expr::Add(da, nb))
+        }
+        cas_ast::Expr::Neg(a) => {
+            let da = distribute_structural(ctx, a);
+            match ctx.get(da).clone() {
+                cas_ast::Expr::Add(x, y) => {
+                    let nx = ctx.add(cas_ast::Expr::Neg(x));
+                    let ny = ctx.add(cas_ast::Expr::Neg(y));
+                    let inner = ctx.add(cas_ast::Expr::Add(nx, ny));
+                    distribute_structural(ctx, inner)
+                }
+                _ => ctx.add(cas_ast::Expr::Neg(da)),
+            }
+        }
+        cas_ast::Expr::Mul(a, b) => {
+            let da = distribute_structural(ctx, a);
+            let db = distribute_structural(ctx, b);
+            if let cas_ast::Expr::Add(x, y) = ctx.get(da).clone() {
+                let mx = ctx.add(cas_ast::Expr::Mul(x, db));
+                let my = ctx.add(cas_ast::Expr::Mul(y, db));
+                let sum = ctx.add(cas_ast::Expr::Add(mx, my));
+                return distribute_structural(ctx, sum);
+            }
+            if let cas_ast::Expr::Add(x, y) = ctx.get(db).clone() {
+                let mx = ctx.add(cas_ast::Expr::Mul(da, x));
+                let my = ctx.add(cas_ast::Expr::Mul(da, y));
+                let sum = ctx.add(cas_ast::Expr::Add(mx, my));
+                return distribute_structural(ctx, sum);
+            }
+            ctx.add(cas_ast::Expr::Mul(da, db))
+        }
+        cas_ast::Expr::Div(a, b) => {
+            let da = distribute_structural(ctx, a);
+            let db = distribute_structural(ctx, b);
+            if let cas_ast::Expr::Add(x, y) = ctx.get(da).clone() {
+                let dx = ctx.add(cas_ast::Expr::Div(x, db));
+                let dy = ctx.add(cas_ast::Expr::Div(y, db));
+                let sum = ctx.add(cas_ast::Expr::Add(dx, dy));
+                return distribute_structural(ctx, sum);
+            }
+            ctx.add(cas_ast::Expr::Div(da, db))
+        }
+        _ => e,
+    }
+}
+
+/// One UC basis atom `x^pow · e^(k·x) · {1 | sin(b·x) | cos(b·x)}`.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+enum UcTrig {
+    None,
+    Sin(num_rational::BigRational),
+    Cos(num_rational::BigRational),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+struct UcBase {
+    x_pow: usize,
+    k: num_rational::BigRational,
+    trig: UcTrig,
+}
+
+/// Linear combination `const + Σ coef_j · fresh_j` attached to one UC base.
+#[derive(Clone, Debug)]
+struct UcComb {
+    constant: num_rational::BigRational,
+    fresh: Vec<num_rational::BigRational>,
+}
+
+impl UcComb {
+    fn zero(n: usize) -> Self {
+        let z = num_rational::BigRational::from_integer(0.into());
+        UcComb {
+            constant: z.clone(),
+            fresh: vec![z; n],
+        }
+    }
+}
+
+/// Extract the rational slope `m` of a linear-in-`var` argument `m·x` (no
+/// additive constant tolerated — UC arguments are pure rates).
+fn linear_rate(ctx: &Context, e: ExprId, var: &str) -> Option<num_rational::BigRational> {
+    let one = num_rational::BigRational::from_integer(1.into());
+    let mut terms: Vec<(ExprId, num_rational::BigRational)> = Vec::new();
+    collect_linear_terms(ctx, e, one, &mut terms);
+    let mut rate: Option<num_rational::BigRational> = None;
+    for (t, m) in terms {
+        match ctx.get(t) {
+            cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == var => {
+                let acc = rate
+                    .take()
+                    .unwrap_or_else(|| num_rational::BigRational::from_integer(0.into()));
+                rate = Some(acc + m);
+            }
+            _ => return None,
+        }
+    }
+    rate.filter(|r| !r.is_zero())
+}
+
+/// Decompose a STRUCTURALLY DISTRIBUTED expression into UC bases with linear
+/// coefficients over the fresh symbols. `None` = a factor falls outside the
+/// UC table (polynomial · e^(kx) · sin/cos(bx) with at most one fresh symbol
+/// per term).
+fn uc_decompose(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+    fresh: &[cas_ast::symbol::SymbolId],
+    mult: &num_rational::BigRational,
+    out: &mut std::collections::HashMap<UcBase, UcComb>,
+) -> bool {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, expr, true, &mut terms);
+    'term: for (term, positive) in terms {
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut coef = mult.clone();
+        let mut fresh_idx: Option<usize> = None;
+        let mut x_pow = 0usize;
+        let mut k = num_rational::BigRational::from_integer(0.into());
+        let mut trig = UcTrig::None;
+        // Worklist: peeling a Neg can expose a product (`−(x·2)` from the
+        // differ) whose sub-factors must be re-decomposed.
+        let mut work: Vec<(ExprId, bool)> = factors;
+        work.reverse();
+        while let Some((f, is_den)) = work.pop() {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            if matches!(ctx.get(g), cas_ast::Expr::Mul(..) | cas_ast::Expr::Div(..)) {
+                let mut sub: Factors = Vec::new();
+                collect_product_factors(ctx, g, is_den, &mut sub);
+                sub.reverse();
+                work.extend(sub);
+                continue;
+            }
+            // Rational constant (also den). The pure differ leaves foldable
+            // constant litter (`ln(e)` from d/dx aᵘ = aᵘ·ln(a)·u') — fold
+            // variable-free factors through the pure constant folder before
+            // giving up on them.
+            let g_const = cas_math::numeric_eval::as_rational_const(ctx, g).or_else(|| {
+                if collect_variables(ctx, g).is_empty() {
+                    let folded = cas_math::limits_support::fold_constant_subexprs(ctx, g);
+                    cas_math::numeric_eval::as_rational_const(ctx, folded)
+                } else {
+                    None
+                }
+            });
+            if let Some(r) = g_const {
+                if is_den {
+                    if r.is_zero() {
+                        return false;
+                    }
+                    coef /= r;
+                } else {
+                    coef *= r;
+                }
+                continue;
+            }
+            match ctx.get(g).clone() {
+                cas_ast::Expr::Variable(s) => {
+                    let name = ctx.sym_name(s).to_string();
+                    if name == var {
+                        if is_den {
+                            return false;
+                        }
+                        x_pow += 1;
+                    } else if let Some(idx) = fresh.iter().position(|fs| *fs == s) {
+                        if is_den || fresh_idx.is_some() {
+                            return false;
+                        }
+                        fresh_idx = Some(idx);
+                    } else {
+                        return false;
+                    }
+                }
+                cas_ast::Expr::Pow(base, exp) => match ctx.get(base) {
+                    cas_ast::Expr::Constant(cas_ast::Constant::E) => {
+                        let Some(rate) = linear_rate(ctx, exp, var) else {
+                            return false;
+                        };
+                        k += if is_den { -rate } else { rate };
+                    }
+                    cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == var => {
+                        if is_den {
+                            return false;
+                        }
+                        let Some(n) = cas_math::numeric_eval::as_rational_const(ctx, exp)
+                            .filter(|n| n.is_integer() && !n.is_negative())
+                            .and_then(|n| usize::try_from(n.to_integer()).ok())
+                        else {
+                            return false;
+                        };
+                        x_pow += n;
+                    }
+                    _ => return false,
+                },
+                cas_ast::Expr::Function(fn_id, args) if args.len() == 1 => {
+                    let name = ctx.sym_name(fn_id).to_string();
+                    // Differ litter: d/dx aᵘ emits a `ln(a)` factor unfolded —
+                    // for the UC table a = e, so ln(e) ≡ 1 (skip the factor).
+                    if name == "ln"
+                        && matches!(
+                            ctx.get(args[0]),
+                            cas_ast::Expr::Constant(cas_ast::Constant::E)
+                        )
+                    {
+                        continue;
+                    }
+                    if is_den || trig != UcTrig::None {
+                        return false;
+                    }
+                    let Some(rate) = linear_rate(ctx, args[0], var) else {
+                        return false;
+                    };
+                    // Normalize sin(−bx) = −sin(bx), cos(−bx) = cos(bx).
+                    let (rate, flip) = if rate.is_negative() {
+                        (-rate, true)
+                    } else {
+                        (rate, false)
+                    };
+                    match name.as_str() {
+                        "sin" => {
+                            if flip {
+                                sign = !sign;
+                            }
+                            trig = UcTrig::Sin(rate);
+                        }
+                        "cos" => trig = UcTrig::Cos(rate),
+                        _ => return false,
+                    }
+                }
+                _ => return false,
+            }
+        }
+        if !sign {
+            coef = -coef;
+        }
+        if coef.is_zero() {
+            continue 'term;
+        }
+        let base = UcBase { x_pow, k, trig };
+        let entry = out.entry(base).or_insert_with(|| UcComb::zero(fresh.len()));
+        match fresh_idx {
+            Some(idx) => entry.fresh[idx] += coef,
+            None => entry.constant += coef,
+        }
+    }
+    true
+}
+
+/// Multiplicity of the REAL rate `k` as a characteristic root of
+/// `r² + p·r + q` (0, 1, or 2) — all-rational, no root extraction.
+fn real_char_multiplicity(
+    p: &num_rational::BigRational,
+    q: &num_rational::BigRational,
+    k: &num_rational::BigRational,
+) -> usize {
+    let value = k * k + p * k + q;
+    if !value.is_zero() {
+        return 0;
+    }
+    let derivative = num_rational::BigRational::from_integer(2.into()) * k + p;
+    if derivative.is_zero() {
+        2
+    } else {
+        1
+    }
+}
+
+/// True when `k ± i·b` is a characteristic root of `r² + p·r + q`
+/// (multiplicity is at most 1 for a real quadratic).
+fn complex_char_is_root(
+    p: &num_rational::BigRational,
+    q: &num_rational::BigRational,
+    k: &num_rational::BigRational,
+    b: &num_rational::BigRational,
+) -> bool {
+    let re = k * k - b * b + p * k + q;
+    let im = b * (num_rational::BigRational::from_integer(2.into()) * k + p);
+    re.is_zero() && im.is_zero()
+}
+
+/// Exact Gaussian elimination over BigRational: solve `m · u = d`. `None` =
+/// singular/inconsistent (the trial cannot match — decline).
+#[allow(clippy::needless_range_loop)] // Gaussian pivoting is clearest with indices
+fn solve_rational_system(
+    mut m: Vec<Vec<num_rational::BigRational>>,
+    mut d: Vec<num_rational::BigRational>,
+) -> Option<Vec<num_rational::BigRational>> {
+    let rows = m.len();
+    let cols = if rows == 0 { 0 } else { m[0].len() };
+    let mut pivot_row = 0usize;
+    let mut pivot_cols: Vec<usize> = Vec::new();
+    for col in 0..cols {
+        let Some(sel) = (pivot_row..rows).find(|&r| !m[r][col].is_zero()) else {
+            continue;
+        };
+        m.swap(pivot_row, sel);
+        d.swap(pivot_row, sel);
+        let inv = m[pivot_row][col].clone();
+        for c in col..cols {
+            let v = m[pivot_row][c].clone() / inv.clone();
+            m[pivot_row][c] = v;
+        }
+        d[pivot_row] = d[pivot_row].clone() / inv;
+        for r in 0..rows {
+            if r != pivot_row && !m[r][col].is_zero() {
+                let factor = m[r][col].clone();
+                for c in col..cols {
+                    let v = m[r][c].clone() - factor.clone() * m[pivot_row][c].clone();
+                    m[r][c] = v;
+                }
+                d[r] = d[r].clone() - factor * d[pivot_row].clone();
+            }
+        }
+        pivot_cols.push(col);
+        pivot_row += 1;
+        if pivot_row == rows {
+            break;
+        }
+    }
+    // Consistency: zero rows must have zero rhs.
+    for r in pivot_row..rows {
+        if !d[r].is_zero() {
+            return None;
+        }
+    }
+    // Unique solution required: every column pivoted.
+    if pivot_cols.len() != cols {
+        return None;
+    }
+    let mut u = vec![num_rational::BigRational::from_integer(0.into()); cols];
+    for (row, &col) in pivot_cols.iter().enumerate() {
+        u[col] = d[row].clone();
+    }
+    Some(u)
 }

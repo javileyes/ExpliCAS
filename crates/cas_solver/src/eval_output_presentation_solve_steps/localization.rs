@@ -118,6 +118,8 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — undetermined-coefficients narration (D13, O5).
+    SolveDesc { template: "Proponer y resolver la solución particular por coeficientes indeterminados (tabla UC con corrección de resonancia x^s)", es: "Proponer y resolver la solución particular por coeficientes indeterminados (tabla UC con corrección de resonancia x^s)", en: "Propose and solve the particular solution by undetermined coefficients (UC table with x^s resonance correction)" },
     // dsolve (Fase 4) — second-order characteristic narration (D13, O4).
     SolveDesc { template: "Plantear la ecuación característica: a·r² + b·r + c = 0 con a = {0}, b = {1}, c = {2}", es: "Plantear la ecuación característica: a·r² + b·r + c = 0 con a = {0}, b = {1}, c = {2}", en: "Set up the characteristic equation: a·r² + b·r + c = 0 with a = {0}, b = {1}, c = {2}" },
     SolveDesc { template: "Calcular el discriminante de la característica: Δ = {0}", es: "Calcular el discriminante de la característica: Δ = {0}", en: "Compute the characteristic discriminant: Δ = {0}" },
