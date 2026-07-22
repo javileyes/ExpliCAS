@@ -387,6 +387,19 @@ impl Engine {
                 var,
                 conditions,
             } => self.eval_dsolve(options, resolved, &func, &var, &conditions),
+            EvalAction::DsolveSystem {
+                second_equation,
+                funcs,
+                var,
+                conditions,
+            } => self.eval_dsolve_system(
+                options,
+                resolved,
+                second_equation,
+                &funcs,
+                &var,
+                &conditions,
+            ),
         }
     }
 

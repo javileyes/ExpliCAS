@@ -523,6 +523,15 @@ pub enum EvalSpecialCommand {
         var: String,
         conditions: Vec<String>,
     },
+    /// `dsolve([eq1, eq2], [x, y], t[, conditions...])` — first-order 2×2
+    /// linear system (Fase 4 · O6). Equations travel as RAW text (same
+    /// anti-collapse rule as the scalar form).
+    DsolveSystem {
+        equations: Vec<String>,
+        funcs: Vec<String>,
+        var: String,
+        conditions: Vec<String>,
+    },
 }
 
 /// Parse special eval command forms:
@@ -563,6 +572,14 @@ pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
             approach,
         });
     }
+    if let Some((equations, funcs, var, conditions)) = parse_dsolve_system_command(input) {
+        return Some(EvalSpecialCommand::DsolveSystem {
+            equations,
+            funcs,
+            var,
+            conditions,
+        });
+    }
     if let Some((equation, func, var, conditions)) = parse_dsolve_command(input) {
         return Some(EvalSpecialCommand::Dsolve {
             equation,
@@ -572,6 +589,46 @@ pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
         });
     }
     None
+}
+
+/// Parsed 2×2 system parts: (equations, funcs, var, conditions).
+type DsolveSystemParts = (Vec<String>, Vec<String>, String, Vec<String>);
+
+/// Parse the 2×2 system list form
+/// `dsolve([eq1, eq2], [f1, f2], var[, conditions...])`.
+fn parse_dsolve_system_command(input: &str) -> Option<DsolveSystemParts> {
+    let trimmed = input.trim();
+    if !trimmed.to_lowercase().starts_with("dsolve(") || !trimmed.ends_with(')') {
+        return None;
+    }
+    let content = trimmed["dsolve(".len()..trimmed.len() - 1].trim();
+    let parts = split_top_level_commas(content);
+    if parts.len() < 3 {
+        return None;
+    }
+    let equations: Vec<String> = split_top_level_commas(bracketed_inner(&parts[0])?)
+        .into_iter()
+        .map(|e| e.trim().to_string())
+        .collect();
+    let funcs: Vec<String> = split_top_level_commas(bracketed_inner(&parts[1])?)
+        .into_iter()
+        .map(|f| f.trim().to_string())
+        .collect();
+    if equations.len() != 2 || funcs.len() != 2 {
+        return None;
+    }
+    if equations.iter().any(|e| e.is_empty()) || !funcs.iter().all(|f| is_plain_identifier(f)) {
+        return None;
+    }
+    let var = parts[2].trim().to_string();
+    if !is_plain_identifier(&var) {
+        return None;
+    }
+    let conditions: Vec<String> = parts[3..].iter().map(|c| c.trim().to_string()).collect();
+    if conditions.iter().any(|c| c.is_empty()) {
+        return None;
+    }
+    Some((equations, funcs, var, conditions))
 }
 
 /// Scan the raw equation text for `diff(<func>, <var>...)` calls and collect the
@@ -770,6 +827,16 @@ pub fn parse_eval_dsolve_command_error(input: &str) -> Option<String> {
     }
     let content = trimmed["dsolve(".len()..trimmed.len() - 1].trim();
     let parts = split_top_level_commas(content);
+    // List head → the 2×2 system form owns the message.
+    if parts
+        .first()
+        .is_some_and(|p| p.trim_start().starts_with('['))
+        && parse_dsolve_system_command(trimmed).is_none()
+    {
+        return Some(
+            "Invalid dsolve system command. Expected dsolve([eq1, eq2], [f1, f2], var), e.g. dsolve([diff(x,t)=y, diff(y,t)=x], [x,y], t).".to_string(),
+        );
+    }
     // SymPy-style `y(x)` heads: name the fix explicitly (today this dies in the
     // unknown-function gate with no guidance).
     if parts.len() >= 2 {

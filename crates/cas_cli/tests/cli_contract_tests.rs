@@ -9603,3 +9603,101 @@ fn dsolve_bernoulli_homogeneous_o8_contract() {
     let en_h = steps_of("dsolve(diff(y,x)=(x+y)/x, y, x)", Some("en"));
     assert!(en_h.contains("homogeneous ODE"), "{en_h}");
 }
+
+#[test]
+fn dsolve_systems_2x2_o6_contract() {
+    // Fase 4 · O6: sistemas 2×2 X' = A·X por la ruta eigen INTERNA (D17: los
+    // verbos eigenvalues/eigenvectors NO se tocan); autovalores complejos
+    // emiten soluciones REALES; defectiva por vector generalizado; cada base
+    // verifica contra AMBAS ecuaciones (D5 por componente).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let first_line = |input: &str| -> String {
+        r(input)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let err_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout)
+    };
+
+    // Y34: autovalores reales ±1.
+    assert_eq!(
+        first_line("dsolve([diff(x,t)=y, diff(y,t)=x], [x,y], t)"),
+        "{ x = C1·e^t + C2 / e^t, y = C1·e^t - C2 / e^t }"
+    );
+    // Y35: λ = ±i → soluciones REALES (sin `i` en la salida).
+    // (El pin de igualdad exacta garantiza la forma REAL — sin unidad
+    // imaginaria en la salida.)
+    assert_eq!(
+        first_line("dsolve([diff(x,t)=-y, diff(y,t)=x], [x,y], t)"),
+        "{ x = -C1·cos(t) - C2·sin(t), y = C2·cos(t) - C1·sin(t) }"
+    );
+    // Y-def: doble defectiva λ=2 con vector generalizado.
+    assert_eq!(
+        first_line("dsolve([diff(x,t)=2*x+y, diff(y,t)=2*y], [x,y], t)"),
+        "{ x = C1·e^(2·t) + C2·t·e^(2·t), y = C2·e^(2·t) }"
+    );
+
+    // Declines honestos: no-lineal, IVP de sistemas, autovalores irracionales.
+    let nl = r("dsolve([diff(x,t)=x+y, diff(y,t)=x*y], [x,y], t)");
+    assert!(nl.starts_with("dsolve("), "no-lineal declina: {nl}");
+    let ivp = r("dsolve([diff(x,t)=y, diff(y,t)=x], [x,y], t, x(0)=1)");
+    assert!(ivp.starts_with("dsolve("), "IVP de sistemas declina: {ivp}");
+    assert!(
+        err_of("dsolve([diff(x,t)=y, diff(y,t)=x], [x,y], t, x(0)=1)").contains("ciclo futuro")
+    );
+    let irr = r("dsolve([diff(x,t)=x+y, diff(y,t)=x], [x,y], t)");
+    assert!(
+        irr.starts_with("dsolve("),
+        "autovalores irracionales declinan: {irr}"
+    );
+
+    // Pin D17: el verbo eigenvalues NO cambia (su decline es contrato propio).
+    let ev = first_line("eigenvalues([[0,-1],[1,0]])");
+    assert!(
+        ev.starts_with("eigenvalues("),
+        "el verbo eigenvalues sigue residual: {ev}"
+    );
+
+    // Pins de no-regresión escalar: dsolve escalar byte-idéntico.
+    assert_eq!(
+        first_line("dsolve(diff(y,x)=x*y, y, x)"),
+        "y = C·e^(x^2 / 2)"
+    );
+    assert_eq!(
+        first_line("dsolve(diff(y,x,2)+4*y=0, y, x)"),
+        "y = C1·sin(2·x) + C2·cos(2·x)"
+    );
+
+    // Usage-error del pre-pass para la forma lista malformada.
+    assert!(err_of("dsolve([diff(x,t)=y], [x,y], t)").contains("dsolve system"));
+
+    // Narración O6 keyed es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("dsolve([diff(x,t)=-y, diff(y,t)=x], [x,y], t)", None);
+    assert!(es.contains("sistema lineal X'"), "{es}");
+    assert!(es.contains("Autovalores complejos conjugados"), "{es}");
+    let en = steps_of("dsolve([diff(x,t)=-y, diff(y,t)=x], [x,y], t)", Some("en"));
+    assert!(en.contains("linear system X'"), "{en}");
+    assert!(en.contains("Complex conjugate eigenvalues"), "{en}");
+}

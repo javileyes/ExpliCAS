@@ -162,6 +162,13 @@ pub(crate) fn format_output_input_latex(
             EvalSpecialCommand::Solve { equation, var } => {
                 return format_solve_input_latex(&equation, &var);
             }
+            EvalSpecialCommand::DsolveSystem { funcs, var, .. } => {
+                let eq_latex = style_latex_for_input(ctx, parsed, signals);
+                let f_list = funcs.join(", ");
+                return format!(
+                    "\\operatorname{{dsolve}}\\left(\\left[{eq_latex}, \\ldots\\right],\\; \\left[{f_list}\\right],\\; {var}\\right)"
+                );
+            }
             EvalSpecialCommand::Dsolve { func, var, .. } => {
                 // The parsed tree IS the ODE equation (`Equal(lhs, rhs)`); render
                 // it as the equation with the unknown/variable named.

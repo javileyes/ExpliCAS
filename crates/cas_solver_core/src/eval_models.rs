@@ -28,6 +28,15 @@ pub enum EvalAction {
         var: String,
         conditions: Vec<DsolveCondition>,
     },
+    /// Solve a first-order 2×2 linear ODE system (Fase 4 · O6). The first
+    /// equation travels as the request expression; the second rides along
+    /// pre-parsed.
+    DsolveSystem {
+        second_equation: ExprId,
+        funcs: Vec<String>,
+        var: String,
+        conditions: Vec<DsolveCondition>,
+    },
 }
 
 /// One dsolve initial condition `y(point) = value` (order 0) or

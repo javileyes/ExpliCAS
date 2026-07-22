@@ -2392,6 +2392,443 @@ impl Engine {
         ))
     }
 
+    /// O6: first-order 2×2 linear system `X' = A·X` by the INTERNAL exact
+    /// eigen route (D17: the `eigenvalues`/`eigenvectors` verbs are NEVER
+    /// touched — their declines are their own contract). Characteristic
+    /// λ² − tr·λ + det over BigRational, eigenvectors by hand for 2×2,
+    /// complex pairs emitted as REAL solutions via Re/Im, defective double
+    /// roots via a generalized vector. Every basis solution verifies against
+    /// BOTH equations (D5 per component) before anything is emitted.
+    pub(super) fn eval_dsolve_system(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        second_equation: ExprId,
+        funcs: &[String],
+        var: &str,
+        conditions: &[InitialCondition],
+    ) -> Result<ActionResult, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let ctx = &mut self.simplifier.context;
+        let diff_sym = ctx.intern_symbol("diff");
+        let f0_var = ctx.var(&funcs[0]);
+        let f1_var = ctx.var(&funcs[1]);
+        let t_var = ctx.var(var);
+        // Residual echo carries the list form.
+        let mk_residual = |ctx: &mut Context, reason: &str| -> ActionResult {
+            let eco = ctx.call(DSOLVE_RULE, vec![resolved, second_equation, t_var]);
+            (
+                EvalResult::SolutionSet(SolutionSet::Residual(eco)),
+                vec![DomainWarning {
+                    message: reason.to_string(),
+                    rule_name: DSOLVE_RULE.to_string(),
+                }],
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+                vec![],
+            )
+        };
+
+        if !conditions.is_empty() {
+            let r = mk_residual(
+                ctx,
+                "Condiciones iniciales de sistemas: ciclo futuro; se declina honesto",
+            );
+            return Ok(r);
+        }
+
+        // Extract A row by row (order fixed by which unknown is differentiated).
+        let eq1 = cas_solver_core::solve_entry::equation_from_expr_or_zero(ctx, resolved);
+        let eq2 = cas_solver_core::solve_entry::equation_from_expr_or_zero(ctx, second_equation);
+        let zero = num_rational::BigRational::from_integer(0.into());
+        let mut a = [[zero.clone(), zero.clone()], [zero.clone(), zero.clone()]];
+        let mut seen = [false, false];
+        for eq in [&eq1, &eq2] {
+            let Some((which, row)) = try_extract_system_row(ctx, eq, diff_sym, funcs, var) else {
+                let r = mk_residual(
+                    ctx,
+                    "El sistema no es lineal homogéneo de coeficientes constantes X' = A·X (o no es 2×2); se declina honesto",
+                );
+                return Ok(r);
+            };
+            if seen[which] {
+                let r = mk_residual(
+                    ctx,
+                    "Las dos ecuaciones derivan la misma incógnita; se declina honesto",
+                );
+                return Ok(r);
+            }
+            seen[which] = true;
+            a[which] = row;
+        }
+
+        // Characteristic λ² − tr·λ + det, exact.
+        let tr = &a[0][0] + &a[1][1];
+        let det = &a[0][0] * &a[1][1] - &a[0][1] * &a[1][0];
+        let disc = &tr * &tr - num_rational::BigRational::from_integer(4.into()) * &det;
+        let two = num_rational::BigRational::from_integer(2.into());
+
+        // Eigenvector for a RATIONAL eigenvalue λ (2×2 by hand).
+        let eigvec = |a: &[[num_rational::BigRational; 2]; 2],
+                      lam: &num_rational::BigRational|
+         -> [num_rational::BigRational; 2] {
+            if !a[0][1].is_zero() {
+                [a[0][1].clone(), lam - &a[0][0]]
+            } else if !a[1][0].is_zero() {
+                [lam - &a[1][1], a[1][0].clone()]
+            } else if *lam == a[0][0] {
+                [
+                    num_rational::BigRational::from_integer(1.into()),
+                    num_rational::BigRational::from_integer(0.into()),
+                ]
+            } else {
+                [
+                    num_rational::BigRational::from_integer(0.into()),
+                    num_rational::BigRational::from_integer(1.into()),
+                ]
+            }
+        };
+        let rat_expr = |ctx: &mut Context, r: &num_rational::BigRational| -> ExprId {
+            ctx.add(cas_ast::Expr::Number(r.clone()))
+        };
+        // vec_scale: component expression coef·shape (folded later per basis).
+        let scale = |ctx: &mut Context, c: &num_rational::BigRational, e: ExprId| -> ExprId {
+            let cn = rat_expr(ctx, c);
+            ctx.add(cas_ast::Expr::Mul(cn, e))
+        };
+
+        enum BranchKind {
+            Distinct,
+            Defective,
+            Diagonal,
+            Complex,
+        }
+        let (bases, branch): ([SystemBasis; 2], BranchKind) = if disc.is_positive() {
+            let Some(s) = cas_math::perfect_square_support::rational_sqrt(&disc) else {
+                let ctx = &mut self.simplifier.context;
+                let r = mk_residual(
+                    ctx,
+                    "Autovalores irracionales (discriminante no cuadrado): peldaño futuro; se declina honesto",
+                );
+                return Ok(r);
+            };
+            let l1 = (&tr + &s) / &two;
+            let l2 = (&tr - &s) / &two;
+            let v1 = eigvec(&a, &l1);
+            let v2 = eigvec(&a, &l2);
+            let ctx = &mut self.simplifier.context;
+            let e1 = build_exp_rate(ctx, &l1, t_var);
+            let e2 = build_exp_rate(ctx, &l2, t_var);
+            (
+                [
+                    SystemBasis {
+                        comp: [scale(ctx, &v1[0], e1), scale(ctx, &v1[1], e1)],
+                    },
+                    SystemBasis {
+                        comp: [scale(ctx, &v2[0], e2), scale(ctx, &v2[1], e2)],
+                    },
+                ],
+                BranchKind::Distinct,
+            )
+        } else if disc.is_zero() {
+            let lam = &tr / &two;
+            let a_minus_diag_zero =
+                a[0][1].is_zero() && a[1][0].is_zero() && a[0][0] == lam && a[1][1] == lam;
+            let ctx = &mut self.simplifier.context;
+            let e_l = build_exp_rate(ctx, &lam, t_var);
+            if a_minus_diag_zero {
+                // A = λI: decoupled, two independent eigenvectors.
+                let zero_e = ctx.num(0);
+                (
+                    [
+                        SystemBasis {
+                            comp: [e_l, zero_e],
+                        },
+                        SystemBasis {
+                            comp: [zero_e, e_l],
+                        },
+                    ],
+                    BranchKind::Diagonal,
+                )
+            } else {
+                // Defective: v eigenvector, w generalized with (A−λI)w = v.
+                let v = eigvec(&a, &lam);
+                let m = [
+                    [&a[0][0] - &lam, a[0][1].clone()],
+                    [a[1][0].clone(), &a[1][1] - &lam],
+                ];
+                // Rank-1 solve: pick a nonzero row.
+                let w = if !m[0][0].is_zero() {
+                    [&v[0] / &m[0][0], zero.clone()]
+                } else if !m[0][1].is_zero() {
+                    [zero.clone(), &v[0] / &m[0][1]]
+                } else if !m[1][0].is_zero() {
+                    [&v[1] / &m[1][0], zero.clone()]
+                } else if !m[1][1].is_zero() {
+                    [zero.clone(), &v[1] / &m[1][1]]
+                } else {
+                    let ctx = &mut self.simplifier.context;
+                    let r = mk_residual(ctx, "Sistema defectivo degenerado; se declina honesto");
+                    return Ok(r);
+                };
+                // X2 = (v·t + w)·e^(λt) per component.
+                let mut comp2 = [t_var, t_var];
+                for i in 0..2 {
+                    let ctx = &mut self.simplifier.context;
+                    let vt = scale(ctx, &v[i], t_var);
+                    let wn = rat_expr(ctx, &w[i]);
+                    let sum = ctx.add(cas_ast::Expr::Add(vt, wn));
+                    comp2[i] = ctx.add(cas_ast::Expr::Mul(sum, e_l));
+                }
+                let ctx = &mut self.simplifier.context;
+                (
+                    [
+                        SystemBasis {
+                            comp: [scale(ctx, &v[0], e_l), scale(ctx, &v[1], e_l)],
+                        },
+                        SystemBasis { comp: comp2 },
+                    ],
+                    BranchKind::Defective,
+                )
+            }
+        } else {
+            let neg_disc = -&disc;
+            let Some(s) = cas_math::perfect_square_support::rational_sqrt(&neg_disc) else {
+                let ctx = &mut self.simplifier.context;
+                let r = mk_residual(
+                    ctx,
+                    "Autovalores complejos con parte imaginaria irracional: peldaño futuro; se declina honesto",
+                );
+                return Ok(r);
+            };
+            let alpha = &tr / &two;
+            let beta = &s / &two;
+            // Complex eigenvector for λ = α + iβ: v = vr + i·vi.
+            let (vr, vi) = if !a[0][1].is_zero() {
+                (
+                    [a[0][1].clone(), &alpha - &a[0][0]],
+                    [zero.clone(), beta.clone()],
+                )
+            } else if !a[1][0].is_zero() {
+                (
+                    [&alpha - &a[1][1], a[1][0].clone()],
+                    [beta.clone(), zero.clone()],
+                )
+            } else {
+                let ctx = &mut self.simplifier.context;
+                let r = mk_residual(ctx, "Sistema complejo degenerado; se declina honesto");
+                return Ok(r);
+            };
+            let ctx = &mut self.simplifier.context;
+            let b_num = rat_expr(ctx, &beta);
+            let bt = ctx.add(cas_ast::Expr::Mul(b_num, t_var));
+            let cos_bt = ctx.call("cos", vec![bt]);
+            let sin_bt = ctx.call("sin", vec![bt]);
+            // X1 = e^(αt)(vr·cos − vi·sin); X2 = e^(αt)(vr·sin + vi·cos).
+            let mut comp1 = [t_var, t_var];
+            let mut comp2 = [t_var, t_var];
+            for i in 0..2 {
+                let ctx = &mut self.simplifier.context;
+                let rc = scale(ctx, &vr[i], cos_bt);
+                let is_ = scale(ctx, &vi[i], sin_bt);
+                let x1 = ctx.add(cas_ast::Expr::Sub(rc, is_));
+                let rs = scale(ctx, &vr[i], sin_bt);
+                let ic = scale(ctx, &vi[i], cos_bt);
+                let x2 = ctx.add(cas_ast::Expr::Add(rs, ic));
+                if alpha.is_zero() {
+                    comp1[i] = x1;
+                    comp2[i] = x2;
+                } else {
+                    let env = build_exp_rate(ctx, &alpha, t_var);
+                    comp1[i] = ctx.add(cas_ast::Expr::Mul(env, x1));
+                    comp2[i] = ctx.add(cas_ast::Expr::Mul(env, x2));
+                }
+            }
+            (
+                [SystemBasis { comp: comp1 }, SystemBasis { comp: comp2 }],
+                BranchKind::Complex,
+            )
+        };
+
+        // Fold each basis component (numeric coefficients — no hostility).
+        let mut folded_bases: Vec<[ExprId; 2]> = Vec::new();
+        for basis in &bases {
+            let c0 = self.fold_free_subtree(&verify_options, basis.comp[0]);
+            let c1 = self.fold_free_subtree(&verify_options, basis.comp[1]);
+            folded_bases.push([c0, c1]);
+        }
+
+        // D5 per-component gate: each basis solution must annihilate BOTH
+        // equations (substitute both unknowns simultaneously via two chained
+        // exact substitutions on the raw residues).
+        for basis in &folded_bases {
+            for eq in [&eq1, &eq2] {
+                let ctx = &mut self.simplifier.context;
+                let residue = ctx.add(cas_ast::Expr::Sub(eq.lhs, eq.rhs));
+                let sub0 = substitute_power_aware(
+                    ctx,
+                    residue,
+                    f0_var,
+                    basis[0],
+                    SubstituteOptions::exact(),
+                );
+                let sub01 =
+                    substitute_power_aware(ctx, sub0, f1_var, basis[1], SubstituteOptions::exact());
+                if !self.reduces_to_zero_exact(&verify_options, sub01) {
+                    let ctx = &mut self.simplifier.context;
+                    let r = mk_residual(
+                        ctx,
+                        "Una solución base del sistema no verificó contra ambas ecuaciones; se declina honesto",
+                    );
+                    return Ok(r);
+                }
+            }
+        }
+
+        // Fresh constants (D7).
+        let ctx = &mut self.simplifier.context;
+        let mut input_vars = collect_variables(ctx, resolved);
+        input_vars.extend(collect_variables(ctx, second_equation));
+        let (c1_name, c2_name) = if input_vars.contains("C1") || input_vars.contains("C2") {
+            ("K1", "K2")
+        } else {
+            ("C1", "C2")
+        };
+        let c1 = ctx.var(c1_name);
+        let c2 = ctx.var(c2_name);
+
+        // General per component: f_i = C1·basis1_i + C2·basis2_i. Structural
+        // display rules (the O4 lesson): a reciprocal basis multiplies as a
+        // clean quotient, and a ZERO basis component drops its term entirely
+        // (never emit `0·C1`).
+        let mul_basis = |ctx: &mut Context, coef: ExprId, u: ExprId| -> Option<ExprId> {
+            if matches!(ctx.get(u), cas_ast::Expr::Number(n) if n.is_zero()) {
+                return None;
+            }
+            if let cas_ast::Expr::Div(num, den) = ctx.get(u) {
+                let (num, den) = (*num, *den);
+                if is_literal_one(ctx, num) {
+                    return Some(ctx.add(cas_ast::Expr::Div(coef, den)));
+                }
+            }
+            if let cas_ast::Expr::Neg(inner) = ctx.get(u) {
+                let inner = *inner;
+                if let cas_ast::Expr::Div(num, den) = ctx.get(inner) {
+                    let (num, den) = (*num, *den);
+                    if is_literal_one(ctx, num) {
+                        let q = ctx.add(cas_ast::Expr::Div(coef, den));
+                        return Some(ctx.add(cas_ast::Expr::Neg(q)));
+                    }
+                }
+            }
+            Some(ctx.add(cas_ast::Expr::Mul(coef, u)))
+        };
+        let mut general = [t_var, t_var];
+        for i in 0..2 {
+            let ctx = &mut self.simplifier.context;
+            let t1 = mul_basis(ctx, c1, folded_bases[0][i]);
+            let t2 = mul_basis(ctx, c2, folded_bases[1][i]);
+            general[i] = match (t1, t2) {
+                (Some(a_), Some(b_)) => ctx.add(cas_ast::Expr::Add(a_, b_)),
+                (Some(a_), None) => a_,
+                (None, Some(b_)) => b_,
+                (None, None) => ctx.num(0),
+            };
+        }
+
+        let ctx = &mut self.simplifier.context;
+        let mut warnings: Vec<DomainWarning> = Vec::new();
+        if c1_name != "C1" {
+            warnings.push(DomainWarning {
+                message:
+                    "La entrada ya usa C1/C2; las constantes arbitrarias se emiten como K1, K2"
+                        .to_string(),
+                rule_name: DSOLVE_RULE.to_string(),
+            });
+        }
+        warnings.push(DomainWarning {
+            message: format!(
+                "Solución general del sistema: {c1_name} y {c2_name} son constantes arbitrarias"
+            ),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+
+        let branch_desc = match branch {
+            BranchKind::Distinct => "Autovalores reales distintos: base {v1·e^(λ1·t), v2·e^(λ2·t)}",
+            BranchKind::Diagonal => "Autovalor doble con A = λI: sistema desacoplado",
+            BranchKind::Defective => {
+                "Autovalor doble defectivo: base {v·e^(λ·t), (v·t + w)·e^(λ·t)} con (A−λI)w = v"
+            }
+            BranchKind::Complex => {
+                "Autovalores complejos conjugados: soluciones REALES por partes real/imaginaria"
+            }
+        };
+        let mut solve_steps: Vec<crate::api::SolveStep> = Vec::new();
+        solve_steps.push(crate::api::SolveStep {
+            description: format!(
+                "Identificar sistema lineal X' = A·X con A = [[{}, {}], [{}, {}]]",
+                a[0][0], a[0][1], a[1][0], a[1][1]
+            ),
+            equation_after: eq1.clone(),
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description: format!(
+                "Característica del sistema: λ² − tr(A)·λ + det(A) = 0 con tr = {tr}, det = {det}"
+            ),
+            equation_after: eq1.clone(),
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description: branch_desc.to_string(),
+            equation_after: Equation {
+                lhs: f0_var,
+                rhs: general[0],
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::High,
+            substeps: vec![],
+        });
+        solve_steps.push(crate::api::SolveStep {
+            description:
+                "Verificar por sustitución: cada solución base anula AMBAS ecuaciones del sistema"
+                    .to_string(),
+            equation_after: Equation {
+                lhs: f1_var,
+                rhs: general[1],
+                op: RelOp::Eq,
+            },
+            importance: ImportanceLevel::Medium,
+            substeps: vec![],
+        });
+
+        let eq_x = wrap_eq(ctx, f0_var, general[0]);
+        let eq_y = wrap_eq(ctx, f1_var, general[1]);
+        let result = EvalResult::SolutionSet(SolutionSet::Discrete(vec![eq_x, eq_y]));
+        Ok((
+            result,
+            warnings,
+            vec![],
+            solve_steps,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ))
+    }
+
     /// D11 level 2: reconstruct φ = ∫M dx + ∫(N − ∂y∫M) dy with the FULL
     /// evaluator folding the intermediate pieces (the internal F6 path only
     /// canonicalizes polynomial rests). All pieces are diff-free ordinary
@@ -4445,4 +4882,114 @@ fn build_homogeneous_steps(
         substeps: vec![],
     });
     steps
+}
+
+// ===================== O6: 2×2 linear systems X' = A·X =====================
+
+/// exp(r·t) with a rational rate (free helper shared by the system path).
+fn build_exp_rate(ctx: &mut Context, rate: &num_rational::BigRational, t_var: ExprId) -> ExprId {
+    let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+    let r_num = ctx.add(cas_ast::Expr::Number(rate.clone()));
+    let arg = ctx.add(cas_ast::Expr::Mul(r_num, t_var));
+    ctx.add(cas_ast::Expr::Pow(e_const, arg))
+}
+
+/// Extract one row of `X' = A·X` from `a·diff(f_i, t) + Σ b_j·f_j = 0`:
+/// which unknown is differentiated, and the RATIONAL row `A[i][·] = −b/a`.
+/// `None` on variable coefficients, nonlinear unknowns, nested diffs, or a
+/// nonzero forcing term (non-homogeneous systems are future work).
+fn try_extract_system_row(
+    ctx: &mut Context,
+    eq: &Equation,
+    diff_sym: cas_ast::symbol::SymbolId,
+    funcs: &[String],
+    var: &str,
+) -> Option<(usize, [num_rational::BigRational; 2])> {
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_signed_terms(ctx, eq.lhs, true, &mut terms);
+    collect_signed_terms(ctx, eq.rhs, false, &mut terms);
+
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let mut a_coef = zero.clone();
+    let mut which_diff: Option<usize> = None;
+    let mut b = [zero.clone(), zero.clone()];
+    for (term, positive) in terms {
+        let mut sign = positive;
+        let mut core = term;
+        while let cas_ast::Expr::Neg(inner) = ctx.get(core) {
+            sign = !sign;
+            core = *inner;
+        }
+        if matches!(cas_math::numeric_eval::as_rational_const(ctx, core), Some(r) if r.is_zero()) {
+            continue; // the parked zero from the moved RHS
+        }
+        let mut factors: Factors = Vec::new();
+        collect_product_factors(ctx, core, false, &mut factors);
+
+        let mut diff_of: Option<usize> = None;
+        let mut func_of: Option<usize> = None;
+        let mut coef = num_rational::BigRational::from_integer(1.into());
+        for (f, is_den) in factors {
+            let mut g = f;
+            while let cas_ast::Expr::Neg(inner) = ctx.get(g) {
+                sign = !sign;
+                g = *inner;
+            }
+            let mut classified = false;
+            for (idx, fname) in funcs.iter().enumerate() {
+                if is_first_order_diff_call(ctx, g, diff_sym, fname, var) {
+                    if is_den || diff_of.is_some() || func_of.is_some() {
+                        return None;
+                    }
+                    diff_of = Some(idx);
+                    classified = true;
+                    break;
+                }
+                if matches!(ctx.get(g), cas_ast::Expr::Variable(s) if ctx.sym_name(*s) == fname) {
+                    if is_den || diff_of.is_some() || func_of.is_some() {
+                        return None;
+                    }
+                    func_of = Some(idx);
+                    classified = true;
+                    break;
+                }
+            }
+            if classified {
+                continue;
+            }
+            // Any other appearance of an unknown (nested, higher-order) declines.
+            let vars = collect_variables(ctx, g);
+            if funcs.iter().any(|f| vars.contains(f)) {
+                return None;
+            }
+            match cas_math::numeric_eval::as_rational_const(ctx, g) {
+                Some(r) if is_den && !r.is_zero() => coef /= r,
+                Some(r) if !is_den => coef *= r,
+                _ => return None, // variable coefficient
+            }
+        }
+        let signed = if sign { coef } else { -coef };
+        if let Some(idx) = diff_of {
+            match which_diff {
+                None => which_diff = Some(idx),
+                Some(seen) if seen == idx => {}
+                Some(_) => return None,
+            }
+            a_coef += signed;
+        } else if let Some(idx) = func_of {
+            b[idx] += signed;
+        } else {
+            return None; // nonzero free term: non-homogeneous system
+        }
+    }
+    let which = which_diff?;
+    if a_coef.is_zero() {
+        return None;
+    }
+    Some((which, [-&b[0] / &a_coef, -&b[1] / &a_coef]))
+}
+
+/// One basis solution of the 2×2 system: component expressions (x(t), y(t)).
+struct SystemBasis {
+    comp: [ExprId; 2],
 }

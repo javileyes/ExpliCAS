@@ -20,6 +20,12 @@ pub enum EvalNonSolveAction {
         var: String,
         conditions: Vec<cas_solver_core::eval_models::DsolveCondition>,
     },
+    DsolveSystem {
+        second_equation: cas_ast::ExprId,
+        funcs: Vec<String>,
+        var: String,
+        conditions: Vec<cas_solver_core::eval_models::DsolveCondition>,
+    },
 }
 
 #[derive(Debug, Clone)]

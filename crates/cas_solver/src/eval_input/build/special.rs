@@ -100,6 +100,55 @@ pub(super) fn build_special_command_request(
                 auto_store,
             })
         }
+        EvalSpecialCommand::DsolveSystem {
+            equations,
+            funcs,
+            var,
+            conditions,
+        } => {
+            let (parsed, _) = parse_solve_input_for_eval_request(ctx, &equations[0])
+                .map_err(|e| format!("Parse error in dsolve system equation 1: {e}"))?;
+            let (second_equation, _) = parse_solve_input_for_eval_request(ctx, &equations[1])
+                .map_err(|e| format!("Parse error in dsolve system equation 2: {e}"))?;
+            // Conditions on either unknown parse against whichever head matches.
+            let mut parsed_conditions = Vec::new();
+            for cond_text in &conditions {
+                let mut matched = None;
+                for f in &funcs {
+                    if let Some(parts) =
+                        cas_api_models::split_dsolve_initial_condition(cond_text, f)
+                    {
+                        matched = Some(parts);
+                        break;
+                    }
+                }
+                let Some((point_text, value_text, order)) = matched else {
+                    return Err(format!(
+                        "Invalid dsolve system initial condition `{cond_text}`."
+                    ));
+                };
+                let point = cas_parser::parse(&point_text, ctx)
+                    .map_err(|e| format!("Parse error in dsolve condition point: {e}"))?;
+                let value = cas_parser::parse(&value_text, ctx)
+                    .map_err(|e| format!("Parse error in dsolve condition value: {e}"))?;
+                parsed_conditions.push(cas_solver_core::eval_models::DsolveCondition {
+                    point,
+                    value,
+                    order,
+                });
+            }
+            Ok(PreparedEvalRequest::Eval {
+                raw_input: raw_input.to_string(),
+                parsed,
+                action: EvalNonSolveAction::DsolveSystem {
+                    second_equation,
+                    funcs,
+                    var,
+                    conditions: parsed_conditions,
+                },
+                auto_store,
+            })
+        }
     }
 }
 

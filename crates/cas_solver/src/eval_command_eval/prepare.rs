@@ -12,6 +12,55 @@ pub(super) fn build_eval_request(
     // same wire grammar as the CLI eval command, so both entries stay in
     // parity. The generic statement-parse below would die on the ODE's inner
     // `=` with a cryptic token error.
+    if let Some(cas_api_models::EvalSpecialCommand::DsolveSystem { .. }) =
+        cas_api_models::parse_eval_special_command(line)
+    {
+        // Reuse the full wire build for the system form (parity D2).
+        let req = crate::eval_input::build_prepared_eval_request_for_input(
+            line,
+            &mut engine.simplifier.context,
+            true,
+        )
+        .map_err(EvalCommandError::Eval)?;
+        if let crate::eval_input::PreparedEvalRequest::Eval {
+            raw_input,
+            parsed,
+            action,
+            auto_store,
+        } = req
+        {
+            let action = match action {
+                crate::eval_input::EvalNonSolveAction::DsolveSystem {
+                    second_equation,
+                    funcs,
+                    var,
+                    conditions,
+                } => crate::EvalAction::DsolveSystem {
+                    second_equation,
+                    funcs,
+                    var,
+                    conditions,
+                },
+                _ => {
+                    return Err(EvalCommandError::Eval(
+                        "internal: dsolve system build mismatch".to_string(),
+                    ))
+                }
+            };
+            return Ok((
+                style_signals,
+                crate::EvalRequest {
+                    raw_input,
+                    parsed,
+                    action,
+                    auto_store,
+                },
+            ));
+        }
+        return Err(EvalCommandError::Eval(
+            "internal: dsolve system build mismatch".to_string(),
+        ));
+    }
     if let Some(cas_api_models::EvalSpecialCommand::Dsolve {
         equation,
         func,

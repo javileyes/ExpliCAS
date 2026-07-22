@@ -18,6 +18,17 @@ fn map_non_solve_action(action: EvalNonSolveAction) -> crate::EvalAction {
             var,
             conditions,
         },
+        EvalNonSolveAction::DsolveSystem {
+            second_equation,
+            funcs,
+            var,
+            conditions,
+        } => crate::EvalAction::DsolveSystem {
+            second_equation,
+            funcs,
+            var,
+            conditions,
+        },
     }
 }
 

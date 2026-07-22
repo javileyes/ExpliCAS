@@ -118,6 +118,14 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // dsolve (Fase 4) — 2×2 system narration (D13, O6).
+    SolveDesc { template: "Identificar sistema lineal X' = A·X con A = [[{0}, {1}], [{2}, {3}]]", es: "Identificar sistema lineal X' = A·X con A = [[{0}, {1}], [{2}, {3}]]", en: "Identify linear system X' = A·X with A = [[{0}, {1}], [{2}, {3}]]" },
+    SolveDesc { template: "Característica del sistema: λ² − tr(A)·λ + det(A) = 0 con tr = {0}, det = {1}", es: "Característica del sistema: λ² − tr(A)·λ + det(A) = 0 con tr = {0}, det = {1}", en: "System characteristic: λ² − tr(A)·λ + det(A) = 0 with tr = {0}, det = {1}" },
+    SolveDesc { template: "Autovalores reales distintos: base {v1·e^(λ1·t), v2·e^(λ2·t)}", es: "Autovalores reales distintos: base {v1·e^(λ1·t), v2·e^(λ2·t)}", en: "Distinct real eigenvalues: basis {v1·e^(λ1·t), v2·e^(λ2·t)}" },
+    SolveDesc { template: "Autovalor doble con A = λI: sistema desacoplado", es: "Autovalor doble con A = λI: sistema desacoplado", en: "Repeated eigenvalue with A = λI: decoupled system" },
+    SolveDesc { template: "Autovalor doble defectivo: base {v·e^(λ·t), (v·t + w)·e^(λ·t)} con (A−λI)w = v", es: "Autovalor doble defectivo: base {v·e^(λ·t), (v·t + w)·e^(λ·t)} con (A−λI)w = v", en: "Defective repeated eigenvalue: basis {v·e^(λ·t), (v·t + w)·e^(λ·t)} with (A−λI)w = v" },
+    SolveDesc { template: "Autovalores complejos conjugados: soluciones REALES por partes real/imaginaria", es: "Autovalores complejos conjugados: soluciones REALES por partes real/imaginaria", en: "Complex conjugate eigenvalues: REAL solutions via real/imaginary parts" },
+    SolveDesc { template: "Verificar por sustitución: cada solución base anula AMBAS ecuaciones del sistema", es: "Verificar por sustitución: cada solución base anula AMBAS ecuaciones del sistema", en: "Verify by substitution: each basis solution annihilates BOTH system equations" },
     // dsolve (Fase 4) — Bernoulli + homogeneous narration (D13, O8).
     SolveDesc { template: "Identificar forma de Bernoulli: y' + p·y = q·y^n con p = {0}, q = {1}, n = {2}", es: "Identificar forma de Bernoulli: y' + p·y = q·y^n con p = {0}, q = {1}, n = {2}", en: "Identify Bernoulli form: y' + p·y = q·y^n with p = {0}, q = {1}, n = {2}" },
     SolveDesc { template: "Sustituir v = y^(1−n) = y^({0}): la EDO se vuelve lineal v' + (1−n)·p·v = (1−n)·q", es: "Sustituir v = y^(1−n) = y^({0}): la EDO se vuelve lineal v' + (1−n)·p·v = (1−n)·q", en: "Substitute v = y^(1−n) = y^({0}): the ODE becomes linear v' + (1−n)·p·v = (1−n)·q" },
