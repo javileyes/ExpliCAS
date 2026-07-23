@@ -717,4 +717,4 @@ endif
 # W1 (portabilidad): la cadena de crates del wire debe compilar a wasm32 —
 # el contrato del futuro modo navegador (GitHub Pages). Nativo intacto.
 wasm-check:
-	cargo check --target wasm32-unknown-unknown -p cas_solver -p cas_wasm
+	cargo check --target wasm32-unknown-unknown -p cas_wasm

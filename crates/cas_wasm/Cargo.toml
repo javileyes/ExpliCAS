@@ -11,5 +11,8 @@ description = "Browser (WebAssembly) entry point for the ExpliCAS engine: the sa
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cas_solver = { path = "../cas_solver" }
+# default-features = false: the wasm build must NOT carry rayon/parallel —
+# it compiles on wasm32 but would panic at runtime; the serial GCD fallback
+# is the correct engine configuration for the browser.
+cas_solver = { path = "../cas_solver", default-features = false }
 wasm-bindgen = "0.2"

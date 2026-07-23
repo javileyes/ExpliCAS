@@ -14,6 +14,7 @@
         };
     </script>
     <script src="/build-config.js"></script>
+    <script src="wasm-mode.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
 
     <style>
@@ -1911,6 +1912,35 @@
         }
 
         async function callAPI(expr) {
+            // WASM local mode (GitHub Pages build): same wire, zero network.
+            // The server route below stays untouched for classic deployments.
+            if (window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled) {
+                const wire = await window.EXPLICAS_WASM.eval(
+                    expr,
+                    JSON.stringify({ steps: true, budget: { preset: 'cli' } })
+                );
+                const data = JSON.parse(wire);
+                if (data.ok === false) {
+                    throw new Error(data.error?.message || data.error || t('error.generic'));
+                }
+                return {
+                    input: data.input || expr,
+                    input_latex: data.input_latex || null,
+                    result: data.result || '',
+                    result_latex: data.result_latex || data.result || '',
+                    steps: data.steps || [],
+                    solve_steps: data.solve_steps || [],
+                    stats: data.stats || null,
+                    timings_us: data.timings_us || null,
+                    time_ms: data.time_ms || 0,
+                    warnings: data.warnings || [],
+                    required_display: data.required_display || [],
+                    assumptions_used: data.assumptions_used || [],
+                    equivalence_diagnostics: data.equivalence_diagnostics || null,
+                    error: undefined,
+                    assignment: null,
+                };
+            }
             try {
                 // Call the real API with session_id for per-tab isolation
                 const response = await fetch(API_URL, {
