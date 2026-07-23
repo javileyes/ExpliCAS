@@ -1,4 +1,4 @@
-use std::time::Instant;
+use web_time::Instant;
 
 use cas_api_models::EvalStepsMode;
 use cas_formatter::{DisplayExpr, LaTeXExpr, ParseStyleSignals};

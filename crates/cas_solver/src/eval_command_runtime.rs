@@ -1,7 +1,7 @@
 mod prepare;
 mod present;
 
-use std::time::Instant;
+use web_time::Instant;
 
 use cas_api_models::{EvalSessionRunConfig, StepWire};
 use cas_solver_core::engine_events::EngineEvent;

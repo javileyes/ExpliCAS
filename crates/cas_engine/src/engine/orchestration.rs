@@ -16,7 +16,7 @@ use cas_ast::{hold::strip_all_holds, ExprId};
 #[derive(Debug, Clone)]
 pub struct LoopConfig {
     pub phase: crate::phase::SimplifyPhase,
-    pub deadline: Option<std::time::Instant>,
+    pub deadline: Option<web_time::Instant>,
     pub expand_mode: bool,
     pub auto_expand: bool,
     pub expand_budget: crate::phase::ExpandBudget,

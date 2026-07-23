@@ -109,7 +109,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                     let slow_rule_start = CAS_TRACE_SLOW_RULE_ATTEMPTS_MS
                         .as_ref()
-                        .map(|_| std::time::Instant::now());
+                        .map(|_| web_time::Instant::now());
                     let rewrite_attempt = rule.apply(self.context, expr_id, &parent_ctx);
                     if let (Some(threshold_ms), Some(start)) =
                         (CAS_TRACE_SLOW_RULE_ATTEMPTS_MS.as_ref(), slow_rule_start)
@@ -218,6 +218,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         }
 
                         // TRACE: Log applied rules for debugging cycles
+                        // (native-only: wasm32 has no filesystem).
+                        #[cfg(not(target_arch = "wasm32"))]
                         if *CAS_TRACE_RULES_ENABLED {
                             use std::io::Write;
                             if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -367,7 +369,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 // PERF: Reuse the parent_ctx built once per apply_rules() call
                 let slow_rule_start = CAS_TRACE_SLOW_RULE_ATTEMPTS_MS
                     .as_ref()
-                    .map(|_| std::time::Instant::now());
+                    .map(|_| web_time::Instant::now());
                 let rewrite_attempt = rule.apply(self.context, expr_id, &parent_ctx);
                 if let (Some(threshold_ms), Some(start)) =
                     (CAS_TRACE_SLOW_RULE_ATTEMPTS_MS.as_ref(), slow_rule_start)

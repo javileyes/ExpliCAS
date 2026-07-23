@@ -713,3 +713,8 @@ ifndef BASELINE
 	$(error BASELINE is required, e.g. make $@ BASELINE=my_baseline)
 endif
 	CAS_BENCH_FAST=1 cargo bench -p cas_solver --bench frontend_repl_parse -- --noplot --baseline $(BASELINE) --discard-baseline
+
+# W1 (portabilidad): la cadena de crates del wire debe compilar a wasm32 —
+# el contrato del futuro modo navegador (GitHub Pages). Nativo intacto.
+wasm-check:
+	cargo check --target wasm32-unknown-unknown -p cas_solver

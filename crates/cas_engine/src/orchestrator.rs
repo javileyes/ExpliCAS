@@ -83,7 +83,8 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 fn to_math_auto_expand_budget(
     budget: &crate::phase::ExpandBudget,
@@ -161,7 +162,7 @@ fn run_profiled_root_shortcut<T>(name: &'static str, run: impl FnOnce() -> Optio
         return run();
     }
 
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     let result = run();
     crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
         name,
@@ -184,7 +185,7 @@ fn run_profiled_orchestrator_section<T>(
         crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(name, sample);
     }
 
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     let result = run();
     crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
         name,
@@ -199,7 +200,7 @@ fn run_profiled_orchestrator_bool_section(name: &'static str, run: impl FnOnce()
         return run();
     }
 
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     let result = run();
     crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
         name,
@@ -218,7 +219,7 @@ fn run_profiled_orchestrator_bool_section_with_sample(
         return run();
     }
 
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     let result = run();
     crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
         name,
@@ -30230,7 +30231,7 @@ mod tests {
         orchestrator.options.collect_steps = false;
         orchestrator.options.time_budget_ms = Some(1);
         orchestrator.options.deadline =
-            Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+            Some(web_time::Instant::now() - std::time::Duration::from_millis(1));
 
         let (rewritten, steps, stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
 

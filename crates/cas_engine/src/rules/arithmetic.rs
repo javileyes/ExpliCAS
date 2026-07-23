@@ -82,7 +82,7 @@ use num_rational::BigRational;
 use num_traits::Signed;
 use num_traits::{One, ToPrimitive, Zero};
 use std::cmp::Ordering;
-use std::time::Instant;
+use web_time::Instant;
 
 type BinaryProductWithSumFactor = (
     cas_ast::ExprId,

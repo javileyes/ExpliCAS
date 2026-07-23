@@ -84,7 +84,7 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,
     /// Shared deadline inherited from the orchestrator for cooperative timeouts.
-    pub(super) deadline: Option<std::time::Instant>,
+    pub(super) deadline: Option<web_time::Instant>,
     /// Sticky timeout bit for this local pass.
     pub(super) timed_out: bool,
     /// Poll counter so we do not hit `Instant::now()` on every node/rule dispatch.
@@ -156,7 +156,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         if (self.deadline_check_counter & 0x3f) != 0 {
             return false;
         }
-        if std::time::Instant::now() >= deadline {
+        if web_time::Instant::now() >= deadline {
             self.timed_out = true;
             return true;
         }

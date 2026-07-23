@@ -11,6 +11,7 @@ default = ["parallel"]
 parallel = ["cas_engine/parallel"]
 
 [dependencies]
+web-time = "1"
 cas_api_models = { path = "../cas_api_models" }
 cas_ast = { path = "../cas_ast" }
 cas_engine = { path = "../cas_engine", default-features = false }

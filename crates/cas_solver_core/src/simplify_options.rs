@@ -1,6 +1,6 @@
 //! Shared simplification option models.
 
-use std::time::Instant;
+use web_time::Instant;
 
 /// Shared configuration axes used by both EvalOptions and SimplifyOptions.
 #[derive(Debug, Clone)]
