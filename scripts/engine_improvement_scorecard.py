@@ -570,6 +570,24 @@ SUITES: dict[str, SuiteSpec] = {
             "verification-gated emission, and honest residual declines."
         ),
     ),
+    "calculus_solve_system_command_matrix_smoke": SuiteSpec(
+        name="calculus_solve_system_command_matrix_smoke",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            sys.executable,
+            str(ROOT / "scripts" / "engine_solve_system_command_matrix_smoke.py"),
+            "--timeout-seconds",
+            "20",
+            "--json",
+        ],
+        env={},
+        parser="calculus_solve_system_command_matrix",
+        description=(
+            "Command-level solve/solve_system matrix: rational + parametric "
+            "Cramer with det != 0 conditions and honest wire declines."
+        ),
+    ),
     "calculus_integrate_compact_contract": SuiteSpec(
         name="calculus_integrate_compact_contract",
         category="calculus",
@@ -6267,6 +6285,77 @@ def parse_calculus_dsolve_command_matrix(output: str) -> dict[str, Any]:
     return metrics
 
 
+def parse_calculus_solve_system_command_matrix(output: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid solve_system command matrix json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("solve_system command matrix json output is not an object")
+
+    total = raw.get("total_cases")
+    status = raw.get("status")
+    counts = raw.get("counts")
+    if not isinstance(total, int):
+        raise ValueError("missing solve_system command matrix total_cases")
+    if not isinstance(status, str):
+        raise ValueError("missing solve_system command matrix status")
+    if not isinstance(counts, dict):
+        raise ValueError("missing solve_system command matrix counts")
+
+    passed = counts.get("pass", 0)
+    raw_failed = counts.get("fail", 0)
+    slow = counts.get("slow", 0)
+    timeouts = counts.get("timeout", 0)
+    if not all(isinstance(value, int) for value in (passed, raw_failed, slow, timeouts)):
+        raise ValueError("invalid solve_system command matrix counts")
+
+    problem_cases = []
+    cases = raw.get("cases")
+    if isinstance(cases, list):
+        for entry in cases:
+            if (
+                isinstance(entry, dict)
+                and entry.get("status") != "pass"
+                and isinstance(entry.get("name"), str)
+            ):
+                problem_cases.append(
+                    {
+                        "name": entry["name"],
+                        "status": entry.get("status"),
+                        "error": entry.get("error"),
+                    }
+                )
+
+    metrics: dict[str, Any] = {
+        "matrix_status": status,
+        "total_cases": total,
+        "passed": passed,
+        "failed": raw_failed + slow + timeouts,
+        "raw_failed": raw_failed,
+        "slow": slow,
+        "timeouts": timeouts,
+        "problem_case_count": len(problem_cases),
+        "problem_cases": problem_cases,
+    }
+    for key in (
+        "solve_system_family_counts",
+        "solve_system_size_regime_counts",
+        "solve_system_coefficient_regime_counts",
+        "solve_system_outcome_counts",
+        "solve_system_condition_regime_counts",
+        "solve_system_presentation_regime_counts",
+    ):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            metrics[key] = {
+                name: count
+                for name, count in value.items()
+                if isinstance(name, str) and isinstance(count, int)
+            }
+    return metrics
+
+
 def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
     try:
         raw = json.loads(output)
@@ -8237,6 +8326,7 @@ PARSERS = {
     "calculus_diff_command_matrix": parse_calculus_diff_command_matrix,
     "calculus_limit_command_matrix": parse_calculus_limit_command_matrix,
     "calculus_dsolve_command_matrix": parse_calculus_dsolve_command_matrix,
+    "calculus_solve_system_command_matrix": parse_calculus_solve_system_command_matrix,
     "calculus_integrate_command_matrix": parse_calculus_integrate_command_matrix,
     "algorithmic_backend_observability": parse_algorithmic_backend_observability,
     "algorithmic_backend_mode_boundary": parse_algorithmic_backend_mode_boundary,

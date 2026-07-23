@@ -4,7 +4,6 @@ mod error;
 mod lines;
 mod parse;
 
-
 /// Evaluate `limit` command input and return final display lines.
 pub fn evaluate_limit_command_lines(line: &str) -> Result<Vec<String>, String> {
     evaluate_limit_command_lines_in_domain(line, false)

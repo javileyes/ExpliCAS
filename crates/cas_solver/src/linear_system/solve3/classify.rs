@@ -20,7 +20,7 @@ pub(super) fn classify_degenerate_3x3(
     match gauss::classify_augmented_matrix(matrix, 3) {
         LinSolveResult::Infinite => LinearSystemError::InfiniteSolutions,
         LinSolveResult::Inconsistent => LinearSystemError::NoSolution,
-        LinSolveResult::Unique(_) => {
+        LinSolveResult::Unique(_) | LinSolveResult::UniqueExpr { .. } => {
             debug_assert!(
                 false,
                 "3x3 Gaussian fallback reported a unique solution despite zero determinant"

@@ -6,11 +6,13 @@ mod coeffs;
 mod gauss;
 mod solve2;
 mod solve3;
+mod symbolic2;
 
 use self::coeffs::{extract_linear_coeffs, extract_linear_coeffs_3};
 use self::gauss::solve_nxn_gauss;
 use self::solve2::solve_2x2_cramer;
 use self::solve3::solve_3x3_cramer;
+pub(crate) use self::symbolic2::{solve_2x2_symbolic, Symbolic2x2Outcome};
 
 /// Error type for linear system solving.
 #[derive(Debug)]
@@ -46,6 +48,12 @@ impl std::fmt::Display for LinearSystemError {
 pub enum LinSolveResult {
     /// Unique solution: values for each variable in order.
     Unique(Vec<BigRational>),
+    /// Unique solution with symbolic parameter coefficients: expression values
+    /// plus the `expr ≠ 0` requirements (determinants) they are valid under.
+    UniqueExpr {
+        values: Vec<ExprId>,
+        nonzero_conditions: Vec<ExprId>,
+    },
     /// Infinitely many solutions (dependent equations).
     Infinite,
     /// No solution (inconsistent equations).

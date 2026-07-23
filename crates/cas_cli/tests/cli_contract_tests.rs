@@ -9825,3 +9825,65 @@ fn dsolve_cauchy_euler_o9_contract() {
     let en = steps_of("dsolve(x^2*diff(y,x,2)+x*diff(y,x)+y=0, y, x)", Some("en"));
     assert!(en.contains("indicial equation"), "{en}");
 }
+
+#[test]
+fn solve_system_parametric_s1_contract() {
+    // Frente S · S1: la lista de incógnitas manda en la clasificación — todo
+    // símbolo fuera de ella es PARÁMETRO; Cramer simbólico exacto 2×2 con
+    // `det ≠ 0` por el canal canónico de condiciones; y un sistema bien
+    // formado JAMÁS sale del wire como error interno (decline honesto ok).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let json_of = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+
+    // Paramétrico insignia: coeficiente simbólico, condición det ≠ 0 visible
+    // en el resultado Y normalizada en required_display.
+    let flagship = r("solve([a*x+y=1, x-y=0], [x, y])");
+    assert!(
+        flagship.starts_with("{ x = 1 / (a + 1), y = 1 / (a + 1) }"),
+        "{flagship}"
+    );
+    assert!(flagship.contains("requires: a + 1 != 0"), "{flagship}");
+    let flagship_json = json_of("solve([a*x+y=1, x-y=0], [x, y])");
+    assert!(flagship_json.contains("\"ok\": true"), "{flagship_json}");
+    assert!(flagship_json.contains("a ≠ -1"), "{flagship_json}");
+
+    // Parámetros en el RHS con det constante: cociente polinómico EXACTO,
+    // sin condición (det = -2 racional).
+    assert_eq!(r("solve([x+y=u+v, x-y=u-v], [x, y])"), "{ x = u, y = v }");
+
+    // Los declines honestos NUNCA son errores de wire (antes: E_INTERNAL).
+    for decline in [
+        "solve([x^2+y=1, x-y=0], [x, y])",
+        "solve([a*x+y=1, a*x+y=2], [x, y])",
+        "solve([sqrt(2)*x+y=1, x-y=0], [x, y])",
+    ] {
+        let j = json_of(decline);
+        assert!(
+            j.contains("\"ok\": true"),
+            "decline must be honest ok: {decline}: {j}"
+        );
+        assert!(
+            !j.contains("E_INTERNAL"),
+            "decline must not be E_INTERNAL: {decline}"
+        );
+    }
+
+    // No-robo: la ruta racional byte-idéntica, en ambas sintaxis.
+    assert_eq!(r("solve([x+y=3, x-y=1], [x, y])"), "{ x = 2, y = 1 }");
+    assert_eq!(r("solve_system(x+y=3; x-y=1; x; y)"), "{ x = 2, y = 1 }");
+    // La forma semicolon también resuelve el paramétrico (mismo pipeline).
+    let semi = r("solve_system(a*x+y=1; x-y=0; x; y)");
+    assert!(semi.contains("x = 1 / (a + 1)"), "{semi}");
+}

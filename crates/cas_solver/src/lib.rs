@@ -533,8 +533,8 @@ pub(crate) use crate::limit_command_parse::parse_limit_command_input;
 pub(crate) use crate::limit_command_parse_types::LimitCommandInput;
 #[allow(unused_imports)]
 pub(crate) use crate::linear_system::{
-    solve_2x2_linear_system, solve_3x3_linear_system, solve_nxn_linear_system, LinSolveResult,
-    LinearSystemError,
+    solve_2x2_linear_system, solve_2x2_symbolic, solve_3x3_linear_system, solve_nxn_linear_system,
+    LinSolveResult, LinearSystemError, Symbolic2x2Outcome,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::linear_system_command_entry::evaluate_linear_system_command_message;

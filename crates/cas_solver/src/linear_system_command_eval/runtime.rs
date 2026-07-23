@@ -45,13 +45,62 @@ where
         &cache_hits.into_iter().collect::<Vec<_>>(),
     );
 
-    let result =
-        super::solve::solve_linear_system_parts(&engine.simplifier.context, &resolved_exprs, &vars)
-            .map_err(|error| {
+    // A well-formed system that this solver cannot handle is a MATH decline,
+    // not an internal fault: it must reach the wire as an honest ok-result
+    // (the REPL route already behaves this way — this is parity, and it is
+    // what keeps `solve([a*x+y=1, x-y=0], [x, y])`-class inputs from ever
+    // surfacing as E_INTERNAL again).
+    let result = match super::solve::solve_linear_system_parts(
+        &mut engine.simplifier.context,
+        &resolved_exprs,
+        &vars,
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            let message =
                 crate::linear_system_command_format::format_linear_system_command_error_message(
                     &crate::linear_system_command_eval::LinearSystemCommandEvalError::Solve(error),
-                )
-            })?;
+                );
+            let latex = format!(
+                "\\text{{{}}}",
+                cas_formatter::latex_escape(&message.replace('\n', " "))
+            );
+            diagnostics.dedup_and_sort(&engine.simplifier.context);
+            let required_conditions = diagnostics.required_conditions();
+            return Ok(crate::EvalOutputView {
+                stored_id: None,
+                parsed: parsed_anchor,
+                resolved: resolved_exprs.first().copied().unwrap_or(parsed_anchor),
+                result: crate::EvalResult::Text {
+                    plain: message,
+                    latex: Some(latex),
+                },
+                strategy: None,
+                steps: crate::DisplayEvalSteps::default(),
+                solve_steps: Vec::new(),
+                output_scopes: Vec::new(),
+                diagnostics,
+                required_conditions,
+                domain_warnings: Vec::new(),
+                blocked_hints: Vec::new(),
+                solver_assumptions: Vec::new(),
+            });
+        }
+    };
+
+    // Symbolic solutions carry their validity requirements (det ≠ 0) — those
+    // ride the canonical required-conditions channel, same as any division.
+    if let crate::LinSolveResult::UniqueExpr {
+        nonzero_conditions, ..
+    } = &result
+    {
+        diagnostics.extend_required(
+            nonzero_conditions
+                .iter()
+                .map(|&e| cas_solver_core::domain_condition::ImplicitCondition::NonZero(e)),
+            crate::RequireOrigin::EquationDerived,
+        );
+    }
 
     let command_output =
         crate::linear_system_command_eval::LinearSystemCommandEvalOutput { vars, result };

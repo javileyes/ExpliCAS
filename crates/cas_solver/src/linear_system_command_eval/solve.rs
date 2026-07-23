@@ -4,7 +4,7 @@ use cas_ast::ExprId;
 use crate::linear_system_command_parse::LinearSystemSpec;
 
 pub(super) fn solve_linear_system_parts(
-    ctx: &Context,
+    ctx: &mut Context,
     exprs: &[ExprId],
     vars: &[String],
 ) -> Result<crate::LinSolveResult, crate::LinearSystemError> {
@@ -26,7 +26,30 @@ pub(super) fn solve_linear_system_parts(
                     Err(crate::LinearSystemError::NoSolution) => {
                         return Ok(crate::LinSolveResult::Inconsistent);
                     }
-                    Err(e) => return Err(e),
+                    // The unknowns list drives linearity: `a·x` or `+ a` with a
+                    // parameter `a` is LINEAR in {x, y} — retry symbolically
+                    // before giving up (rational failures keep their message).
+                    Err(rational_error) => {
+                        return match crate::solve_2x2_symbolic(
+                            ctx, exprs[0], exprs[1], &vars[0], &vars[1],
+                        ) {
+                            Ok(crate::Symbolic2x2Outcome::Unique {
+                                values,
+                                det_condition,
+                            }) => Ok(crate::LinSolveResult::UniqueExpr {
+                                values,
+                                nonzero_conditions: det_condition.into_iter().collect(),
+                            }),
+                            Ok(crate::Symbolic2x2Outcome::DegenerateSymbolic) => {
+                                Err(crate::LinearSystemError::NotLinear(
+                                    "symbolic coefficients with det = 0: \
+                                     rank classification is a future rung"
+                                        .to_string(),
+                                ))
+                            }
+                            Err(_) => Err(rational_error),
+                        };
+                    }
                 };
             Ok(crate::LinSolveResult::Unique(vec![x, y]))
         }
@@ -53,7 +76,7 @@ pub(super) fn solve_linear_system_parts(
 }
 
 pub(super) fn solve_linear_system_spec(
-    ctx: &Context,
+    ctx: &mut Context,
     spec: &LinearSystemSpec,
 ) -> Result<crate::LinSolveResult, crate::LinearSystemError> {
     solve_linear_system_parts(ctx, &spec.exprs, &spec.vars)

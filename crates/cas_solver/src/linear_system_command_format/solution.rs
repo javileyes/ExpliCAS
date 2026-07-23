@@ -39,3 +39,39 @@ pub(crate) fn display_linear_system_solution_latex(
     }
     format!("\\left\\{{ {} \\right\\}}", pairs.join(",\\ "))
 }
+
+pub(crate) fn display_linear_system_solution_exprs(
+    ctx: &Context,
+    vars: &[String],
+    values: &[cas_ast::ExprId],
+) -> String {
+    let mut pairs = Vec::with_capacity(vars.len().min(values.len()));
+    for (var, &val) in vars.iter().zip(values.iter()) {
+        let shown = format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: val
+            }
+        );
+        pairs.push(format!("{var} = {shown}"));
+    }
+    format!("{{ {} }}", pairs.join(", "))
+}
+
+pub(crate) fn display_linear_system_solution_exprs_latex(
+    ctx: &Context,
+    vars: &[String],
+    values: &[cas_ast::ExprId],
+) -> String {
+    let mut pairs = Vec::with_capacity(vars.len().min(values.len()));
+    for (var, &val) in vars.iter().zip(values.iter()) {
+        let shown = LaTeXExpr {
+            context: ctx,
+            id: val,
+        }
+        .to_latex();
+        pairs.push(format!("{var} = {shown}"));
+    }
+    format!("\\left\\{{ {} \\right\\}}", pairs.join(",\\ "))
+}
