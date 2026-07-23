@@ -8,6 +8,8 @@ That combination is unusual. On its home turf ExpliCAS reaches results that trip
 
 🌐 **Try it online:** [https://sanjuanbosco.javiergimenez.es/](https://sanjuanbosco.javiergimenez.es/)
 
+**Browser-only mode (WebAssembly).** The full engine also compiles to WASM (~8 MB) and runs entirely client-side — same JSON wire, exact `BigRational` arithmetic, zero server. `scripts/build_pages_site.sh` assembles the static site and `.github/workflows/pages.yml` deploys it to GitHub Pages on every push to `main` (one-time activation: repo Settings → Pages → Source: *GitHub Actions*). The wasm build pins **nightly** Rust (stable's LLVM currently blows up on wasm32 codegen of the engine; fixed upstream) — native builds stay on stable. The classic server deployment (`web/server.py`) is unaffected: the frontend is dual-mode and picks the engine per `build-config.js`.
+
 ![ExpliCAS Web Demo](docs/explicas_web_demo.png)
 
 ## Highlights

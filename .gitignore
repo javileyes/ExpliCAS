@@ -34,3 +34,4 @@ docs/generated/engine_improvement_scorecard_pressure_profiled.json
 docs/generated/engine_improvement_scorecard_pressure_profiled.md
 create_release.sh
 web/build-config.js
+dist/

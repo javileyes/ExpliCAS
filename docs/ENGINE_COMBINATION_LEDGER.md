@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 675 (newest first)
+Active entries: 676 (newest first)
 
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
@@ -131,6 +131,7 @@ Active entries: 675 (newest first)
 - 2026-07-23 | `retained` | Cargo.toml de `cas_engine`/`cas_solver`/`cas_solver_core` (+`web-time = "1"` ... | PORTABILIDAD (frente W · W1, tanda-11 ciclo 1/4): la cadena del wire compila a wasm32 — shim web-time por-target (nativo byte-idéntico) + gate del fs de debug; `make wasm-check` como pin
 - 2026-07-23 | `retained` | `crates/cas_wasm` (NUEVO, ~40 líneas netas: `#[wasm_bindgen] eval_str_to_wire... | PORTABILIDAD (frente W · W2, tanda-11 ciclo 2/4): crate cas_wasm — el MISMO wire JSON stateless en el navegador; un contrato, tres transportes (CLI, HTTP, wasm)
 - 2026-07-23 | `retained` | `web/wasm_worker.js` (module Worker: init del pkg wasm-pack + mensajes {id, e... | PORTABILIDAD (frente W · W3, tanda-11 ciclo 3/4): ExpliCAS corriendo ÍNTEGRO en el navegador — frontend dual-mode + Worker, verificado en vivo; y el hallazgo del ciclo: el LLVM de stable explota en memoria con cas_engine→wasm y NIGHTLY lo arregla
+- 2026-07-23 | `retained` | `scripts/build_pages_site.sh` (wasm-pack nightly opt-s → dist/pages con web U... | PORTABILIDAD (frente W · W4, tanda-11 4/4): sitio estático de GitHub Pages — build script + workflow con nightly pineado; el peldaño /api/examples cerrado como archivo estático; TANDA-11 COMPLETA — ExpliCAS usable online sin servidor
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`diff_call_order`/`scan_max_diff_order`: ... | CAPACIDAD (Fase 4 · O4, tanda-5 ciclo 1/2): 2º orden homogénea por discriminante exacto INTERNO — la linealidad no es solo el gate: también las ecuaciones del IVP salen de las BASES
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`distribute_structural`: distribución Mul... | CAPACIDAD (Fase 4 · O5, tanda-5 ciclo 2/2): coeficientes indeterminados — el collector por función-base sobre derivadas ESTRUCTURALES; Gauss racional propio; el gate por-base verificaba contra la ecuación equivocada; TANDA-5 COMPLETA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (refactor extraer-antes-de-abstraer: `line... | CAPACIDAD (Fase 4 · O8, tanda-6 ciclo 1/2): Bernoulli + homogéneas por composición de métodos graduados — el cero aparcado mata otro colector; la ruta implícita racional esquiva el surd H19 por diseño
@@ -21278,3 +21279,14 @@ Active entries: 675 (newest first)
 - retained learning:
   - **`cargo check` de un target NO es contrato de build de ese target**: check omite codegen — el pin de portabilidad debe incluir un BUILD real periódico (CI) además del check rápido local.
   - **«Compila para el target» ≠ «corre en el target»**: rayon compila a wasm32 y muere en runtime — las features de paralelismo se apagan por configuración (default-features=false) y la fontanería preparada años antes (fallback serial cfg-gateado) es lo que lo hizo un one-liner.
+
+## 2026-07-23 - PORTABILIDAD (frente W · W4, tanda-11 4/4): sitio estático de GitHub Pages — build script + workflow con nightly pineado; el peldaño /api/examples cerrado como archivo estático; TANDA-11 COMPLETA — ExpliCAS usable online sin servidor
+
+- area: `scripts/build_pages_site.sh` (wasm-pack nightly opt-s → dist/pages con web UI + pkg + build-config engineMode:"wasm" + **`api/examples` GENERADO estático desde examples.csv con la MISMA forma JSON que sirve server.py** — el botón Ejemplos funciona sin backend — + .nojekyll) + `.github/workflows/pages.yml` (push a main + dispatch; nightly + wasm32 + wasm-pack; cache cargo por Cargo.lock; upload-pages-artifact + deploy-pages; activación one-time documentada: Settings → Pages → Source: GitHub Actions) + README (sección browser-only mode) + dist/ en .gitignore
+- status: `retained`. **Verificado END-TO-END en local**: dist/pages servido y probado en el navegador — worker ready, 210 ejemplos por el /api/examples estático, Basilea `π²/6` calculada en la página. El workflow ejecuta EXACTAMENTE el mismo script.
+- capture:
+  - investment_class: portabilidad (ciclo final del plan del usuario). Lo que el usuario activa: push del repo a GitHub + Settings→Pages→GitHub Actions; cada push a main publica.
+  - La activación del deploy es EXTERNA por diseño (push + settings del repo son del usuario); el ciclo entrega el sitio construible y verificado + el workflow que lo publica.
+- observed: sin cambios Rust (script/workflow/web/docs); wasm-check + engine-fast + scorecards verdes; huella 0-delta.
+- decision: retener. **TANDA-11 COMPLETA (4/4, 0 rechazos): W1 portabilidad → W2 crate wire → W3 dual-mode verificado en vivo → W4 Pages.** Peldaños del frente: paridad de flags del wire wasm (lang/domain/complex/numeric), sesión con estado en el navegador, wasm-check en CI nativa si algún día existe workflow de tests.
+- retained learning: **el mismo script para local y CI elimina la clase «funciona en mi máquina»** — dist/pages se construyó y verificó localmente con el MISMO bash que corre el runner; el workflow no contiene ni una línea de lógica propia.

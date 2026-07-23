@@ -1,0 +1,67 @@
+# Deploy the ExpliCAS browser demo (engine compiled to WebAssembly) to
+# GitHub Pages — frente W · W4.
+#
+# The engine runs FULLY client-side: no server, exact BigRational arithmetic,
+# the same JSON wire the CLI and web server speak. Nightly Rust is pinned for
+# the wasm build only (stable's LLVM has a pathological memory blowup doing
+# wasm32 codegen of cas_engine — fixed upstream; see the W3 ledger entry).
+#
+# One-time activation: repository Settings → Pages → Source: GitHub Actions.
+
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly Rust + wasm32 target
+        run: |
+          rustup toolchain install nightly --profile minimal
+          rustup target add wasm32-unknown-unknown --toolchain nightly
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: pages-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Build static site (wasm engine + web UI)
+        run: bash scripts/build_pages_site.sh dist/pages
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
