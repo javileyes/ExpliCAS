@@ -1,6 +1,6 @@
 # ExpliCAS — a step-by-step Computer Algebra System in Rust
 
-**ExpliCAS** is a Computer Algebra System written in Rust with a sharp north star: be **serious and universal on the real, single-variable, elementary domain — and educational at every step.** It does not merely return an answer; it shows the rules that produced it, keeps every decision **exact** (`BigRational`, never floating point), and — by design — **never returns a silent wrong answer.** When a result is genuinely out of reach, it says so honestly rather than guessing.
+**ExpliCAS** is a Computer Algebra System written in Rust with a sharp north star: be **serious and universal across the real-domain university curriculum — and educational at every step.** Today that span covers single-variable calculus (with rational integration taken to its theoretical ceiling), multivariable and vector calculus, elementary complex arithmetic, the full elementary ODE course, and equation systems (linear n×n, parametric, and nonlinear bivariate). It does not merely return an answer; it shows the rules that produced it, keeps every decision **exact** (`BigRational`, never floating point), and — by design — **never returns a silent wrong answer.** When a result is genuinely out of reach, it says so honestly rather than guessing.
 
 That combination is unusual. On its home turf ExpliCAS reaches results that trip up mainstream systems: it integrates **every** rational function (returning an exact parameterized form even for the cases where no closed radical form exists), keeps the **complete** periodic family of a trigonometric equation instead of truncating it, and refuses to hand back a finite number for a divergent integral.
 
@@ -66,6 +66,28 @@ diff(integrate(1/(x^3-2), x), x) - 1/(x^3-2)   →  0   (round-trip verified)
 Every transformation can be shown as an ordered chain of named rules, so the *why* is as available as the *what* — the reason the project exists.
 
 > Backed by a **11,000+ test suite** (unit, integration, contract, and metamorphic property tests) plus differentiate-back verification on integration results — so the soundness contract above is enforced, not aspirational.
+
+## Philosophy
+
+Four principles drive every line of this engine. They are not aspirations — each one is enforced by machinery, and together they explain why the project grows the way it does.
+
+### Universality, redefined
+
+Mainstream CAS breadth means "accepts almost anything, is usually right." ExpliCAS inverts the deal: **within its declared domain, everything it emits is exact and verified; everything it cannot do is declined honestly with the reason named.** There is no gray zone of plausible-but-wrong output. This makes universality *monotonic*: the covered domain only grows, front by front, and every front that closes **stays** closed — pinned by contract tests, policy-matrix lanes (18 scorecard suites and counting), and footprint comparison on every change. Universality here is a direction of travel with a ratchet, not a marketing claim.
+
+### Results are contracts
+
+An answer is not just an expression — it carries the conditions under which it is valid. A parametric system's solution ships with its `det ≠ 0` requirement on a structured conditions channel; a domain restriction (`x > 0` for a Cauchy-Euler basis) is stated, not assumed; an implicit ODE solution names its verification route. And before anything is shown at all, **verification gates emission**: candidate solutions are substituted back into the *original* problem and must reduce to an exact, symbolic zero — solutions of ODEs against the ODE, solution pairs of nonlinear systems against *both* equations, integrals by differentiating back. What cannot be verified is not emitted.
+
+### Honesty at the edges
+
+A silent wrong answer is the one unforgivable bug. When the engine reaches the edge of its capability it returns an **honest residual** — the input echoed back with the precise reason it declined — and those declines are *published contract*: the help pages list what each command refuses and why. Two disciplines keep this rigorous. First, "no solution" is never just "I failed to find one" — claiming emptiness requires a separate completeness argument (exhaustive candidate enumeration), and without it the engine declines instead. Second, some residuals are *protected*: `∫e^(x²)`, divergent series, non-elementary forms — "resolving" them would be a soundness bug, and tests enforce that they stay honest forever.
+
+### Educational as an equal half
+
+The educational goal is not a layer on top — it is half the definition of done. Every solved family narrates its actual method with real mathematical content (the integrating factor found, the isolation performed, the indicial equation with its discriminant), localized in Spanish and English. The *why* is as available as the *what*. Honest declines teach too: naming the method that would be needed ("rank classification", "Gröbner bases", "power series") turns every boundary into a signpost. A capability is not considered finished until the universal half (exact, verified) and the educational half (narrated, honest) both land.
+
+These four reinforce each other: verification is what makes universality safe to grow, contracts are what make results composable, honesty is what makes the boundaries trustworthy, and narration is what makes all of it teachable.
 
 ## Features
 
