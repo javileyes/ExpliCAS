@@ -90,6 +90,40 @@ fn format_solve_input_latex(equation: &str, var: &str) -> String {
     )
 }
 
+/// Render the canonical semicolon parts back as the LIST surface the user
+/// typed: `solve([eq1, eq2], [x, y])`.
+fn format_solve_list_input_latex(input: &str) -> String {
+    let parts = split_solve_system_parts(input);
+    if parts.len() < 4 || !parts.len().is_multiple_of(2) {
+        return fallback_solve_system_input_latex(input);
+    }
+    let n = parts.len() / 2;
+    let eq_parts = &parts[..n];
+    let var_parts = &parts[n..];
+    let mut temp_ctx = cas_ast::Context::new();
+    let mut eq_rendered = Vec::with_capacity(n);
+    for eq_str in eq_parts {
+        let statement = match cas_parser::parse_statement(eq_str, &mut temp_ctx) {
+            Ok(statement) => statement,
+            Err(_) => return fallback_solve_system_input_latex(input),
+        };
+        let cas_parser::Statement::Equation(eq) = statement else {
+            return fallback_solve_system_input_latex(input);
+        };
+        let eq_signals = ParseStyleSignals::from_input_string(eq_str);
+        let lhs = style_latex_for_input(&temp_ctx, eq.lhs, &eq_signals);
+        let rhs = style_latex_for_input(&temp_ctx, eq.rhs, &eq_signals);
+        let op = relop_latex(&eq.op);
+        eq_rendered.push(format!("{lhs} {op} {rhs}"));
+    }
+    let vars_rendered: Vec<String> = var_parts.iter().map(|v| latex_escape(v)).collect();
+    format!(
+        "\\operatorname{{solve}}\\left(\\left[{}\\right],\\ \\left[{}\\right]\\right)",
+        eq_rendered.join(",\\ "),
+        vars_rendered.join(",\\ ")
+    )
+}
+
 fn format_solve_system_input_latex(input: &str) -> String {
     let parts = split_solve_system_parts(input);
     if parts.len() < 4 || !parts.len().is_multiple_of(2) {
@@ -166,6 +200,14 @@ pub(crate) fn format_output_input_latex(
                 }
             }
             EvalSpecialCommand::SolveSystem { input } => {
+                // Faithful echo (S3): a user who typed the LIST form sees the
+                // list form back, not the desugared internal solve_system.
+                let raw_is_list_form = raw_input.trim_start().to_lowercase().starts_with("solve(")
+                    || raw_input.trim_start().to_lowercase().starts_with("solve [")
+                    || raw_input.trim_start().to_lowercase().starts_with("solve([");
+                if raw_is_list_form {
+                    return format_solve_list_input_latex(&input);
+                }
                 return format_solve_system_input_latex(&input);
             }
             EvalSpecialCommand::Solve { equation, var } => {

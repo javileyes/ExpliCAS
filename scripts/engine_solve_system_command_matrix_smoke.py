@@ -52,6 +52,7 @@ class SolveSystemCommandMatrixCase:
     expr: str
     expected_result: str
     expected_required: tuple[str, ...] = ()
+    expected_solve_step_substrings: tuple[str, ...] = ()
     family: str = "lineal"
     size_regime: str = "two_by_two"
     coefficient_regime: str = "rational"
@@ -65,6 +66,10 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         name="linear_2x2_integer",
         expr="solve([x+y=3, x-y=1], [x, y])",
         expected_result="{ x = 2, y = 1 }",
+        expected_solve_step_substrings=(
+            "Identificar sistema de 2 ecuaciones",
+            "Cramer/Gauss",
+        ),
     ),
     SolveSystemCommandMatrixCase(
         name="linear_2x2_fraction_solution",
@@ -108,6 +113,7 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         name="degenerate_inconsistent",
         expr="solve([x+y=1, x+y=2], [x, y])",
         expected_result="System has no solution.\nThe equations are inconsistent.",
+        expected_solve_step_substrings=("inconsistentes",),
         family="degenerado",
         outcome="inconsistent",
         presentation_regime="prose_outcome",
@@ -130,6 +136,10 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
             "{ x = 1 / (a + 1), y = 1 / (a + 1) }\n  requires: a + 1 != 0"
         ),
         expected_required=("a ≠ -1",),
+        expected_solve_step_substrings=(
+            "Coeficientes simbólicos",
+            "determinante debe ser distinto de cero",
+        ),
         family="parametrico",
         coefficient_regime="symbolic_parameter",
         condition_regime="det_nonzero",
@@ -172,6 +182,11 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         name="nonlinear_hyperbola_line_product",
         expr="solve([x*y=6, x+y=5], [x, y])",
         expected_result="{ x = 2, y = 3 } or { x = 3, y = 2 }",
+        expected_solve_step_substrings=(
+            "Aislar y de la ecuación 2",
+            "resolver la univariable en x",
+            "2 pares verificados",
+        ),
         family="no_lineal",
         coefficient_regime="rational",
         condition_regime="verified_pairs",
@@ -255,6 +270,16 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
 )
 
 
+def extract_solve_step_text(parsed: Any) -> str:
+    if not isinstance(parsed, dict):
+        return ""
+    chunks = []
+    for step in parsed.get("solve_steps") or []:
+        if isinstance(step, dict):
+            chunks.append(str(step.get("description", "")))
+    return "\n".join(chunks)
+
+
 def extract_required_display(parsed: Any) -> tuple[str, ...]:
     if not isinstance(parsed, dict):
         return ()
@@ -271,7 +296,7 @@ def run_case(
     timeout_seconds: float,
     slow_wall_seconds: float | None = None,
 ) -> dict[str, Any]:
-    command = [str(cas_cli), "eval", case.expr, "--format", "json"]
+    command = [str(cas_cli), "eval", case.expr, "--format", "json", "--steps", "on"]
     start = time.monotonic()
     process = subprocess.Popen(
         command,
@@ -320,6 +345,12 @@ def run_case(
             if expected not in required:
                 error = f"missing expected required condition {expected!r}"
                 break
+        if error is None:
+            step_text = extract_solve_step_text(parsed)
+            for expected in case.expected_solve_step_substrings:
+                if expected not in step_text:
+                    error = f"missing expected solve step containing {expected!r}"
+                    break
 
     status: Status = "pass" if error is None else "fail"
     if status == "pass" and slow_wall_seconds is not None and wall_elapsed > slow_wall_seconds:

@@ -118,6 +118,18 @@ pub(crate) fn localize_solve_description(desc: &str, language: Language) -> Stri
 
 #[rustfmt::skip]
 static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
+    // solve_system (frente S) — system narration (S3).
+    SolveDesc { template: "Identificar sistema de {0} ecuaciones con incógnitas [{1}]", es: "Identificar sistema de {0} ecuaciones con incógnitas [{1}]", en: "Identify system of {0} equations with unknowns [{1}]" },
+    SolveDesc { template: "Resolver el sistema lineal por eliminación exacta (Cramer/Gauss sobre racionales)", es: "Resolver el sistema lineal por eliminación exacta (Cramer/Gauss sobre racionales)", en: "Solve the linear system by exact elimination (Cramer/Gauss over rationals)" },
+    SolveDesc { template: "Solución única: cada valor sustituye exacto en todas las ecuaciones", es: "Solución única: cada valor sustituye exacto en todas las ecuaciones", en: "Unique solution: each value substitutes exactly into every equation" },
+    SolveDesc { template: "Coeficientes simbólicos: la lista de incógnitas decide la linealidad y los parámetros van a los coeficientes", es: "Coeficientes simbólicos: la lista de incógnitas decide la linealidad y los parámetros van a los coeficientes", en: "Symbolic coefficients: the unknowns list decides linearity and parameters go into the coefficients" },
+    SolveDesc { template: "Resolver por Cramer exacto sobre polinomios en los parámetros", es: "Resolver por Cramer exacto sobre polinomios en los parámetros", en: "Solve by exact Cramer over polynomials in the parameters" },
+    SolveDesc { template: "Condición de validez: el determinante debe ser distinto de cero", es: "Condición de validez: el determinante debe ser distinto de cero", en: "Validity condition: the determinant must be nonzero" },
+    SolveDesc { template: "Aislar {0} de la ecuación {1} (lineal en esa incógnita)", es: "Aislar {0} de la ecuación {1} (lineal en esa incógnita)", en: "Isolate {0} from equation {1} (linear in that unknown)" },
+    SolveDesc { template: "Sustituir en la otra ecuación y resolver la univariable en {0}", es: "Sustituir en la otra ecuación y resolver la univariable en {0}", en: "Substitute into the other equation and solve the univariate in {0}" },
+    SolveDesc { template: "Verificar cada par contra AMBAS ecuaciones originales: {0} pares verificados emitidos", es: "Verificar cada par contra AMBAS ecuaciones originales: {0} pares verificados emitidos", en: "Verify each pair against BOTH original equations: {0} verified pairs emitted" },
+    SolveDesc { template: "Las ecuaciones son dependientes (rango menor que el número de incógnitas): infinitas soluciones", es: "Las ecuaciones son dependientes (rango menor que el número de incógnitas): infinitas soluciones", en: "The equations are dependent (rank below the number of unknowns): infinitely many solutions" },
+    SolveDesc { template: "Las ecuaciones son inconsistentes (ninguna asignación satisface todas): sin solución", es: "Las ecuaciones son inconsistentes (ninguna asignación satisface todas): sin solución", en: "The equations are inconsistent (no assignment satisfies all): no solution" },
     // dsolve (Fase 4) — Cauchy-Euler narration (D13, O9).
     SolveDesc { template: "Identificar ecuación de Cauchy-Euler: x²·y'' + a·x·y' + b·y = 0 con a = {0}, b = {1}", es: "Identificar ecuación de Cauchy-Euler: x²·y'' + a·x·y' + b·y = 0 con a = {0}, b = {1}", en: "Identify Cauchy-Euler equation: x²·y'' + a·x·y' + b·y = 0 with a = {0}, b = {1}" },
     SolveDesc { template: "Plantear la ecuación indicial: r·(r−1) + a·r + b = 0 con discriminante Δ = {0}", es: "Plantear la ecuación indicial: r·(r−1) + a·r + b = 0 con discriminante Δ = {0}", en: "Set up the indicial equation: r·(r−1) + a·r + b = 0 with discriminant Δ = {0}" },

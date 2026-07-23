@@ -58,6 +58,9 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         for case in conditioned:
             self.assertIn("requires:", case.expected_result)
 
+        narrated = [c for c in cases if c.expected_solve_step_substrings]
+        self.assertEqual(len(narrated), 4)
+
         verified_pairs = [c for c in cases if c.condition_regime == "verified_pairs"]
         self.assertEqual(len(verified_pairs), 6)
         for case in verified_pairs:

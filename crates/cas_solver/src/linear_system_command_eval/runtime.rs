@@ -45,6 +45,7 @@ where
         &cache_hits.into_iter().collect::<Vec<_>>(),
     );
 
+    let mut nonlinear_narration: Option<super::nonlinear::NonlinearNarration> = None;
     // A well-formed system that this solver cannot handle is a MATH decline,
     // not an internal fault: it must reach the wire as an honest ok-result
     // (the REPL route already behaves this way — this is parity, and it is
@@ -64,7 +65,10 @@ where
                 &resolved_exprs,
                 &vars,
             ) {
-                Some(result) => result,
+                Some((result, narr)) => {
+                    nonlinear_narration = narr;
+                    result
+                }
                 None => {
                     let message =
                 crate::linear_system_command_format::format_linear_system_command_error_message(
@@ -112,6 +116,16 @@ where
         );
     }
 
+    // S3: the educational half — every outcome narrates (localized at the
+    // presentation boundary via the SolveDesc table).
+    let solve_steps = super::steps::build_system_solve_steps(
+        &mut engine.simplifier.context,
+        &resolved_exprs,
+        &vars,
+        &result,
+        nonlinear_narration.as_ref(),
+    );
+
     let command_output =
         crate::linear_system_command_eval::LinearSystemCommandEvalOutput { vars, result };
     let (plain, latex) = crate::linear_system_command_format::render_linear_system_result(
@@ -129,7 +143,7 @@ where
         result: crate::EvalResult::Text { plain, latex },
         strategy: None,
         steps: crate::DisplayEvalSteps::default(),
-        solve_steps: Vec::new(),
+        solve_steps,
         output_scopes: Vec::new(),
         diagnostics,
         required_conditions,

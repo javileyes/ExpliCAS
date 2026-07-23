@@ -9946,3 +9946,61 @@ fn solve_system_nonlinear_s2_contract() {
     let s1 = r("solve([a*x+y=1, x-y=0], [x, y])");
     assert!(s1.starts_with("{ x = 1 / (a + 1)"), "{s1}");
 }
+
+#[test]
+fn solve_system_educational_s3_contract() {
+    // Frente S · S3: la mitad educativa — narración es/en por familia, cero
+    // fugas de micro-pasos internos, y eco fiel de la forma que el usuario
+    // tecleó (lista ↔ lista, semicolon ↔ solve_system).
+    let json_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+
+    // Narración no-lineal con contenido real (aislamiento + univariable +
+    // gate) en español…
+    let es = json_of("solve([x*y=6, x+y=5], [x, y])", None);
+    assert!(es.contains("Aislar y de la ecuación 2"), "{es}");
+    assert!(es.contains("resolver la univariable en x"), "{es}");
+    assert!(es.contains("2 pares verificados"), "{es}");
+    // …y en inglés vía la tabla es/en.
+    let en = json_of("solve([x*y=6, x+y=5], [x, y])", Some("en"));
+    assert!(en.contains("Isolate y from equation 2"), "{en}");
+    assert!(en.contains("verified pairs emitted"), "{en}");
+
+    // Paramétrico narra la condición del determinante.
+    let par = json_of("solve([a*x+y=1, x-y=0], [x, y])", None);
+    assert!(
+        par.contains("determinante debe ser distinto de cero"),
+        "{par}"
+    );
+    // Lineal racional narra método; degenerado narra el porqué.
+    let lin = json_of("solve([x+y=3, x-y=1], [x, y])", None);
+    assert!(lin.contains("Cramer/Gauss"), "{lin}");
+    let inc = json_of("solve([x+y=1, x+y=2], [x, y])", Some("en"));
+    assert!(
+        inc.contains("inconsistent (no assignment satisfies all)"),
+        "{inc}"
+    );
+
+    // Cero fugas: los micro-pasos internos de S2 no llegan al canal steps.
+    let leak = json_of("solve([x*y=6, x+y=5], [x, y])", None);
+    assert!(leak.contains("\"steps_count\": 0"), "{leak}");
+
+    // Eco fiel: la forma lista se ecoa como lista (JSON escapa los
+    // backslash del LaTeX: \\ en bytes).
+    assert!(
+        leak.contains("\\\\operatorname{solve}\\\\left(\\\\left["),
+        "{leak}"
+    );
+    // …y la forma semicolon conserva su eco solve_system.
+    let semi = json_of("solve_system(x+y=3; x-y=1; x; y)", None);
+    assert!(
+        semi.contains("\\\\operatorname{solve\\\\_system}"),
+        "{semi}"
+    );
+}

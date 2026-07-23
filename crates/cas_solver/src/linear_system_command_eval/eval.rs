@@ -33,7 +33,7 @@ pub(crate) fn evaluate_linear_system_command_input_with_simplifier(
         Ok(result) => result,
         Err(error) => {
             match super::nonlinear::try_solve_nonlinear_2x2(simplifier, &spec.exprs, &spec.vars) {
-                Some(result) => result,
+                Some((result, _narration)) => result,
                 None => return Err(LinearSystemCommandEvalError::Solve(error)),
             }
         }

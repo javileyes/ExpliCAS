@@ -87,14 +87,43 @@ fn reduces_to_zero(simplifier: &mut crate::Simplifier, expr: ExprId) -> bool {
     )
 }
 
+/// Narration payload for the S3 educational half: what was isolated, what
+/// univariate equation resulted, and how many pairs survived verification.
+pub(crate) struct NonlinearNarration {
+    pub(crate) isolated_var: String,
+    pub(crate) isolation: ExprId,
+    pub(crate) source_index: usize,
+    pub(crate) free_var: String,
+    pub(crate) univariate: ExprId,
+}
+
 /// Try to solve a parameter-free nonlinear 2×2 system by verified
 /// substitution. `exprs` are the normalized residuals (`lhs - rhs`).
 /// Returns `None` when out of scope — the caller keeps its honest decline.
+///
+/// Steps ritual: the internal machinery (univariate solve, verification
+/// simplifies) must NOT leak micro-steps to a session step listener — the
+/// user-facing narration is built separately (S3). Save/off/restore both the
+/// listener and the steps mode around the whole body, on every return path.
 pub(crate) fn try_solve_nonlinear_2x2(
     simplifier: &mut crate::Simplifier,
     exprs: &[ExprId],
     vars: &[String],
-) -> Option<crate::LinSolveResult> {
+) -> Option<(crate::LinSolveResult, Option<NonlinearNarration>)> {
+    let previous_listener = simplifier.replace_step_listener(None);
+    let previous_mode = simplifier.steps_mode;
+    simplifier.steps_mode = cas_engine::StepsMode::Off;
+    let result = try_solve_nonlinear_2x2_inner(simplifier, exprs, vars);
+    simplifier.steps_mode = previous_mode;
+    simplifier.set_step_listener(previous_listener);
+    result
+}
+
+fn try_solve_nonlinear_2x2_inner(
+    simplifier: &mut crate::Simplifier,
+    exprs: &[ExprId],
+    vars: &[String],
+) -> Option<(crate::LinSolveResult, Option<NonlinearNarration>)> {
     if exprs.len() != 2 || vars.len() != 2 {
         return None;
     }
@@ -134,15 +163,24 @@ pub(crate) fn try_solve_nonlinear_2x2(
             else {
                 continue;
             };
+            let narration = NonlinearNarration {
+                isolated_var: unknown.clone(),
+                isolation: iso,
+                source_index: src,
+                free_var: free_var.clone(),
+                univariate: substituted,
+            };
             let roots = match solution_set {
                 SolutionSet::Discrete(roots) => roots,
                 // A PROVEN empty set over the reals is an honest "no solution"
                 // (circle and a line that misses it).
-                SolutionSet::Empty => return Some(crate::LinSolveResult::Inconsistent),
+                SolutionSet::Empty => {
+                    return Some((crate::LinSolveResult::Inconsistent, Some(narration)))
+                }
                 _ => continue,
             };
             if roots.is_empty() {
-                return Some(crate::LinSolveResult::Inconsistent);
+                return Some((crate::LinSolveResult::Inconsistent, Some(narration)));
             }
 
             let w_var = simplifier.context.var(free_var);
@@ -195,7 +233,7 @@ pub(crate) fn try_solve_nonlinear_2x2(
                 // emptiness proof).
                 return None;
             }
-            return Some(crate::LinSolveResult::SolutionPairs(pairs));
+            return Some((crate::LinSolveResult::SolutionPairs(pairs), Some(narration)));
         }
     }
     None
