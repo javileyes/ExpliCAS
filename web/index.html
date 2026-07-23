@@ -13,7 +13,7 @@
             svg: { fontCache: 'global' }
         };
     </script>
-    <script src="/build-config.js"></script>
+    <script src="build-config.js"></script>
     <script src="wasm-mode.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
 
@@ -3154,7 +3154,7 @@
             if (cachedExamples) return cachedExamples;
 
             try {
-                const response = await fetch('/api/examples');
+                const response = await fetch('api/examples');
                 const data = await response.json();
                 if (data.ok && data.examples) {
                     cachedExamples = data.examples;
