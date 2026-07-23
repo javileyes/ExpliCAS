@@ -54,6 +54,14 @@ pub(crate) fn parse_linear_system_spec(
         .into_iter()
         .map(|e| pre_evaluate_inline_diff_calls(ctx, e))
         .collect();
+    // Frente S: "la lista de incógnitas manda" aplicado a los NOMBRES — una
+    // constante nombrada (e, pi, phi) DECLARADA como incógnita es una
+    // variable dentro del canal de sistemas (espejo de la decisión D14 de
+    // dsolve: la excepción vive donde vive el contexto; el significado
+    // global de `e` no se toca). `i` queda fuera a propósito: la unidad
+    // imaginaria es estructural para la maquinaria compleja — declinar es
+    // más seguro que sombrearla.
+    let exprs = shadow_declared_constant_names(ctx, exprs, &vars);
 
     Ok(LinearSystemSpec { exprs, vars })
 }
@@ -178,4 +186,47 @@ fn pre_evaluate_inline_diff_calls(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 pub(crate) fn parse_linear_system_invocation_input(line: &str) -> String {
     invocation::parse_linear_system_invocation_input(line)
+}
+
+/// Replace named-constant nodes (`e`, `pi`, `phi`) by plain variables when
+/// the SAME name was declared in the unknowns list. Scoped to this channel:
+/// outside the declared list the constants keep their global meaning
+/// (`x + e·y = 1` still solves with Euler's e as an exact coefficient).
+fn shadow_declared_constant_names(
+    ctx: &mut Context,
+    exprs: Vec<cas_ast::ExprId>,
+    vars: &[String],
+) -> Vec<cas_ast::ExprId> {
+    use cas_ast::{Constant, Expr};
+    let shadowable: Vec<(cas_ast::ExprId, cas_ast::ExprId)> = vars
+        .iter()
+        .filter_map(|name| {
+            let constant = match name.as_str() {
+                "e" => Constant::E,
+                "pi" => Constant::Pi,
+                "phi" => Constant::Phi,
+                _ => return None,
+            };
+            let target = ctx.add(Expr::Constant(constant));
+            let replacement = ctx.var(name);
+            Some((target, replacement))
+        })
+        .collect();
+    if shadowable.is_empty() {
+        return exprs;
+    }
+    exprs
+        .into_iter()
+        .map(|expr| {
+            shadowable.iter().fold(expr, |acc, &(target, replacement)| {
+                crate::substitute::substitute_power_aware(
+                    ctx,
+                    acc,
+                    target,
+                    replacement,
+                    crate::substitute::SubstituteOptions::exact(),
+                )
+            })
+        })
+        .collect()
 }

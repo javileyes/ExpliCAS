@@ -10115,3 +10115,46 @@ fn solve_system_resultant_s5_contract() {
     let hard = r("solve([x^2+y^3=5, x^3-y^2=1], [x, y])");
     assert!(hard.starts_with("Error"), "{hard}");
 }
+
+#[test]
+fn solve_system_declared_constant_shadow_contract() {
+    // Frente S (chip e-como-incógnita): «la lista de incógnitas manda»
+    // aplicado a los NOMBRES — e/pi/phi DECLARADAS en la lista son variables
+    // dentro del canal de sistemas (espejo D14: la excepción vive donde vive
+    // el contexto); fuera de la lista conservan su significado global.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // La bandera del chip: el 5×5 con e declarada resuelve.
+    assert_eq!(
+        r("solve([a+b+c+d+e=15, b+c+d+e=14, c+d+e=12, d+e=9, e=5], [a, b, c, d, e])"),
+        "{ a = 1, b = 2, c = 3, d = 4, e = 5 }"
+    );
+    assert_eq!(r("solve([e+x=3, x-1=0], [x, e])"), "{ x = 1, e = 2 }");
+    assert_eq!(r("solve([pi+x=4, x-1=0], [x, pi])"), "{ x = 1, pi = 3 }");
+    // El shadowing compone con el camino no-lineal (phi por sustitución).
+    let phi = r("solve([phi^2+y=3, phi-y=1], [phi, y])");
+    assert!(phi.contains("phi = 1/2·(sqrt(17) - 1)"), "{phi}");
+
+    // Pins: FUERA de la lista las constantes siguen siendo ellas mismas —
+    // Euler y π como coeficientes exactos, byte-idénticos.
+    assert_eq!(
+        r("solve([x+e*y=1, x-y=0], [x, y])"),
+        "{ x = 1 / (1 + e), y = 1 / (1 + e) }"
+    );
+    assert_eq!(
+        r("solve([x+pi*y=1, x-y=0], [x, y])"),
+        "{ x = 1 / (1 + pi), y = 1 / (1 + pi) }"
+    );
+    // `i` NO se sombrea (unidad imaginaria estructural): declina honesto.
+    let i_decl = r("solve([i+x=3, x-1=0], [x, i])");
+    assert!(
+        !i_decl.contains("i = 2"),
+        "i declarada no debe sombrearse: {i_decl}"
+    );
+}

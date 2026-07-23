@@ -284,6 +284,22 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="list_syntax_parity",
     ),
     SolveSystemCommandMatrixCase(
+        name="declared_constant_name_e_is_unknown",
+        expr="solve([a+b+c+d+e=15, b+c+d+e=14, c+d+e=12, d+e=9, e=5], [a, b, c, d, e])",
+        expected_result="{ a = 1, b = 2, c = 3, d = 4, e = 5 }",
+        size_regime="n_by_n",
+        presentation_regime="constant_name_shadowed",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="undeclared_e_stays_euler_coefficient",
+        expr="solve([x+e*y=1, x-y=0], [x, y])",
+        expected_result="{ x = 1 / (1 + e), y = 1 / (1 + e) }",
+        family="no_lineal",
+        coefficient_regime="transcendental_constant",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
         name="residual_parametric_degenerate_det_zero",
         expr="solve([a*x+y=1, a*x+y=2], [x, y])",
         expected_result=(
