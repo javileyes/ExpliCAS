@@ -174,6 +174,18 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Combine Same Denominator Fractions" => "Sumar fracciones con mismo denominador",
         "Combine Same Denominator Sub" => "Restar fracciones con mismo denominador",
         "Cancel Equal Fractions Difference" => "Cancelar fracciones iguales",
+        "Cancel Power Fraction" => "Cancelar la potencia en la fracción",
+        "Abs Sub Normalize" => "Normalizar la resta dentro del valor absoluto",
+        "Normalize Negation in Product" => "Normalizar el signo negativo en el producto",
+        "Absorb Negation Into Difference" => "Absorber el signo en la resta",
+        "Abs Of Exp" => "Quitar el valor absoluto de una exponencial",
+        "Post-calculus residual simplification" => "Aplicar el teorema fundamental del cálculo",
+        "Resolve a matching calculus residual inside its wrapper before general simplification" => {
+            "Aplicar el teorema fundamental del cálculo"
+        }
+        "Resolve calculus calls and simplify matching residual before general simplification" => {
+            "Aplicar el teorema fundamental del cálculo"
+        }
         RULE_CANCEL_EXACT_ADDITIVE_PAIRS => "Cancelar términos opuestos",
         "Common Denominator" => "Llevar a denominador común",
         "Add Fractions" => "Sumar fracciones",
@@ -708,6 +720,20 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Cancelar factores en una fracción" => "Cancel factors in a fraction",
         "Cancelar factoriales consecutivos" => "Cancel consecutive factorials",
         "Cancelar fracciones iguales" => "Cancel equal fractions",
+        "Cancelar la potencia en la fracción" => "Cancel the power in the fraction",
+        "Normalizar la resta dentro del valor absoluto" => {
+            "Normalize the difference inside the absolute value"
+        }
+        "Normalizar el signo negativo en el producto" => {
+            "Normalize the negative sign in the product"
+        }
+        "Absorber el signo en la resta" => "Absorb the sign into the difference",
+        "Quitar el valor absoluto de una exponencial" => {
+            "Drop the absolute value of an exponential"
+        }
+        "Aplicar el teorema fundamental del cálculo" => {
+            "Apply the fundamental theorem of calculus"
+        }
         "Cancelar fracciones opuestas" => "Cancel opposite fractions",
         "Cancelar numerador y denominador iguales" => "Cancel identical numerator and denominator",
         "Cancelar términos opuestos" => "Cancel opposite terms",
