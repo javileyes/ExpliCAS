@@ -19,3 +19,27 @@ pub(crate) fn evaluate_linear_system_command_input(
         result,
     })
 }
+
+/// Same as [`evaluate_linear_system_command_input`], but with the full
+/// simplifier available: a NotLinear decline gets the S2 nonlinear
+/// composition shot (isolate → substitute → solve → verify) before erroring.
+pub(crate) fn evaluate_linear_system_command_input_with_simplifier(
+    simplifier: &mut crate::Simplifier,
+    input: &str,
+) -> Result<LinearSystemCommandEvalOutput, LinearSystemCommandEvalError> {
+    let spec = parse_linear_system_spec(&mut simplifier.context, input)
+        .map_err(LinearSystemCommandEvalError::Parse)?;
+    let result = match solve_linear_system_spec(&mut simplifier.context, &spec) {
+        Ok(result) => result,
+        Err(error) => {
+            match super::nonlinear::try_solve_nonlinear_2x2(simplifier, &spec.exprs, &spec.vars) {
+                Some(result) => result,
+                None => return Err(LinearSystemCommandEvalError::Solve(error)),
+            }
+        }
+    };
+    Ok(LinearSystemCommandEvalOutput {
+        vars: spec.vars,
+        result,
+    })
+}

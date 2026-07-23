@@ -51,6 +51,24 @@ pub(crate) fn render_linear_system_result(
             }
             (plain, Some(latex))
         }
+        crate::LinSolveResult::SolutionPairs(pairs) => {
+            let rendered: Vec<String> = pairs
+                .iter()
+                .map(|values| {
+                    super::display_linear_system_solution_exprs(ctx, &output.vars, values)
+                })
+                .collect();
+            let latex_rendered: Vec<String> = pairs
+                .iter()
+                .map(|values| {
+                    super::display_linear_system_solution_exprs_latex(ctx, &output.vars, values)
+                })
+                .collect();
+            (
+                rendered.join(" or "),
+                Some(latex_rendered.join("\\ \\text{or}\\ ")),
+            )
+        }
         crate::LinSolveResult::Infinite => {
             let plain = degenerate::format_infinite_result();
             let latex = format!("\\text{{{}}}", latex_escape(&plain.replace('\n', " ")));

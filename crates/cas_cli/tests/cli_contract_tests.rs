@@ -3323,20 +3323,28 @@ fn test_eval_solve_critical_points() {
         r("subs(subs(det(hessian(x^2+y^2-2*x-4*y,[x,y])), x, 1), y, 2)"),
         "4"
     );
-    // Pins: lineal puro intacto; gradiente NO-lineal declina honesto.
+    // Pins: lineal puro intacto; y desde S2 (frente sistemas) el gradiente
+    // no-lineal AISLABLE resuelve por sustitución verificada — el contrato
+    // V7d «declina honesto» graduó a capacidad SIN Gröbner: ∇(x³+y³−3xy)=0
+    // → y=x² sustituida da x⁴=x → (0,0) y (1,1), completo sobre ℝ (el
+    // factor x²+x+1 no tiene raíces reales).
     assert_eq!(r("solve([x+y=3, x-y=1], [x,y])"), "{ x = 2, y = 1 }");
+    assert_eq!(
+        r("solve([diff(x^3+y^3-3*x*y, x)=0, diff(x^3+y^3-3*x*y, y)=0], [x,y])"),
+        "{ x = 0, y = 0 } or { x = 1, y = 1 }"
+    );
+    // El scope-out REAL sigue declinando honesto: sin ecuación aislable
+    // (ninguna es lineal-con-coeficiente-constante en una incógnita),
+    // Gröbner sigue siendo mate-nueva fuera del alcance.
     let out = cli()
-        .args([
-            "eval",
-            "solve([diff(x^3+y^3-3*x*y, x)=0, diff(x^3+y^3-3*x*y, y)=0], [x,y])",
-        ])
+        .args(["eval", "solve([x^2+y^3=5, x^3-y^2=1], [x,y])"])
         .output()
         .expect("Failed to run CLI");
     let text =
         String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     assert!(
-        text.contains("non-linear") || text.contains("degree > 1"),
-        "el gradiente no-lineal debe declinar honesto, got: {text}"
+        text.contains("polynomial conversion") || text.contains("non-linear"),
+        "el sistema no-aislable debe declinar honesto, got: {text}"
     );
 }
 
@@ -9886,4 +9894,55 @@ fn solve_system_parametric_s1_contract() {
     // La forma semicolon también resuelve el paramétrico (mismo pipeline).
     let semi = r("solve_system(a*x+y=1; x-y=0; x; y)");
     assert!(semi.contains("x = 1 / (a + 1)"), "{semi}");
+}
+
+#[test]
+fn solve_system_nonlinear_s2_contract() {
+    // Frente S · S2: no-lineales 2×2 por composición aislar → sustituir →
+    // solve univariable → back-substitute, con gate de verificación exacta
+    // POR PAR contra AMBAS ecuaciones originales (D5 transferido).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // Parábola-recta racional (curso elemental).
+    assert_eq!(
+        r("solve([y=x^2, y=x+2], [x, y])"),
+        "{ x = -1, y = 1 } or { x = 2, y = 4 }"
+    );
+    // Hipérbola x·y=6 + recta (sustitución clásica).
+    assert_eq!(
+        r("solve([x*y=6, x+y=5], [x, y])"),
+        "{ x = 2, y = 3 } or { x = 3, y = 2 }"
+    );
+    // Círculo + recta textbook.
+    assert_eq!(
+        r("solve([x^2+y^2=25, x+y=7], [x, y])"),
+        "{ x = 3, y = 4 } or { x = 4, y = 3 }"
+    );
+    // Pares SURD verificados exactos (el gate maneja aritmética surd).
+    let surd = r("solve([x^2+y=3, x-y=1], [x, y])");
+    assert!(surd.contains("sqrt(17)") && surd.contains(" or "), "{surd}");
+    // Sin intersección real: vacío PROBADO por el solve univariable.
+    assert!(r("solve([x^2+y^2=1, x+y=5], [x, y])").contains("no solution"));
+    // Guard paramétrico: no-lineal con parámetro sigue residual honesto.
+    let param = r("solve([x^2+y^2=a, x+y=1], [x, y])");
+    assert!(param.contains("non-linear"), "{param}");
+    // Dos cuadráticas sin ecuación aislable: residual honesto (peldaño).
+    let two_quad = r("solve([x*y=6, x^2+y^2=13], [x, y])");
+    assert!(two_quad.contains("non-linear"), "{two_quad}");
+    // Composición bonus: coeficiente surd en sistema LINEAL resuelto vía la
+    // misma ruta (el techo multipoly-sobre-Q de S1 graduó por composición).
+    assert_eq!(
+        r("solve([sqrt(2)*x+y=1, x-y=0], [x, y])"),
+        "{ x = sqrt(2) - 1, y = sqrt(2) - 1 }"
+    );
+    // No-robo: lineal racional y paramétrico S1 byte-idénticos.
+    assert_eq!(r("solve([x+y=3, x-y=1], [x, y])"), "{ x = 2, y = 1 }");
+    let s1 = r("solve([a*x+y=1, x-y=0], [x, y])");
+    assert!(s1.starts_with("{ x = 1 / (a + 1)"), "{s1}");
 }

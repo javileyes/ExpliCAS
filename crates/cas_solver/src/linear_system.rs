@@ -54,6 +54,10 @@ pub enum LinSolveResult {
         values: Vec<ExprId>,
         nonzero_conditions: Vec<ExprId>,
     },
+    /// Finite solution PAIRS of a nonlinear system (each inner vec aligned
+    /// with the requested unknown order); every pair verified exactly against
+    /// both original equations before emission.
+    SolutionPairs(Vec<Vec<ExprId>>),
     /// Infinitely many solutions (dependent equations).
     Infinite,
     /// No solution (inconsistent equations).

@@ -50,43 +50,53 @@ where
     // (the REPL route already behaves this way — this is parity, and it is
     // what keeps `solve([a*x+y=1, x-y=0], [x, y])`-class inputs from ever
     // surfacing as E_INTERNAL again).
-    let result = match super::solve::solve_linear_system_parts(
-        &mut engine.simplifier.context,
-        &resolved_exprs,
-        &vars,
-    ) {
-        Ok(result) => result,
-        Err(error) => {
-            let message =
+    let result =
+        match super::solve::solve_linear_system_parts(
+            &mut engine.simplifier.context,
+            &resolved_exprs,
+            &vars,
+        ) {
+            Ok(result) => result,
+            // S2: a true nonlinearity in the unknowns gets one composition shot —
+            // isolate-substitute-solve-verify — before the honest decline.
+            Err(error) => match super::nonlinear::try_solve_nonlinear_2x2(
+                &mut engine.simplifier,
+                &resolved_exprs,
+                &vars,
+            ) {
+                Some(result) => result,
+                None => {
+                    let message =
                 crate::linear_system_command_format::format_linear_system_command_error_message(
                     &crate::linear_system_command_eval::LinearSystemCommandEvalError::Solve(error),
                 );
-            let latex = format!(
-                "\\text{{{}}}",
-                cas_formatter::latex_escape(&message.replace('\n', " "))
-            );
-            diagnostics.dedup_and_sort(&engine.simplifier.context);
-            let required_conditions = diagnostics.required_conditions();
-            return Ok(crate::EvalOutputView {
-                stored_id: None,
-                parsed: parsed_anchor,
-                resolved: resolved_exprs.first().copied().unwrap_or(parsed_anchor),
-                result: crate::EvalResult::Text {
-                    plain: message,
-                    latex: Some(latex),
-                },
-                strategy: None,
-                steps: crate::DisplayEvalSteps::default(),
-                solve_steps: Vec::new(),
-                output_scopes: Vec::new(),
-                diagnostics,
-                required_conditions,
-                domain_warnings: Vec::new(),
-                blocked_hints: Vec::new(),
-                solver_assumptions: Vec::new(),
-            });
-        }
-    };
+                    let latex = format!(
+                        "\\text{{{}}}",
+                        cas_formatter::latex_escape(&message.replace('\n', " "))
+                    );
+                    diagnostics.dedup_and_sort(&engine.simplifier.context);
+                    let required_conditions = diagnostics.required_conditions();
+                    return Ok(crate::EvalOutputView {
+                        stored_id: None,
+                        parsed: parsed_anchor,
+                        resolved: resolved_exprs.first().copied().unwrap_or(parsed_anchor),
+                        result: crate::EvalResult::Text {
+                            plain: message,
+                            latex: Some(latex),
+                        },
+                        strategy: None,
+                        steps: crate::DisplayEvalSteps::default(),
+                        solve_steps: Vec::new(),
+                        output_scopes: Vec::new(),
+                        diagnostics,
+                        required_conditions,
+                        domain_warnings: Vec::new(),
+                        blocked_hints: Vec::new(),
+                        solver_assumptions: Vec::new(),
+                    });
+                }
+            },
+        };
 
     // Symbolic solutions carry their validity requirements (det ≠ 0) — those
     // ride the canonical required-conditions channel, same as any division.

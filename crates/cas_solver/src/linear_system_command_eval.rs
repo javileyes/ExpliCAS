@@ -14,5 +14,9 @@ pub(crate) enum LinearSystemCommandEvalError {
     Solve(crate::LinearSystemError),
 }
 
-pub(crate) use eval::evaluate_linear_system_command_input;
+mod nonlinear;
+
+pub(crate) use eval::{
+    evaluate_linear_system_command_input, evaluate_linear_system_command_input_with_simplifier,
+};
 pub(crate) use runtime::evaluate_linear_system_eval_request_with_session;

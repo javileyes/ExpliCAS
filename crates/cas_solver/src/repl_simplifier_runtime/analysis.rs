@@ -31,7 +31,7 @@ pub fn evaluate_linear_system_command_message_on_runtime<C: ReplSimplifierRuntim
     context: &mut C,
     line: &str,
 ) -> String {
-    crate::evaluate_linear_system_command_message(&mut context.simplifier_mut().context, line)
+    crate::evaluate_linear_system_command_message_with_simplifier(context.simplifier_mut(), line)
 }
 
 /// Evaluate `visualize ...` using runtime context.

@@ -537,7 +537,9 @@ pub(crate) use crate::linear_system::{
     LinSolveResult, LinearSystemError, Symbolic2x2Outcome,
 };
 #[allow(unused_imports)]
-pub(crate) use crate::linear_system_command_entry::evaluate_linear_system_command_message;
+pub(crate) use crate::linear_system_command_entry::{
+    evaluate_linear_system_command_message, evaluate_linear_system_command_message_with_simplifier,
+};
 #[allow(unused_imports)]
 pub(crate) use crate::linear_system_command_format::display_linear_system_solution;
 #[allow(unused_imports)]

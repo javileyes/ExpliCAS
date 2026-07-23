@@ -78,12 +78,13 @@ fn test_solve_system_2x2_zero_coefficient_row_is_inconsistent() {
 
 #[test]
 fn test_solve_system_2x2_non_linear() {
-    // x * y = 1  (non-linear!)
-    // x = 2
-    // Should reject as non-linear
+    // x * y = 1 with x = 2: since S2 (frente sistemas) this SOLVES by
+    // isolate-substitute-verify composition — x = 2 isolates, x·y = 1
+    // becomes 2·y = 1. The old "reject as non-linear" contract graduated.
     run_cas("solve_system(x*y=1; x=2; x; y)\n")
         .success()
-        .stdout(predicate::str::contains("non-linear"));
+        .stdout(predicate::str::contains("x = 2"))
+        .stdout(predicate::str::contains("y = 1/2"));
 }
 
 #[test]
@@ -256,11 +257,14 @@ fn test_solve_list_form_infinite_and_inconsistent() {
 }
 
 #[test]
-fn test_solve_list_form_nonlinear_is_honest_error() {
-    // A non-linear system must not silently produce a wrong answer.
+fn test_solve_list_form_nonlinear_solves_by_substitution() {
+    // Since S2, parabola-line systems solve with VERIFIED surd pairs (the
+    // old honest-decline contract graduated to capability). Soundness is
+    // preserved by the per-pair exact verification gate.
     run_cas("solve([x^2+y=1, x-y=0], [x, y])\n")
         .success()
-        .stdout(predicate::str::contains("non-linear"));
+        .stdout(predicate::str::contains("sqrt(5)"))
+        .stdout(predicate::str::contains(" or "));
 }
 
 #[test]

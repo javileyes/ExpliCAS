@@ -160,6 +160,65 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         coefficient_regime="symbolic_parameter",
     ),
     SolveSystemCommandMatrixCase(
+        name="nonlinear_parabola_line_rational_pairs",
+        expr="solve([y=x^2, y=x+2], [x, y])",
+        expected_result="{ x = -1, y = 1 } or { x = 2, y = 4 }",
+        family="no_lineal",
+        coefficient_regime="rational",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_hyperbola_line_product",
+        expr="solve([x*y=6, x+y=5], [x, y])",
+        expected_result="{ x = 2, y = 3 } or { x = 3, y = 2 }",
+        family="no_lineal",
+        coefficient_regime="rational",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_circle_line_textbook",
+        expr="solve([x^2+y^2=25, x+y=7], [x, y])",
+        expected_result="{ x = 3, y = 4 } or { x = 4, y = 3 }",
+        family="no_lineal",
+        coefficient_regime="rational",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_parabola_line_surd_pairs_verified",
+        expr="solve([x^2+y=3, x-y=1], [x, y])",
+        expected_result=(
+            "{ x = 1/2·(-sqrt(17) - 1), y = 1/2·(-sqrt(17) - 3) } or "
+            "{ x = 1/2·(sqrt(17) - 1), y = 1/2·(sqrt(17) - 3) }"
+        ),
+        family="no_lineal",
+        coefficient_regime="surd_solutions",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_circle_line_no_real_intersection",
+        expr="solve([x^2+y^2=1, x+y=5], [x, y])",
+        expected_result="System has no solution.\nThe equations are inconsistent.",
+        family="no_lineal",
+        coefficient_regime="rational",
+        outcome="inconsistent",
+        presentation_regime="prose_outcome",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="residual_nonlinear_two_quadratics_no_isolation",
+        expr="solve([x*y=6, x^2+y^2=13], [x, y])",
+        expected_result=(
+            "Error in equation 1: non-linear term: degree > 1 in the system\n"
+            "solve_system() only handles linear equations."
+        ),
+        family="no_lineal",
+        outcome="honest_residual",
+        presentation_regime="prose_outcome",
+    ),
+    SolveSystemCommandMatrixCase(
         name="residual_parametric_degenerate_det_zero",
         expr="solve([a*x+y=1, a*x+y=2], [x, y])",
         expected_result=(
@@ -173,27 +232,25 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
-        name="residual_nonlinear_square_future_cycle",
+        name="nonlinear_parabola_identity_line_surd_pairs",
         expr="solve([x^2+y=1, x-y=0], [x, y])",
         expected_result=(
-            "Error in equation 1: non-linear term: degree > 1 in the system\n"
-            "solve_system() only handles linear equations."
+            "{ x = 1/2·(-sqrt(5) - 1), y = 1/2·(-sqrt(5) - 1) } or "
+            "{ x = 1/2·(sqrt(5) - 1), y = 1/2·(sqrt(5) - 1) }"
         ),
         family="no_lineal",
-        outcome="honest_residual",
-        presentation_regime="prose_outcome",
+        coefficient_regime="surd_solutions",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
     ),
     SolveSystemCommandMatrixCase(
-        name="residual_surd_coefficient_rational_ceiling",
+        name="surd_coefficient_linear_via_substitution_composition",
         expr="solve([sqrt(2)*x+y=1, x-y=0], [x, y])",
-        expected_result=(
-            "Error solving system: polynomial conversion: "
-            "expression is not a polynomial over Q"
-        ),
-        family="parametrico",
+        expected_result="{ x = sqrt(2) - 1, y = sqrt(2) - 1 }",
+        family="lineal",
         coefficient_regime="surd_constant",
-        outcome="honest_residual",
-        presentation_regime="prose_outcome",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
     ),
 )
 
