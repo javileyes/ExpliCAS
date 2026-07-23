@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 673 (newest first)
+Active entries: 674 (newest first)
 
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
@@ -129,6 +129,7 @@ Active entries: 673 (newest first)
 - 2026-07-23 | `retained` | `linear_system/symbolic2.rs` (`extract_symbolic_row` — la partición del multi... | CAPACIDAD (frente S · S6, tanda-10 ciclo 1/2): Cramer simbólico 3×3 — la partición generalizada a n incógnitas y los determinantes polinómicos COMPARTIDOS con la resultante; el peldaño más maduro del frente graduado
 - 2026-07-23 | `retained` | `linear_system_command_eval/solve.rs` (el brazo `_` gana el fallback simbólic... | CAPACIDAD (frente S · S7, tanda-10 ciclo 2/2): Cramer simbólico n×n general — el brazo n≥4 cableado sobre el código ya-genérico de S6; F11b sondeado y devuelto a scoping con su prerequisito nombrado
 - 2026-07-23 | `retained` | Cargo.toml de `cas_engine`/`cas_solver`/`cas_solver_core` (+`web-time = "1"` ... | PORTABILIDAD (frente W · W1, tanda-11 ciclo 1/4): la cadena del wire compila a wasm32 — shim web-time por-target (nativo byte-idéntico) + gate del fs de debug; `make wasm-check` como pin
+- 2026-07-23 | `retained` | `crates/cas_wasm` (NUEVO, ~40 líneas netas: `#[wasm_bindgen] eval_str_to_wire... | PORTABILIDAD (frente W · W2, tanda-11 ciclo 2/4): crate cas_wasm — el MISMO wire JSON stateless en el navegador; un contrato, tres transportes (CLI, HTTP, wasm)
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`diff_call_order`/`scan_max_diff_order`: ... | CAPACIDAD (Fase 4 · O4, tanda-5 ciclo 1/2): 2º orden homogénea por discriminante exacto INTERNO — la linealidad no es solo el gate: también las ecuaciones del IVP salen de las BASES
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`distribute_structural`: distribución Mul... | CAPACIDAD (Fase 4 · O5, tanda-5 ciclo 2/2): coeficientes indeterminados — el collector por función-base sobre derivadas ESTRUCTURALES; Gauss racional propio; el gate por-base verificaba contra la ecuación equivocada; TANDA-5 COMPLETA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (refactor extraer-antes-de-abstraer: `line... | CAPACIDAD (Fase 4 · O8, tanda-6 ciclo 1/2): Bernoulli + homogéneas por composición de métodos graduados — el cero aparcado mata otro colector; la ruta implícita racional esquiva el surd H19 por diseño
@@ -21248,3 +21249,15 @@ Active entries: 673 (newest first)
 - retained learning:
   - **Un tipo de reloj en un campo `pub` de opciones hace el swap todos-o-ninguno**: `SimplifyOptions.deadline: Option<Instant>` propaga el tipo a cada constructor — el shim por-target debe entrar por la RAÍZ del tipo, no por los call-sites individualmente (en nativo el re-export los hace indistinguibles; en wasm el mismatch rompería).
   - **Sondear blockers ANTES de portar convirtió el port en 30 líneas**: el barrido Instant/SystemTime/fs/threads dio la lista exacta; el primer check wasm32 verde confirmó que no había blockers transitivos ocultos (sin getrandom en la cadena).
+
+## 2026-07-23 - PORTABILIDAD (frente W · W2, tanda-11 ciclo 2/4): crate cas_wasm — el MISMO wire JSON stateless en el navegador; un contrato, tres transportes (CLI, HTTP, wasm)
+
+- area: `crates/cas_wasm` (NUEVO, ~40 líneas netas: `#[wasm_bindgen] eval_str_to_wire(expr, opts_json) → String` delegando en `cas_solver::wire::eval_str_to_wire` — la entrada stateless que YA existía con el contrato exacto (EvalRunOptions JSON → EngineWireResponse schema v1, JSON válido incluso en error); `engine_version()` para que la página muestre el build; crate-type `cdylib`+`rlib` — el rlib permite testear NATIVO las mismas funciones que llama el navegador: 5 tests del contrato (aritmética ok, decline honesto `∫e^(x²)` sigue ok:true con residual, parse error = JSON de error válido, flag steps, versión)) + workspace member + `make wasm-check` ampliado a `-p cas_wasm`
+- status: `retained`. Tests nativos 5/5; check wasm32 verde.
+- capture:
+  - investment_class: portabilidad (ciclo 2 del plan aprobado por el usuario).
+  - El hallazgo del sondeo: `cas_solver::wire::eval_str_to_wire` YA ERA la superficie perfecta — server.py llama `cas_cli eval --format json` que envuelve la misma maquinaria; el crate wasm es un pass-through fino y TODA la matemática/gates/honestidad queda en las capas ya validadas (compiladas idénticas a wasm32 por W1).
+  - Peldaños nombrados (no gaps silenciosos, documentados en el doc-comment del crate): sesión con estado (los #N refs de server.py van por snapshots de sesión — el wire stateless no los cubre) y la paridad completa de flags CLI (lang/domain/value-domain/numeric-display no están en EvalRunOptions — los steps salen con el default de idioma).
+- observed: workspace/clippy/scorecards en el commit; huella: 0-delta salvo Cargo.lock (wasm-bindgen).
+- decision: retener. Siguiente: W3 (frontend dual-mode + Worker).
+- retained learning: **si el wire ya es la interfaz de un transporte, añadir otro transporte es un pass-through** — la inversión de sesiones pasadas en «el JSON wire como contrato» convirtió el puerto a navegador en un wrapper de 40 líneas con los tests del contrato corriendo en nativo (rlib) para las MISMAS funciones que llama el browser.
