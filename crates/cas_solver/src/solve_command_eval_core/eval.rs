@@ -26,18 +26,31 @@ pub(crate) fn evaluate_solve_parsed_with_session<S>(
 where
     S: crate::SolverEvalSession,
 {
-    let execution = execute::solve_parsed_with_session(
-        simplifier,
-        session,
-        raw_input,
-        parsed_expr,
-        original_equation,
-        var,
-        auto_store,
-    )?;
-    Ok(output::finalize_solve_eval_output(
-        session, simplifier, execution,
-    ))
+    // Solve narrates through its own structured channel (`solve_steps`, built
+    // by the strategy kernels as returned data). The engine event listener
+    // must stay parked for the whole span: the backend runs hundreds of
+    // internal simplifies (candidate arithmetic, verification, interval
+    // probes) whose RuleApplied events would otherwise flatten into the wire
+    // `steps` as a fake, discontinuous chain (auditoría educativa 2026-07-23,
+    // familia A). Steps COLLECTION stays on — `collect_steps()` is what the
+    // narration kernels consult to decide whether to build their items.
+    let parked_listener = simplifier.replace_step_listener(None);
+    let result = (|| {
+        let execution = execute::solve_parsed_with_session(
+            simplifier,
+            session,
+            raw_input,
+            parsed_expr,
+            original_equation,
+            var,
+            auto_store,
+        )?;
+        Ok(output::finalize_solve_eval_output(
+            session, simplifier, execution,
+        ))
+    })();
+    let _ = simplifier.replace_step_listener(parked_listener);
+    result
 }
 
 pub fn evaluate_solve_command_with_session<S>(
