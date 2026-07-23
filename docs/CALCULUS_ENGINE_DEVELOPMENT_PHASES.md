@@ -284,7 +284,7 @@ la DEFINIDA gaussiana ya está soportada), `sin(x)/x`,
 
 ---
 
-## Fase 4 — Ecuaciones diferenciales elementales  **[ABIERTA — O0 GRADUADO 2026-07-19 (hash en el ledger); scoping completo en `docs/FASE4_ODE_ELEMENTAL_SCOPING.md` (secuencia O0-O9, 17 decisiones, 5 preguntas resueltas por el usuario)]**
+## Fase 4 — Ecuaciones diferenciales elementales  **[COMPLETA salvo series — O0-O9 + factor integrante μ(x)/μ(y) graduados 2026-07-19→23 en 5 tandas con 0 rechazos (hashes en el ledger); dsolve cubre el curso elemental entero: 1er orden clásico completo (separable/lineal/exacta/μ-simple/Bernoulli/homogénea/IVP), 2º orden coef constantes + Cauchy-Euler, sistemas 2×2 eigen-interno, superficie help/examples. Las SERIES de potencias solo entran con mini-scoping propio + decisión explícita del usuario. Scoping: `docs/FASE4_ODE_ELEMENTAL_SCOPING.md`]**
 
 *(Actualización 2026-07-19: O0 cerró el sustrato — `dsolve` parsea en wire+REPL con paridad,
 separables S1-S9+L12 emiten SOLO tras verificación exacta a `Number(0)`, Z1-Z7 pineados

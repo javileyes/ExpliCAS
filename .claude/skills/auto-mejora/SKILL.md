@@ -56,14 +56,14 @@ contexto — son tu memoria externa):
 ## Fases del north star (a qué apuntar)
 
 El north star tiene un ORDEN de fases deliberado (detalle en la fuente 7).
-**ACTUALIZACIÓN 2026-07-16: el umbral de Fase 1 quedó CRUZADO (2026-07-15, los 3
-criterios del checklist) y la Fase 2 está ACTIVA por decisión del usuario — frente
-complejo elemental primero, con scoping propio en
-`docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (secuencia A1→A4→A2→A5 + bloque B
-re-scopeable + C transversales; A1 aterrizado 2026-07-16).** La Fase 3 sigue gated
-tras la Fase 2. La regla de fondo se mantiene: cada fase se abre SOLO al cruzar el
-umbral de la anterior — las fases futuras "existen para que las decisiones de HOY
-las mantengan baratas" (no son "abandonadas", son "secuenciadas y preparadas").
+**ACTUALIZACIÓN 2026-07-23: las Fases 1-3 están CERRADAS (F3 en su núcleo) y la
+Fase 4 (EDOs, abierta por el usuario el 2026-07-19) quedó COMPLETA salvo series
+en 5 tandas con 0 rechazos. También cerró el frente S (sistemas en solve,
+álgebra-soporte señalado por el usuario). El detalle por fase y las fuentes de
+candidatos vigentes están en los bullets de abajo.** La regla de fondo se
+mantiene: cada fase se abre SOLO al cruzar el umbral de la anterior — y las
+aperturas nuevas (series, Gröbner 3+, análisis complejo) exigen decisión
+explícita del usuario + mini-scoping, nunca inercia del bucle.
 
 **Qué ordena la restricción de fase (y qué NO).** La restricción de fase ordena
 SOLO el trabajo de **nueva capacidad de cálculo**. **NO** están sujetos a ella y
@@ -90,20 +90,36 @@ de la fuente 7 chocan, **gana P0/soundness**.
   son ESTRECHOS y NO bloquean (narración ∞−∞ con denom log/exp, algoritmo de
   VALOR general tipo Gruntz, Track R de presentación): siguen siendo candidatos
   válidos de pulido, no gatekeepers.
-- **Fase 2 (ACTIVA 2026-07-16) — complejo elemental principal-branch + cálculo
-  vectorial multivariable.** El frente ABIERTO es el complejo elemental; su fuente
-  de verdad de candidatos es `docs/FASE2_COMPLEX_ELEMENTAL_SCOPING.md` (secuencia
-  A1→A4→A2→A5; bloque B transcendental se RE-SCOPEA al aterrizar el bloque A;
-  narración didáctica per-ciclo). Todo candidato de **capacidad nueva** sale de
-  ahí (los de soundness/arquitectura siguen exentos y van primero). El frente
-  vectorial multivariable espera su propio scoping. Guardrail de soundness del
-  frente complejo: reglas nuevas auto-gateadas `RealOnly→None` (modo real
-  byte-idéntico); en complejo, DECLINE honesto antes que valor/conjunto sin red
-  de verificación.
-- **Fase 3 (DESPUÉS) — capas analíticas** (Taylor multivariable, límites
-  complejos/multivariable con punt honesto, integrales de línea/superficie;
-  residuos solo con caso curricular). El complejo multivaluado / análisis
-  complejo completo está FUERA del norte.
+- **Fase 2 (COMPLETADA 2026-07-17/18) — complejo elemental + vectorial
+  multivariable.** Ambas mitades cerradas (complejo 15 ciclos + residuales;
+  vectorial tanda 8/8 + cierre formal con las 4 preguntas resueltas). El
+  guardrail complejo sigue vigente para TODO ciclo futuro: reglas nuevas
+  value-dependent auto-gateadas `RealOnly→None`; decline honesto antes que
+  valor sin red de verificación.
+- **Fase 3 (NÚCLEO CERRADO 2026-07-19) — capas analíticas.** F0-F11+F8b
+  graduados (Taylor multivariable, verbos vectoriales gateados por
+  verificación, límites multivariable con DNE-por-caminos, squeeze polar).
+  Quedan los OPCIONALES F11b/F12 (`docs/FASE3_ANALYTIC_LAYERS_SCOPING.md`)
+  como candidatos válidos de capacidad.
+- **Fase 4 (COMPLETA salvo series, 2026-07-19→23) — EDOs elementales.**
+  dsolve cubre el curso entero: O0-O9 + factor integrante μ(x)/μ(y)
+  (1er orden clásico completo, 2º orden coef constantes + Cauchy-Euler,
+  sistemas 2×2, superficie). Las SERIES de potencias solo entran con
+  mini-scoping propio Y decisión explícita del usuario.
+- **Frente S (sistemas en solve, COMPLETO 2026-07-23)** — fuera de la
+  numeración de fases (álgebra-soporte): lineal n×n exacto, paramétrico
+  2×2 con det≠0 como condición, no-lineales 2×2 por sustitución Y
+  resultante de Sylvester. Sus peldaños nombrados (3×3 paramétrico, rank
+  det=0, Res≡0) viven en el ledger/memoria como candidatos S/M.
+- **De dónde sale la capacidad nueva HOY** (en orden): (1) peldaños
+  nombrados de frentes cerrados (ledger + memoria — acotados y de bajo
+  riesgo); (2) opcionales F11b/F12 de Fase 3; (3) residuales estrechos de
+  Fase 1 (pulido); (4) series de Fase 4 SOLO con decisión de usuario; (5)
+  si nada retenible: frontier-audit nuevo (workflow) para re-descubrir la
+  frontera real — no elegir de memoria.
+- El complejo multivaluado / análisis complejo completo y Gröbner para
+  3+ incógnitas polinómicas generales están FUERA del norte (Gröbner
+  entraría solo con mini-scoping propio).
 
 **Guardrails inter-fase — OBLIGATORIOS en cada ciclo (aplican igual en Fase 2).**
 No cuestan más hoy y son la razón de que el orden real-primero fue correcto
@@ -281,7 +297,7 @@ cargo test --workspace          # NUNCA por crate: el total debe ser failed:0
 cargo clippy --workspace --all-targets -- -D warnings   # --all-targets: el clippy por crate NO cubre tests
 rustfmt --edition 2021 <archivos tocados>
 make engine-fast
-make engine-scorecard           # guardrail, 16 suites
+make engine-scorecard           # guardrail, 18 suites
 make engine-scorecard-pressure  # 3 suites
 ```
 Si falla un test existente, primero juzga la intención: si fijaba como
@@ -387,6 +403,30 @@ repitas en bucle).
   `is_call_named` o interna el símbolo una vez y compara por SymbolId).
   Tras tocar cas_engine, corre `cargo fmt -p cas_engine` y, si añadiste
   comparaciones de nombres de función, verifica con `make ci`.
+
+- **Ritual de steps para maquinaria interna**: un step-listener de sesión ve
+  TODOS los simplify — cualquier solve/simplify interno que corra bajo un
+  comando con steps activos debe aislarse con save/off/restore de
+  `step_listener` Y `steps_mode` (2 leaks cazados: micro-pasos haciéndose
+  pasar por narración). Y la lane que protege una superficie con steps debe
+  CORRER con `--steps on` o no ve el leak.
+- **Delegar en el handler verificado convierte un método nuevo en
+  solo-su-matcher** (5 instancias: Bernoulli→lineal, homogénea→separable,
+  Cauchy-Euler→D9, surd→sustitución, μ→exacta). Antes de construir
+  maquinaria, busca el handler graduado al que reducir; y el techo del
+  delegado ES el techo de la composición — verifícalo como pre-existente
+  con la forma transformada como input directo antes de culpar al ciclo.
+- **«La excepción vive donde vive el contexto»** (4 instancias: ∂→d de
+  dsolve, eco fiel, desugar compartido, constantes-nombradas-declaradas):
+  las cortesías de canal se interceptan en el chokepoint del canal (spec
+  parse), jamás en el significado global.
+- **Separar «emitir» de «afirmar vacío»**: la emisión puede ser agresiva si
+  la gatea verificación exacta incondicional; la afirmación de conjunto
+  vacío exige un argumento de COMPLETITUD aparte (candidatos exhaustivos) —
+  sin él, decline honesto, no "no solution".
+- **La forma degenerada rompe al delegado** (6ª aparición: cero aparcado ×5,
+  `solve(9=0)` Err): antes de delegar una forma construida, atajar sus casos
+  triviales/degenerados (constante, cero) en el caller.
 
 ## Meta-mantenimiento: revisiones periódicas (docs y esta skill)
 
