@@ -170,12 +170,12 @@ Steps:
 
 1. `Sumar fracciones`
    - before: `(1/x)/(1/y + 1/z)`
-   - after: `(1/x)/((y + z)/(y · z))`
+   - after: `1/(x · (y + z)/(y · z))`
    - before_latex: `\frac{\frac{1}{x}}{{\color{red}{\frac{1}{y} + \frac{1}{z}}}}`
    - after_latex: `\frac{\frac{1}{x}}{{\color{green}{\frac{y + z}{y\cdot z}}}}`
    - substeps: none
 2. `Simplificar fracción anidada`
-   - before: `(1/x)/((y + z)/(y · z))`
+   - before: `1/(x · (y + z)/(y · z))`
    - after: `(y · z)/(x · (y + z))`
    - before_latex: `{\color{red}{\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}}}`
    - after_latex: `{\color{green}{\frac{y\cdot z}{x\cdot (y + z)}}}`

@@ -3424,8 +3424,8 @@ fn integrate_contract_sparse_quartic_exp_by_parts_keeps_direct_trace() {
         .expect("steps should be present with --steps on");
     assert_eq!(
         steps.len(),
-        2,
-        "expected direct integration trace without expansion noise for {input}, got {steps:?}"
+        1,
+        "expected direct integration trace without expansion or re-presentation noise for {input}, got {steps:?}"
     );
     assert!(
         steps

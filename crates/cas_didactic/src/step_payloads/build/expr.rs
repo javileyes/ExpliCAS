@@ -12,7 +12,11 @@ pub(super) struct RenderedStepWireExprs {
     pub(super) after: String,
 }
 
-pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> RenderedStepWireExprs {
+pub(super) fn render_step_wire_exprs(
+    context: &Context,
+    step: &Step,
+    is_first: bool,
+) -> RenderedStepWireExprs {
     let mut temp_ctx = context.clone();
     let snapshots =
         crate::timeline::simplify_highlights::step_wire_presentation_snapshots(&mut temp_ctx, step);
@@ -42,8 +46,24 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
                 &mut temp_ctx,
                 snapshots.global_before_expr,
             )
-        } else {
+        } else if is_first {
+            // Step 0 keeps the user's input echo verbatim (no display fold).
             render_human_expr_scratch(&mut temp_ctx, snapshots.global_before_expr)
+        } else {
+            // Coherent-chain policy (auditoría educativa 2026-07-23): every
+            // INTERMEDIATE state renders display-folded (exponent arithmetic,
+            // ln(e), nested reciprocals) + normalized, so a step's `before`
+            // matches the previous step's `after` instead of leaking raw
+            // machinery forms (x^(2-1), unfolded constants).
+            let folded = cleanup_symbolic_diff_after_for_display(
+                &mut temp_ctx,
+                snapshots.global_before_expr,
+            );
+            let normalized = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+                &mut temp_ctx,
+                folded,
+            );
+            render_human_expr_scratch(&mut temp_ctx, normalized)
         },
         after: if residual_limit_step_prefers_direct_display(step) {
             render_human_expr_without_display_normalization(
@@ -71,7 +91,16 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
         } else if polynomial_exp_by_parts_step_prefers_latex_after_display(context, step) {
             render_polynomial_exp_by_parts_after(context, step.after_local().unwrap_or(step.after))
         } else {
-            render_human_expr_scratch(&mut temp_ctx, snapshots.global_after_expr)
+            // Same policy: the engine-produced `after` always renders
+            // display-folded + normalized (the raw rewrite output is not
+            // what the student should read as the new state).
+            let folded =
+                cleanup_symbolic_diff_after_for_display(&mut temp_ctx, snapshots.global_after_expr);
+            let normalized = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+                &mut temp_ctx,
+                folded,
+            );
+            render_human_expr_scratch(&mut temp_ctx, normalized)
         },
     }
 }

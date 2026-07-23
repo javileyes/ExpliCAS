@@ -1,8 +1,2 @@
-use crate::runtime::Step;
-use cas_ast::Context;
-
-pub(super) fn render_step_rule_latex(context: &Context, step: &Step) -> String {
-    let focus_before = step.before_local().unwrap_or(step.before);
-    let focus_after = step.after_local().unwrap_or(step.after);
-    crate::step_payload_render::render_local_rule_latex(context, focus_before, focus_after)
-}
+// (superseded by `render_normalized_rule_latex` in the parent module —
+// coherent-highlight policy of the 2026-07-23 educational audit)

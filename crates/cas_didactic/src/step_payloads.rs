@@ -33,19 +33,39 @@ pub fn collect_step_payloads_with_events_localized(
     // Render keyed sub-step titles in `language` (the normal step path); only fall back to events
     // when the step path is empty (events carry no sub-steps). Rule names are post-translated.
     let collected = collect_step_payloads_inner(steps, ctx, steps_mode, language);
-    let base = if !collected.is_empty() || steps_mode != "on" {
+    let mut base = if !collected.is_empty() || steps_mode != "on" {
         collected
     } else {
         events::collect_event_step_payloads(events, ctx)
     };
+    dedup_consecutive_step_payloads(&mut base);
     localize_step_payloads(base, language)
+}
+
+/// Auditoría educativa 2026-07-23: exact consecutive duplicates teach nothing
+/// twice. Applied at the SHARED entry (after choosing steps-vs-events base),
+/// so both collection paths are covered.
+fn dedup_consecutive_step_payloads(payloads: &mut Vec<StepWire>) {
+    // A step whose VISIBLE state does not change (before == after as the
+    // student reads them) narrates nothing — drop it even when its latex
+    // differs in form (the "re-present the same thing" family). EXCEPTION:
+    // the honest-residual conservation steps ("Conservar … residual") are
+    // the one legitimate before == after narration — their whole point is
+    // "this stays as itself"; pruning them would erase the honesty contract.
+    payloads.retain(|w| w.before != w.after || w.rule.starts_with("Conservar"));
+    payloads.dedup_by(|b, a| b.rule == a.rule && b.before == a.before && b.after == a.after);
+    for (i, wire) in payloads.iter_mut().enumerate() {
+        wire.index = i + 1;
+    }
 }
 
 /// Convert engine steps to typed step payload DTOs (Spanish, the source language).
 ///
 /// Keeps step formatting behavior consistent with timeline rendering.
 pub fn collect_step_payloads(steps: &[Step], ctx: &Context, steps_mode: &str) -> Vec<StepWire> {
-    collect_step_payloads_inner(steps, ctx, steps_mode, Language::Es)
+    let mut payloads = collect_step_payloads_inner(steps, ctx, steps_mode, Language::Es);
+    dedup_consecutive_step_payloads(&mut payloads);
+    payloads
 }
 
 /// Build step payloads, rendering keyed sub-step titles in `language`.

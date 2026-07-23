@@ -14,7 +14,11 @@ pub(super) struct RenderedStepWireLatex {
     pub(super) rule_latex: String,
 }
 
-pub(super) fn render_step_wire_latex(context: &Context, step: &Step) -> RenderedStepWireLatex {
+pub(super) fn render_step_wire_latex(
+    context: &Context,
+    step: &Step,
+    is_first: bool,
+) -> RenderedStepWireLatex {
     let (mut before_latex, mut after_latex) = if matches!(
         step.rule_name.as_str(),
         "Product-to-Sum Identity" | "Hyperbolic Product-to-Sum Identity"
@@ -141,6 +145,32 @@ pub(super) fn render_step_wire_latex(context: &Context, step: &Step) -> Rendered
     RenderedStepWireLatex {
         before_latex,
         after_latex,
-        rule_latex: rule::render_step_rule_latex(context, step),
+        rule_latex: render_normalized_rule_latex(context, step, is_first),
     }
+}
+
+/// Coherent-highlight policy (auditoría educativa 2026-07-23): the GREEN side
+/// always shows the display-normalized result (never the raw rewrite output
+/// like `y·2·x^{2-1}`), and the RED side normalizes too except on the first
+/// step (which keeps the user's input form). This generalizes the per-rule
+/// display patches above: the highlight must show what the visible chain
+/// shows.
+fn render_normalized_rule_latex(context: &Context, step: &Step, is_first: bool) -> String {
+    let focus_before = step.before_local().unwrap_or(step.before);
+    let focus_after = step.after_local().unwrap_or(step.after);
+    let mut temp_ctx = context.clone();
+    let folded_after =
+        super::expr::cleanup_symbolic_diff_after_for_display(&mut temp_ctx, focus_after);
+    let norm_after = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+        &mut temp_ctx,
+        folded_after,
+    );
+    let norm_before = if is_first {
+        focus_before
+    } else {
+        let folded =
+            super::expr::cleanup_symbolic_diff_after_for_display(&mut temp_ctx, focus_before);
+        cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut temp_ctx, folded)
+    };
+    crate::step_payload_render::render_local_rule_latex(&temp_ctx, norm_before, norm_after)
 }

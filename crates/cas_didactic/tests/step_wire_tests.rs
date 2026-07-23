@@ -415,28 +415,27 @@ fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
         .filter(|step| step.rule == "Sacar constante de una fracción")
         .collect();
 
-    assert_eq!(pull_steps.len(), 2, "expected the two pull-constant steps");
+    // Consecutive identical steps (same rule + same visible states) collapse
+    // into a single narrated step; the highlight contract holds on the survivor.
+    assert_eq!(
+        pull_steps.len(),
+        1,
+        "expected consecutive identical pull-constant steps to dedup into one"
+    );
 
     assert!(
         pull_steps[0]
             .before_latex
             .starts_with("{\\color{red}{\\frac{2\\cdot \\sqrt{y}}{y - 1}}}"),
-        "expected the first pull-constant step to highlight the full input fraction, got: {}",
+        "expected the pull-constant step to highlight the full input fraction, got: {}",
         pull_steps[0].before_latex
     );
     assert!(
         pull_steps[0]
             .after_latex
             .starts_with("{\\color{green}{2\\cdot \\frac{\\sqrt{y}}{y - 1}}}"),
-        "expected the first pull-constant step to highlight the full rewritten fraction, got: {}",
+        "expected the pull-constant step to highlight the full rewritten fraction, got: {}",
         pull_steps[0].after_latex
-    );
-    assert!(
-        pull_steps[1]
-            .after_latex
-            .starts_with("{\\color{green}{2\\cdot \\frac{\\sqrt{y}}{y - 1}}}"),
-        "expected the second pull-constant step to highlight the rewritten fraction, got: {}",
-        pull_steps[1].after_latex
     );
 }
 
@@ -452,9 +451,14 @@ fn step_wire_post_diff_fraction_cleanup_uses_human_visible_rule_titles() {
         rule_titles.contains(&"Calcular la derivada"),
         "expected the main diff step to use a human title, got {rule_titles:?}"
     );
+    // The compact re-presentation step is a visible no-op (same textual state
+    // on both sides) and no longer serializes; every surviving step must keep
+    // a human title and a visible state change.
     assert!(
-        rule_titles.contains(&"Presentar resultado de cálculo en forma compacta"),
-        "expected post-diff compact presentation to use a human title, got {rule_titles:?}"
+        steps
+            .iter()
+            .all(|step| step.before != step.after || step.rule.starts_with("Conservar")),
+        "post-calculus visible trace should not serialize visible no-op steps: {rule_titles:?}"
     );
     assert!(
         !rule_titles.contains(&"Symbolic Differentiation")
