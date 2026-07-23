@@ -8,7 +8,7 @@
 //
 // This file is a module worker: `new Worker('wasm_worker.js', {type: 'module'})`.
 
-import init, { eval_str_to_wire, engine_version } from './pkg/cas_wasm.js';
+import init, { eval_full_wire, engine_version } from './pkg/cas_wasm.js';
 
 let readyPromise = init().then(() => {
     postMessage({ kind: 'ready', version: engine_version() });
@@ -18,7 +18,7 @@ onmessage = async (event) => {
     const { id, expr, opts } = event.data;
     try {
         await readyPromise;
-        const wire = eval_str_to_wire(expr, opts || '{}');
+        const wire = eval_full_wire(expr, opts || '{}');
         postMessage({ kind: 'result', id, wire });
     } catch (error) {
         postMessage({ kind: 'result', id, error: String(error) });

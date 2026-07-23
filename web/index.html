@@ -1917,7 +1917,15 @@
             if (window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled) {
                 const wire = await window.EXPLICAS_WASM.eval(
                     expr,
-                    JSON.stringify({ steps: true, budget: { preset: 'cli' } })
+                    JSON.stringify({
+                        steps: 'on',
+                        lang: langModeSelect.value,
+                        domain: domainModeSelect.value,
+                        inv_trig: branchModeSelect.value,
+                        complex: complexModeSelect.value,
+                        numeric_display: numericDisplaySelect.value,
+                        time_budget_ms: DEFAULT_TIME_BUDGET_MS
+                    })
                 );
                 const data = JSON.parse(wire);
                 if (data.ok === false) {

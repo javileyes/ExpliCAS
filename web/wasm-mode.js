@@ -48,17 +48,6 @@
             document.dispatchEvent(new CustomEvent('explicas-wasm-ready', {
                 detail: { version: msg.version },
             }));
-            // Honest UI: these selectors are server-mode flags the stateless
-            // wasm wire does not carry yet (named rung in cas_wasm) — disable
-            // them instead of silently ignoring the user's choice.
-            ['domain-mode-select', 'branch-mode-select', 'complex-mode-select', 'numeric-display-select']
-                .forEach((id) => {
-                    const el = document.getElementById(id);
-                    if (el) {
-                        el.disabled = true;
-                        el.title = 'No disponible en el modo local (WASM) todavía';
-                    }
-                });
             return;
         }
         if (msg.kind === 'result') {
