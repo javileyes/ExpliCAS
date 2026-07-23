@@ -45,7 +45,7 @@ where
         &cache_hits.into_iter().collect::<Vec<_>>(),
     );
 
-    let mut nonlinear_narration: Option<super::nonlinear::NonlinearNarration> = None;
+    let mut nonlinear_narration: Option<super::nonlinear::SystemNarration> = None;
     // A well-formed system that this solver cannot handle is a MATH decline,
     // not an internal fault: it must reach the wire as an honest ok-result
     // (the REPL route already behaves this way — this is parity, and it is

@@ -7,7 +7,7 @@
 
 use cas_ast::{Context, Equation, ExprId, RelOp};
 
-use super::nonlinear::NonlinearNarration;
+use super::nonlinear::SystemNarration;
 
 fn eq_zero(ctx: &mut Context, lhs: ExprId) -> Equation {
     let zero = ctx.num(0);
@@ -23,7 +23,7 @@ pub(super) fn build_system_solve_steps(
     exprs: &[ExprId],
     vars: &[String],
     result: &crate::LinSolveResult,
-    nonlinear: Option<&NonlinearNarration>,
+    nonlinear: Option<&SystemNarration>,
 ) -> Vec<crate::SolveStep> {
     let mut steps: Vec<crate::SolveStep> = Vec::new();
     let anchor = exprs.first().copied();
@@ -81,7 +81,31 @@ pub(super) fn build_system_solve_steps(
             }
         }
         crate::LinSolveResult::SolutionPairs(pairs) => {
-            if let Some(narr) = nonlinear {
+            if let Some(SystemNarration::Resultant(narr)) = nonlinear {
+                let res_eq = eq_zero(ctx, narr.resultant);
+                steps.push(crate::SolveStep::new(
+                    format!(
+                        "Eliminar {} por la resultante de Sylvester (determinante {}×{})",
+                        narr.eliminated_var, narr.sylvester_dim, narr.sylvester_dim
+                    ),
+                    res_eq.clone(),
+                    crate::ImportanceLevel::High,
+                ));
+                steps.push(crate::SolveStep::new(
+                    format!("Resolver la resultante univariable en {}", narr.root_var),
+                    res_eq,
+                    crate::ImportanceLevel::High,
+                ));
+                steps.push(crate::SolveStep::new(
+                    format!(
+                        "Back-substitute por raíz y verificar cada par contra AMBAS ecuaciones: {} pares verificados emitidos",
+                        pairs.len()
+                    ),
+                    identify_eq.clone(),
+                    crate::ImportanceLevel::Medium,
+                ));
+            }
+            if let Some(SystemNarration::Substitution(narr)) = nonlinear {
                 let u_var = ctx.var(&narr.isolated_var);
                 let iso_eq = Equation {
                     lhs: u_var,

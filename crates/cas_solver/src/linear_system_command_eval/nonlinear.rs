@@ -87,6 +87,13 @@ fn reduces_to_zero(simplifier: &mut crate::Simplifier, expr: ExprId) -> bool {
     )
 }
 
+/// Narration payload for the S3/S5 educational half — which route solved the
+/// nonlinear system.
+pub(crate) enum SystemNarration {
+    Substitution(NonlinearNarration),
+    Resultant(super::resultant::ResultantNarration),
+}
+
 /// Narration payload for the S3 educational half: what was isolated, what
 /// univariate equation resulted, and how many pairs survived verification.
 pub(crate) struct NonlinearNarration {
@@ -109,7 +116,7 @@ pub(crate) fn try_solve_nonlinear_2x2(
     simplifier: &mut crate::Simplifier,
     exprs: &[ExprId],
     vars: &[String],
-) -> Option<(crate::LinSolveResult, Option<NonlinearNarration>)> {
+) -> Option<(crate::LinSolveResult, Option<SystemNarration>)> {
     let previous_listener = simplifier.replace_step_listener(None);
     let previous_mode = simplifier.steps_mode;
     simplifier.steps_mode = cas_engine::StepsMode::Off;
@@ -123,7 +130,7 @@ fn try_solve_nonlinear_2x2_inner(
     simplifier: &mut crate::Simplifier,
     exprs: &[ExprId],
     vars: &[String],
-) -> Option<(crate::LinSolveResult, Option<NonlinearNarration>)> {
+) -> Option<(crate::LinSolveResult, Option<SystemNarration>)> {
     if exprs.len() != 2 || vars.len() != 2 {
         return None;
     }
@@ -175,12 +182,18 @@ fn try_solve_nonlinear_2x2_inner(
                 // A PROVEN empty set over the reals is an honest "no solution"
                 // (circle and a line that misses it).
                 SolutionSet::Empty => {
-                    return Some((crate::LinSolveResult::Inconsistent, Some(narration)))
+                    return Some((
+                        crate::LinSolveResult::Inconsistent,
+                        Some(SystemNarration::Substitution(narration)),
+                    ))
                 }
                 _ => continue,
             };
             if roots.is_empty() {
-                return Some((crate::LinSolveResult::Inconsistent, Some(narration)));
+                return Some((
+                    crate::LinSolveResult::Inconsistent,
+                    Some(SystemNarration::Substitution(narration)),
+                ));
             }
 
             let w_var = simplifier.context.var(free_var);
@@ -233,8 +246,18 @@ fn try_solve_nonlinear_2x2_inner(
                 // emptiness proof).
                 return None;
             }
-            return Some((crate::LinSolveResult::SolutionPairs(pairs), Some(narration)));
+            return Some((
+                crate::LinSolveResult::SolutionPairs(pairs),
+                Some(SystemNarration::Substitution(narration)),
+            ));
         }
+    }
+    // S5: no isolatable equation — the Sylvester-resultant rung (two conics,
+    // x·y = 6 ∧ x² + y² = 13). Same verification gate; own narration.
+    if let Some((result, narration)) =
+        super::resultant::try_solve_resultant_2x2(simplifier, exprs, vars)
+    {
+        return Some((result, Some(SystemNarration::Resultant(narration))));
     }
     None
 }

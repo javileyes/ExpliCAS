@@ -171,8 +171,12 @@ Supported:
   Parametric 2x2 (symbolic Cramer; solutions carry the det != 0 condition)
   Nonlinear 2x2 with one equation linear in an unknown (isolate-substitute-
   solve-verify): line + parabola/circle/hyperbola, verified surd pairs
+  Nonlinear 2x2 with NO isolatable equation via the Sylvester resultant
+  (two conics: x*y = 6 with x^2 + y^2 = 13, circle-circle, ellipse-
+  hyperbola); every pair verified against BOTH equations
 Honest declines (never fabricated): symbolic det = 0 (rank classification),
-  systems with no isolatable equation (two quadratics), parametric nonlinear.
+  common polynomial component (resultant = 0), parametric nonlinear,
+  resultants beyond the exact univariate ceiling.
 Examples:
   solve_system(x+y=3; x-y=1; x; y)          -> { x = 2, y = 1 }
   solve_system([x*y=6, x+y=5], [x, y])      -> { x = 2, y = 3 } or { x = 3, y = 2 }

@@ -9932,9 +9932,12 @@ fn solve_system_nonlinear_s2_contract() {
     // Guard paramétrico: no-lineal con parámetro sigue residual honesto.
     let param = r("solve([x^2+y^2=a, x+y=1], [x, y])");
     assert!(param.contains("non-linear"), "{param}");
-    // Dos cuadráticas sin ecuación aislable: residual honesto (peldaño).
-    let two_quad = r("solve([x*y=6, x^2+y^2=13], [x, y])");
-    assert!(two_quad.contains("non-linear"), "{two_quad}");
+    // Dos cuadráticas sin ecuación aislable: desde S5 resuelve por la
+    // resultante de Sylvester (el peldaño llegó — 4 pares verificados).
+    assert_eq!(
+        r("solve([x*y=6, x^2+y^2=13], [x, y])"),
+        "{ x = -3, y = -2 } or { x = -2, y = -3 } or { x = 2, y = 3 } or { x = 3, y = 2 }"
+    );
     // Composición bonus: coeficiente surd en sistema LINEAL resuelto vía la
     // misma ruta (el techo multipoly-sobre-Q de S1 graduó por composición).
     assert_eq!(
@@ -10050,4 +10053,65 @@ fn solve_system_surface_s4_contract() {
     assert!(sys_help.contains("Parametric 2x2"), "{sys_help}");
     assert!(sys_help.contains("Honest declines"), "{sys_help}");
     assert!(sys_help.contains("isolate-substitute-"), "{sys_help}");
+}
+
+#[test]
+fn solve_system_resultant_s5_contract() {
+    // Frente S · S5: la resultante de Sylvester — sistemas bivariados SIN
+    // ecuación aislable (dos cónicas) por eliminación exacta + solve
+    // univariable + gate de verificación por par (D5). La emisión es sana
+    // incondicionalmente (gate); la afirmación de vacío exige completitud
+    // de candidatos (raíces de la resultante + coeficientes líderes).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // Hipérbola x·y=6 ∩ círculo — el ejercicio estándar de bachillerato.
+    assert_eq!(
+        r("solve([x*y=6, x^2+y^2=13], [x, y])"),
+        "{ x = -3, y = -2 } or { x = -2, y = -3 } or { x = 2, y = 3 } or { x = 3, y = 2 }"
+    );
+    // Elipse ∩ hipérbola: NINGUNA incógnita lineal en NINGUNA ecuación.
+    assert_eq!(
+        r("solve([x^2+4*y^2=25, x^2-y^2=5], [x, y])"),
+        "{ x = -3, y = -2 } or { x = -3, y = 2 } or { x = 3, y = -2 } or { x = 3, y = 2 }"
+    );
+    // Círculo ∩ círculo.
+    assert_eq!(
+        r("solve([x^2+y^2=25, (x-1)^2+y^2=18], [x, y])"),
+        "{ x = 4, y = -3 } or { x = 4, y = 3 }"
+    );
+    // Círculos concéntricos: resultante constante ≠ 0 → vacío PROBADO.
+    assert!(r("solve([x^2+y^2=1, x^2+y^2=4], [x, y])").contains("no solution"));
+
+    // Narración del camino resultante, es/en.
+    let steps_of = |input: &str, lang: Option<&str>| -> String {
+        let mut args = vec!["eval", input, "--steps", "on", "--format", "json"];
+        if let Some(l) = lang {
+            args.extend(["--lang", l]);
+        }
+        let out = cli().args(&args).output().expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let es = steps_of("solve([x*y=6, x^2+y^2=13], [x, y])", None);
+    assert!(es.contains("resultante de Sylvester"), "{es}");
+    assert!(es.contains("4 pares verificados"), "{es}");
+    let en = steps_of("solve([x*y=6, x^2+y^2=13], [x, y])", Some("en"));
+    assert!(en.contains("Sylvester resultant"), "{en}");
+
+    // Pins de no-robo y declines que SIGUEN:
+    // — la ruta de sustitución S2 intacta (más barata, va primero);
+    assert_eq!(
+        r("solve([x*y=6, x+y=5], [x, y])"),
+        "{ x = 2, y = 3 } or { x = 3, y = 2 }"
+    );
+    // — paramétrico no-lineal sigue residual honesto (guard);
+    assert!(r("solve([x^2+y^2=a, x+y=1], [x, y])").contains("non-linear"));
+    // — grados fuera del techo univariable siguen residual honesto.
+    let hard = r("solve([x^2+y^3=5, x^3-y^2=1], [x, y])");
+    assert!(hard.starts_with("Error"), "{hard}");
 }

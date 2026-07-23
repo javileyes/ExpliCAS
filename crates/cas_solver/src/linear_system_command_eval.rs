@@ -15,6 +15,7 @@ pub(crate) enum LinearSystemCommandEvalError {
 }
 
 mod nonlinear;
+mod resultant;
 mod steps;
 
 pub(crate) use eval::{

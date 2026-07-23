@@ -30,7 +30,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         # nonlinear supported + 1 nonlinear proven-empty + 2 honest residual
         # rows. Las DOS filas residuales de S1 (no-lineal, coef surd)
         # GRADUARON en S2 — el contrato migró de decline a resultado.
-        self.assertEqual(len(cases), 24)
+        self.assertEqual(len(cases), 27)
 
         names = {case.name for case in cases}
         self.assertIn("parametric_2x2_symbolic_det_condition", names)
@@ -39,14 +39,15 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         self.assertIn("degenerate_all_zero_rows_edge", names)
         self.assertIn("nonlinear_circle_line_textbook", names)
         self.assertIn("nonlinear_parabola_line_surd_pairs_verified", names)
-        self.assertIn("residual_nonlinear_two_quadratics_no_isolation", names)
+        self.assertIn("nonlinear_two_conics_resultant_sylvester", names)
+        self.assertIn("nonlinear_concentric_circles_proven_empty", names)
 
         supported = [c for c in cases if c.outcome == "supported"]
         residual = [c for c in cases if c.outcome == "honest_residual"]
         degenerate = [c for c in cases if c.outcome in {"dependent", "inconsistent"}]
-        self.assertEqual(len(supported), 18)
-        self.assertEqual(len(residual), 2)
-        self.assertEqual(len(degenerate), 4)
+        self.assertEqual(len(supported), 21)
+        self.assertEqual(len(residual), 1)
+        self.assertEqual(len(degenerate), 5)
 
         families = {c.family for c in cases}
         self.assertEqual(
@@ -62,10 +63,10 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         self.assertEqual(len(parity), 2)
 
         narrated = [c for c in cases if c.expected_solve_step_substrings]
-        self.assertEqual(len(narrated), 4)
+        self.assertEqual(len(narrated), 5)
 
         verified_pairs = [c for c in cases if c.condition_regime == "verified_pairs"]
-        self.assertEqual(len(verified_pairs), 7)
+        self.assertEqual(len(verified_pairs), 10)
         for case in verified_pairs:
             self.assertIn("{", case.expected_result)
 

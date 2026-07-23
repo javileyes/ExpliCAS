@@ -223,14 +223,50 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
-        name="residual_nonlinear_two_quadratics_no_isolation",
+        name="nonlinear_two_conics_resultant_sylvester",
         expr="solve([x*y=6, x^2+y^2=13], [x, y])",
         expected_result=(
-            "Error in equation 1: non-linear term: degree > 1 in the system\n"
-            "solve_system() only handles linear equations."
+            "{ x = -3, y = -2 } or { x = -2, y = -3 } or "
+            "{ x = 2, y = 3 } or { x = 3, y = 2 }"
+        ),
+        expected_solve_step_substrings=(
+            "resultante de Sylvester",
+            "Resolver la resultante univariable en x",
+            "4 pares verificados",
         ),
         family="no_lineal",
-        outcome="honest_residual",
+        coefficient_regime="rational",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_ellipse_hyperbola_no_linear_unknown",
+        expr="solve([x^2+4*y^2=25, x^2-y^2=5], [x, y])",
+        expected_result=(
+            "{ x = -3, y = -2 } or { x = -3, y = 2 } or "
+            "{ x = 3, y = -2 } or { x = 3, y = 2 }"
+        ),
+        family="no_lineal",
+        coefficient_regime="rational",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_circle_circle_intersection",
+        expr="solve([x^2+y^2=25, (x-1)^2+y^2=18], [x, y])",
+        expected_result="{ x = 4, y = -3 } or { x = 4, y = 3 }",
+        family="no_lineal",
+        coefficient_regime="rational",
+        condition_regime="verified_pairs",
+        presentation_regime="solution_pairs",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="nonlinear_concentric_circles_proven_empty",
+        expr="solve([x^2+y^2=1, x^2+y^2=4], [x, y])",
+        expected_result="System has no solution.\nThe equations are inconsistent.",
+        family="no_lineal",
+        coefficient_regime="rational",
+        outcome="inconsistent",
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
