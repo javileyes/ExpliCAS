@@ -48,41 +48,52 @@ struct SymCoeffs {
     c: MultiPoly,
 }
 
-fn extract_symbolic_coeffs(
+/// Generalized partition: `expr` as `Σ coeff_i·u_i + c` where the `u_i` are
+/// the DECLARED unknowns and every coefficient is a polynomial in the
+/// remaining (parameter) variables. Any term with total unknown-degree > 1
+/// is NotLinear. Single implementation shared by the 2×2 and n×n paths.
+fn extract_symbolic_row(
     ctx: &Context,
     expr: ExprId,
-    var_x: &str,
-    var_y: &str,
-) -> Result<SymCoeffs, LinearSystemError> {
+    unknowns: &[String],
+) -> Result<(Vec<MultiPoly>, MultiPoly), LinearSystemError> {
     let poly = multipoly_from_expr(ctx, expr, &symbolic_budget())
         .map_err(LinearSystemError::PolyConversion)?;
-    let idx_x = poly.vars.iter().position(|v| v == var_x);
-    let idx_y = poly.vars.iter().position(|v| v == var_y);
+    let unknown_idx: Vec<Option<usize>> = unknowns
+        .iter()
+        .map(|u| poly.vars.iter().position(|v| v == u))
+        .collect();
+    let is_unknown_pos = |i: usize| -> bool { unknown_idx.contains(&Some(i)) };
 
     let param_vars: Vec<String> = poly
         .vars
         .iter()
         .enumerate()
-        .filter(|(i, _)| Some(*i) != idx_x && Some(*i) != idx_y)
+        .filter(|(i, _)| !is_unknown_pos(*i))
         .map(|(_, v)| v.clone())
         .collect();
 
-    let mut a_map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
-    let mut b_map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
+    let mut coeff_maps: Vec<BTreeMap<Monomial, BigRational>> =
+        vec![BTreeMap::new(); unknowns.len()];
     let mut c_map: BTreeMap<Monomial, BigRational> = BTreeMap::new();
     for (coef, mono) in &poly.terms {
-        let ex = idx_x.map_or(0, |i| mono[i]);
-        let ey = idx_y.map_or(0, |i| mono[i]);
+        let degs: Vec<u32> = unknown_idx
+            .iter()
+            .map(|idx| idx.map_or(0, |i| mono[i]))
+            .collect();
+        let total: u32 = degs.iter().sum();
         let param_mono: Monomial = mono
             .iter()
             .enumerate()
-            .filter(|(i, _)| Some(*i) != idx_x && Some(*i) != idx_y)
+            .filter(|(i, _)| !is_unknown_pos(*i))
             .map(|(_, &e)| e)
             .collect();
-        let bucket = match (ex, ey) {
-            (0, 0) => &mut c_map,
-            (1, 0) => &mut a_map,
-            (0, 1) => &mut b_map,
+        let bucket = match total {
+            0 => &mut c_map,
+            1 => {
+                let which = degs.iter().position(|&d| d == 1).expect("total == 1");
+                &mut coeff_maps[which]
+            }
             _ => {
                 return Err(LinearSystemError::NotLinear(
                     "degree > 1 in the system".to_string(),
@@ -93,11 +104,25 @@ fn extract_symbolic_coeffs(
         *entry = &*entry + coef;
     }
     let mk = |map: BTreeMap<Monomial, BigRational>| MultiPoly::from_map(param_vars.clone(), map);
-    Ok(SymCoeffs {
-        a: mk(a_map),
-        b: mk(b_map),
-        c: mk(c_map),
-    })
+    let coeffs = coeff_maps.into_iter().map(mk).collect();
+    Ok((coeffs, mk_const(&param_vars, c_map)))
+}
+
+fn mk_const(param_vars: &[String], map: BTreeMap<Monomial, BigRational>) -> MultiPoly {
+    MultiPoly::from_map(param_vars.to_vec(), map)
+}
+
+fn extract_symbolic_coeffs(
+    ctx: &Context,
+    expr: ExprId,
+    var_x: &str,
+    var_y: &str,
+) -> Result<SymCoeffs, LinearSystemError> {
+    let unknowns = [var_x.to_string(), var_y.to_string()];
+    let (mut coeffs, c) = extract_symbolic_row(ctx, expr, &unknowns)?;
+    let b = coeffs.pop().expect("two unknowns");
+    let a = coeffs.pop().expect("two unknowns");
+    Ok(SymCoeffs { a, b, c })
 }
 
 /// Union of two parameter-variable lists, deterministic (sorted).
@@ -202,6 +227,141 @@ pub(crate) fn solve_2x2_symbolic(
     let det_expr = multipoly_to_expr(&det_prim, ctx);
     Ok(Symbolic2x2Outcome::Unique {
         values: vec![x, y],
+        det_condition: Some(det_expr),
+    })
+}
+
+/// Determinant of a square matrix of `MultiPoly` entries by cofactor
+/// expansion, budget-checked. Shared by the n×n symbolic Cramer and the
+/// Sylvester resultant (S5).
+pub(crate) fn poly_determinant(
+    matrix: &[Vec<MultiPoly>],
+    budget: &PolyBudget,
+) -> Option<MultiPoly> {
+    let n = matrix.len();
+    if n == 0 {
+        return None;
+    }
+    if n == 1 {
+        return Some(matrix[0][0].clone());
+    }
+    let vars = matrix[0][0].vars.clone();
+    let mut det = MultiPoly::zero(vars);
+    for (col, entry) in matrix[0].iter().enumerate() {
+        if entry.is_zero() {
+            continue;
+        }
+        let minor: Vec<Vec<MultiPoly>> = matrix[1..]
+            .iter()
+            .map(|row| {
+                row.iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != col)
+                    .map(|(_, e)| e.clone())
+                    .collect()
+            })
+            .collect();
+        let sub = poly_determinant(&minor, budget)?;
+        let term = entry.mul(&sub, budget).ok()?;
+        det = if col % 2 == 0 {
+            det.add(&term).ok()?
+        } else {
+            det.sub(&term).ok()?
+        };
+    }
+    Some(det)
+}
+
+/// Exact symbolic Cramer for an n×n linear system over parameter-polynomial
+/// coefficients (frente S · S6 — wired for n = 3; the cofactor determinant
+/// makes larger n a deliberate future step, not an accident). Same contract
+/// as the 2×2 path: `det ≠ 0` rides as a structured condition; `det ≡ 0`
+/// declines honestly (symbolic rank classification is a future rung).
+pub(crate) fn solve_nxn_symbolic(
+    ctx: &mut Context,
+    exprs: &[ExprId],
+    vars: &[String],
+) -> Result<Symbolic2x2Outcome, LinearSystemError> {
+    let n = vars.len();
+    let mut rows = Vec::with_capacity(n);
+    for (i, &expr) in exprs.iter().enumerate() {
+        let row =
+            extract_symbolic_row(ctx, expr, vars).map_err(|e| with_equation_index(e, i + 1))?;
+        rows.push(row);
+    }
+
+    // Union parameter set + align every entry.
+    let mut union: Vec<String> = Vec::new();
+    for (coeffs, c) in &rows {
+        for poly in coeffs.iter().chain(std::iter::once(c)) {
+            for v in &poly.vars {
+                if !union.contains(v) {
+                    union.push(v.clone());
+                }
+            }
+        }
+    }
+    union.sort();
+    let matrix: Vec<Vec<MultiPoly>> = rows
+        .iter()
+        .map(|(coeffs, _)| coeffs.iter().map(|p| p.align_vars(&union)).collect())
+        .collect();
+    let d: Vec<MultiPoly> = rows
+        .iter()
+        .map(|(_, c)| c.align_vars(&union).neg())
+        .collect();
+
+    let budget = symbolic_budget();
+    let Some(det) = poly_determinant(&matrix, &budget) else {
+        return Err(LinearSystemError::NotLinear(
+            "symbolic determinant exceeded the polynomial budget".to_string(),
+        ));
+    };
+    if det.is_zero() {
+        return Ok(Symbolic2x2Outcome::DegenerateSymbolic);
+    }
+
+    let mut numerators = Vec::with_capacity(n);
+    for col in 0..n {
+        let replaced: Vec<Vec<MultiPoly>> = matrix
+            .iter()
+            .enumerate()
+            .map(|(r, row)| {
+                row.iter()
+                    .enumerate()
+                    .map(|(c, e)| if c == col { d[r].clone() } else { e.clone() })
+                    .collect()
+            })
+            .collect();
+        let Some(num) = poly_determinant(&replaced, &budget) else {
+            return Err(LinearSystemError::NotLinear(
+                "symbolic determinant exceeded the polynomial budget".to_string(),
+            ));
+        };
+        numerators.push(num);
+    }
+
+    if let Some(k) = det.constant_value() {
+        let inv = BigRational::from_integer(1.into()) / k;
+        let values = numerators
+            .iter()
+            .map(|num| multipoly_to_expr(&num.mul_scalar(&inv), ctx))
+            .collect();
+        return Ok(Symbolic2x2Outcome::Unique {
+            values,
+            det_condition: None,
+        });
+    }
+
+    let (scale, det_prim) = normalize_det(&det);
+    let inv = BigRational::from_integer(1.into()) / scale;
+    let values = numerators
+        .iter()
+        .map(|num| quotient_expr(ctx, &num.mul_scalar(&inv), &det_prim))
+        .collect();
+    let det_expr = multipoly_to_expr(&det_prim, ctx);
+    Ok(Symbolic2x2Outcome::Unique {
+        values,
         det_condition: Some(det_expr),
     })
 }

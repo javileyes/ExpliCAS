@@ -75,44 +75,6 @@ fn coefficients_in(poly: &MultiPoly, var_idx: usize) -> Vec<MultiPoly> {
         .collect()
 }
 
-/// Determinant of a square matrix of `MultiPoly` entries by cofactor
-/// expansion (Sylvester dims for curricular conics are ≤ 6). Budget-checked
-/// multiplication; `None` on budget blowup.
-fn poly_determinant(matrix: &[Vec<MultiPoly>], budget: &PolyBudget) -> Option<MultiPoly> {
-    let n = matrix.len();
-    if n == 0 {
-        return None;
-    }
-    if n == 1 {
-        return Some(matrix[0][0].clone());
-    }
-    let vars = matrix[0][0].vars.clone();
-    let mut det = MultiPoly::zero(vars);
-    for (col, entry) in matrix[0].iter().enumerate() {
-        if entry.is_zero() {
-            continue;
-        }
-        let minor: Vec<Vec<MultiPoly>> = matrix[1..]
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .enumerate()
-                    .filter(|(j, _)| *j != col)
-                    .map(|(_, e)| e.clone())
-                    .collect()
-            })
-            .collect();
-        let sub = poly_determinant(&minor, budget)?;
-        let term = entry.mul(&sub, budget).ok()?;
-        det = if col % 2 == 0 {
-            det.add(&term).ok()?
-        } else {
-            det.sub(&term).ok()?
-        };
-    }
-    Some(det)
-}
-
 /// Sylvester matrix of `f` (degree m) and `g` (degree n) as polynomials in
 /// the eliminated variable, coefficients over the other variable. Rows are
 /// the classic shifted coefficient vectors: n rows of `f`, m rows of `g`.
@@ -136,6 +98,8 @@ fn sylvester_matrix(f_coeffs: &[MultiPoly], g_coeffs: &[MultiPoly]) -> Vec<Vec<M
     }
     matrix
 }
+
+use crate::poly_determinant;
 
 fn zero_test(simplifier: &mut crate::Simplifier, expr: ExprId) -> bool {
     let (folded, _) = simplifier.simplify(expr);

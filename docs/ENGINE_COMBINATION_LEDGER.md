@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 670 (newest first)
+Active entries: 671 (newest first)
 
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
@@ -126,6 +126,7 @@ Active entries: 670 (newest first)
 - 2026-07-23 | `retained` | `linear_system_command_parse.rs` (`shadow_declared_constant_names` en `parse_... | ROBUSTEZ/UX (frente S · chip e-como-incógnita): las constantes nombradas (e/pi/phi) DECLARADAS en la lista de incógnitas son variables dentro del canal de sistemas — «la lista manda» aplicado a los NOMBRES; el significado global intacto
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`try_integrating_factor_exact`, insertado... | CAPACIDAD (Fase 4 · O9-μ, tanda-9 ciclo 1/2): factor integrante simple μ(x)/μ(y) — la no-exacta se vuelve exacta y DELEGA; el último opcional acotado de la fase cerrado
 - 2026-07-23 | `retained` | `.claude/skills/auto-mejora/SKILL.md` (bloque de fases reescrito al estado 20... | META (tanda-9 ciclo 2/2): skill y docs de fases a estado real — Fases 1-3 cerradas, Fase 4 completa salvo series, frente S existente; fuentes de candidatos vigentes re-declaradas
+- 2026-07-23 | `retained` | `linear_system/symbolic2.rs` (`extract_symbolic_row` — la partición del multi... | CAPACIDAD (frente S · S6, tanda-10 ciclo 1/2): Cramer simbólico 3×3 — la partición generalizada a n incógnitas y los determinantes polinómicos COMPARTIDOS con la resultante; el peldaño más maduro del frente graduado
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`diff_call_order`/`scan_max_diff_order`: ... | CAPACIDAD (Fase 4 · O4, tanda-5 ciclo 1/2): 2º orden homogénea por discriminante exacto INTERNO — la linealidad no es solo el gate: también las ecuaciones del IVP salen de las BASES
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`distribute_structural`: distribución Mul... | CAPACIDAD (Fase 4 · O5, tanda-5 ciclo 2/2): coeficientes indeterminados — el collector por función-base sobre derivadas ESTRUCTURALES; Gauss racional propio; el gate por-base verificaba contra la ecuación equivocada; TANDA-5 COMPLETA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (refactor extraer-antes-de-abstraer: `line... | CAPACIDAD (Fase 4 · O8, tanda-6 ciclo 1/2): Bernoulli + homogéneas por composición de métodos graduados — el cero aparcado mata otro colector; la ruta implícita racional esquiva el surd H19 por diseño
@@ -21202,3 +21203,17 @@ Active entries: 670 (newest first)
 - capture: disparadores cumplidos con fuerza: 13 ciclos desde la última revisión de skill (2026-07-15), dos tandas de graduaciones cerradas, y la skill decía «Fase 2 ACTIVA — candidatos de FASE2_COMPLEX_SCOPING» cuando esa fase cerró hace 5 días — exactamente la clase de fuente podrida que causó la recomendación equivocada del 2026-07-15.
 - decision: retener. Próxima revisión: tras ~8-12 ciclos o al abrir series/Gröbner.
 - retained learning: **la skill envejece más rápido cuando el bucle acelera** — 13 ciclos en 5 días dejaron el mapa de fases dos fases por detrás; el disparador «tras una tanda de graduaciones» debe pesar más que el conteo de ciclos.
+
+## 2026-07-23 - CAPACIDAD (frente S · S6, tanda-10 ciclo 1/2): Cramer simbólico 3×3 — la partición generalizada a n incógnitas y los determinantes polinómicos COMPARTIDOS con la resultante; el peldaño más maduro del frente graduado
+
+- area: `linear_system/symbolic2.rs` (`extract_symbolic_row` — la partición del multipoly generalizada a n incógnitas (exponente total en incógnitas 0→c / 1→coeficiente-del-único / ≥2→NotLinear), y `extract_symbolic_coeffs` 2×2 REESCRITO como wrapper fino — una sola implementación de la partición; `poly_determinant` MOVIDO aquí como pub(crate) compartido — la resultante S5 lo importa en vez de duplicarlo; `solve_nxn_symbolic` — Cramer por determinantes: det + n numeradores por columna-reemplazada, mismo contrato que 2×2 (det constante → división exacta, simbólico → div_exact-o-Div con normalize_det + condición, det ≡ 0 → decline honesto nombrado); presupuesto del cofactor como guard DELIBERADO) + brazo n==3 en solve.rs (espejo del n==2: fallback tras el racional, el error racional se conserva si el simbólico también declina) + 4 filas lane (33 casos) + contrato `solve_system_parametric_3x3_s6_contract`
+- status: `retained`. Lane 33/33. Cableado SOLO n==3 — n≥4 simbólico sigue decline honesto (alcance declarado, no accidente).
+- capture:
+  - investment_class: capacidad (peldaño nombrado del frente S — el más maduro; reuso: partición S1, poly_determinant S5, UniqueExpr/condiciones/narración S3 dispararon AUTOMÁTICOS al casar la variante).
+  - cell: `[a·x+y+z=1, x−y=0, y−z=0]` → `{x = y = z = 1/(a+2)}` + `requires: a+2 ≠ 0` + required_display `a ≠ -2`; DOS parámetros densos `[a·x+b·y+z=1, x+y+z=0, x−y=2]` → `{x = (2b−1)/(a+b−2), y = (3−2a)/(a+b−2), z = (2a−2b−2)/(a+b−2)}` con condición; RHS simbólico `[x+y+z=p, ...]` → `{x = p/3, ...}` sin condición (det constante); degenerado 3×3 → decline honesto; pins: racional 3×3, paramétrico 2×2, S5 dos-cónicas byte-idénticos; 4×4 paramétrico declina honesto.
+  - La narración y el canal de condiciones NO necesitaron ni una línea: los steps S3 y el runtime casan sobre `UniqueExpr`, no sobre el tamaño — el contrato-por-variante paga aquí.
+- observed: workspace/clippy/scorecards en el commit; huella: solo la lane propia (29→33).
+- decision: retener. Peldaños restantes del frente: rank simbólico det=0 (2×2 y 3×3 comparten la sentencia), n≥4 simbólico (trivial si algún día se pide — el código ya es genérico), Res≡0.
+- retained learning:
+  - **Generalizar el extractor y REESCRIBIR el caso base como wrapper es el refactor de riesgo mínimo**: una sola implementación de la partición, el caso 2×2 pineado byte-exacto valida la generalización gratis, y el diff del caso base es «pop, pop».
+  - **Un helper compartido entre métodos hermanos (poly_determinant S5↔S6) pertenece al módulo de DATOS (symbolic2), no al de comando** — el segundo consumidor es el momento de moverlo, no de copiarlo.

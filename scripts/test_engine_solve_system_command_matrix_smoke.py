@@ -30,7 +30,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         # nonlinear supported + 1 nonlinear proven-empty + 2 honest residual
         # rows. Las DOS filas residuales de S1 (no-lineal, coef surd)
         # GRADUARON en S2 — el contrato migró de decline a resultado.
-        self.assertEqual(len(cases), 29)
+        self.assertEqual(len(cases), 33)
 
         names = {case.name for case in cases}
         self.assertIn("parametric_2x2_symbolic_det_condition", names)
@@ -42,13 +42,15 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         self.assertIn("nonlinear_two_conics_resultant_sylvester", names)
         self.assertIn("nonlinear_concentric_circles_proven_empty", names)
         self.assertIn("declared_constant_name_e_is_unknown", names)
+        self.assertIn("parametric_3x3_symbolic_det_condition", names)
+        self.assertIn("residual_parametric_3x3_degenerate_det_zero", names)
         self.assertIn("undeclared_e_stays_euler_coefficient", names)
 
         supported = [c for c in cases if c.outcome == "supported"]
         residual = [c for c in cases if c.outcome == "honest_residual"]
         degenerate = [c for c in cases if c.outcome in {"dependent", "inconsistent"}]
-        self.assertEqual(len(supported), 23)
-        self.assertEqual(len(residual), 1)
+        self.assertEqual(len(supported), 26)
+        self.assertEqual(len(residual), 2)
         self.assertEqual(len(degenerate), 5)
 
         families = {c.family for c in cases}
@@ -57,7 +59,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         )
 
         conditioned = [c for c in cases if c.condition_regime == "det_nonzero"]
-        self.assertEqual(len(conditioned), 2)
+        self.assertEqual(len(conditioned), 4)
         for case in conditioned:
             self.assertIn("requires:", case.expected_result)
 

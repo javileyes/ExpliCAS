@@ -12,7 +12,9 @@ use self::coeffs::{extract_linear_coeffs, extract_linear_coeffs_3};
 use self::gauss::solve_nxn_gauss;
 use self::solve2::solve_2x2_cramer;
 use self::solve3::solve_3x3_cramer;
-pub(crate) use self::symbolic2::{solve_2x2_symbolic, Symbolic2x2Outcome};
+pub(crate) use self::symbolic2::{
+    poly_determinant, solve_2x2_symbolic, solve_nxn_symbolic, Symbolic2x2Outcome,
+};
 
 /// Error type for linear system solving.
 #[derive(Debug)]

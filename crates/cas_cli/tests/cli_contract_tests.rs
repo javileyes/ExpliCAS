@@ -10223,3 +10223,57 @@ fn dsolve_integrating_factor_mu_contract() {
     let en = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(en.contains("simple integrating factor"), "{en}");
 }
+
+#[test]
+fn solve_system_parametric_3x3_s6_contract() {
+    // Frente S · S6 (peldaño graduado): Cramer simbólico 3×3 — la partición
+    // generalizada a n incógnitas + determinantes polinómicos (el
+    // poly_determinant COMPARTIDO con la resultante S5); det ≠ 0 como
+    // condición estructurada; n ≥ 4 simbólico sigue decline honesto
+    // (presupuesto deliberado del cofactor).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    let flagship = r("solve([a*x+y+z=1, x-y=0, y-z=0], [x, y, z])");
+    assert!(
+        flagship.starts_with("{ x = 1 / (a + 2), y = 1 / (a + 2), z = 1 / (a + 2) }"),
+        "{flagship}"
+    );
+    assert!(flagship.contains("requires: a + 2 != 0"), "{flagship}");
+
+    // Dos parámetros densos: cocientes polinómicos completos.
+    let dense = r("solve([a*x+b*y+z=1, x+y+z=0, x-y=2], [x, y, z])");
+    assert!(dense.contains("x = (2·b - 1) / (a + b - 2)"), "{dense}");
+    assert!(dense.contains("requires: a + b - 2 != 0"), "{dense}");
+
+    // RHS simbólico con det constante: exacto sin condición.
+    assert_eq!(
+        r("solve([x+y+z=p, x-y=0, y-z=0], [x, y, z])"),
+        "{ x = 1/3·p, y = 1/3·p, z = 1/3·p }"
+    );
+    // Degenerado simbólico 3×3: decline honesto nombrado.
+    let degen = r("solve([a*x+y+z=1, a*x+y+z=2, x-y=0], [x, y, z])");
+    assert!(
+        degen.contains("rank classification is a future rung"),
+        "{degen}"
+    );
+
+    // Pins de no-robo: racional 3×3 y paramétrico 2×2 byte-idénticos; el
+    // 4×4 paramétrico sigue declinando honesto (alcance declarado).
+    assert_eq!(
+        r("solve([x+y+z=6, x-y=0, z=3], [x, y, z])"),
+        "{ x = 3/2, y = 3/2, z = 3 }"
+    );
+    let s1 = r("solve([a*x+y=1, x-y=0], [x, y])");
+    assert!(s1.starts_with("{ x = 1 / (a + 1)"), "{s1}");
+    let four = r("solve([a*x+y+z+w=1, x-y=0, y-z=0, z-w=0], [x, y, z, w])");
+    assert!(
+        four.contains("non-linear") || four.contains("Error"),
+        "{four}"
+    );
+}

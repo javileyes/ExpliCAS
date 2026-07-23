@@ -64,7 +64,28 @@ pub(super) fn solve_linear_system_parts(
                 Err(crate::LinearSystemError::NoSolution) => {
                     return Ok(crate::LinSolveResult::Inconsistent);
                 }
-                Err(e) => return Err(e),
+                // S6: same doctrine as the 2×2 arm — the unknowns list drives
+                // linearity; parameters go to the coefficients, Cramer runs
+                // over polynomial determinants.
+                Err(rational_error) => {
+                    return match crate::solve_nxn_symbolic(ctx, exprs, vars) {
+                        Ok(crate::Symbolic2x2Outcome::Unique {
+                            values,
+                            det_condition,
+                        }) => Ok(crate::LinSolveResult::UniqueExpr {
+                            values,
+                            nonzero_conditions: det_condition.into_iter().collect(),
+                        }),
+                        Ok(crate::Symbolic2x2Outcome::DegenerateSymbolic) => {
+                            Err(crate::LinearSystemError::NotLinear(
+                                "symbolic coefficients with det = 0: \
+                                 rank classification is a future rung"
+                                    .to_string(),
+                            ))
+                        }
+                        Err(_) => Err(rational_error),
+                    };
+                }
             };
             Ok(crate::LinSolveResult::Unique(vec![x, y, z]))
         }

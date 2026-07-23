@@ -300,6 +300,53 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="solution_pairs",
     ),
     SolveSystemCommandMatrixCase(
+        name="parametric_3x3_symbolic_det_condition",
+        expr="solve([a*x+y+z=1, x-y=0, y-z=0], [x, y, z])",
+        expected_result=(
+            "{ x = 1 / (a + 2), y = 1 / (a + 2), z = 1 / (a + 2) }\n"
+            "  requires: a + 2 != 0"
+        ),
+        expected_required=("a ≠ -2",),
+        family="parametrico",
+        size_regime="three_by_three",
+        coefficient_regime="symbolic_parameter",
+        condition_regime="det_nonzero",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="parametric_3x3_two_parameters_dense",
+        expr="solve([a*x+b*y+z=1, x+y+z=0, x-y=2], [x, y, z])",
+        expected_result=(
+            "{ x = (2·b - 1) / (a + b - 2), y = (3 - 2·a) / (a + b - 2), "
+            "z = (2·a - 2·b - 2) / (a + b - 2) }\n  requires: a + b - 2 != 0"
+        ),
+        family="parametrico",
+        size_regime="three_by_three",
+        coefficient_regime="symbolic_parameter",
+        condition_regime="det_nonzero",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="parametric_3x3_symbolic_rhs_constant_det",
+        expr="solve([x+y+z=p, x-y=0, y-z=0], [x, y, z])",
+        expected_result="{ x = 1/3·p, y = 1/3·p, z = 1/3·p }",
+        family="parametrico",
+        size_regime="three_by_three",
+        coefficient_regime="symbolic_parameter",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="residual_parametric_3x3_degenerate_det_zero",
+        expr="solve([a*x+y+z=1, a*x+y+z=2, x-y=0], [x, y, z])",
+        expected_result=(
+            "Error: non-linear term: symbolic coefficients with det = 0: "
+            "rank classification is a future rung\n"
+            "solve_system() only handles linear equations."
+        ),
+        family="parametrico",
+        size_regime="three_by_three",
+        coefficient_regime="symbolic_parameter",
+        outcome="honest_residual",
+        presentation_regime="prose_outcome",
+    ),
+    SolveSystemCommandMatrixCase(
         name="residual_parametric_degenerate_det_zero",
         expr="solve([a*x+y=1, a*x+y=2], [x, y])",
         expected_result=(
