@@ -1138,9 +1138,29 @@ impl Engine {
                     }
                 }
             }
+            // O9-μ (opcional pre-aprobado): no-exacta con factor integrante
+            // SIMPLE μ(x)/μ(y) — ÚLTIMO intento antes del residual (cero
+            // robo por construcción: todo lo anterior ya declinó).
+            if let Some((m, n)) =
+                try_extract_exact_form(&mut self.simplifier.context, &ode_eq, diff_sym, func, var)
+            {
+                if let Some(general) =
+                    self.try_integrating_factor_exact(options, resolved, func, var, m, n)?
+                {
+                    return Ok(self.maybe_apply_initial_condition(
+                        options,
+                        general,
+                        initial_condition.as_ref(),
+                        resolved,
+                        func,
+                        var,
+                        &ode_eq,
+                    ));
+                }
+            }
             let r = mk_residual(
                 &mut self.simplifier.context,
-                "La EDO de 1er orden no casa ningún método clásico (separable/lineal/exacta/Bernoulli/homogénea); Riccati y formas sin método clásico son residuales honestos permanentes",
+                "La EDO de 1er orden no casa ningún método clásico (separable/lineal/exacta/factor integrante simple/Bernoulli/homogénea); Riccati y formas sin método clásico son residuales honestos permanentes",
             );
             return Ok(r);
         };
@@ -1516,6 +1536,118 @@ impl Engine {
             Ok((EvalResult::Expr(simplified), ..)) => simplified,
             _ => e,
         }
+    }
+
+    /// O9-μ (opcional pre-aprobado, mapper 2): no-exacta con factor
+    /// integrante SIMPLE. Si `(M_y − N_x)/N` es función solo de `x`,
+    /// μ(x) = e^(∫h dx); si `(N_x − M_y)/M` es solo de `y`, μ(y) = e^(∫h dy).
+    /// Multiplica la EDO y DELEGA en el handler exacto — la emisión hereda
+    /// los gates D5/D11 del potencial (composición, no maquinaria nueva).
+    fn try_integrating_factor_exact(
+        &mut self,
+        options: &crate::options::EvalOptions,
+        resolved: ExprId,
+        func: &str,
+        var: &str,
+        m: ExprId,
+        n: ExprId,
+    ) -> Result<Option<ActionResult>, anyhow::Error> {
+        let mut verify_options = options.clone();
+        verify_options.steps_mode = cas_solver_core::eval_options::StepsMode::Off;
+        verify_options.time_budget_ms = Some(
+            verify_options
+                .time_budget_ms
+                .map_or(VERIFY_TIME_BUDGET_MS, |t| t.min(VERIFY_TIME_BUDGET_MS)),
+        );
+
+        let ctx = &mut self.simplifier.context;
+        let y_var = ctx.var(func);
+        let x_var = ctx.var(var);
+        // M/N son coeficientes SIN diff(y,·): el fold completo es seguro (D4
+        // no aplica) y `diff(M, y)` es la parcial con y independiente — la
+        // semántica correcta del test de exactitud.
+        let dm_dy = ctx.call("diff", vec![m, y_var]);
+        let dn_dx = ctx.call("diff", vec![n, x_var]);
+        let num = ctx.add(cas_ast::Expr::Sub(dm_dy, dn_dx));
+
+        let hx_raw = ctx.add(cas_ast::Expr::Div(num, n));
+        let hx = self.fold_free_subtree(&verify_options, hx_raw);
+        let ctx = &mut self.simplifier.context;
+        let attempt = if !collect_variables(ctx, hx).contains(func) {
+            Some((hx, var.to_string(), func))
+        } else {
+            let neg = ctx.add(cas_ast::Expr::Neg(num));
+            let hy_raw = ctx.add(cas_ast::Expr::Div(neg, m));
+            let hy = self.fold_free_subtree(&verify_options, hy_raw);
+            let ctx = &mut self.simplifier.context;
+            if !collect_variables(ctx, hy).contains(var) {
+                Some((hy, func.to_string(), var))
+            } else {
+                None
+            }
+        };
+        let Some((h, int_var, strip_wrt)) = attempt else {
+            return Ok(None);
+        };
+
+        let ctx = &mut self.simplifier.context;
+        let h_int = match crate::rules::calculus::integrate_with_trace(ctx, h, &int_var) {
+            Some(outcome) if outcome.required_conditions.is_empty() => outcome.result,
+            _ => return Ok(None),
+        };
+        let e_const = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::E));
+        let mu_raw = ctx.add(cas_ast::Expr::Pow(e_const, h_int));
+        let mu_folded = self.fold_free_subtree(&verify_options, mu_raw);
+        let ctx = &mut self.simplifier.context;
+        // D12: e^(k·ln|u|) pliega con |u| — presentación textbook sin el abs
+        // de la variable de integración (μ funcional cualquiera vale; el
+        // gate exacto sigue siendo el juez).
+        let mu = strip_free_abs(ctx, mu_folded, strip_wrt);
+
+        let m2_raw = ctx.add(cas_ast::Expr::Mul(mu, m));
+        let n2_raw = ctx.add(cas_ast::Expr::Mul(mu, n));
+        let m2 = self.fold_free_subtree(&verify_options, m2_raw);
+        let n2 = self.fold_free_subtree(&verify_options, n2_raw);
+
+        let Some((result, mut warnings, steps, mut solve_steps, a, b, c, d)) =
+            self.eval_dsolve_exact(options, resolved, func, var, m2, n2)?
+        else {
+            return Ok(None);
+        };
+
+        // Narración + honestidad: μ multiplica la EDO — donde μ se anule o
+        // no esté definida pueden existir soluciones singulares aparte.
+        let ctx = &mut self.simplifier.context;
+        let mu_shown = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: mu
+            }
+        );
+        let mu_eq = Equation {
+            lhs: ctx.var("__mu"),
+            rhs: mu,
+            op: RelOp::Eq,
+        };
+        solve_steps.insert(
+            0,
+            crate::api::SolveStep {
+                description: format!(
+                    "No es exacta (M_y ≠ N_x): factor integrante simple μ({int_var}) = {mu_shown}"
+                ),
+                equation_after: mu_eq,
+                importance: ImportanceLevel::High,
+                substeps: vec![],
+            },
+        );
+        warnings.push(DomainWarning {
+            message: format!(
+                "La EDO se multiplicó por μ({int_var}) = {mu_shown}; donde μ se anule o no esté definida pueden existir soluciones singulares no recogidas"
+            ),
+            rule_name: DSOLVE_RULE.to_string(),
+        });
+        Ok(Some((result, warnings, steps, solve_steps, a, b, c, d)))
     }
 
     /// O1: linear first-order `y' + p·y = q` via the integrating factor

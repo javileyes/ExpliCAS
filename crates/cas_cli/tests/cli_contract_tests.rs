@@ -10158,3 +10158,68 @@ fn solve_system_declared_constant_shadow_contract() {
         "i declarada no debe sombrearse: {i_decl}"
     );
 }
+
+#[test]
+fn dsolve_integrating_factor_mu_contract() {
+    // Fase 4 · O9-μ (opcional pre-aprobado): no-exactas con factor
+    // integrante SIMPLE — μ(x) si (M_y−N_x)/N es solo-de-x, μ(y) si
+    // (N_x−M_y)/M es solo-de-y; multiplicar y DELEGAR en el handler exacto
+    // (la emisión hereda los gates D5/D11 del potencial).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let full = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr)
+    };
+
+    // μ(x) = x (Boyce clásico).
+    let mu_x = full("dsolve((3*x*y+y^2) + (x^2+x*y)*diff(y,x) = 0, y, x)");
+    assert!(mu_x.contains("2·y·x^3 + x^2·y^2 = C"), "{mu_x}");
+    assert!(mu_x.contains("μ(x) = x"), "{mu_x}");
+    assert!(mu_x.contains("soluciones singulares"), "{mu_x}");
+    // μ(y) = y con integral por partes (y²·e^y).
+    let mu_y = full("dsolve(y + (2*x-y*exp(y))*diff(y,x) = 0, y, x)");
+    assert!(
+        mu_y.contains("2·y·e^y + e^y·(-y^2 - 2) + x·y^2 = C"),
+        "{mu_y}"
+    );
+    assert!(mu_y.contains("μ(y) = y"), "{mu_y}");
+
+    // Techo honesto: μ(y) racional lleva a potencial racional fuera del
+    // reconstructor — residual honesto POR COMPOSICIÓN (la forma exacta
+    // equivalente directa también declina hoy).
+    let ceiling = r("dsolve(2*x*y + (y^2-x^2)*diff(y,x) = 0, y, x)");
+    assert!(ceiling.starts_with("dsolve("), "{ceiling}");
+
+    // Pins de no-robo: separable/lineal/exacta byte-idénticas.
+    assert!(r("dsolve(diff(y,x)=x*y, y, x)").starts_with("y = C·e^(x^2 / 2)"));
+    assert!(r("dsolve(diff(y,x)+y=x, y, x)").starts_with("y = C / e^x + x - 1"));
+    assert!(
+        r("dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)").starts_with("y·x^2 + y^2 + x = C")
+    );
+
+    // Narración en inglés vía la tabla es/en.
+    let out = cli()
+        .args([
+            "eval",
+            "dsolve((3*x*y+y^2) + (x^2+x*y)*diff(y,x) = 0, y, x)",
+            "--steps",
+            "on",
+            "--lang",
+            "en",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+    let en = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(en.contains("simple integrating factor"), "{en}");
+}

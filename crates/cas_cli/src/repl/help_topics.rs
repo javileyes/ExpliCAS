@@ -192,6 +192,7 @@ Description: Solves elementary ordinary differential equations. The unknown is
              honest residual echo.
 Supported families:
   1st order:  separable, linear (integrating factor), exact (potential),
+              non-exact via simple integrating factor mu(x)/mu(y),
               Bernoulli (n=2), homogeneous y' = F(y/x)
   2nd order:  constant coefficients (homogeneous + undetermined coefficients
               with resonance), initial value problems y(x0)=a, y'(x0)=b

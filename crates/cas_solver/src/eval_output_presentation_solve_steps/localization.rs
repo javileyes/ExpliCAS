@@ -130,6 +130,8 @@ static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
     SolveDesc { template: "Verificar cada par contra AMBAS ecuaciones originales: {0} pares verificados emitidos", es: "Verificar cada par contra AMBAS ecuaciones originales: {0} pares verificados emitidos", en: "Verify each pair against BOTH original equations: {0} verified pairs emitted" },
     SolveDesc { template: "Las ecuaciones son dependientes (rango menor que el número de incógnitas): infinitas soluciones", es: "Las ecuaciones son dependientes (rango menor que el número de incógnitas): infinitas soluciones", en: "The equations are dependent (rank below the number of unknowns): infinitely many solutions" },
     SolveDesc { template: "Las ecuaciones son inconsistentes (ninguna asignación satisface todas): sin solución", es: "Las ecuaciones son inconsistentes (ninguna asignación satisface todas): sin solución", en: "The equations are inconsistent (no assignment satisfies all): no solution" },
+    // dsolve (Fase 4) — integrating factor narration (O9-μ).
+    SolveDesc { template: "No es exacta (M_y ≠ N_x): factor integrante simple μ({0}) = {1}", es: "No es exacta (M_y ≠ N_x): factor integrante simple μ({0}) = {1}", en: "Not exact (M_y ≠ N_x): simple integrating factor μ({0}) = {1}" },
     // solve_system (frente S) — resultant narration (S5).
     SolveDesc { template: "Eliminar {0} por la resultante de Sylvester (determinante {1}×{2})", es: "Eliminar {0} por la resultante de Sylvester (determinante {1}×{2})", en: "Eliminate {0} via the Sylvester resultant ({1}×{2} determinant)" },
     SolveDesc { template: "Resolver la resultante univariable en {0}", es: "Resolver la resultante univariable en {0}", en: "Solve the univariate resultant in {0}" },
