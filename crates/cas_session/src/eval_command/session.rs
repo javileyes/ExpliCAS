@@ -6,7 +6,7 @@ use cas_solver::session_api::bindings::{
 };
 use cas_solver_core::engine_events::EngineEvent;
 use std::path::Path;
-use std::time::Instant;
+use web_time::Instant;
 
 /// Session-backed config for eval command orchestration.
 pub type EvalCommandConfig<'a> = cas_api_models::EvalSessionRunConfig<'a>;
@@ -95,16 +95,51 @@ fn build_assignment_wire_output(
 fn evaluate_assignment_command_in_memory(config: EvalCommandConfig<'_>) -> EvalCommandResult {
     let mut engine = Engine::new();
     let mut state = crate::state_core::SessionState::new();
+    evaluate_assignment_in_memory_with_state(&mut engine, &mut state, config)
+}
+
+fn evaluate_assignment_in_memory_with_state(
+    engine: &mut Engine,
+    state: &mut crate::state_core::SessionState,
+    config: EvalCommandConfig<'_>,
+) -> EvalCommandResult {
     let started = Instant::now();
-    let output = evaluate_let_assignment_command(&mut state, &mut engine.simplifier, config.expr)?;
+    let output = evaluate_let_assignment_command(state, &mut engine.simplifier, config.expr)?;
     let total_us = started.elapsed().as_micros() as u64;
     Ok(build_assignment_wire_output(
-        &engine,
+        engine,
         config.expr,
         config,
         &output,
         total_us,
     ))
+}
+
+/// In-memory eval against a CALLER-owned engine + session state (frente W:
+/// the browser session lives across calls inside the wasm instance, so `#N`
+/// references and `:=` assignments persist per tab). Mirrors exactly the
+/// `session_path = None` branches of [`evaluate_eval_command_with_session`];
+/// no filesystem is ever touched.
+pub fn evaluate_eval_command_in_memory_with_state<F>(
+    engine: &mut Engine,
+    state: &mut crate::state_core::SessionState,
+    config: EvalCommandConfig<'_>,
+    language: cas_solver_core::eval_option_axes::Language,
+    collect_steps: F,
+) -> EvalCommandResult
+where
+    F: Fn(&[Step], &[EngineEvent], &cas_ast::Context, &str) -> Vec<cas_api_models::StepWire>,
+{
+    if parse_lazy_assignment(config.expr).is_some() {
+        return evaluate_assignment_in_memory_with_state(engine, state, config);
+    }
+    cas_solver::session_api::eval::evaluate_eval_with_session(
+        engine,
+        state,
+        config,
+        language,
+        |steps, events, ctx, mode| collect_steps(steps, events, ctx, mode),
+    )
 }
 
 fn evaluate_assignment_command_with_persisted_session(

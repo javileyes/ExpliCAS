@@ -3118,15 +3118,19 @@
         async function clearSession() {
             if (!confirm(t('session.clear_confirm'))) return;
 
-            // Clear server session for this tab only
+            // Clear the engine session (wasm: in-tab; server: per session_id)
             try {
-                await fetch('/api/clear', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: SESSION_ID })
-                });
+                if (window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled) {
+                    await window.EXPLICAS_WASM.clear();
+                } else {
+                    await fetch('/api/clear', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: SESSION_ID })
+                    });
+                }
             } catch (e) {
-                console.warn('Could not clear server session:', e);
+                console.warn('Could not clear engine session:', e);
             }
 
             // Clear UI

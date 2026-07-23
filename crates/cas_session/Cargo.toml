@@ -11,6 +11,7 @@ default = []
 parallel = ["cas_solver/parallel"]
 
 [dependencies]
+web-time = "1"
 cas_ast = { path = "../cas_ast" }
 cas_api_models = { path = "../cas_api_models" }
 cas_session_core = { path = "../cas_session_core" }

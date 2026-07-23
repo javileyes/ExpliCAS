@@ -338,6 +338,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+ "web-time",
 ]
 
 [[package]]
@@ -405,6 +406,7 @@ version = "0.1.0"
 dependencies = [
  "cas_api_models",
  "cas_didactic",
+ "cas_session",
  "cas_solver",
  "cas_solver_core",
  "serde",

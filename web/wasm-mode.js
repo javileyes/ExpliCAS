@@ -72,7 +72,16 @@
         return new Promise((resolve, reject) => {
             const id = state.nextId++;
             state.pending.set(id, { resolve, reject });
-            state.worker.postMessage({ id, expr, opts: optsJson || '{}' });
+            state.worker.postMessage({ id, kind: 'eval', expr, opts: optsJson || '{}' });
+        });
+    };
+
+    // Session reset (the Limpiar button in wasm mode).
+    state.clear = function () {
+        return new Promise((resolve, reject) => {
+            const id = state.nextId++;
+            state.pending.set(id, { resolve, reject });
+            state.worker.postMessage({ id, kind: 'clear' });
         });
     };
 })();

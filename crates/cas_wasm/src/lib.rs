@@ -117,6 +117,42 @@ mod tests {
     }
 
     #[test]
+    fn session_hash_references_persist() {
+        // The W6 contract: results store as #N and later expressions can
+        // reference them — the browser session parity rung.
+        let mut session = super::WasmSession::new();
+        let first = session.eval("2 + 2", "{}");
+        assert!(
+            first.contains("\"ok\":true") || first.contains("\"ok\": true"),
+            "{first}"
+        );
+        let second = session.eval("#1 * 10", "{}");
+        let parsed: serde_json::Value = serde_json::from_str(&second).expect("valid json");
+        assert_eq!(parsed["result"], "40", "{second}");
+    }
+
+    #[test]
+    fn session_lazy_assignment_persists() {
+        let mut session = super::WasmSession::new();
+        let assign = session.eval("f(x) := x^2 + 1", "{}");
+        let parsed: serde_json::Value = serde_json::from_str(&assign).expect("valid json");
+        assert_eq!(parsed["ok"], true, "{assign}");
+        let usage = session.eval("f(3)", "{}");
+        let parsed: serde_json::Value = serde_json::from_str(&usage).expect("valid json");
+        assert_eq!(parsed["result"], "10", "{usage}");
+    }
+
+    #[test]
+    fn session_clear_resets_references() {
+        let mut session = super::WasmSession::new();
+        session.eval("5 + 5", "{}");
+        session.clear();
+        let after = session.eval("#1 + 1", "{}");
+        let parsed: serde_json::Value = serde_json::from_str(&after).expect("valid json");
+        assert_eq!(parsed["ok"], false, "{after}");
+    }
+
+    #[test]
     fn full_wire_error_is_valid_json() {
         let wire = super::eval_full_wire("((", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&wire).expect("valid json");
@@ -154,29 +190,24 @@ impl Default for FullWireOptions {
     }
 }
 
-/// Evaluate one expression against the FULL wire — the same rich JSON the
-/// CLI's `eval --format json` emits (input_latex, result_latex, steps,
-/// solve_steps, warnings, required_display, stats, timings): what the web UI
-/// needs to render LaTeX and narrated steps. Mirrors the CLI's
-/// `eval_command_config` defaults; localization follows `lang` ("es"/"en").
-#[wasm_bindgen]
-pub fn eval_full_wire(expr: &str, opts_json: &str) -> String {
-    let opts: FullWireOptions = match serde_json::from_str(opts_json) {
-        Ok(o) => o,
-        Err(e) => {
-            return format!(
-                "{{\"ok\":false,\"error\":\"invalid options JSON: {}\"}}",
-                e.to_string().replace('"', "'")
-            )
-        }
-    };
-    let language = match opts.lang.as_str() {
+fn language_of(opts: &FullWireOptions) -> cas_solver_core::eval_option_axes::Language {
+    match opts.lang.as_str() {
         "en" => cas_solver_core::eval_option_axes::Language::En,
         _ => cas_solver_core::eval_option_axes::Language::Es,
-    };
-    let config = cas_api_models::EvalSessionRunConfig {
+    }
+}
+
+/// Mirror of the CLI's `eval_command_config` defaults, driven by the
+/// browser-facing options. `auto_store` distinguishes the stateless entry
+/// (off) from the session entry (on: results become `#N`).
+fn build_run_config<'a>(
+    expr: &'a str,
+    opts: &FullWireOptions,
+    auto_store: bool,
+) -> cas_api_models::EvalSessionRunConfig<'a> {
+    cas_api_models::EvalSessionRunConfig {
         expr,
-        auto_store: false,
+        auto_store,
         max_chars: opts.max_chars,
         time_budget_ms: opts.time_budget_ms,
         steps_mode: match opts.steps.as_str() {
@@ -210,7 +241,27 @@ pub fn eval_full_wire(expr: &str, opts_json: &str) -> String {
             "decimal" => cas_api_models::EvalNumericDisplay::Decimal,
             _ => cas_api_models::EvalNumericDisplay::Exact,
         },
+    }
+}
+
+/// Evaluate one expression against the FULL wire — the same rich JSON the
+/// CLI's `eval --format json` emits (input_latex, result_latex, steps,
+/// solve_steps, warnings, required_display, stats, timings): what the web UI
+/// needs to render LaTeX and narrated steps. Mirrors the CLI's
+/// `eval_command_config` defaults; localization follows `lang` ("es"/"en").
+#[wasm_bindgen]
+pub fn eval_full_wire(expr: &str, opts_json: &str) -> String {
+    let opts: FullWireOptions = match serde_json::from_str(opts_json) {
+        Ok(o) => o,
+        Err(e) => {
+            return format!(
+                "{{\"ok\":false,\"error\":\"invalid options JSON: {}\"}}",
+                e.to_string().replace('"', "'")
+            )
+        }
     };
+    let language = language_of(&opts);
+    let config = build_run_config(expr, &opts, false);
 
     let mut engine = cas_solver::runtime::Engine::new();
     let mut session = cas_solver::runtime::StatelessEvalSession::new(
@@ -236,5 +287,73 @@ pub fn eval_full_wire(expr: &str, opts_json: &str) -> String {
             "{{\"ok\":false,\"error\":{}}}",
             serde_json::to_string(&message).unwrap_or_else(|_| "\"eval failed\"".to_string())
         ),
+    }
+}
+
+/// A persistent per-tab session: `#N` references, `:=` assignments and
+/// stored results survive across evaluations inside this wasm instance —
+/// the last rung of the browser-mode parity (frente W · W6). State lives
+/// only in memory: closing the tab is `clear()`.
+#[wasm_bindgen]
+pub struct WasmSession {
+    engine: cas_solver::runtime::Engine,
+    state: cas_session::SessionState,
+}
+
+impl Default for WasmSession {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[wasm_bindgen]
+impl WasmSession {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> WasmSession {
+        WasmSession {
+            engine: cas_solver::runtime::Engine::new(),
+            state: cas_session::SessionState::new(),
+        }
+    }
+
+    /// Evaluate with session state (auto-store ON: results become `#N`).
+    /// Same options JSON and same FULL wire as [`eval_full_wire`].
+    pub fn eval(&mut self, expr: &str, opts_json: &str) -> String {
+        let opts: FullWireOptions = match serde_json::from_str(opts_json) {
+            Ok(o) => o,
+            Err(e) => {
+                return format!(
+                    "{{\"ok\":false,\"error\":\"invalid options JSON: {}\"}}",
+                    e.to_string().replace('"', "'")
+                )
+            }
+        };
+        let language = language_of(&opts);
+        let config = build_run_config(expr, &opts, true);
+        let result = cas_session::eval::evaluate_eval_command_in_memory_with_state(
+            &mut self.engine,
+            &mut self.state,
+            config,
+            language,
+            |steps, events, ctx, mode| {
+                cas_didactic::collect_step_payloads_with_events_localized(
+                    steps, events, ctx, mode, language,
+                )
+            },
+        );
+        match result {
+            Ok(wire) => serde_json::to_string(&wire)
+                .unwrap_or_else(|e| format!("{{\"ok\":false,\"error\":\"serialize: {e}\"}}")),
+            Err(message) => format!(
+                "{{\"ok\":false,\"error\":{}}}",
+                serde_json::to_string(&message).unwrap_or_else(|_| "\"eval failed\"".to_string())
+            ),
+        }
+    }
+
+    /// Reset the session (the Limpiar button): fresh engine + empty store.
+    pub fn clear(&mut self) {
+        self.engine = cas_solver::runtime::Engine::new();
+        self.state = cas_session::SessionState::new();
     }
 }

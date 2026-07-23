@@ -17,7 +17,10 @@ pub use cas_solver_core::eval_display_types::{
     EvalDisplayMessage, EvalDisplayMessageKind, EvalMetadataLines, EvalResultLine,
 };
 pub use pretty::evaluate_eval_command_pretty_with_session;
-pub use session::{evaluate_eval_command_with_session, EvalCommandConfig};
+pub use session::{
+    evaluate_eval_command_in_memory_with_state, evaluate_eval_command_with_session,
+    EvalCommandConfig,
+};
 
 fn can_skip_persisted_session_state(expr: &str, auto_store: bool) -> bool {
     !auto_store && !expr.contains('#')

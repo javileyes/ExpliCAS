@@ -8,17 +8,26 @@
 //
 // This file is a module worker: `new Worker('wasm_worker.js', {type: 'module'})`.
 
-import init, { eval_full_wire, engine_version } from './pkg/cas_wasm.js';
+import init, { WasmSession, engine_version } from './pkg/cas_wasm.js';
 
+let session = null;
 let readyPromise = init().then(() => {
+    session = new WasmSession();
     postMessage({ kind: 'ready', version: engine_version() });
 });
 
 onmessage = async (event) => {
-    const { id, expr, opts } = event.data;
+    const { id, kind, expr, opts } = event.data;
     try {
         await readyPromise;
-        const wire = eval_full_wire(expr, opts || '{}');
+        if (kind === 'clear') {
+            session.clear();
+            postMessage({ kind: 'result', id, wire: '{"ok":true,"cleared":true}' });
+            return;
+        }
+        // Session-backed eval: #N references and := assignments persist
+        // for the lifetime of this tab (W6).
+        const wire = session.eval(expr, opts || '{}');
         postMessage({ kind: 'result', id, wire });
     } catch (error) {
         postMessage({ kind: 'result', id, error: String(error) });
