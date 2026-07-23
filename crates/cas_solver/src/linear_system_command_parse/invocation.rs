@@ -5,5 +5,13 @@ pub(super) fn parse_linear_system_invocation_input(line: &str) -> String {
     } else {
         rest
     };
-    inner.trim().to_string()
+    let inner = inner.trim();
+    // List-form parity (S4): the REPL accepts `solve_system([eqs], [vars])`
+    // with the same desugar the wire uses.
+    if inner.starts_with('[') {
+        if let Some(spec) = cas_api_models::system_list_body_to_spec(inner) {
+            return spec;
+        }
+    }
+    inner.to_string()
 }

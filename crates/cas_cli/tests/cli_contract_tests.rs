@@ -10004,3 +10004,50 @@ fn solve_system_educational_s3_contract() {
         "{semi}"
     );
 }
+
+#[test]
+fn solve_system_surface_s4_contract() {
+    // Frente S · S4: superficie — una familia de sintaxis (lista) en ambos
+    // comandos, help publicando los declines honestos como contrato, y
+    // completado. Cierra la brecha señalada por el usuario: sistemas en
+    // solve al mismo nivel de integración que dsolve.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // Paridad de sintaxis lista en solve_system (wire).
+    assert_eq!(
+        r("solve_system([x+y=3, x-y=1], [x, y])"),
+        "{ x = 2, y = 1 }"
+    );
+    assert_eq!(
+        r("solve_system([x*y=6, x+y=5], [x, y])"),
+        "{ x = 2, y = 3 } or { x = 3, y = 2 }"
+    );
+    // El paramétrico fluye con su condición por la forma lista.
+    let par = r("solve_system([a*x+y=1, x-y=0], [x, y])");
+    assert!(par.contains("requires: a + 1 != 0"), "{par}");
+    // La semicolon clásica sigue byte-idéntica (no-robo).
+    assert_eq!(r("solve_system(x+y=3; x-y=1; x; y)"), "{ x = 2, y = 1 }");
+
+    // Help: solve documenta la forma lista; solve_system publica familias Y
+    // declines honestos como contrato (help es superficie REPL — molde O7).
+    let help_of = |topic: &str| -> String {
+        let out = cli()
+            .arg("repl")
+            .write_stdin(format!("help {topic}\nexit\n"))
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    let solve_help = help_of("solve");
+    assert!(solve_help.contains("solve([eq1, eq2, ...]"), "{solve_help}");
+    let sys_help = help_of("solve_system");
+    assert!(sys_help.contains("Parametric 2x2"), "{sys_help}");
+    assert!(sys_help.contains("Honest declines"), "{sys_help}");
+    assert!(sys_help.contains("isolate-substitute-"), "{sys_help}");
+}

@@ -234,6 +234,20 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
+        name="solve_system_list_form_parity",
+        expr="solve_system([x+y=3, x-y=1], [x, y])",
+        expected_result="{ x = 2, y = 1 }",
+        presentation_regime="list_syntax_parity",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="solve_system_list_form_nonlinear_parity",
+        expr="solve_system([x*y=6, x+y=5], [x, y])",
+        expected_result="{ x = 2, y = 3 } or { x = 3, y = 2 }",
+        family="no_lineal",
+        condition_regime="verified_pairs",
+        presentation_regime="list_syntax_parity",
+    ),
+    SolveSystemCommandMatrixCase(
         name="residual_parametric_degenerate_det_zero",
         expr="solve([a*x+y=1, a*x+y=2], [x, y])",
         expected_result=(

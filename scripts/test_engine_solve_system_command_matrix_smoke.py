@@ -30,7 +30,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         # nonlinear supported + 1 nonlinear proven-empty + 2 honest residual
         # rows. Las DOS filas residuales de S1 (no-lineal, coef surd)
         # GRADUARON en S2 — el contrato migró de decline a resultado.
-        self.assertEqual(len(cases), 22)
+        self.assertEqual(len(cases), 24)
 
         names = {case.name for case in cases}
         self.assertIn("parametric_2x2_symbolic_det_condition", names)
@@ -44,7 +44,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         supported = [c for c in cases if c.outcome == "supported"]
         residual = [c for c in cases if c.outcome == "honest_residual"]
         degenerate = [c for c in cases if c.outcome in {"dependent", "inconsistent"}]
-        self.assertEqual(len(supported), 16)
+        self.assertEqual(len(supported), 18)
         self.assertEqual(len(residual), 2)
         self.assertEqual(len(degenerate), 4)
 
@@ -58,11 +58,14 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         for case in conditioned:
             self.assertIn("requires:", case.expected_result)
 
+        parity = [c for c in cases if c.presentation_regime == "list_syntax_parity"]
+        self.assertEqual(len(parity), 2)
+
         narrated = [c for c in cases if c.expected_solve_step_substrings]
         self.assertEqual(len(narrated), 4)
 
         verified_pairs = [c for c in cases if c.condition_regime == "verified_pairs"]
-        self.assertEqual(len(verified_pairs), 6)
+        self.assertEqual(len(verified_pairs), 7)
         for case in verified_pairs:
             self.assertIn("{", case.expected_result)
 

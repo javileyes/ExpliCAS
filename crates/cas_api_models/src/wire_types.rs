@@ -1035,6 +1035,13 @@ pub fn parse_solve_system_list_command(input: &str) -> Option<String> {
         return None;
     }
     let content = trimmed["solve(".len()..trimmed.len() - 1].trim();
+    system_list_body_to_spec(content)
+}
+
+/// Shared desugar for the `[eq1, eq2, ...], [var1, var2, ...]` list body into
+/// the canonical semicolon spec — used by BOTH `solve([...], [...])` and
+/// `solve_system([...], [...])` (S4 parity: one syntax family, one pipeline).
+pub fn system_list_body_to_spec(content: &str) -> Option<String> {
     let groups = split_top_level_commas(content);
     if groups.len() != 2 {
         return None;
@@ -1116,11 +1123,15 @@ fn parse_solve_system_command(input: &str) -> Option<String> {
         return Some(String::new());
     }
     if lower.starts_with("solve_system(") && trimmed.ends_with(')') {
-        return Some(
-            trimmed["solve_system(".len()..trimmed.len() - 1]
-                .trim()
-                .to_string(),
-        );
+        let inner = trimmed["solve_system(".len()..trimmed.len() - 1].trim();
+        // List-form parity (S4): `solve_system([eqs], [vars])` desugars the
+        // same way the solve list form does.
+        if inner.starts_with('[') {
+            if let Some(spec) = system_list_body_to_spec(inner) {
+                return Some(spec);
+            }
+        }
+        return Some(inner.to_string());
     }
     if !lower.starts_with("solve_system ") {
         return None;

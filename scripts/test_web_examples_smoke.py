@@ -14,6 +14,15 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES_CSV = ROOT / "web" / "examples.csv"
 CAS_CLI_BIN = ROOT / "target" / "release" / "cas_cli"
 
+EXPECTED_SOLVE_SYSTEM_RESULTS = {
+    "solve([x+y=3, x-y=1], [x, y])": "{ x = 2, y = 1 }",
+    "solve([a*x+y=1, x-y=0], [x, y])": (
+        "{ x = 1 / (a + 1), y = 1 / (a + 1) }\n  requires: a + 1 != 0"
+    ),
+    "solve([x^2+y^2=25, x+y=7], [x, y])": "{ x = 3, y = 4 } or { x = 4, y = 3 }",
+    "solve([x*y=6, x+y=5], [x, y])": "{ x = 2, y = 3 } or { x = 3, y = 2 }",
+}
+
 EXPECTED_DSOLVE_RESULTS = {
     "dsolve(diff(y,x) = x*y, y, x)": "y = C\u00b7e^(x^2 / 2)",
     "dsolve(diff(y,x) + y = x, y, x)": "y = C / e^x + x - 1",
@@ -131,6 +140,18 @@ class WebExamplesSmokeTests(unittest.TestCase):
         expressions = set(load_example_expressions())
 
         for expression, expected_result in EXPECTED_DSOLVE_RESULTS.items():
+            with self.subTest(expression=expression):
+                self.assertIn(expression, expressions)
+                self.assertEqual(eval_result(expression), expected_result)
+
+
+    def test_public_solve_system_examples_keep_expected_results(self) -> None:
+        # Frente S · S4: every published system example auto-verifies its
+        # exact emitted result (list form, parametric condition, verified
+        # nonlinear pairs).
+        expressions = set(load_example_expressions())
+
+        for expression, expected_result in EXPECTED_SOLVE_SYSTEM_RESULTS.items():
             with self.subTest(expression=expression):
                 self.assertIn(expression, expressions)
                 self.assertEqual(eval_result(expression), expected_result)

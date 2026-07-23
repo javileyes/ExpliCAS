@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 665 (newest first)
+Active entries: 666 (newest first)
 
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
 - 2026-07-23 | `retained` | `cas_solver/linear_system/symbolic2.rs` (NUEVO hermano del módulo racional: e... | ROBUSTEZ+CAPACIDAD (frente S · S1, tanda-8 ciclo 1/4): sistemas en solve — la lista de incógnitas manda; Cramer simbólico 2×2 con det≠0 como condición estructurada; el decline matemático deja de ser E_INTERNAL; lane matrix propia (18ª suite)
 - 2026-07-23 | `retained` | `cas_solver/linear_system_command_eval/nonlinear.rs` (NUEVO: `try_solve_nonli... | CAPACIDAD (frente S · S2, tanda-8 ciclo 2/4): no-lineales 2×2 por sustitución VERIFICADA — composición aislar→sustituir→solve→verificar; las DOS filas residuales de S1 graduaron por composición (incluido el techo surd); capítulo clásico recta+cónica CERRADO
 - 2026-07-23 | `retained` | `linear_system_command_eval/steps.rs` (NUEVO: `build_system_solve_steps` — na... | EDUCATIVO (frente S · S3, tanda-8 ciclo 3/4): narración es/en por familia de sistemas + sellado del leak de micro-pasos + eco fiel de la forma tecleada
+- 2026-07-23 | `retained` | `cas_api_models/wire_types.rs` (`system_list_body_to_spec` EXTRAÍDO como help... | SUPERFICIE (frente S · S4, tanda-8 ciclo 4/4): una familia de sintaxis para sistemas — solve_system acepta la forma lista por el MISMO desugar, help publica declines honestos como contrato, examples web auto-verificados; TANDA-8 COMPLETA — la brecha solve-vs-dsolve señalada por el usuario CERRADA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`diff_call_order`/`scan_max_diff_order`: ... | CAPACIDAD (Fase 4 · O4, tanda-5 ciclo 1/2): 2º orden homogénea por discriminante exacto INTERNO — la linealidad no es solo el gate: también las ecuaciones del IVP salen de las BASES
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`distribute_structural`: distribución Mul... | CAPACIDAD (Fase 4 · O5, tanda-5 ciclo 2/2): coeficientes indeterminados — el collector por función-base sobre derivadas ESTRUCTURALES; Gauss racional propio; el gate por-base verificaba contra la ecuación equivocada; TANDA-5 COMPLETA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (refactor extraer-antes-de-abstraer: `line... | CAPACIDAD (Fase 4 · O8, tanda-6 ciclo 1/2): Bernoulli + homogéneas por composición de métodos graduados — el cero aparcado mata otro colector; la ruta implícita racional esquiva el surd H19 por diseño
@@ -21132,3 +21133,17 @@ Active entries: 665 (newest first)
 - retained learning:
   - **Un step-listener de sesión ve TODOS los simplify, no solo los «tuyos»**: cualquier maquinaria interna que corra bajo un comando con steps activos DEBE aislarse con el ritual save/off/restore (listener + mode) — 2ª forma del leak de canal (la 1ª fue el KIND de warnings en F-tanda). La narración de usuario se construye aparte y se emite por solve_steps.
   - **La lane debe ejercitar el MISMO modo que la superficie que protege**: sin `--steps on` en la lane, 44 pasos de ruido pasaron invisibles un ciclo entero.
+
+## 2026-07-23 - SUPERFICIE (frente S · S4, tanda-8 ciclo 4/4): una familia de sintaxis para sistemas — solve_system acepta la forma lista por el MISMO desugar, help publica declines honestos como contrato, examples web auto-verificados; TANDA-8 COMPLETA — la brecha solve-vs-dsolve señalada por el usuario CERRADA
+
+- area: `cas_api_models/wire_types.rs` (`system_list_body_to_spec` EXTRAÍDO como helper compartido — `parse_solve_system_list_command` delega y `parse_solve_system_command` detecta `[` en su inner y desugara igual: una sintaxis, un pipeline) + `linear_system_command_parse/invocation.rs` (el REPL usa el MISMO helper — paridad sin duplicar el splitter) + help topics: `solve` documenta la forma lista con el paramétrico y el no-lineal como ejemplos, `solve_system` NUEVO (molde O7 — familias soportadas + «Honest declines (never fabricated)»: det simbólico = 0, dos cuadráticas sin aislable, paramétrico no-lineal) + completer + web/examples.csv 4 filas nuevas del frente S (lista lineal, paramétrico con condición, círculo+recta, hipérbola+recta) con `EXPECTED_SOLVE_SYSTEM_RESULTS` auto-verificado byte-exacto + 2 filas matrix de paridad (24 casos) + contrato `solve_system_surface_s4_contract`
+- status: `retained`. Lane 24/24 (18 soportadas / 4 degeneradas / 2 residuales).
+- capture:
+  - investment_class: superficie (la mitad educativa/publicable — cierra el checklist del frente igual que O7 cerró el de la Fase 4).
+  - cell: `solve_system([x+y=3, x-y=1], [x, y])` → `{ x = 2, y = 1 }` (antes: Usage error); la forma lista fluye el paramétrico CON su condición y el no-lineal con sus pares por ambos comandos y ambas superficies (wire+REPL); la semicolon clásica byte-idéntica; `help solve_system` publica los declines honestos como contrato.
+  - Los 4 examples web nuevos se auto-verifican contra el resultado exacto emitido (patrón O7: sin el test, las filas publicadas no se verifican).
+- observed: workspace failed:0; clippy limpio; lane 24/24; web smoke verde; huella: solo la lane propia (+2 paridad).
+- decision: retener. **TANDA-8 COMPLETA (4/4, 0 rechazos): S1 robustez → S2 capacidad → S3 educativo → S4 superficie — el molde de tanda de la Fase 4 aplicado a un frente señalado por el usuario.**
+- retained learning:
+  - **El desugar compartido ES la paridad**: extraer `system_list_body_to_spec` y llamarlo desde los TRES sitios (solve wire, solve_system wire, REPL invocation) elimina la clase entera de bugs sintaxis-A-funciona-sintaxis-B-no; un segundo splitter habría sido deuda.
+  - Peldaños vivos del frente S: rank simbólico con det=0, 3×3 paramétrico, no-lineales sin ecuación aislable (Gröbner = mate-nueva, fuera del norte por ahora), localización de los textos de outcome degenerado.

@@ -148,8 +148,35 @@ Description: Show the real engine steps when expr1 simplifies exactly into expr2
 
         "solve" => "\
 Command: solve <equation>, <var>
-Description: Solves an equation for a variable.
-Example: solve x + 2 = 5, x -> x = 3"
+         solve([eq1, eq2, ...], [var1, var2, ...])   (systems)
+Description: Solves an equation for a variable, or a square system of
+             equations for its unknowns (the list form). In a system, every
+             symbol OUTSIDE the unknowns list is a symbolic PARAMETER.
+Example: solve x + 2 = 5, x -> x = 3
+Systems (see also: help solve_system):
+  solve([x+y=3, x-y=1], [x, y])      -> { x = 2, y = 1 }
+  solve([a*x+y=1, x-y=0], [x, y])    -> { x = 1/(a+1), ... } requires a+1 != 0
+  solve([x^2+y^2=25, x+y=7], [x, y]) -> { x = 3, y = 4 } or { x = 4, y = 3 }"
+            .to_string(),
+
+        "solve_system" => "\
+Command: solve_system(eq1; ...; eqn; var1; ...; varn)
+         solve_system([eq1, ...], [var1, ...])    (same as solve list form)
+Description: Solves a square system of equations. The unknowns list DRIVES the
+             classification: any other symbol is a symbolic parameter carried
+             into exact coefficients. Every emitted nonlinear pair is VERIFIED
+             exactly against BOTH equations before being shown.
+Supported:
+  Linear n×n over rationals (Cramer/Gauss, exact fractions)
+  Parametric 2x2 (symbolic Cramer; solutions carry the det != 0 condition)
+  Nonlinear 2x2 with one equation linear in an unknown (isolate-substitute-
+  solve-verify): line + parabola/circle/hyperbola, verified surd pairs
+Honest declines (never fabricated): symbolic det = 0 (rank classification),
+  systems with no isolatable equation (two quadratics), parametric nonlinear.
+Examples:
+  solve_system(x+y=3; x-y=1; x; y)          -> { x = 2, y = 1 }
+  solve_system([x*y=6, x+y=5], [x, y])      -> { x = 2, y = 3 } or { x = 3, y = 2 }
+  solve([x+y=1, x+y=2], [x, y])             -> no solution (inconsistent)"
             .to_string(),
 
         "dsolve" => "\
