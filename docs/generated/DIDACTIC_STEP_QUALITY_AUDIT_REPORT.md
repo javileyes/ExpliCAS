@@ -450,7 +450,7 @@ Steps:
 1. `Aplicar identidad de arctangentes`
    - before: `arctan(1/3) + arctan(3) - 1/2 · pi`
    - after: `sign(1/3) · pi/2 - 1/2 · pi`
-   - before_latex: `{\color{red}{\text{arctan}(\frac{1}{3}) + \text{arctan}(3)}} - \frac{1}{2}\cdot \pi`
+   - before_latex: `{\color{red}{\arctan(\frac{1}{3}) + \arctan(3)}} - \frac{1}{2}\cdot \pi`
    - after_latex: `{\color{green}{\text{sign}(\frac{1}{3})\cdot \frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
    - substeps:
      1. `Juntar la pareja que encaja con la identidad`

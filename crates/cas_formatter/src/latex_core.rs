@@ -861,6 +861,15 @@ pub trait LaTeXRenderer {
 
     /// Format function calls
     fn format_function(&self, name: &str, args: &[ExprId]) -> String {
+        if !args.is_empty() {
+            if let Some(rendered) = crate::function_latex::unary_function_latex(
+                name,
+                args.len(),
+                &self.expr_to_latex(args[0], false),
+            ) {
+                return rendered;
+            }
+        }
         match name {
             "fact" | "factorial" if args.len() == 1 => {
                 let needs_parens = matches!(
@@ -896,64 +905,18 @@ pub trait LaTeXRenderer {
                 let end = self.expr_to_latex(args[3], false);
                 format!("\\prod_{{{}={}}}^{{{}}} {}", var, start, end, expr)
             }
-            "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
-                format!("\\{}({})", name, self.expr_to_latex(args[0], false))
-            }
-            // Inverse trig: use \arcsin, \arccos, \arctan (MathJax-compatible)
-            "asin" | "arcsin" => {
-                format!("\\arcsin({})", self.expr_to_latex(args[0], false))
-            }
-            "acos" | "arccos" => {
-                format!("\\arccos({})", self.expr_to_latex(args[0], false))
-            }
-            "atan" | "arctan" => {
-                format!("\\arctan({})", self.expr_to_latex(args[0], false))
-            }
-            "sinh" | "cosh" | "tanh" => {
-                format!("\\{}({})", name, self.expr_to_latex(args[0], false))
-            }
-            // Inverse hyperbolic and matrix functions: render as proper math operators
-            // (\operatorname) instead of leaking through the \text{name}(...) fallback.
-            "asinh" | "acosh" | "atanh" | "asech" | "acsch" | "acoth" if args.len() == 1 => {
-                format!(
-                    "\\operatorname{{{}}}({})",
-                    name,
-                    self.expr_to_latex(args[0], false)
-                )
-            }
-            "det" | "trace" | "transpose" | "inverse" | "adjugate" | "rref" | "charpoly"
-            | "eigenvalues" | "eigenvectors" | "rank" | "nullspace"
-                if args.len() == 1 =>
-            {
-                format!(
-                    "\\operatorname{{{}}}({})",
-                    name,
-                    self.expr_to_latex(args[0], false)
-                )
-            }
-            "ln" => format!("\\ln({})", self.expr_to_latex(args[0], false)),
-            "log" if args.len() == 1 => {
-                format!("\\log({})", self.expr_to_latex(args[0], false))
-            }
-            "log10" if args.len() == 1 => {
-                format!("\\log_{{10}}({})", self.expr_to_latex(args[0], false))
-            }
             "log" if args.len() == 2 => {
                 // log(base, arg) where args[0]=base, args[1]=arg
                 let base = self.expr_to_latex(args[0], false);
                 let arg = self.expr_to_latex(args[1], false);
                 format!("\\log_{{{}}}({})", base, arg)
             }
-            "abs" => format!("|{}|", self.expr_to_latex(args[0], false)),
-            "exp" => format!("e^{{{}}}", self.expr_to_latex(args[0], false)),
             // PlusMinus for quadratic formula display: PlusMinus(a, b) -> a ± b
             "PlusMinus" if args.len() == 2 => {
                 let a = self.expr_to_latex(args[0], false);
                 let b = self.expr_to_latex(args[1], false);
                 format!("{} \\pm {}", a, b)
             }
-            "floor" => format!("\\lfloor {} \\rfloor", self.expr_to_latex(args[0], false)),
-            "ceil" => format!("\\lceil {} \\rceil", self.expr_to_latex(args[0], false)),
             "diff" if args.len() >= 2 => {
                 let expr = self.expr_to_latex(args[0], false);
                 if let Some(pairs) =
@@ -2500,6 +2463,15 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     }
 
     fn format_function_path(&self, name: &str, args: &[ExprId], path: &ExprPath) -> String {
+        if !args.is_empty() {
+            if let Some(rendered) = crate::function_latex::unary_function_latex(
+                name,
+                args.len(),
+                &self.render_with_path(args[0], false, &self.child_path(path, 0)),
+            ) {
+                return rendered;
+            }
+        }
         match name {
             "fact" | "factorial" if args.len() == 1 => {
                 let needs_parens = matches!(
@@ -2524,54 +2496,12 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 let index = self.render_with_path(args[1], false, &self.child_path(path, 1));
                 format!("\\sqrt[{}]{{{}}}", index, radicand)
             }
-            "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
-                format!(
-                    "\\{}({})",
-                    name,
-                    self.render_with_path(args[0], false, &self.child_path(path, 0))
-                )
-            }
-            // Inverse hyperbolic + matrix functions: \operatorname instead of the \text{} fallback,
-            // matching expr_to_latex so the highlighted trace renders them consistently.
-            "asinh" | "acosh" | "atanh" | "asech" | "acsch" | "acoth" if args.len() == 1 => {
-                format!(
-                    "\\operatorname{{{}}}({})",
-                    name,
-                    self.render_with_path(args[0], false, &self.child_path(path, 0))
-                )
-            }
-            "det" | "trace" | "transpose" | "inverse" | "adjugate" | "rref" | "charpoly"
-            | "eigenvalues" | "eigenvectors" | "rank" | "nullspace"
-                if args.len() == 1 =>
-            {
-                format!(
-                    "\\operatorname{{{}}}({})",
-                    name,
-                    self.render_with_path(args[0], false, &self.child_path(path, 0))
-                )
-            }
-            "ln" => format!(
-                "\\ln({})",
-                self.render_with_path(args[0], false, &self.child_path(path, 0))
-            ),
-            "log" if args.len() == 1 => format!(
-                "\\log({})",
-                self.render_with_path(args[0], false, &self.child_path(path, 0))
-            ),
-            "log10" if args.len() == 1 => format!(
-                "\\log_{{10}}({})",
-                self.render_with_path(args[0], false, &self.child_path(path, 0))
-            ),
             "log" if args.len() == 2 => {
                 // log(base, arg) where args[0]=base, args[1]=arg
                 let base = self.render_with_path(args[0], false, &self.child_path(path, 0));
                 let arg = self.render_with_path(args[1], false, &self.child_path(path, 1));
                 format!("\\log_{{{}}}({})", base, arg)
             }
-            "abs" => format!(
-                "|{}|",
-                self.render_with_path(args[0], false, &self.child_path(path, 0))
-            ),
             "diff" if args.len() >= 2 => {
                 let expr = self.render_with_path(args[0], false, &self.child_path(path, 0));
                 if let Some(pairs) = diff_tail_pairs(self.context, &args[1..], |a| {

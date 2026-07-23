@@ -142,11 +142,74 @@ pub(super) fn render_step_wire_latex(
             .to_latex()
         );
     }
+    let rule_latex = derive_rule_latex_from_global(step, &before_latex, &after_latex, is_first)
+        .unwrap_or_else(|| render_normalized_rule_latex(context, step, is_first));
     RenderedStepWireLatex {
         before_latex,
         after_latex,
-        rule_latex: render_normalized_rule_latex(context, step, is_first),
+        rule_latex,
     }
+}
+
+/// Extract the single brace-balanced `\color{<color>}{…}` span of a rendered
+/// global state. Returns `(span, is_full)`; `None` when the state has zero or
+/// several spans of that color (multi-term highlights keep the local render).
+fn single_color_span(latex: &str, color: &str) -> Option<(String, bool)> {
+    let needle = format!("\\color{{{}}}{{", color);
+    let start = latex.find(&needle)?;
+    let bytes = latex.as_bytes();
+    let span_start = start + needle.len();
+    let mut depth = 1usize;
+    let mut k = span_start;
+    while k < bytes.len() && depth > 0 {
+        match bytes[k] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        k += 1;
+    }
+    if depth != 0 || latex[k..].contains(&needle) {
+        return None;
+    }
+    let span = latex[span_start..k - 1].to_string();
+    // Wrapper shape `{\color{c}{SPAN}}`: after the span's closing brace only
+    // the wrapper's final `}` may remain for the span to cover the full state.
+    let full = start == 1 && latex.starts_with('{') && latex[k..].trim_end() == "}";
+    Some((span, full))
+}
+
+/// Coherencia local-vs-global (auditoría educativa 2026-07-23, ciclo E2): el
+/// fragmento resaltado del `rule_latex` se EXTRAE del mismo render global que
+/// el usuario ve en `before_latex`/`after_latex`, así el zoom siempre muestra
+/// una forma que existe en la cadena visible (misma tabla de nombres, mismo
+/// orden de términos). Un rojo a-pantalla-completa solo se acepta en los
+/// verbos de cálculo y en el PRIMER paso del wire (ahí el "sitio" ES la
+/// expresión entera: d/dx, ∫, Σ, taylor, apart, verbos de matriz…); en el
+/// resto se conserva el render local, que al menos enseña el sitio real de la
+/// regla.
+fn derive_rule_latex_from_global(
+    step: &Step,
+    before_latex: &str,
+    after_latex: &str,
+    is_first: bool,
+) -> Option<String> {
+    let (red, red_full) = single_color_span(before_latex, "red")?;
+    let (green, _) = single_color_span(after_latex, "green")?;
+    let full_red_ok = is_first
+        || matches!(
+            step.rule_name.as_str(),
+            "Symbolic Differentiation" | "Symbolic Integration" | "Higher-Order Differentiation"
+        )
+        || step.rule_name.starts_with("Evaluar límite")
+        || step.rule_name == "Calcular el límite";
+    if red_full && !full_red_ok {
+        return None;
+    }
+    Some(format!(
+        "{{\\color{{red}}{{{}}}}} \\rightarrow {{\\color{{green}}{{{}}}}}",
+        red, green
+    ))
 }
 
 /// Coherent-highlight policy (auditoría educativa 2026-07-23): the GREEN side

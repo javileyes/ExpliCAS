@@ -14,6 +14,7 @@ pub mod display_context;
 pub mod display_hint_builder;
 pub mod display_transforms;
 pub mod escape;
+mod function_latex;
 pub mod latex;
 pub mod latex_clean;
 pub mod latex_core;
