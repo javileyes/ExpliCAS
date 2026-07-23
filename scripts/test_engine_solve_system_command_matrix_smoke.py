@@ -30,7 +30,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         # nonlinear supported + 1 nonlinear proven-empty + 2 honest residual
         # rows. Las DOS filas residuales de S1 (no-lineal, coef surd)
         # GRADUARON en S2 — el contrato migró de decline a resultado.
-        self.assertEqual(len(cases), 33)
+        self.assertEqual(len(cases), 35)
 
         names = {case.name for case in cases}
         self.assertIn("parametric_2x2_symbolic_det_condition", names)
@@ -49,7 +49,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         supported = [c for c in cases if c.outcome == "supported"]
         residual = [c for c in cases if c.outcome == "honest_residual"]
         degenerate = [c for c in cases if c.outcome in {"dependent", "inconsistent"}]
-        self.assertEqual(len(supported), 26)
+        self.assertEqual(len(supported), 28)
         self.assertEqual(len(residual), 2)
         self.assertEqual(len(degenerate), 5)
 
@@ -59,7 +59,7 @@ class SolveSystemCommandMatrixRegistryTest(unittest.TestCase):
         )
 
         conditioned = [c for c in cases if c.condition_regime == "det_nonzero"]
-        self.assertEqual(len(conditioned), 4)
+        self.assertEqual(len(conditioned), 5)
         for case in conditioned:
             self.assertIn("requires:", case.expected_result)
 

@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 671 (newest first)
+Active entries: 672 (newest first)
 
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
@@ -127,6 +127,7 @@ Active entries: 671 (newest first)
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`try_integrating_factor_exact`, insertado... | CAPACIDAD (Fase 4 · O9-μ, tanda-9 ciclo 1/2): factor integrante simple μ(x)/μ(y) — la no-exacta se vuelve exacta y DELEGA; el último opcional acotado de la fase cerrado
 - 2026-07-23 | `retained` | `.claude/skills/auto-mejora/SKILL.md` (bloque de fases reescrito al estado 20... | META (tanda-9 ciclo 2/2): skill y docs de fases a estado real — Fases 1-3 cerradas, Fase 4 completa salvo series, frente S existente; fuentes de candidatos vigentes re-declaradas
 - 2026-07-23 | `retained` | `linear_system/symbolic2.rs` (`extract_symbolic_row` — la partición del multi... | CAPACIDAD (frente S · S6, tanda-10 ciclo 1/2): Cramer simbólico 3×3 — la partición generalizada a n incógnitas y los determinantes polinómicos COMPARTIDOS con la resultante; el peldaño más maduro del frente graduado
+- 2026-07-23 | `retained` | `linear_system_command_eval/solve.rs` (el brazo `_` gana el fallback simbólic... | CAPACIDAD (frente S · S7, tanda-10 ciclo 2/2): Cramer simbólico n×n general — el brazo n≥4 cableado sobre el código ya-genérico de S6; F11b sondeado y devuelto a scoping con su prerequisito nombrado
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`diff_call_order`/`scan_max_diff_order`: ... | CAPACIDAD (Fase 4 · O4, tanda-5 ciclo 1/2): 2º orden homogénea por discriminante exacto INTERNO — la linealidad no es solo el gate: también las ecuaciones del IVP salen de las BASES
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (`distribute_structural`: distribución Mul... | CAPACIDAD (Fase 4 · O5, tanda-5 ciclo 2/2): coeficientes indeterminados — el collector por función-base sobre derivadas ESTRUCTURALES; Gauss racional propio; el gate por-base verificaba contra la ecuación equivocada; TANDA-5 COMPLETA
 - 2026-07-22 | `retained` | `cas_engine/eval/dsolve_action.rs` (refactor extraer-antes-de-abstraer: `line... | CAPACIDAD (Fase 4 · O8, tanda-6 ciclo 1/2): Bernoulli + homogéneas por composición de métodos graduados — el cero aparcado mata otro colector; la ruta implícita racional esquiva el surd H19 por diseño
@@ -21217,3 +21218,18 @@ Active entries: 671 (newest first)
 - retained learning:
   - **Generalizar el extractor y REESCRIBIR el caso base como wrapper es el refactor de riesgo mínimo**: una sola implementación de la partición, el caso 2×2 pineado byte-exacto valida la generalización gratis, y el diff del caso base es «pop, pop».
   - **Un helper compartido entre métodos hermanos (poly_determinant S5↔S6) pertenece al módulo de DATOS (symbolic2), no al de comando** — el segundo consumidor es el momento de moverlo, no de copiarlo.
+
+## 2026-07-23 - CAPACIDAD (frente S · S7, tanda-10 ciclo 2/2): Cramer simbólico n×n general — el brazo n≥4 cableado sobre el código ya-genérico de S6; F11b sondeado y devuelto a scoping con su prerequisito nombrado
+
+- area: `linear_system_command_eval/solve.rs` (el brazo `_` gana el fallback simbólico — mismo espejo que n==2/n==3: el error racional se conserva si el simbólico declina; el presupuesto del cofactor es el guard deliberado contra el blowup O(n!)) + 2 filas lane (35 casos) + contrato `solve_system_parametric_nxn_s7_contract` + pin del S6-contract actualizado (el «4×4 declina» graduó DENTRO de la misma tanda)
+- status: `retained`. Lane 35/35.
+- capture:
+  - investment_class: capacidad (peldaño «n≥4 = trivial si se pide» del ledger S6 — el pivote tras sondear F11b).
+  - **F11b SONDEADO Y DEVUELTO A SCOPING (el hallazgo que manda del ciclo):** el plan «reutiliza el driver F8 con testigos z=t y z=i·t» tiene un PREREQUISITO no-scopeado — `conjugate`/`Re`/`Im` NO pliegan simbólicamente bajo `--complex on` (ni `conj(t)/t`): la maquinaria compleja de Fase 2 cubre principal-branch de literales, no distribución de conj sobre símbolos. Antes de F11b hace falta un ciclo «conj/Re/Im simbólico elemental» con su propia pregunta de diseño (¿los símbolos son real-asumidos bajo --complex on? — la respuesta decide si conj(t)→t es sound) — anotado como mini-scoping pendiente en el doc de Fase 3.
+  - cell: `[a·x+y+z+w=1, x−y=0, y−z=0, z−w=0]` → `{x=y=z=w=1/(a+3)}` + `a+3 ≠ 0`; RHS simbólico → `{p/4}`; racional 4×4 y degenerado byte-idénticos/honestos.
+  - Gotcha operativo re-confirmado: el bloque de contrato que edité había sido REFORMATEADO por rustfmt en la cadena del ciclo anterior — el ancla falló y la lección «relee el archivo real tras rustfmt» aplicó a la primera (presupuesto de fricción respetado: 1 reintento con lectura).
+- observed: workspace/clippy/scorecards en el commit; huella: solo la lane propia (33→35).
+- decision: retener. El frente S queda sin peldaños S-class; los restantes son M+ (rank det=0, Res≡0, localización de outcomes).
+- retained learning:
+  - **Sondear el candidato ANTES de comprometerse salvó el ciclo**: F11b parecía «reuso del driver F8» y era en realidad capacidad-compleja-nueva sin scoping; el pivote al peldaño acotado mantuvo la tanda retenible y el hallazgo (prerequisito conj simbólico) vale tanto como un ciclo — la próxima selección arranca con la verdad fresca.
+  - **Un fallback ya-genérico se cablea por brazo, no por reescritura**: n≥4 costó ~15 líneas porque S6 pagó la generalización; escalonar generalización (n=3) y cableado (n≥4) en ciclos separados mantuvo AMBOS acotados.

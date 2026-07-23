@@ -10263,17 +10263,49 @@ fn solve_system_parametric_3x3_s6_contract() {
         "{degen}"
     );
 
-    // Pins de no-robo: racional 3×3 y paramétrico 2×2 byte-idénticos; el
-    // 4×4 paramétrico sigue declinando honesto (alcance declarado).
+    // Pins de no-robo: racional 3×3 y paramétrico 2×2 byte-idénticos.
     assert_eq!(
         r("solve([x+y+z=6, x-y=0, z=3], [x, y, z])"),
         "{ x = 3/2, y = 3/2, z = 3 }"
     );
     let s1 = r("solve([a*x+y=1, x-y=0], [x, y])");
     assert!(s1.starts_with("{ x = 1 / (a + 1)"), "{s1}");
+    // El 4×4 paramétrico graduó en S7 (misma tanda — ver su contrato).
     let four = r("solve([a*x+y+z+w=1, x-y=0, y-z=0, z-w=0], [x, y, z, w])");
+    assert!(four.starts_with("{ x = 1 / (a + 3)"), "{four}");
+}
+
+#[test]
+fn solve_system_parametric_nxn_s7_contract() {
+    // Frente S · S7: el Cramer simbólico generalizado cableado para n ≥ 4 —
+    // el presupuesto del cofactor es el guard deliberado contra el blowup;
+    // el determinante degenerado sigue declinando honesto.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input])
+            .output()
+            .expect("Failed to run CLI");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    let flagship = r("solve([a*x+y+z+w=1, x-y=0, y-z=0, z-w=0], [x, y, z, w])");
     assert!(
-        four.contains("non-linear") || four.contains("Error"),
-        "{four}"
+        flagship
+            .starts_with("{ x = 1 / (a + 3), y = 1 / (a + 3), z = 1 / (a + 3), w = 1 / (a + 3) }"),
+        "{flagship}"
+    );
+    assert!(flagship.contains("requires: a + 3 != 0"), "{flagship}");
+    assert_eq!(
+        r("solve([x+y+z+w=p, x-y=0, y-z=0, z-w=0], [x, y, z, w])"),
+        "{ x = 1/4·p, y = 1/4·p, z = 1/4·p, w = 1/4·p }"
+    );
+    // Racional 4×4 byte-idéntico (no-robo) y degenerado honesto.
+    assert_eq!(
+        r("solve([x+y+z+w=10, y+z+w=9, z+w=7, w=4], [x, y, z, w])"),
+        "{ x = 1, y = 2, z = 3, w = 4 }"
+    );
+    let degen = r("solve([a*x+y+z+w=1, a*x+y+z+w=2, x-y=0, y-z=0], [x, y, z, w])");
+    assert!(
+        degen.contains("rank classification is a future rung"),
+        "{degen}"
     );
 }

@@ -91,7 +91,32 @@ pub(super) fn solve_linear_system_parts(
         }
         _ => {
             let var_refs: Vec<&str> = vars.iter().map(String::as_str).collect();
-            crate::solve_nxn_linear_system(ctx, exprs, &var_refs)
+            match crate::solve_nxn_linear_system(ctx, exprs, &var_refs) {
+                Ok(result) => Ok(result),
+                Err(
+                    e @ (crate::LinearSystemError::InfiniteSolutions
+                    | crate::LinearSystemError::NoSolution),
+                ) => Err(e),
+                // S7: the generic symbolic Cramer covers n ≥ 4 too — the
+                // cofactor budget is the deliberate guard against blowup.
+                Err(rational_error) => match crate::solve_nxn_symbolic(ctx, exprs, vars) {
+                    Ok(crate::Symbolic2x2Outcome::Unique {
+                        values,
+                        det_condition,
+                    }) => Ok(crate::LinSolveResult::UniqueExpr {
+                        values,
+                        nonzero_conditions: det_condition.into_iter().collect(),
+                    }),
+                    Ok(crate::Symbolic2x2Outcome::DegenerateSymbolic) => {
+                        Err(crate::LinearSystemError::NotLinear(
+                            "symbolic coefficients with det = 0: \
+                             rank classification is a future rung"
+                                .to_string(),
+                        ))
+                    }
+                    Err(_) => Err(rational_error),
+                },
+            }
         }
     }
 }

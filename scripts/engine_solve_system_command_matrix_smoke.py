@@ -347,6 +347,26 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
+        name="parametric_4x4_symbolic_det_condition",
+        expr="solve([a*x+y+z+w=1, x-y=0, y-z=0, z-w=0], [x, y, z, w])",
+        expected_result=(
+            "{ x = 1 / (a + 3), y = 1 / (a + 3), z = 1 / (a + 3), "
+            "w = 1 / (a + 3) }\n  requires: a + 3 != 0"
+        ),
+        family="parametrico",
+        size_regime="n_by_n",
+        coefficient_regime="symbolic_parameter",
+        condition_regime="det_nonzero",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="parametric_4x4_symbolic_rhs_constant_det",
+        expr="solve([x+y+z+w=p, x-y=0, y-z=0, z-w=0], [x, y, z, w])",
+        expected_result="{ x = 1/4·p, y = 1/4·p, z = 1/4·p, w = 1/4·p }",
+        family="parametrico",
+        size_regime="n_by_n",
+        coefficient_regime="symbolic_parameter",
+    ),
+    SolveSystemCommandMatrixCase(
         name="residual_parametric_degenerate_det_zero",
         expr="solve([a*x+y=1, a*x+y=2], [x, y])",
         expected_result=(
