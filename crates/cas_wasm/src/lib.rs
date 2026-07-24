@@ -143,6 +143,22 @@ mod tests {
     }
 
     #[test]
+    fn session_bare_ref_input_latex_escapes_hash() {
+        // The bare `#N` shorthand parses as a variable literally named `#N`;
+        // every LaTeX renderer must escape the TeX macro-parameter character
+        // or MathJax rejects the web header ("You can't use 'macro parameter
+        // character #' in math mode"). The in-expression form always escaped
+        // — the bare form must match it.
+        let mut session = super::WasmSession::new();
+        session.eval("5 + 5", "{}");
+        for (input, expected_latex) in [("#1", "\\#1"), ("#1 + 1", "\\#1 + 1")] {
+            let wire = session.eval(input, "{}");
+            let parsed: serde_json::Value = serde_json::from_str(&wire).expect("valid json");
+            assert_eq!(parsed["input_latex"], *expected_latex, "{input}: {wire}");
+        }
+    }
+
+    #[test]
     fn session_clear_resets_references() {
         let mut session = super::WasmSession::new();
         session.eval("5 + 5", "{}");

@@ -207,7 +207,7 @@ pub trait LaTeXRenderer {
         let ctx = self.context();
         match ctx.get(id) {
             Expr::Number(n) => self.format_number(n),
-            Expr::Variable(sym_id) => ctx.sym_name(*sym_id).to_string(),
+            Expr::Variable(sym_id) => crate::escape::latex_variable_name(ctx.sym_name(*sym_id)),
             Expr::Constant(c) => self.format_constant(c),
             Expr::Add(l, r) => self.format_add(*l, *r),
             Expr::Sub(l, r) => self.format_sub(*l, *r),
@@ -1610,7 +1610,9 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     ) -> String {
         match self.context.get(id) {
             Expr::Number(n) => self.format_number(n),
-            Expr::Variable(sym_id) => self.context.sym_name(*sym_id).to_string(),
+            Expr::Variable(sym_id) => {
+                crate::escape::latex_variable_name(self.context.sym_name(*sym_id))
+            }
             Expr::Constant(c) => self.format_constant(c),
             Expr::Add(_, _) | Expr::Sub(_, _) => self.format_additive_path(id, current_path),
             Expr::Mul(l, r) => self.format_mul_path(*l, *r, parent_needs_parens, current_path),
