@@ -136,15 +136,7 @@ fn quarantine_entry(input: &str) -> Option<&'static KnownDivergence> {
 /// divergence: the sweep must neither wedge on them nor certify them.
 /// Self-invalidating like `QUARANTINE`: an entry that terminates again fails
 /// the sweep until it is removed.
-const HANG_QUARANTINE: &[&str] = &[
-    // docs/simplify_zero_mixed_corpus.csv (found 2026-07-24) — each addend is
-    // an identity-zero that folds alone in <0.3s (double angle → 0,
-    // partial fractions → 0); their SUM never terminates in EITHER mode.
-    // Known engine class: expand↔factor-style oscillation (an orchestration
-    // fix, deliberately not rushed). Both comma-orders of the same sum.
-    "(sin(x)^2 - (1 - cos(2*x))/2) + (1/(u*(u+1)) - 1/u + 1/(u+1))",
-    "(1/(u*(u+1)) - 1/u + 1/(u+1)) + (sin(x)^2 - (1 - cos(2*x))/2)",
-];
+const HANG_QUARANTINE: &[&str] = &[];
 
 /// A fresh (unquarantined) hang leaks a spinning thread per mode; cap them so
 /// a pathological corpus drift cannot melt the machine before the report.

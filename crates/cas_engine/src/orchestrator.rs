@@ -13977,11 +13977,43 @@ fn transplant_expr_subtree(src: &Context, id: ExprId, dst: &mut Context) -> Expr
     }
 }
 
+thread_local! {
+    static ISOLATED_SIMPLIFY_NESTING: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Isolated probe pipelines nest geometrically on mixed trig+rational sums:
+/// the root-shortcut layer probes each additive child with a FULL pipeline,
+/// whose own root-shortcut layer probes ITS children the same way
+/// (`cos(2x)/2 + 1/(u(u+1)) - 1/u + 1/(u+1)` spun >30s in BOTH steps modes,
+/// while `run_default_simplify`'s twin guard already capped its probes at
+/// two levels). Deeper levels only re-derive the same subprobes; declining
+/// is sound — an unproven probe keeps the expression unsimplified.
+const ISOLATED_SIMPLIFY_MAX_NESTING: usize = 1;
+
+struct IsolatedSimplifyNestingGuard;
+
+impl Drop for IsolatedSimplifyNestingGuard {
+    fn drop(&mut self) {
+        ISOLATED_SIMPLIFY_NESTING.with(|depth| depth.set(depth.get().saturating_sub(1)));
+    }
+}
+
+fn enter_isolated_simplify_probe() -> Option<IsolatedSimplifyNestingGuard> {
+    ISOLATED_SIMPLIFY_NESTING.with(|depth| {
+        if depth.get() >= ISOLATED_SIMPLIFY_MAX_NESTING {
+            return None;
+        }
+        depth.set(depth.get() + 1);
+        Some(IsolatedSimplifyNestingGuard)
+    })
+}
+
 fn isolated_simplify_expr_if_changed(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
+    let _nesting_guard = enter_isolated_simplify_probe()?;
     let mut simplifier = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, ctx);
     let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(
@@ -14002,6 +14034,9 @@ fn isolated_simplify_rewrites_to_target(
     expr: ExprId,
     target: ExprId,
 ) -> bool {
+    let Some(_nesting_guard) = enter_isolated_simplify_probe() else {
+        return false;
+    };
     let mut simplifier = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, ctx);
     let mut orchestrator = Orchestrator::new();
