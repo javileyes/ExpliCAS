@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 690 (newest first)
+Active entries: 691 (newest first)
 
 - 2026-07-24 | `retained` | `cas_didactic/didactic/visible_rule_names.rs` — el audit listó 5 nombres sin ... | EDUCATIVO (frente E · E4): nombres de regla en inglés a la tabla es/en — 4 de los 5 del audit ya habían MUERTO con E3 (eran confeti de solve); quedaban 2 vivos + 1 variante latente, todos mapeados (fugas en el corpus 210: 0)
 - 2026-07-24 | `retained` | `cas_didactic/step_payloads/events.rs` — el candidato del audit era «fold de ... | EDUCATIVO (frente E · fold vectorial→unificación del camino de eventos): los artefactos x^(2-1) restantes NO eran de los verbos vectoriales — eran el camino de EVENTOS renderizando crudo; ahora delega en build_step_wire (D 8→0, la familia entera muerta; F −1)
@@ -125,6 +125,7 @@ Active entries: 690 (newest first)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — el detector de coste cero del peldaño 3... | EDUCATIVO (frente E · narración solve_steps, peldaño 4): el barrido `let (sol, _)` enhebra la familia poly-en-átomo entera — √x/ln/sin²/|x|/Laurent narran sustitución + inversa por raíz + pasos de rama (24/42 solves del corpus narran; verruga `- 0` normalizada)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — los 3 delegadores abs del barrido: (1) ... | EDUCATIVO (frente E · narración solve_steps, peldaño 5): las ecuaciones abs narran — |E|=0 con su línea de equivalencia + cadena del argumento, y los splits verificados |f|=±g con una línea por caso ([060] queda con dueño exacto nombrado: el handler piecewise de g-lineal)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — `try_solve_single_abs_polynomial_relati... | EDUCATIVO (frente E · narración solve_steps, peldaño 6): el split-por-signo de abs narra — `|x²−1|=x+1` (el [060] del audit) y las inecuaciones `x²−3|x|+2<0` muestran sus dos casos con la relación SUSTITUIDA (26/42 solves del corpus narran)
+- 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — el arm tan(u)=tan(v) del ungated (progr... | EDUCATIVO (frente E · narración solve_steps, peldaño 7): tan(u)=tan(v) narra — la identidad definitoria (con la ecuación del usuario como línea) + las familias supervivientes al filtro de polos (27/42 solves del corpus narran)
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
 - 2026-07-23 | `retained` | `cas_solver/linear_system/symbolic2.rs` (NUEVO hermano del módulo racional: e... | ROBUSTEZ+CAPACIDAD (frente S · S1, tanda-8 ciclo 1/4): sistemas en solve — la lista de incógnitas manda; Cramer simbólico 2×2 con det≠0 como condición estructurada; el decline matemático deja de ser E_INTERNAL; lane matrix propia (18ª suite)
@@ -21493,3 +21494,15 @@ Active entries: 690 (newest first)
 - retained learning:
   - **El trace va en el CALL-SITE, no en la entrada del handler**: con recursión, «quién se ejecuta» es ruido y «quién responde» es la señal — dos eprintln por sitio de respuesta identificaron al dueño en una corrida (2ª instancia del patrón instrumenta-antes-de-implementar).
   - **`git add -A` en un repo con edición humana concurrente puede barrer cambios ajenos al ciclo**: verificar `git status` limpio al INICIO no cubre ediciones DURANTE el ciclo — antes del commit, `git diff --stat` y preguntar por cualquier archivo fuera del área tocada (aquí entró un reorden benigno de examples.csv que además movió los índices del harness).
+
+## 2026-07-24 - EDUCATIVO (frente E · narración solve_steps, peldaño 7): tan(u)=tan(v) narra — la identidad definitoria (con la ecuación del usuario como línea) + las familias supervivientes al filtro de polos (27/42 solves del corpus narran)
+
+- area: `cas_solver/solve_backend_local.rs` — el arm tan(u)=tan(v) del ungated (progresión aritmética `w·x = kπ − Δb` menos progresiones de polos, decidido EXACTO por irracionalidad de π) devolvía su `SolutionSet::Periodic` directo con `steps_out` YA en scope desde tanda-5 — 6 líneas: la línea de identidad («Tangentes iguales: los argumentos difieren en un múltiplo de π», template es/en nuevo, con la ecuación ORIGINAL como su línea — la identidad se predica de ella) + `push_periodic_family_steps` (las bases ya filtradas de polos, en la forma exacta del set).
+- status: `retained`. Probes: `tan(x)=tan(2x)` → identidad + `x = π·k`; `tan(2x)=tan(3x)` ídem; `tan(x)=tan(x+π/3)` mantiene su residual honesto (argumentos paralelos — narra los pasos de aislamiento pre-existentes). **Corpus: 27/42 solves narran (+1)**; A/E/F sin moverse. Contract test con descripciones exactas.
+- capture:
+  - investment_class: educativo (peldaño 7 — el capítulo trig del corpus narra COMPLETO).
+  - El coste marginal de narrar cae con cada peldaño: helper de familias + steps_out enhebrado + tabla de templates ya existen — este arm costó 6 líneas + 1 fila. La inversión de infraestructura de los peldaños 1-4 es lo que se amortiza.
+- observed: workspace/clippy/scorecards en el commit.
+- decision: retener. Siguientes: inecuaciones E5 (familia I), meta-mantenimiento maduro (~16 ciclos).
+- retained learning:
+  - **La línea de una identidad se predica de la ECUACIÓN DEL USUARIO, no de una forma interna**: usar la eq original como equation_after de la línea de identidad (tan(x)=tan(2x)) evita inventar una ecuación de reducción con símbolos que el alumno no escribió — el patrón u-sintética de tanda-5 aplicado a líneas de identidad.

@@ -8718,6 +8718,15 @@ fn try_solve_periodic_trig_equation_ungated(
                     let pc = simplifier.context.add(Expr::Number(period_coeff));
                     let period = simplifier.context.add(Expr::Mul(pc, pi));
                     let (period, _) = simplifier.simplify(period);
+                    // Narration: the defining identity (with the user's equation
+                    // as its line), then one line per surviving family — the
+                    // pole-filtered bases, in the exact shape the set displays.
+                    steps_out.push(crate::SolveStep::new(
+                        "Equal tangents: the arguments differ by a multiple of pi".to_string(),
+                        eq.clone(),
+                        crate::ImportanceLevel::Medium,
+                    ));
+                    push_periodic_family_steps(simplifier, var, &bases, period, steps_out);
                     return Some(SolutionSet::Periodic { bases, period });
                 }
             }

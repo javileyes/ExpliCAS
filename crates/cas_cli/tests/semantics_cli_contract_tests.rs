@@ -11192,3 +11192,31 @@ fn eval_solve_abs_equations_narrate_argument_zero_and_case_splits() {
     );
     assert_eq!(steps[0]["equation"], "x^2 + 2 - 3·x < 0");
 }
+
+#[test]
+fn eval_solve_equal_tangents_narrates_identity_and_family() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(tan(x)=tan(2*x), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Tangentes iguales: los argumentos difieren en un múltiplo de π",
+            "Familia periódica de soluciones (k entero cualquiera)",
+        ],
+        "expected the equal-tangents narration, got {steps:?}"
+    );
+    assert_eq!(steps[1]["equation"], "x = pi·k");
+}
