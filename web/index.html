@@ -2518,13 +2518,18 @@
 
         // Delete variable card and remove variable from session
         async function deleteVariableCard(varName) {
+            // State first, SYNCHRONOUSLY: the panel refresh that follows a
+            // panel-side delete reads these maps immediately — deferring the
+            // deletion into the 300ms card animation left the popup list (and
+            // in the no-card path, the map itself) stale.
+            delete sessionVariables[varName];
+            updateVariablesBadge();
+
             const card = document.getElementById(`expr-var-${varName}`);
             if (card) {
                 card.style.animation = 'slideOut 0.3s ease-out forwards';
                 setTimeout(() => {
                     card.remove();
-                    delete sessionVariables[varName];
-                    updateVariablesBadge();
 
                     // Check if there are no more cards
                     const remaining = document.querySelectorAll('.expression-card');
@@ -2601,13 +2606,17 @@
         }
 
         async function deleteFunctionCard(fnName) {
+            // State first, SYNCHRONOUSLY (mirror of deleteVariableCard): the
+            // panel refresh after a panel-side delete must see the map already
+            // updated — the 300ms animation used to hold the deletion.
+            delete sessionFunctions[fnName];
+            updateFunctionsBadge();
+
             const card = document.getElementById(`expr-fn-${fnName}`);
             if (card) {
                 card.style.animation = 'slideOut 0.3s ease-out forwards';
                 setTimeout(() => {
                     card.remove();
-                    delete sessionFunctions[fnName];
-                    updateFunctionsBadge();
 
                     const remaining = document.querySelectorAll('.expression-card');
                     if (remaining.length === 0) {
@@ -2615,9 +2624,6 @@
                         if (emptyState) emptyState.style.display = 'block';
                     }
                 }, 300);
-            } else {
-                delete sessionFunctions[fnName];
-                updateFunctionsBadge();
             }
 
             // Also clear from server session (for this tab only)
