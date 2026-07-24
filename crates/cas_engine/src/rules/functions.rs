@@ -342,10 +342,19 @@ impl crate::rule::Rule for AbsNegativeSimplifyRule {
                     .map(|root| crate::infer_implicit_domain(ctx, root, parent_ctx.value_domain()))
             });
         let neg_inner = ctx.add(Expr::Neg(inner));
-        let negative_implied = implicit_domain.as_ref().is_some_and(|id| {
-            let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
-            dc.is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(neg_inner))
-        });
+        // Exact-prover arm, mirroring `AbsPositiveSimplifyRule`: `x < 0` is
+        // `−x > 0` through the same const/surd sign layer (π, e, φ, surds).
+        // Without it the negated sibling never resolved (`|3 − π|` survived
+        // while `|π − 3|` folded) and the result depended on whether the
+        // canonical-negation flip ran before or after the positivity rule.
+        let proven_negative =
+            crate::helpers::prove_positive(ctx, neg_inner, parent_ctx.value_domain())
+                == crate::Proof::Proven;
+        let negative_implied = proven_negative
+            || implicit_domain.as_ref().is_some_and(|id| {
+                let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+                dc.is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(neg_inner))
+            });
 
         let plan = try_plan_abs_negative_rewrite(ctx, expr, negative_implied)?;
         Some(
@@ -1114,7 +1123,25 @@ define_rule!(
     "Abs Sub Normalize",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::POST,
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // A CONSTANT argument with a provable sign is owned by the
+        // positivity/negativity rules — normalizing it here (single-pass
+        // POST, after those rules already ran) flips it into a form nobody
+        // revisits, so `|π − 3|` survived while `|3 − π|` folded and the
+        // result depended on steps mode. Undecidable or variable-bearing
+        // arguments keep the canonical flip (the dedup/cancellation use).
+        if let Some(inner) = try_unwrap_abs_arg(ctx, expr) {
+            if !cas_math::expr_predicates::contains_variable(ctx, inner) {
+                let vd = parent_ctx.value_domain();
+                if crate::helpers::prove_positive(ctx, inner, vd) == crate::Proof::Proven {
+                    return None;
+                }
+                let neg_inner = ctx.add(Expr::Neg(inner));
+                if crate::helpers::prove_positive(ctx, neg_inner, vd) == crate::Proof::Proven {
+                    return None;
+                }
+            }
+        }
         let rewrite = try_rewrite_abs_sub_normalize_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
     }

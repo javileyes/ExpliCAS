@@ -11300,3 +11300,37 @@ fn eval_phi_quadratic_surd_identities_decide_exactly() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "1.61803398875");
 }
+
+#[test]
+fn eval_abs_of_provably_signed_constants_resolves_both_orientations() {
+    // The negativity arm now consults the exact const/surd sign layer
+    // (mirroring the positivity arm), and Abs Sub Normalize leaves provably
+    // signed CONSTANT arguments to those rules — so both orientations fold
+    // and the result no longer depends on steps mode.
+    for (input, expected) in [
+        ("abs(pi - 3)", "pi - 3"),
+        ("abs(3 - pi)", "pi - 3"),
+        ("abs(e - 3)", "3 - e"),
+        ("abs(3 - e)", "3 - e"),
+        ("abs(sqrt(2) - 1)", "sqrt(2) - 1"),
+        ("abs(1 - sqrt(2))", "sqrt(2) - 1"),
+        ("abs(phi - 1)", "phi - 1"),
+        ("abs(1 - phi)", "phi - 1"),
+        ("abs(pi - 4)", "4 - pi"),
+        // The undecidable/variable cases keep their contract.
+        ("abs(x - 1)", "|x - 1|"),
+        ("abs(u - 1) - abs(1 - u)", "0"),
+    ] {
+        let (output, code) = run_cli(&["eval", input, "--format", "json"]);
+        assert_eq!(code, 0, "{input}: {output}");
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "{input}");
+    }
+
+    // Steps mode must not change the result (the old divergence: |π−3| folded
+    // with steps on but not off).
+    let (output, code) = run_cli(&["eval", "abs(pi - 3)", "--steps", "on", "--format", "json"]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "pi - 3");
+}
