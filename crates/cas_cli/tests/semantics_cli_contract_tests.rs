@@ -10976,4 +10976,58 @@ fn eval_solve_periodic_trig_equation_narrates_solve_steps() {
     );
     assert_eq!(steps[0]["equation"], "cos(x) = sqrt(3) / 2");
     assert_eq!(steps[1]["equation"], "x = 1/6·pi");
+
+    // Homogeneous reduction narrates its tan line, then the inner periodic
+    // solve narrates onto the same channel.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(sin(x)=cos(x),x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Reduce a la tangente (divide ambos lados entre cos)",
+            "Invierte tan en un periodo",
+            "Familia periódica de soluciones (k entero cualquiera)",
+        ],
+        "expected the tan-reduction narration, got {steps:?}"
+    );
+    assert_eq!(steps[0]["equation"], "tan(x) = 1");
+
+    // Auxiliary angle narrates its rewrite plus the mapped periodic families.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(sin(x)+sqrt(3)*cos(x)=1,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Ángulo auxiliar: reescribe como R·sin(g + φ) = c/R",
+            "Familia periódica de soluciones (k entero cualquiera)",
+            "Familia periódica de soluciones (k entero cualquiera)",
+        ],
+        "expected the auxiliary-angle narration, got {steps:?}"
+    );
 }

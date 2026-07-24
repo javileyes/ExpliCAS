@@ -3324,7 +3324,7 @@ fn try_solve_homogeneous_linear_trig(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::BuiltinFn;
     if eq.op != cas_ast::RelOp::Eq {
         return None;
@@ -3368,10 +3368,19 @@ fn try_solve_homogeneous_linear_trig(
         rhs,
         op: cas_ast::RelOp::Eq,
     };
-    let (sol, _) = crate::solver_entrypoints_solve::solve(&tan_eq, var, simplifier).ok()?;
+    let (sol, inner_steps) =
+        crate::solver_entrypoints_solve::solve(&tan_eq, var, simplifier).ok()?;
     // Trust only a fully resolved periodic/discrete/empty answer (guard against a residual echo).
     match sol {
-        SolutionSet::Periodic { .. } | SolutionSet::Discrete(_) | SolutionSet::Empty => Some(sol),
+        SolutionSet::Periodic { .. } | SolutionSet::Discrete(_) | SolutionSet::Empty => {
+            let mut steps = vec![crate::SolveStep::new(
+                "Reduce to the tangent (divide both sides by cos)".to_string(),
+                tan_eq,
+                crate::ImportanceLevel::Medium,
+            )];
+            steps.extend(inner_steps);
+            Some((sol, steps))
+        }
         _ => None,
     }
 }
@@ -3465,7 +3474,7 @@ fn try_solve_inhomogeneous_linear_trig(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::BuiltinFn;
     use cas_math::numeric_eval::as_rational_const;
     use num_rational::BigRational;
@@ -3555,9 +3564,18 @@ fn try_solve_inhomogeneous_linear_trig(
         rhs: c_over_r,
         op: cas_ast::RelOp::Eq,
     };
-    let (sol, _) = crate::solver_entrypoints_solve::solve(&new_eq, var, simplifier).ok()?;
+    let (sol, inner_steps) =
+        crate::solver_entrypoints_solve::solve(&new_eq, var, simplifier).ok()?;
     match sol {
-        SolutionSet::Periodic { .. } | SolutionSet::Discrete(_) | SolutionSet::Empty => Some(sol),
+        SolutionSet::Periodic { .. } | SolutionSet::Discrete(_) | SolutionSet::Empty => {
+            let mut steps = vec![crate::SolveStep::new(
+                "Auxiliary angle: rewrite as R*sin(g + phi) = c/R".to_string(),
+                new_eq,
+                crate::ImportanceLevel::Medium,
+            )];
+            steps.extend(inner_steps);
+            Some((sol, steps))
+        }
         _ => None,
     }
 }
@@ -8154,6 +8172,42 @@ pub(crate) fn try_solve_periodic_trig_equation_with_steps(
     out.map(|set| (set, steps))
 }
 
+/// Push one "Periodic family of solutions" narration line per periodic base,
+/// in the exact `x = base + k·T` shape the result set displays. A zero base
+/// narrates as `x = k·T`; no general simplify (it FACTORS the sum into
+/// unreadable forms). Shared by the periodic solver's map-back tail and the
+/// shifted-argument handler (whose u-space solve runs in a synthetic variable
+/// the student never wrote — only the mapped families are honest narration).
+fn push_periodic_family_steps(
+    simplifier: &mut Simplifier,
+    var: &str,
+    bases: &[ExprId],
+    period: ExprId,
+    steps_out: &mut Vec<crate::SolveStep>,
+) {
+    let x = simplifier.context.var(var);
+    let k_var = simplifier.context.var("k");
+    for base in bases {
+        let k_t = simplifier.context.add(Expr::Mul(k_var, period));
+        let base_is_zero = cas_math::numeric_eval::as_rational_const(&simplifier.context, *base)
+            .is_some_and(|q| num_traits::Zero::is_zero(&q));
+        let family = if base_is_zero {
+            k_t
+        } else {
+            simplifier.context.add(Expr::Add(*base, k_t))
+        };
+        steps_out.push(crate::SolveStep::new(
+            "Periodic family of solutions (k any integer)".to_string(),
+            Equation {
+                lhs: x,
+                rhs: family,
+                op: cas_ast::RelOp::Eq,
+            },
+            crate::ImportanceLevel::Medium,
+        ));
+    }
+}
+
 fn try_solve_periodic_trig_equation_ungated(
     eq: &Equation,
     var: &str,
@@ -9051,33 +9105,7 @@ fn try_solve_periodic_trig_equation_ungated(
     let period = fold_rational(simplifier, period);
     // Didactic narration, families half: one step per periodic family, in the
     // exact shape the result set displays (`x = base + k·T`).
-    {
-        let x = simplifier.context.var(var);
-        let k_var = simplifier.context.var("k");
-        for base in &bases {
-            let k_t = simplifier.context.add(Expr::Mul(k_var, period));
-            // A zero base narrates as `x = k·T`, not `x = 0 + k·T`; anything
-            // else stays in the exact `base + k·T` shape the result set shows
-            // (a general simplify here FACTORS the sum into unreadable forms).
-            let base_is_zero =
-                cas_math::numeric_eval::as_rational_const(&simplifier.context, *base)
-                    .is_some_and(|q| num_traits::Zero::is_zero(&q));
-            let family = if base_is_zero {
-                k_t
-            } else {
-                simplifier.context.add(Expr::Add(*base, k_t))
-            };
-            steps_out.push(crate::SolveStep::new(
-                "Periodic family of solutions (k any integer)".to_string(),
-                Equation {
-                    lhs: x,
-                    rhs: family,
-                    op: RelOp::Eq,
-                },
-                crate::ImportanceLevel::Medium,
-            ));
-        }
-    }
+    push_periodic_family_steps(simplifier, var, &bases, period, steps_out);
     let set = SolutionSet::Periodic { bases, period };
     Some(match parametric_range_guard {
         Some(c) => {
@@ -9387,7 +9415,7 @@ fn try_solve_shifted_argument_trig(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::RelOp;
     if eq.op != RelOp::Eq {
         return None;
@@ -9410,7 +9438,15 @@ fn try_solve_shifted_argument_trig(
         op: RelOp::Eq,
     };
     let (u_sol, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
-    map_solution_through_affine(simplifier, u_sol, &a, b)
+    let mapped = map_solution_through_affine(simplifier, u_sol, &a, b)?;
+    // Narrate only the MAPPED families: the u-space sub-solve ran in a
+    // synthetic variable the student never wrote.
+    let mut steps = Vec::new();
+    if let SolutionSet::Periodic { bases, period } = &mapped {
+        let (bases, period) = (bases.clone(), *period);
+        push_periodic_family_steps(simplifier, var, &bases, period, &mut steps);
+    }
+    Some((mapped, steps))
 }
 
 /// Solve `|f(x)| = g(x)` where `f` is a polynomial of degree ≥ 2 and `g` (or, for `|f| = |h|`, its
@@ -10796,8 +10832,8 @@ fn solve_local_core_inner(
     // `trig(a·x + b) = c` with `b` a SYMBOLIC shift (π-multiple, arctan, surd): the angle-addition
     // expansion / isolation would return only the principal root. Solve `trig(u) = c` for `u = a·x + b`
     // (full periodic family) and map back — BEFORE the bare handler simplifies (expands).
-    if let Some(set) = try_solve_shifted_argument_trig(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_shifted_argument_trig(simplifier, eq, var) {
+        return Ok((set, steps));
     }
     // Bare trig equation `sin/cos/tan(x)=c` -> the full periodic family (before the unary-inverse
     // path, which would return only the principal root).
@@ -11049,8 +11085,8 @@ fn solve_local_core_inner(
     // A HOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = 0` (`sin(x) = cos(x)`,
     // `√3·sin(x) − cos(x) = 0`) reduces to `tan(g) = −b/a`; the isolation path otherwise leaks an
     // `arcsin(cos(x)·…)` residual. The inhomogeneous `… = c` (c ≠ 0) declines.
-    if let Some(set) = try_solve_homogeneous_linear_trig(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_homogeneous_linear_trig(simplifier, eq, var) {
+        return Ok((set, steps));
     }
     // `U(x)/√f = k`: normalize to the bare radical `√f = U/k` (square-and-verify owner).
     if let Some(set) = try_solve_poly_over_sqrt_equation(simplifier, eq, var) {
@@ -11067,8 +11103,8 @@ fn solve_local_core_inner(
     // An INHOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = c` (`3·sin(x) + 4·cos(x) = 5`,
     // `sin(x) + cos(x) = 1`) reduces by the auxiliary angle to `sin(g + arctan(b/a)) = c/√(a²+b²)`; the
     // isolation path otherwise leaks an `arcsin(… − cos(x) …)` residual.
-    if let Some(set) = try_solve_inhomogeneous_linear_trig(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_inhomogeneous_linear_trig(simplifier, eq, var) {
+        return Ok((set, steps));
     }
     // `|A(x)| = c` with a trig-bearing argument: the generic abs isolation solves the two branches to
     // PRINCIPAL roots (`|2·sin(x)−1| = 1 → {π/2, 0}`); solve each branch fully so trig stays periodic.

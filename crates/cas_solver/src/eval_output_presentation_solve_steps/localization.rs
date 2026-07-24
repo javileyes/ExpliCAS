@@ -237,6 +237,8 @@ static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
     SolveDesc { template: "Take arcsin of both sides", es: "Toma arcoseno en ambos lados", en: "Take arcsin of both sides" },
     SolveDesc { template: "Invert {0} over one period", es: "Invierte {0} en un periodo", en: "Invert {0} over one period" },
     SolveDesc { template: "Isolate the trigonometric term", es: "Aísla el término trigonométrico", en: "Isolate the trigonometric term" },
+    SolveDesc { template: "Reduce to the tangent (divide both sides by cos)", es: "Reduce a la tangente (divide ambos lados entre cos)", en: "Reduce to the tangent (divide both sides by cos)" },
+    SolveDesc { template: "Auxiliary angle: rewrite as R*sin(g + phi) = c/R", es: "Ángulo auxiliar: reescribe como R·sin(g + φ) = c/R", en: "Auxiliary angle: rewrite as R·sin(g + φ) = c/R" },
     SolveDesc { template: "Second solution within the period", es: "La segunda solución dentro del periodo", en: "Second solution within the period" },
     SolveDesc { template: "Periodic family of solutions (k any integer)", es: "Familia periódica de soluciones (k entero cualquiera)", en: "Periodic family of solutions (k any integer)" },
     SolveDesc { template: "Take arccos of both sides", es: "Toma arcocoseno en ambos lados", en: "Take arccos of both sides" },
