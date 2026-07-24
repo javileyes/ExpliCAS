@@ -10944,4 +10944,36 @@ fn eval_solve_periodic_trig_equation_narrates_solve_steps() {
     let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
     assert_eq!(steps.len(), 1, "expected one family line, got {steps:?}");
     assert_eq!(steps[0]["equation"], "x = pi·k");
+
+    // Coefficient/offset peel narrates the isolation in the CLEAN quotient form
+    // (`cos(x) = √3/2`, not the classifier's rationalized `3/2·3^(-1/2)`), then
+    // the inner periodic inversion narrates onto the same channel.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(2*cos(x)-sqrt(3)=0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Aísla el término trigonométrico",
+            "Invierte cos en un periodo",
+            "La segunda solución dentro del periodo",
+            "Familia periódica de soluciones (k entero cualquiera)",
+            "Familia periódica de soluciones (k entero cualquiera)",
+        ],
+        "expected the isolate + periodic narration, got {steps:?}"
+    );
+    assert_eq!(steps[0]["equation"], "cos(x) = sqrt(3) / 2");
+    assert_eq!(steps[1]["equation"], "x = 1/6·pi");
 }

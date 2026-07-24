@@ -236,6 +236,7 @@ static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
     SolveDesc { template: "Power isolation terminated", es: "Aislamiento de la potencia terminado", en: "Power isolation terminated" },
     SolveDesc { template: "Take arcsin of both sides", es: "Toma arcoseno en ambos lados", en: "Take arcsin of both sides" },
     SolveDesc { template: "Invert {0} over one period", es: "Invierte {0} en un periodo", en: "Invert {0} over one period" },
+    SolveDesc { template: "Isolate the trigonometric term", es: "Aísla el término trigonométrico", en: "Isolate the trigonometric term" },
     SolveDesc { template: "Second solution within the period", es: "La segunda solución dentro del periodo", en: "Second solution within the period" },
     SolveDesc { template: "Periodic family of solutions (k any integer)", es: "Familia periódica de soluciones (k entero cualquiera)", en: "Periodic family of solutions (k any integer)" },
     SolveDesc { template: "Take arccos of both sides", es: "Toma arcocoseno en ambos lados", en: "Take arccos of both sides" },

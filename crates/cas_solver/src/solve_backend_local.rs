@@ -8234,7 +8234,7 @@ fn try_solve_periodic_trig_equation_ungated(
                 rhs: target_expr,
                 op: RelOp::Eq,
             };
-            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+            return try_solve_periodic_trig_equation_ungated(&reduced, var, simplifier, steps_out);
         }
     }
     let (lhs, _) = simplifier.simplify(eq.lhs);
@@ -8310,7 +8310,9 @@ fn try_solve_periodic_trig_equation_ungated(
                         rhs: target_expr,
                         op: RelOp::Eq,
                     };
-                    return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                    return try_solve_periodic_trig_equation_ungated(
+                        &reduced, var, simplifier, steps_out,
+                    );
                 }
             }
         }
@@ -8396,7 +8398,7 @@ fn try_solve_periodic_trig_equation_ungated(
                 rhs: target_expr,
                 op: RelOp::Eq,
             };
-            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+            return try_solve_periodic_trig_equation_ungated(&reduced, var, simplifier, steps_out);
         }
     }
 
@@ -8591,7 +8593,7 @@ fn try_solve_periodic_trig_equation_ungated(
             rhs: target_expr,
             op: RelOp::Eq,
         };
-        return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+        return try_solve_periodic_trig_equation_ungated(&reduced, var, simplifier, steps_out);
     }
 
     // `c·trig(arg)^n = 0` (n ≥ 2) and the complementary quotient `c·trig(arg)^n / comp(arg)^m = 0`
@@ -8618,7 +8620,7 @@ fn try_solve_periodic_trig_equation_ungated(
                 rhs: zero,
                 op: RelOp::Eq,
             };
-            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+            return try_solve_periodic_trig_equation_ungated(&reduced, var, simplifier, steps_out);
         }
     }
 
@@ -8683,7 +8685,7 @@ fn try_solve_periodic_trig_equation_ungated(
                 rhs: root,
                 op: RelOp::Eq,
             };
-            return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+            return try_solve_periodic_trig_equation_ungated(&reduced, var, simplifier, steps_out);
         }
     }
 
@@ -8734,7 +8736,9 @@ fn try_solve_periodic_trig_equation_ungated(
                         rhs: zero,
                         op: RelOp::Eq,
                     };
-                    return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                    return try_solve_periodic_trig_equation_ungated(
+                        &reduced, var, simplifier, steps_out,
+                    );
                 }
                 std::cmp::Ordering::Greater => {
                     let inv_n = simplifier.context.add(Expr::Number(n.recip())); // 1/n
@@ -8784,7 +8788,9 @@ fn try_solve_periodic_trig_equation_ungated(
                         rhs: zero,
                         op: RelOp::Eq,
                     };
-                    return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                    return try_solve_periodic_trig_equation_ungated(
+                        &reduced, var, simplifier, steps_out,
+                    );
                 }
                 std::cmp::Ordering::Greater => {
                     return solve_trig_equals_plus_minus(simplifier, trig_call, c, var)
@@ -8821,7 +8827,7 @@ fn try_solve_periodic_trig_equation_ungated(
                 let reduced_rhs = if num_traits::One::is_one(&a_coeff) {
                     diff
                 } else {
-                    let a_expr = simplifier.context.add(Expr::Number(a_coeff));
+                    let a_expr = simplifier.context.add(Expr::Number(a_coeff.clone()));
                     let d = simplifier.context.add(Expr::Div(diff, a_expr));
                     simplifier.simplify(d).0
                 };
@@ -8830,7 +8836,31 @@ fn try_solve_periodic_trig_equation_ungated(
                     rhs: reduced_rhs,
                     op: RelOp::Eq,
                 };
-                return try_solve_periodic_trig_equation(&reduced, var, simplifier);
+                // Narrate the normalization (`2·cos(x) − √3 = 0` → `cos(x) = √3/2`)
+                // before delegating: the inner ungated call narrates the periodic
+                // inversion itself onto the same steps_out. The narration line
+                // shows the RAW `diff / a` quotient (`√3/2`): the solver-side
+                // `reduced_rhs` went through simplify for the notable-angle
+                // classifier, whose normal form (`3/2·3^(-1/2)`) is exactly the
+                // des-simplified shape the educational audit flagged.
+                let display_rhs = if num_traits::One::is_one(&a_coeff) {
+                    diff
+                } else {
+                    let a_expr = simplifier.context.add(Expr::Number(a_coeff.clone()));
+                    simplifier.context.add(Expr::Div(diff, a_expr))
+                };
+                steps_out.push(crate::SolveStep::new(
+                    "Isolate the trigonometric term".to_string(),
+                    Equation {
+                        lhs: call,
+                        rhs: display_rhs,
+                        op: RelOp::Eq,
+                    },
+                    crate::ImportanceLevel::Medium,
+                ));
+                return try_solve_periodic_trig_equation_ungated(
+                    &reduced, var, simplifier, steps_out,
+                );
             }
         }
     }
