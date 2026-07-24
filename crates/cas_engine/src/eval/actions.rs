@@ -382,24 +382,39 @@ impl Engine {
             EvalAction::Limit { var, approach } => {
                 self.eval_limit(options, resolved, &var, approach)
             }
+            // dsolve narrates through its own structured channel (solve_steps);
+            // the engine listener stays parked for the whole span so the
+            // verification scratch (d/dx identity checks, exactness probes)
+            // cannot flatten into the wire `steps` as a fake chain — the same
+            // channel contract solve enforces at its dispatch.
             EvalAction::Dsolve {
                 func,
                 var,
                 conditions,
-            } => self.eval_dsolve(options, resolved, &func, &var, &conditions),
+            } => {
+                let parked = self.simplifier.replace_step_listener(None);
+                let result = self.eval_dsolve(options, resolved, &func, &var, &conditions);
+                let _ = self.simplifier.replace_step_listener(parked);
+                result
+            }
             EvalAction::DsolveSystem {
                 second_equation,
                 funcs,
                 var,
                 conditions,
-            } => self.eval_dsolve_system(
-                options,
-                resolved,
-                second_equation,
-                &funcs,
-                &var,
-                &conditions,
-            ),
+            } => {
+                let parked = self.simplifier.replace_step_listener(None);
+                let result = self.eval_dsolve_system(
+                    options,
+                    resolved,
+                    second_equation,
+                    &funcs,
+                    &var,
+                    &conditions,
+                );
+                let _ = self.simplifier.replace_step_listener(parked);
+                result
+            }
         }
     }
 
