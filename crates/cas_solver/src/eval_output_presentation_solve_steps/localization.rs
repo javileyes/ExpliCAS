@@ -241,6 +241,7 @@ static SOLVE_DESCRIPTIONS: &[SolveDesc] = &[
     SolveDesc { template: "Absolute value by sign: case argument nonnegative (|f| = f)", es: "Valor absoluto por signo: caso argumento ≥ 0 (|f| = f)", en: "Absolute value by sign: case argument nonnegative (|f| = f)" },
     SolveDesc { template: "Absolute value by sign: case argument negative (|f| = -f)", es: "Valor absoluto por signo: caso argumento < 0 (|f| = −f)", en: "Absolute value by sign: case argument negative (|f| = −f)" },
     SolveDesc { template: "Equal tangents: the arguments differ by a multiple of pi", es: "Tangentes iguales: los argumentos difieren en un múltiplo de π", en: "Equal tangents: the arguments differ by a multiple of π" },
+    SolveDesc { template: "Sign of a reciprocal: c/g compares to zero as its denominator does", es: "Signo de un recíproco: c/g se compara con cero igual que su denominador", en: "Sign of a reciprocal: c/g compares to zero as its denominator does" },
     SolveDesc { template: "Reduce to the tangent (divide both sides by cos)", es: "Reduce a la tangente (divide ambos lados entre cos)", en: "Reduce to the tangent (divide both sides by cos)" },
     SolveDesc { template: "Auxiliary angle: rewrite as R*sin(g + phi) = c/R", es: "Ángulo auxiliar: reescribe como R·sin(g + φ) = c/R", en: "Auxiliary angle: rewrite as R·sin(g + φ) = c/R" },
     SolveDesc { template: "Second solution within the period", es: "La segunda solución dentro del periodo", en: "Second solution within the period" },

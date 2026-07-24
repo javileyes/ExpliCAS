@@ -9825,7 +9825,7 @@ fn try_solve_const_over_surd_affine_inequality(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::RelOp;
     use cas_math::numeric_eval::as_rational_const;
     use cas_solver_core::isolation_utils::contains_var;
@@ -9879,13 +9879,24 @@ fn try_solve_const_over_surd_affine_inequality(
             RelOp::Lt
         };
         let zero = simplifier.context.num(0);
-        return solve_relation_set(simplifier, var, den, zero, den_op);
+        // Narration: the sign of `c/g` versus zero IS the (oriented) sign of
+        // `g` — one line with the reduced denominator relation.
+        let steps = vec![crate::SolveStep::new(
+            "Sign of a reciprocal: c/g compares to zero as its denominator does".to_string(),
+            Equation {
+                lhs: den,
+                rhs: zero,
+                op: den_op.clone(),
+            },
+            crate::ImportanceLevel::Medium,
+        )];
+        return solve_relation_set(simplifier, var, den, zero, den_op).map(|set| (set, steps));
     }
     if eq.op == RelOp::Eq {
         // `g = c/k` exactly: one root `x = (c/k − b)/a`.
         let target = simplifier.context.add(Expr::Number(c / k));
         let root = map_bound_through_inverse_affine(simplifier, target, &a, b);
-        return Some(SolutionSet::Discrete(vec![root]));
+        return Some((SolutionSet::Discrete(vec![root]), Vec::new()));
     }
     // Inequality vs a nonzero threshold: solve in `u = g(x)` space, where every
     // breakpoint (`u = 0` pole, `u = c/k` boundary) is RATIONAL, then map back.
@@ -9894,7 +9905,7 @@ fn try_solve_const_over_surd_affine_inequality(
     let c_expr = simplifier.context.add(Expr::Number(c));
     let u_lhs = simplifier.context.add(Expr::Div(c_expr, u_var));
     let u_set = solve_relation_set(simplifier, &u_name, u_lhs, eq.rhs, eq.op.clone())?;
-    map_set_through_inverse_affine(simplifier, u_set, &a, b)
+    map_set_through_inverse_affine(simplifier, u_set, &a, b).map(|set| (set, Vec::new()))
 }
 
 /// U2 (scout backlog #4): `c / (a·x+b)^(1/q) ⋚ k` — the reciprocal of a
@@ -10995,8 +11006,8 @@ fn solve_local_core_inner(
     }
     // `c/(x+√2) {op} 0` on the RAW tree, before the simplifier rationalizes the surd
     // denominator through its conjugate and fabricates a spurious removable pole.
-    if let Some(set) = try_solve_const_over_surd_affine_inequality(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_const_over_surd_affine_inequality(simplifier, eq, var) {
+        return Ok((set, steps));
     }
     // `c/(a·x+b)^(1/q) {op} k` on the RAW tree (scout #4): before the
     // simplifier rewrites `1/x^(1/3)` into the valley form `x^(2/3)/x`.

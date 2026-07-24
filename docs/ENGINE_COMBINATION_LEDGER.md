@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 691 (newest first)
+Active entries: 692 (newest first)
 
 - 2026-07-24 | `retained` | `cas_didactic/didactic/visible_rule_names.rs` — el audit listó 5 nombres sin ... | EDUCATIVO (frente E · E4): nombres de regla en inglés a la tabla es/en — 4 de los 5 del audit ya habían MUERTO con E3 (eran confeti de solve); quedaban 2 vivos + 1 variante latente, todos mapeados (fugas en el corpus 210: 0)
 - 2026-07-24 | `retained` | `cas_didactic/step_payloads/events.rs` — el candidato del audit era «fold de ... | EDUCATIVO (frente E · fold vectorial→unificación del camino de eventos): los artefactos x^(2-1) restantes NO eran de los verbos vectoriales — eran el camino de EVENTOS renderizando crudo; ahora delega en build_step_wire (D 8→0, la familia entera muerta; F −1)
@@ -126,6 +126,7 @@ Active entries: 691 (newest first)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — los 3 delegadores abs del barrido: (1) ... | EDUCATIVO (frente E · narración solve_steps, peldaño 5): las ecuaciones abs narran — |E|=0 con su línea de equivalencia + cadena del argumento, y los splits verificados |f|=±g con una línea por caso ([060] queda con dueño exacto nombrado: el handler piecewise de g-lineal)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — `try_solve_single_abs_polynomial_relati... | EDUCATIVO (frente E · narración solve_steps, peldaño 6): el split-por-signo de abs narra — `|x²−1|=x+1` (el [060] del audit) y las inecuaciones `x²−3|x|+2<0` muestran sus dos casos con la relación SUSTITUIDA (26/42 solves del corpus narran)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — el arm tan(u)=tan(v) del ungated (progr... | EDUCATIVO (frente E · narración solve_steps, peldaño 7): tan(u)=tan(v) narra — la identidad definitoria (con la ecuación del usuario como línea) + las familias supervivientes al filtro de polos (27/42 solves del corpus narran)
+- 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` — `try_solve_const_over_surd_affine_inequ... | EDUCATIVO (frente E · narración solve_steps, peldaño 8 — E5 parcial): la inecuación recíproca narra su reducción de signo — `1/(x−√2)>0` muestra «el signo de c/g es el del denominador | x − √2 > 0»; los abs-ineq quedan con hallazgo negativo de dueño
 - 2026-07-23 | `retained` | `cas_cli/repl/help_topics.rs` (brazo `"dsolve"` molde solve/limit: familias s... | SUPERFICIE (Fase 4 · O7, tanda-7 ciclo 1/2): la superficie de usuario de dsolve — help con residuales honestos como contrato público, examples auto-verificados (incluido el eco Riccati), y d/dx scoped al canal EDO
 - 2026-07-23 | `retained` | `cas_engine/eval/dsolve_action.rs` (`CauchyEulerOde` + `try_match_cauchy_eule... | CAPACIDAD (Fase 4 · O9 opcional, tanda-7 ciclo 2/2): Cauchy-Euler por la ecuación indicial exacta — 3ª instancia del molde D9 (misma álgebra, base x^r en vez de e^(rx)); el matcher x_pow==orden descarta Bessel DE FORMA; TANDA-7 COMPLETA — Fase 4 sin capacidad pendiente salvo series (mini-scoping)
 - 2026-07-23 | `retained` | `cas_solver/linear_system/symbolic2.rs` (NUEVO hermano del módulo racional: e... | ROBUSTEZ+CAPACIDAD (frente S · S1, tanda-8 ciclo 1/4): sistemas en solve — la lista de incógnitas manda; Cramer simbólico 2×2 con det≠0 como condición estructurada; el decline matemático deja de ser E_INTERNAL; lane matrix propia (18ª suite)
@@ -21506,3 +21507,15 @@ Active entries: 691 (newest first)
 - decision: retener. Siguientes: inecuaciones E5 (familia I), meta-mantenimiento maduro (~16 ciclos).
 - retained learning:
   - **La línea de una identidad se predica de la ECUACIÓN DEL USUARIO, no de una forma interna**: usar la eq original como equation_after de la línea de identidad (tan(x)=tan(2x)) evita inventar una ecuación de reducción con símbolos que el alumno no escribió — el patrón u-sintética de tanda-5 aplicado a líneas de identidad.
+
+## 2026-07-24 - EDUCATIVO (frente E · narración solve_steps, peldaño 8 — E5 parcial): la inecuación recíproca narra su reducción de signo — `1/(x−√2)>0` muestra «el signo de c/g es el del denominador | x − √2 > 0»; los abs-ineq quedan con hallazgo negativo de dueño
+
+- area: `cas_solver/solve_backend_local.rs` — `try_solve_const_over_surd_affine_inequality` (el dueño de `c/g ⋚ k` con intercepto surd, el de la memoria «c/g{op}0⟺g{op'}0 op' estricto»): su brazo k=0 reducía al signo orientado del denominador sin narrar. Una línea nueva («Sign of a reciprocal: c/g compares to zero as its denominator does», template es/en) con la relación reducida `den {op'} 0` como ecuación; los brazos Eq y k≠0 (u-espacio sintético) devuelven steps vacíos a propósito. Firma → tupla, call-site reenvía.
+- status: `retained`. Probe: `1/(x−√2)>0` → «Signo de un recíproco…| x − √2 > 0» → (√2, ∞). Contract test con descripción y ecuación exactas. **E5 PARCIAL**: la 1ª de las 3 exprs del audit narra; `x^(2/3)>2` y `|x−1|<|x+2|` siguen mudas CON HALLAZGO NEGATIVO — el trace por call-site descartó `reciprocal_abs_inequality` y `abs_vs_abs_polynomial_inequality` como dueños de `|x−2|>1` y `|x−1|<|x+2|` (ninguno dispara): sus dueños reales están más abajo (¿estrategia piecewise / sum-of-abs con otra forma de llamada?) y exceden el presupuesto de fricción del ciclo.
+- capture:
+  - investment_class: educativo (peldaño 8; primer paso de E5).
+  - El descarte-por-trace es tan valioso como el acierto: dos candidatos plausibles eliminados en una corrida; el siguiente intento no los re-investigará.
+- observed: workspace/clippy/scorecards en el commit.
+- decision: retener. Residual E5 nombrado: dueños reales de `|afín| ⋚ c` racional y `|f|<|g|` (trace-negativo en los 2 candidatos obvios), y `x^(2/3)>2` (valle de potencia fraccionaria). Siguiente ciclo: meta-mantenimiento (maduro, ~16 ciclos).
+- retained learning:
+  - **El brazo que narra es el que REDUCE, no el que resuelve**: la línea educativa del recíproco es la reducción de signo (c/g→g), no la resolución de `x−√2>0` que viene después — narrar la reducción con la relación reducida como ecuación da el paso exacto que el curso enseña, sin depender de que el sub-solve devuelva steps.
