@@ -4000,8 +4000,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 )
             }
         };
+        // Runs in BOTH steps modes (mirroring try_difference_of_squares_preorder
+        // below): the helper already narrates through `steps`, and gating it on
+        // `event_listener.is_none()` made the fraction recombination cancel
+        // `1/(2a)·(1/(x−a) − 1/(x+a))` only without steps — a steps-mode
+        // divergence. Only the recursion-free hidden fast exit keeps the
+        // listener guard.
         if allow_difference_of_squares_preorder
-            && self.event_listener.is_none()
             && !self.initial_parent_ctx.domain_mode().is_strict()
         {
             let step_start = self.steps.len();
@@ -4020,6 +4025,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             {
                 self.rebuild_recent_preorder_steps_at_current_path(step_start);
                 if !self.collect_steps_enabled()
+                    && self.event_listener.is_none()
                     && self.current_phase == crate::SimplifyPhase::Core
                     && self.initial_parent_ctx.is_solve_context()
                 {
@@ -4056,11 +4062,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
 
-        // Similar pre-order fast path for perfect-square-minus fractions, but only
-        // when no listener is attached so we don't widen the existing event-gap
-        // behavior beyond the hidden hot path.
-        if allow_difference_of_squares_preorder && self.event_listener.is_none() {
+        // Similar pre-order fast path for perfect-square-minus fractions. The
+        // narrating variant runs in BOTH steps modes (mirroring
+        // try_difference_of_squares_preorder above) — gating the whole block on
+        // `event_listener.is_none()` made `(a²−2ab+b²)/(a−b)` cancel only
+        // without steps. The mute exact variant and the recursion-free exit
+        // stay on the hidden (listener-free) hot path.
+        if allow_difference_of_squares_preorder {
             if !self.collect_steps_enabled()
+                && self.event_listener.is_none()
                 && self.current_phase == crate::SimplifyPhase::Core
                 && self.initial_parent_ctx.is_solve_context()
                 && !self.initial_parent_ctx.domain_mode().is_strict()
@@ -4084,6 +4094,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             ) {
                 self.rebuild_recent_preorder_steps_at_current_path(step_start);
                 if !self.collect_steps_enabled()
+                    && self.event_listener.is_none()
                     && self.current_phase == crate::SimplifyPhase::Core
                     && self.initial_parent_ctx.is_solve_context()
                     && is_plain_symbolic_binomial(self.context, early_result)

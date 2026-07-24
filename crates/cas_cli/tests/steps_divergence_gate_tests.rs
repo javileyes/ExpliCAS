@@ -95,23 +95,7 @@ struct KnownDivergence {
     on: &'static str,
 }
 
-const QUARANTINE: &[KnownDivergence] = &[
-    // derive_pairs.csv — perfect-square-over-difference preorder path cancels
-    // to `a - b` only on the steps-off path; with steps the quotient survives
-    // (capability divergence: asking for steps LOSES the simplification).
-    KnownDivergence {
-        input: "(a^2-2*a*b+b^2)/(a-b)",
-        off: "a - b",
-        on: "(a^2 + b^2 - 2 * a * b) / (a - b)",
-    },
-    // derive_pairs.csv — partial-fraction recombination cancels the common
-    // factor `a` only on the steps-off path.
-    KnownDivergence {
-        input: "1/(2*a)*(1/(x-a) - 1/(x+a))",
-        off: "1 / (x^2 - a^2)",
-        on: "a / (a * x^2 - a^3)",
-    },
-];
+const QUARANTINE: &[KnownDivergence] = &[];
 
 fn quarantine_entry(input: &str) -> Option<&'static KnownDivergence> {
     QUARANTINE.iter().find(|k| k.input == input)
