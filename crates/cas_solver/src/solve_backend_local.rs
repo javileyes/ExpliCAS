@@ -2677,6 +2677,7 @@ fn try_solve_single_abs_equals_polynomial(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use cas_ast::RelOp;
     use cas_math::const_sign::{provable_const_sign, ConstSign};
@@ -2759,12 +2760,32 @@ fn try_solve_single_abs_equals_polynomial(
     let neg_g = simplifier.context.add(Expr::Neg(g));
     let (neg_g, _) = simplifier.simplify(neg_g);
     let mut candidates: Vec<ExprId> = Vec::new();
-    for rhs in [g, neg_g] {
+    for (case_idx, rhs) in [g, neg_g].into_iter().enumerate() {
         let branch = Equation {
             lhs: f,
             rhs,
             op: RelOp::Eq,
         };
+        let branch_display = format!(
+            "{} = {}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: f
+            },
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: rhs
+            }
+        );
+        steps_out.push(crate::SolveStep::new(
+            format!(
+                "Split absolute value (Case {}): {}",
+                case_idx + 1,
+                branch_display
+            ),
+            branch.clone(),
+            crate::ImportanceLevel::Medium,
+        ));
         let (sol, _) = crate::solver_entrypoints_solve::solve(&branch, var, simplifier).ok()?;
         match sol {
             SolutionSet::Discrete(roots) => candidates.extend(roots),
@@ -9521,7 +9542,7 @@ fn try_solve_abs_equals_zero(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::{BuiltinFn, RelOp};
     use cas_math::numeric_eval::as_rational_const;
     use num_traits::Zero;
@@ -9550,14 +9571,22 @@ fn try_solve_abs_equals_zero(
         rhs: zero,
         op: RelOp::Eq,
     };
-    let (sol, _) = crate::solver_entrypoints_solve::solve(&inner_eq, var, simplifier).ok()?;
-    Some(sol)
+    let mut steps = vec![crate::SolveStep::new(
+        "Absolute value is zero exactly when its argument is zero".to_string(),
+        inner_eq.clone(),
+        crate::ImportanceLevel::Medium,
+    )];
+    let (sol, inner_steps) =
+        crate::solver_entrypoints_solve::solve(&inner_eq, var, simplifier).ok()?;
+    steps.extend(inner_steps);
+    Some((sol, steps))
 }
 
 fn try_solve_abs_polynomial_equation(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use cas_ast::{BuiltinFn, RelOp};
     use cas_math::numeric_eval::as_rational_const;
@@ -9602,12 +9631,32 @@ fn try_solve_abs_polynomial_equation(
     // Branches `f = g_core` and `f = −g_core`.
     let neg_g = simplifier.context.add(Expr::Neg(g_core));
     let mut candidates: Vec<ExprId> = Vec::new();
-    for rhs in [g_core, neg_g] {
+    for (case_idx, rhs) in [g_core, neg_g].into_iter().enumerate() {
         let branch = Equation {
             lhs: f,
             rhs,
             op: RelOp::Eq,
         };
+        let branch_display = format!(
+            "{} = {}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: f
+            },
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: rhs
+            }
+        );
+        steps_out.push(crate::SolveStep::new(
+            format!(
+                "Split absolute value (Case {}): {}",
+                case_idx + 1,
+                branch_display
+            ),
+            branch.clone(),
+            crate::ImportanceLevel::Medium,
+        ));
         let (sol, _) = crate::solver_entrypoints_solve::solve(&branch, var, simplifier).ok()?;
         match sol {
             SolutionSet::Discrete(roots) => candidates.extend(roots),
@@ -11123,8 +11172,13 @@ fn solve_local_core_inner(
     // is unsound: the generic path solves only `f = g` (dropping `f = −g`) and
     // skips `g ≥ 0`, returning a spurious root while missing a real one — or
     // leaking a malformed residual. Solve both branches and keep `g(r) ≥ 0`.
-    if let Some(set) = try_solve_single_abs_equals_polynomial(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut abs_steps = Vec::new();
+        if let Some(set) =
+            try_solve_single_abs_equals_polynomial(simplifier, eq, var, &mut abs_steps)
+        {
+            return Ok((set, abs_steps));
+        }
     }
     // A single `|f|` entangled MULTIPLICATIVELY with a polynomial (`x·|x| = 4`,
     // `x·|x| − x = 0`) is neither `|f| = g` (isolated) nor a pure polynomial-in-|x|
@@ -11191,14 +11245,17 @@ fn solve_local_core_inner(
     }
     // `|E| = 0 ⟺ E = 0`: dispatch the argument's full zero-set (the generic abs isolation drops all but
     // the first factor of a product, `|x·(x−2)| = 0 → {0}` instead of `{0, 2}`).
-    if let Some(set) = try_solve_abs_equals_zero(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_abs_equals_zero(simplifier, eq, var) {
+        return Ok((set, steps));
     }
     // `|f(x)| = g(x)` with a degree-≥2 polynomial `f` and a variable RHS (`|x²−1| = x+1`): split into
     // `f = ±g` and verify each root against the original (enforcing `g ≥ 0`). Linear `|f|` and
     // constant-RHS forms keep their existing handlers.
-    if let Some(set) = try_solve_abs_polynomial_equation(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut abs_steps = Vec::new();
+        if let Some(set) = try_solve_abs_polynomial_equation(simplifier, eq, var, &mut abs_steps) {
+            return Ok((set, abs_steps));
+        }
     }
     // A sum of two square roots equal to a constant (`√(x+3) + √x = 3`) leaks
     // the same isolation residual; reduce by squaring and verify exactly.

@@ -11092,3 +11092,57 @@ fn eval_solve_polynomial_in_atom_narrates_substitution_and_back_substitution() {
         "the in-range branch must chain into the periodic narration, got {steps:?}"
     );
 }
+
+#[test]
+fn eval_solve_abs_equations_narrate_argument_zero_and_case_splits() {
+    // `|E| = 0 ⟺ E = 0`: the equivalence line, then the argument's own solve.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(abs(x*(x-2))=0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs.first().copied(),
+        Some("El valor absoluto es cero exactamente cuando su argumento es cero"),
+        "expected the |E|=0 equivalence line, got {steps:?}"
+    );
+    assert!(
+        descs.iter().any(|d| d.starts_with("Resuelve el factor")),
+        "expected the argument's factored solve to chain in, got {steps:?}"
+    );
+
+    // `|f| = |h|` splits into the two signed cases.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(abs(x^2-4)=abs(x-2),x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Descompón el valor absoluto (Case 1): x^2 - 4 = x - 2",
+            "Descompón el valor absoluto (Case 2): x^2 - 4 = -(x - 2)",
+        ],
+        "expected the two split-case lines, got {steps:?}"
+    );
+}
