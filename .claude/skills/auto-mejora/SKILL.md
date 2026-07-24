@@ -310,10 +310,21 @@ rustfmt --edition 2021 <archivos tocados>
 make engine-fast
 make engine-scorecard           # guardrail, 18 suites
 make engine-scorecard-pressure  # 3 suites
+make wasm-check                 # cargo check wasm32 de cas_wasm (~1 min): tipos/cfg para Pages
 ```
 Si falla un test existente, primero juzga la intención: si fijaba como
 residual algo que tu ciclo convierte en soportado, actualiza el contrato;
 si fija soundness (condiciones, dominios), tu cambio es el problema.
+
+**Gate condicional de Pages (build completo + E2E).** `wasm-check` NO cubre
+codegen/linker (lección W3: check ≠ build). Si el ciclo toca `cas_wasm`,
+`web/`, `Cargo.toml`/`Cargo.lock` o código `cfg(target_arch)`, añade ANTES de
+commitear: `scripts/build_pages_site.sh` (wasm-pack nightly, ~5-10 min) y la
+verificación E2E en navegador con el server `pages-static` de
+`.claude/launch.json` sirviendo `dist/pages` (probar la superficie tocada:
+declaraciones/paneles/import/…, como en los fixes W7). Para ciclos que no
+tocan esas zonas, el build completo por-ciclo es un impuesto sin cazas
+históricas — el workflow de Actions es el gate real post-push.
 
 ### 6. Comparación de huella
 ```python
@@ -357,6 +368,12 @@ repitas en bucle).
   cambio (no "cycle N"), cuerpo con el porqué, el diseño, los fixes que
   surgieron y los números de validación. Termina con:
   `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
+- **Cada push a `main` DESPLIEGA GitHub Pages** (workflow `pages`,
+  build_type=workflow): commitear en local no publica; push sí. Si el build
+  de Actions falla, el sitio conserva el último deploy bueno (no se cae) y
+  el aviso llega en ~5 min — para cambios que tocan la superficie web, espera
+  el verde de Actions (`gh run watch`) y verifica en vivo antes de dar el
+  ciclo por cerrado.
 - Informe del ciclo: qué cambió y por qué era el mayor ROI, resultados
   ejemplo, validación (tests/clippy/matriz/huellas), aprendizaje
   retenido, y **siguiente iteración recomendada** (alimenta el ciclo
