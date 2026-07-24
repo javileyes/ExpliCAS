@@ -111,6 +111,17 @@ de la fuente 7 chocan, **gana P0/soundness**.
   2×2 con det≠0 como condición, no-lineales 2×2 por sustitución Y
   resultante de Sylvester. Sus peldaños nombrados (3×3 paramétrico, rank
   det=0, Res≡0) viven en el ledger/memoria como candidatos S/M.
+- **Frente E (calidad educativa de steps, CAMPAÑA NÚCLEO COMPLETA 2026-07-23→24)**
+  — fuera de la numeración de fases (mitad educativa): 3 ciclos E1-E3 + 3 tandas
+  sobre el corpus de 210 examples (`docs/AUDITORIA_EDUCATIVA_2026-07-23.md`,
+  informe HISTÓRICO — inmutable). Estado real: A 506→31 (heterogéneo), B/K/C/D
+  todos 0, E highlights −75%, fugas de inglés 0, **27/42 solves del corpus narran
+  por solve_steps** (trig completo, poly-en-átomo ×5 familias, abs completo salvo
+  paramétrico, recíproco). El harness del corpus es la MEDIDA del frente
+  (audit_extract/analyze2, regenerable; anclar comparaciones por EXPRESIÓN, no por
+  índice — el csv se reordena). Residuales nombrados en
+  [[frente-e-calidad-educativa]] (memoria): dueños trace-negativos de
+  `|afín|⋚c`/`|f|<|g|`, `x^(2/3)>c`, E2b precisión path global, F 44.
 - **De dónde sale la capacidad nueva HOY** (en orden): (1) peldaños
   nombrados de frentes cerrados (ledger + memoria — acotados y de bajo
   riesgo); (2) opcionales F11b/F12 de Fase 3; (3) residuales estrechos de
@@ -428,6 +439,33 @@ repitas en bucle).
   `solve(9=0)` Err): antes de delegar una forma construida, atajar sus casos
   triviales/degenerados (constante, cero) en el caller.
 
+- **Instrumenta ANTES de implementar, y el trace va en el CALL-SITE** (2
+  instancias): un scoping heredado es hipótesis — 2 eprintln en los boundaries
+  sospechosos lo falsifican en una corrida ([052]: el descarte no era el
+  ensamblado de estrategia sino las auto-recursiones del propio handler); con
+  recursión, «quién se ejecuta» es ruido y «quién responde» es la señal. El
+  trace-NEGATIVO también es entregable (candidatos descartados no se
+  re-investigan).
+- **Detector de narración muda de coste cero**: `grep 'let (sol, _)' /
+  'let (xs, _)'` sobre delegadores a `solver_entrypoints_solve::solve` — la
+  narración venía en la tupla y se tiraba (3 tandas de peldaños salieron de ahí).
+  Al narrar un sustrato compartido, contar su fan-out de wrappers antes que casos
+  del corpus (poly-en-átomo: 1 función → 5 familias).
+- **Narrar ≠ avalar (candidatos vs respuesta)**: los pasos de RAMA solo se
+  anexan si la rama produce respuesta directa; si produce candidatos que una
+  verificación/intersección posterior puede descartar, narra solo la ESTRUCTURA
+  (líneas de split/caso). Y las líneas de identidad se predican de la ECUACIÓN
+  DEL USUARIO (jamás de formas internas con símbolos sintéticos `__u`).
+- **La forma que narra y la que resuelve pueden divergir legítimamente**: el
+  clasificador necesita la normal simplificada; el alumno el cociente crudo
+  (√3/2, no 3/2·3^(-1/2)). Construir ambas en el punto de reducción; en líneas
+  de narración plegar SOLO el ruido nombrado (base 0, −0), nunca simplify
+  general (factoriza a formas ilegibles).
+- **`git add -A` con edición humana concurrente barre cambios ajenos**: el
+  status limpio al INICIO no cubre ediciones DURANTE el ciclo — antes de
+  commitear, revisa `git diff --stat` y cuestiona archivos fuera del área
+  tocada (un reorden de examples.csv entró así y movió los índices del harness).
+
 ## Meta-mantenimiento: revisiones periódicas (docs y esta skill)
 
 El bucle mejora el ENGINE; estas dos revisiones mantienen honesto el bucle mismo. Ninguna
@@ -456,4 +494,9 @@ siguen sirviendo? Actualiza la skill para que la ESTRATEGIA refleje el estado re
 lecciones acumuladas — el objetivo es acercar el engine a lo **más universal posible SIN
 perder lo más educativo posible**, y esta skill es la palanca que lo dirige. Registra el
 porqué del cambio en el commit. *(2026-07-15: G2 —límites educativos— se marcó cerrado aquí
-tras confirmarse maduro; `7812f4109`.)*
+tras confirmarse maduro; `7812f4109`. 2026-07-24: pasada B tras la campaña del
+frente E — estado E añadido a fases, 5 lecciones nuevas; la pasada A verificó
+contra el CLI que las filas P3 de CALCULUS_FRONTIER_AUDIT que parecían
+graduables NO lo están —`ln(e)` sigue vivo en diff orden ≥4, el corpus da D=0
+porque no ejercita orden 4— y se dejaron intactas: el chequeo vivo evitó un
+falso stamp.)*
