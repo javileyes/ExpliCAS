@@ -521,6 +521,59 @@ fn integrate_verb_result_is_steps_mode_invariant() {
     );
 }
 
+/// SIBLING AXIS of the steps gate: the result must not depend on the INPUT
+/// ASSOCIATIVITY either. `f + (z)` and `f + z` are the same sum, but the
+/// canonicalizer re-associates grouped input differently and downstream
+/// rules can bury an identically-zero subgroup (`cos(2x)/2 + (fracs-u)`
+/// ends as an unreduced mixed quotient while the flat spelling folds —
+/// ledger 2026-07-25). This sweep is the INVENTORY that the future
+/// canonicalization front needs (how many shapes are sensitive), kept on
+/// the ignored tier until that front lands: it FAILS while the class is
+/// open, by design — green here will mean the axis is closed.
+#[test]
+#[ignore = "input-associativity inventory for the canonicalization front — measures a KNOWN-open \
+            class (fails by design while open): cargo test -p cas_cli --test \
+            steps_divergence_gate_tests --release -- --ignored"]
+fn input_associativity_pairs_inventory() {
+    let zero_mixed = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/simplify_zero_mixed_corpus.csv"
+    ));
+    // Columns 3/4 are the identically-zero source expressions.
+    let zeros = load_expr_columns(zero_mixed, true, &[3, 4]);
+    assert!(
+        zeros.len() >= 30,
+        "zero-source loader drifted: {}",
+        zeros.len()
+    );
+
+    let carriers = ["x", "cos(x)/2", "1/x", "x^2", "sqrt(x)", "2/3"];
+    let mut divergences = Vec::new();
+    let mut swept = 0usize;
+    for z in &zeros {
+        for f in carriers {
+            let grouped = format!("{f} + ({z})");
+            let flat = format!("{f} + {z}");
+            let g = eval_outcome(&grouped, EvalStepsMode::Off);
+            let p = eval_outcome(&flat, EvalStepsMode::Off);
+            swept += 1;
+            if g != p {
+                divergences.push(format!(
+                    "  - carrier `{f}` + zero `{z}`\n      grouped: {g}\n      flat:    {p}"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        divergences.is_empty(),
+        "{} input-associativity divergence(s) in {swept} carrier×zero pairs (result must not \
+         depend on input grouping):\n{}",
+        divergences.len(),
+        divergences.join("\n")
+    );
+}
+
 #[test]
 #[ignore = "full pressure sweep (~7.7k expressions, ~15k evals) — run explicitly: \
             cargo test -p cas_cli --test steps_divergence_gate_tests --release -- --ignored"]
