@@ -45,7 +45,9 @@ pub fn eval_closed_complex_to_decimal(ctx: &mut Context, id: ExprId) -> Option<E
 pub fn closed_subtree_wants_decimal(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
         Expr::Number(n) => !n.is_integer(),
-        Expr::Constant(cas_ast::Constant::Pi) | Expr::Constant(cas_ast::Constant::E) => true,
+        Expr::Constant(cas_ast::Constant::Pi | cas_ast::Constant::E | cas_ast::Constant::Phi) => {
+            true
+        }
         Expr::Constant(_) => false,
         Expr::Function(fn_id, _) => ctx.sym_name(*fn_id) != "decimal",
         Expr::Pow(b, e) => {

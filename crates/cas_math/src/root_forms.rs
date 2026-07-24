@@ -1781,6 +1781,14 @@ pub fn as_linear_surd(
         return Some(normalize(BigRational::zero(), BigRational::one(), n));
     }
     match ctx.get(expr) {
+        // The golden ratio IS a quadratic surd: φ = 1/2 + (1/2)·√5. Teaching the
+        // walker (instead of a rewrite rule) makes every consumer of the exact
+        // surd layer — sign provers, QuadSurd, zero collapse, equivalence —
+        // decide φ-vs-√5 identities like `2φ − 1 = √5` exactly.
+        Expr::Constant(cas_ast::Constant::Phi) => {
+            let half = BigRational::new(1.into(), 2.into());
+            Some((half.clone(), half, BigRational::from_integer(5.into())))
+        }
         Expr::Neg(inner) => {
             let (a, b, n) = as_linear_surd(ctx, *inner)?;
             Some((-a, -b, n))

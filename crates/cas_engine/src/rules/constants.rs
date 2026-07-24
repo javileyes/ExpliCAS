@@ -9,8 +9,8 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::constants_support::{
-    try_rewrite_phi_reciprocal_expr, try_rewrite_phi_squared_expr, try_rewrite_recognize_phi_expr,
-    ConstantRewriteKind,
+    try_rewrite_phi_linear_surd_expr, try_rewrite_phi_reciprocal_expr,
+    try_rewrite_phi_squared_expr, try_rewrite_recognize_phi_expr, ConstantRewriteKind,
 };
 
 fn format_constant_rewrite_desc(kind: ConstantRewriteKind) -> &'static str {
@@ -18,6 +18,7 @@ fn format_constant_rewrite_desc(kind: ConstantRewriteKind) -> &'static str {
         ConstantRewriteKind::RecognizePhi => "(1 + √5)/2 = φ",
         ConstantRewriteKind::PhiSquared => "φ² = φ + 1",
         ConstantRewriteKind::PhiReciprocal => "1/φ = φ - 1",
+        ConstantRewriteKind::PhiLinearSurd => "φ = (1 + √5)/2: forma surd exacta",
     }
 }
 
@@ -59,8 +60,22 @@ define_rule!(
 
 // Note: is_one checks now route directly to cas_math::expr_predicates::is_one_expr.
 
+// Rule 4: canonicalize constant φ-linear sums to their exact A + B·√5 form
+// when that is a genuine reduction (rational collapse, pure surd, or a mixed
+// φ/√ basis) — `sqrt(5) + 1 - 2·φ → 0`, `2·φ - 1 → √5`; `1 + φ` stays φ.
+define_rule!(
+    PhiLinearSurdRule,
+    "Phi Linear Surd Canonical",
+    importance: crate::step::ImportanceLevel::Medium,
+    |ctx, expr| {
+        let rewrite = try_rewrite_phi_linear_surd_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_constant_rewrite_desc(rewrite.kind)))
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RecognizePhiRule));
+    simplifier.add_rule(Box::new(PhiLinearSurdRule));
     simplifier.add_rule(Box::new(PhiSquaredRule));
     simplifier.add_rule(Box::new(PhiReciprocalRule));
 }

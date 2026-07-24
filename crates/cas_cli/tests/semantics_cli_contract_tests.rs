@@ -11246,3 +11246,57 @@ fn eval_solve_reciprocal_sign_inequality_narrates_denominator_reduction() {
     );
     assert_eq!(steps[0]["equation"], "x - sqrt(2) > 0");
 }
+
+#[test]
+fn eval_phi_quadratic_surd_identities_decide_exactly() {
+    // φ = 1/2 + (1/2)·√5 lives in the exact surd layer (as_linear_surd), so
+    // φ-vs-√5 identities decide exactly instead of lingering symbolically.
+    for (input, expected) in [
+        ("sqrt(5) - (2*phi - 1)", "0"),
+        ("phi + 1/phi", "sqrt(5)"),
+        ("2*phi - 1 - sqrt(5)", "0"),
+        ("4*phi - 2", "2·sqrt(5)"),
+        ("2*phi - 1 - sqrt(20)/2", "0"),
+        // Guards: the φ display canonical survives where the surd form is no
+        // simpler, and the lone constant is untouched.
+        ("1 + phi", "1 + phi"),
+        ("phi", "phi"),
+        ("(-phi)", "-phi"),
+        // The old minimal-polynomial identities keep working.
+        ("phi^2 - phi - 1", "0"),
+        ("phi - (1+sqrt(5))/2", "0"),
+    ] {
+        let (output, code) = run_cli(&["eval", input, "--format", "json"]);
+        assert_eq!(code, 0, "{input}: {output}");
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "{input}");
+    }
+
+    // Equivalence is now sound in BOTH directions: the true identity holds
+    // and near-misses stay refuted (no overreach).
+    for (input, expected) in [
+        ("equiv(2*phi - 1, sqrt(5))", "true"),
+        ("equiv(phi, (1+sqrt(5))/2)", "true"),
+        ("equiv(4*phi - 2, sqrt(20))", "true"),
+        ("equiv(2*phi, sqrt(5))", "false"),
+        ("equiv(phi, sqrt(5))", "false"),
+    ] {
+        let (output, code) = run_cli(&["eval", input, "--format", "json"]);
+        assert_eq!(code, 0, "{input}: {output}");
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "{input}");
+    }
+
+    // Decimal display treats φ like π/e (D5 gate).
+    let (output, code) = run_cli(&[
+        "eval",
+        "phi",
+        "--numeric-display",
+        "decimal",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1.61803398875");
+}
