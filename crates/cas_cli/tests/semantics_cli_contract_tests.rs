@@ -10895,3 +10895,53 @@ fn complex_mode_approximates_closed_complex_values() {
         );
     }
 }
+
+#[test]
+fn eval_solve_periodic_trig_equation_narrates_solve_steps() {
+    // The bare periodic trig solve narrates through `solve_steps`: the per-period
+    // roots (principal + supplementary) and one periodic-family line per base,
+    // in the exact `x = base + k·T` shape the result set displays.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(sin(x)=1/2,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Invierte sin en un periodo",
+            "La segunda solución dentro del periodo",
+            "Familia periódica de soluciones (k entero cualquiera)",
+            "Familia periódica de soluciones (k entero cualquiera)",
+        ],
+        "expected the four-step periodic trig narration, got {steps:?}"
+    );
+    assert_eq!(steps[0]["equation"], "x = 1/6·pi");
+    assert_eq!(steps[1]["equation"], "x = 5/6·pi");
+
+    // Affine argument: no synthetic-u steps, but the mapped families narrate
+    // (zero base folds to `x = pi·k`, not `x = 0 + pi·k`).
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(cos(2*x)=1,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    assert_eq!(steps.len(), 1, "expected one family line, got {steps:?}");
+    assert_eq!(steps[0]["equation"], "x = pi·k");
+}

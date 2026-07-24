@@ -8126,6 +8126,19 @@ pub(crate) fn try_solve_periodic_trig_equation(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<SolutionSet> {
+    try_solve_periodic_trig_equation_with_steps(eq, var, simplifier).map(|(set, _)| set)
+}
+
+/// Same as [`try_solve_periodic_trig_equation`], also returning the didactic
+/// narration (`solve_steps`): the per-period roots and the periodic families.
+/// Sub-uses that reduce OTHER problems to this solver (boundary inequalities,
+/// trig products) call the plain wrapper and discard the narration — it only
+/// surfaces when this solver answers the user's equation directly.
+pub(crate) fn try_solve_periodic_trig_equation_with_steps(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     let mut added: Vec<&'static str> = Vec::new();
     for rule in MULTIPLE_ANGLE_EXPANSION_RULES {
         if !simplifier.is_rule_disabled(rule) {
@@ -8133,17 +8146,19 @@ pub(crate) fn try_solve_periodic_trig_equation(
             added.push(rule);
         }
     }
-    let out = try_solve_periodic_trig_equation_ungated(eq, var, simplifier);
+    let mut steps = Vec::new();
+    let out = try_solve_periodic_trig_equation_ungated(eq, var, simplifier, &mut steps);
     for rule in added {
         simplifier.enable_rule(rule);
     }
-    out
+    out.map(|set| (set, steps))
 }
 
 fn try_solve_periodic_trig_equation_ungated(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use cas_ast::{BuiltinFn, RelOp};
     use cas_solver_core::isolation_utils::contains_var;
@@ -8941,6 +8956,46 @@ fn try_solve_periodic_trig_equation_ungated(
         _ => return None,
     };
 
+    // Didactic narration, u-space half: only when the argument IS the bare
+    // variable (a=1, b=0) — printing roots of a synthetic `u` for `sin(2x+1)`
+    // would name a symbol the student never wrote.
+    {
+        use num_traits::{One, Zero};
+        let arg_is_bare_var =
+            cas_math::numeric_eval::as_rational_const(&simplifier.context, a_expr)
+                .is_some_and(|q| q.is_one())
+                && cas_math::numeric_eval::as_rational_const(&simplifier.context, b_expr)
+                    .is_some_and(|q| q.is_zero());
+        if arg_is_bare_var && !bases_u.is_empty() {
+            let func_name = match func {
+                BuiltinFn::Sin => "sin",
+                BuiltinFn::Cos => "cos",
+                _ => "tan",
+            };
+            let x = simplifier.context.var(var);
+            steps_out.push(crate::SolveStep::new(
+                format!("Invert {} over one period", func_name),
+                Equation {
+                    lhs: x,
+                    rhs: bases_u[0],
+                    op: RelOp::Eq,
+                },
+                crate::ImportanceLevel::Medium,
+            ));
+            if bases_u.len() > 1 {
+                steps_out.push(crate::SolveStep::new(
+                    "Second solution within the period".to_string(),
+                    Equation {
+                        lhs: x,
+                        rhs: bases_u[1],
+                        op: RelOp::Eq,
+                    },
+                    crate::ImportanceLevel::Medium,
+                ));
+            }
+        }
+    }
+
     // `u = a·x + b` ⇒ `x = (u − b)/a`: shift every base by `−b` then divide it and the period by `a`
     // (a > 1 SHRINKS the period: `cos(2x)=1 → {kπ}`; a = π gives a RATIONAL
     // x-period: `sin(πx)=1 → {1/2 + 2k}`, period 2π/π = 2).
@@ -8964,6 +9019,35 @@ fn try_solve_periodic_trig_equation_ungated(
     let period_div = simplifier.context.add(Expr::Div(period_u, a_expr));
     let (period, _) = simplifier.simplify(period_div);
     let period = fold_rational(simplifier, period);
+    // Didactic narration, families half: one step per periodic family, in the
+    // exact shape the result set displays (`x = base + k·T`).
+    {
+        let x = simplifier.context.var(var);
+        let k_var = simplifier.context.var("k");
+        for base in &bases {
+            let k_t = simplifier.context.add(Expr::Mul(k_var, period));
+            // A zero base narrates as `x = k·T`, not `x = 0 + k·T`; anything
+            // else stays in the exact `base + k·T` shape the result set shows
+            // (a general simplify here FACTORS the sum into unreadable forms).
+            let base_is_zero =
+                cas_math::numeric_eval::as_rational_const(&simplifier.context, *base)
+                    .is_some_and(|q| num_traits::Zero::is_zero(&q));
+            let family = if base_is_zero {
+                k_t
+            } else {
+                simplifier.context.add(Expr::Add(*base, k_t))
+            };
+            steps_out.push(crate::SolveStep::new(
+                "Periodic family of solutions (k any integer)".to_string(),
+                Equation {
+                    lhs: x,
+                    rhs: family,
+                    op: RelOp::Eq,
+                },
+                crate::ImportanceLevel::Medium,
+            ));
+        }
+    }
     let set = SolutionSet::Periodic { bases, period };
     Some(match parametric_range_guard {
         Some(c) => {
@@ -10687,8 +10771,8 @@ fn solve_local_core_inner(
     }
     // Bare trig equation `sin/cos/tan(x)=c` -> the full periodic family (before the unary-inverse
     // path, which would return only the principal root).
-    if let Some(set) = try_solve_periodic_trig_equation(eq, var, simplifier) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_periodic_trig_equation_with_steps(eq, var, simplifier) {
+        return Ok((set, steps));
     }
     // WEAK-BOUNDARY trig inequality `A·sin/cos(g) ⋚ c` with |c/A| ≥ 1: the range
     // [−1, 1] settles it without interval machinery — `2·sin(x) ≥ 2 ⇔ sin(x) = 1`

@@ -24,10 +24,10 @@ pub(crate) fn solve_inner(
     // returns only the PRINCIPAL root. That dropped periodicity for products of trig factors
     // (`solve(sin(x)*cos(x)=0) -> {0, π/2}` instead of the periodic union). Run the periodic solver on
     // every recursive sub-solve so each trig factor yields its full `SolutionSet::Periodic` family.
-    if let Some(set) =
-        crate::solve_backend_local::try_solve_periodic_trig_equation(eq, var, simplifier)
+    if let Some((set, steps)) =
+        crate::solve_backend_local::try_solve_periodic_trig_equation_with_steps(eq, var, simplifier)
     {
-        return Ok((set, Vec::new()));
+        return Ok((set, steps));
     }
     // Same recursive-bypass shape for a linear INEQUALITY with the variable on both sides and a
     // symbolic-constant coefficient: the log-linearization of `e^x {op} 2^x` recurses here with
