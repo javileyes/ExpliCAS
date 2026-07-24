@@ -13140,14 +13140,43 @@ fn try_standard_abs_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
-    let Expr::Function(fn_id, _) = ctx.get(expr) else {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
     if !ctx.is_builtin(*fn_id, BuiltinFn::Abs) {
         return None;
     }
+    let inner = args.first().copied();
 
     let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+
+    // A NON-RATIONAL constant argument with a provable sign (π, e, φ, surds,
+    // `π+1`, `2π`, and their negations) is owned by the sign rules of the
+    // full pipeline: EvaluateAbs here only strips the Neg (`|−π| → |π|`) and
+    // this single-shot chain returns a form nobody revisits, so `abs(-pi)`
+    // stayed `|π|` without steps while steps mode (Core + PostCleanup's
+    // Abs Under Positivity) folded it to `π`. Rational-foldable arguments
+    // stay on the shortcut — EvaluateAbs resolves them completely
+    // (`|−3| → 3`) with no divergence. Mirrors AbsSubNormalize's guard.
+    if let Some(inner) = inner {
+        if !cas_math::expr_predicates::contains_variable(ctx, inner)
+            && cas_math::numeric_eval::as_rational_const(ctx, inner).is_none()
+        {
+            let vd = parent_ctx.value_domain();
+            if crate::helpers::prove_positive(ctx, inner, vd) == crate::Proof::Proven {
+                return None;
+            }
+            // Fold `−(−u)` to `u` by hand: the prover does not normalize a
+            // double Neg, so `|−π|` would slip through as Unknown.
+            let neg_inner = match ctx.get(inner) {
+                Expr::Neg(u) => *u,
+                _ => ctx.add(Expr::Neg(inner)),
+            };
+            if crate::helpers::prove_positive(ctx, neg_inner, vd) == crate::Proof::Proven {
+                return None;
+            }
+        }
+    }
 
     let evaluate = crate::rules::functions::EvaluateAbsRule;
     if let Some(rewrite) = crate::rule::Rule::apply(&evaluate, ctx, expr, &parent_ctx) {

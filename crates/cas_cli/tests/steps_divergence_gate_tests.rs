@@ -367,11 +367,19 @@ fn harness_canary_original_abs_divergence_family_agrees() {
             "abs(1 - sqrt(2))",
             "abs(phi - 1)",
             "abs(x - 1)",
+            // Negated provably-signed constants: the abs shortcut stripped
+            // the Neg single-shot (`|−π| → |π|`) and diverged from the
+            // pipeline's fold to `π` (2026-07-24, cycle 4/4).
+            "abs(-pi)",
+            "abs(-e)",
+            "abs(-sqrt(2))",
+            "abs(-2*pi)",
+            "abs(-(pi+1))",
         ]
         .into_iter()
         .map(String::from)
         .collect(),
-        6,
+        11,
     );
 }
 
