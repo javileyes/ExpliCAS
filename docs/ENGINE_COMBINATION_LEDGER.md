@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 700 (newest first)
+Active entries: 701 (newest first)
 
+- 2026-07-25 | `retained` | `cas_cli/tests/steps_divergence_gate_tests.rs` — tres loaders/tests nuevos: `... | INFRAESTRUCTURA (auto-mejora tanda-2 ciclo 1/6 — el gate de divergencia cubre los VERBOS): limit/diff/integrate entran al barrido off/on — resultado LIMPIO certificado (0 divergencias en ~950 llamadas de verbo) y vigilancia permanente
 - 2026-07-24 | `retained` | `cas_didactic/didactic/visible_rule_names.rs` — el audit listó 5 nombres sin ... | EDUCATIVO (frente E · E4): nombres de regla en inglés a la tabla es/en — 4 de los 5 del audit ya habían MUERTO con E3 (eran confeti de solve); quedaban 2 vivos + 1 variante latente, todos mapeados (fugas en el corpus 210: 0)
 - 2026-07-24 | `retained` | `cas_didactic/step_payloads/events.rs` — el candidato del audit era «fold de ... | EDUCATIVO (frente E · fold vectorial→unificación del camino de eventos): los artefactos x^(2-1) restantes NO eran de los verbos vectoriales — eran el camino de EVENTOS renderizando crudo; ahora delega en build_step_wire (D 8→0, la familia entera muerta; F −1)
 - 2026-07-24 | `retained` | `cas_solver/solve_backend_local.rs` (handler trig periódico) + `solve_core_ru... | EDUCATIVO (frente E · narración solve_steps, peldaño 1): el solver trig periódico narra — raíces por periodo + una línea de familia por base, es/en por template ([050] 4 pasos, [051] 2; el canal estaba a Vec::new() explícito)
@@ -21628,3 +21629,15 @@ Active entries: 700 (newest first)
 - retained learning:
   - **«Residual cosmético» es una hipótesis, no un diagnóstico**: lo anotado como cosmético en un ciclo anterior era una familia entera de divergencia por modo de presentación; el sondeo de familia (variantes e/φ/surd/compuestas, ambos modos) cuesta un comando y decide si el residual es puntual o clase.
   - **El trace-negativo dirige tanto como el positivo**: un probe que NO imprime (el guard nunca se alcanza) y un trace de fases VACÍO (el pipeline nunca corre) descartaron dos hipótesis en dos corridas y señalaron el early-return exacto; instrumentar el call-site sigue siendo más barato que leer el orquestador entero.
+
+## 2026-07-25 - INFRAESTRUCTURA (auto-mejora tanda-2 ciclo 1/6 — el gate de divergencia cubre los VERBOS): limit/diff/integrate entran al barrido off/on — resultado LIMPIO certificado (0 divergencias en ~950 llamadas de verbo) y vigilancia permanente
+
+- area: `cas_cli/tests/steps_divergence_gate_tests.rs` — tres loaders/tests nuevos: `corpus/limits.txt` re-envuelto de sintaxis-comando REPL a llamada `limit(EXPR, VAR, POINT)` (29), `identity_pairs.csv` como `diff(exp, var)` con la columna var declarada (~500), y las sources de `derive_pairs.csv` como `integrate(src, x)` (~330; símbolos libres ≠ x son constantes — forma válida por derecho propio). El verbo eval+solve ya estaba cubierto; los pipelines de límites/derivadas/integrales corrían SIN vigilancia de la clase.
+- status: `retained`. Los TRES verbos limpios: 0 divergencias off/on (limit 0.02s, diff 3.4s, integrate 45.5s release). El hallazgo-negativo es entregable: la clase «resultado depende del modo steps» NO está presente hoy en los caminos de limit/diff/integrate barridos — coherente con el mapa causal (las regiones divergentes viven en la capa root-shortcut/preorder de SIMPLIFY; los verbos delegan su simplify de presentación al mismo pipeline ya confluido en la tanda-1). Presupuesto declarado como intención: limit+diff en el tier default (make ci); integrate al carril `--ignored` con los corpus de presión (45s release ≈ minutos en debug — la lección del time-budget del gate).
+- capture:
+  - investment_class: infraestructura de consistencia (extiende el detector permanente a 3 superficies nuevas).
+  - Un barrido limpio TAMBIÉN paga: convierte «no sabemos si los verbos divergen» en «certificado que no, y si mañana diverge, cargo test lo caza» — el mismo movimiento que convirtió la lección del ledger en gate.
+- observed: workspace failed:0, clippy 0, huellas 0 deltas de contadores (solo test+docs — 0 código de engine), wasm-check no aplica pero verde en la cadena.
+- decision: retener. Siguiente (ciclo 2/6): con los verbos limpios, el candidato pivota a los residuales nombrados — (a) trig+fracciones del hang-fix (capacidad de plegado en mezclas), (b) dueños trace-negativos del frente E (`|afín|⋚c` / `|f|<|g|`), (c) peldaños S. Sondear (a) primero: es el residual con reproducción exacta ya en mano.
+- retained learning:
+  - **Extender un gate es más barato que crearlo y paga igual**: los 3 loaders de verbos costaron ~80 líneas reutilizando el harness (matriz de outcomes, cuarentenas, red de terminación ya pagados); al construir un detector de clase, diseñarlo para que la N+1-ésima superficie sea un loader, no otro harness.

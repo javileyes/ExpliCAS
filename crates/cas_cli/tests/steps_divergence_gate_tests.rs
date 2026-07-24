@@ -329,6 +329,59 @@ fn load_web_examples() -> Vec<String> {
     dedup_preserving_order(exprs)
 }
 
+/// `corpus/limits.txt` rows are REPL-command syntax `limit EXPR, VAR, POINT`
+/// (comments/blank lines aside); rewrap them as the `limit(EXPR, VAR, POINT)`
+/// function-call form the eval surface accepts, putting the limits pipeline
+/// under the gate.
+fn load_limits_corpus_as_calls() -> Vec<String> {
+    let raw = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../cas_solver/tests/corpus/limits.txt"
+    ));
+    let exprs = data_lines(raw).filter_map(|line| {
+        let args = line.strip_prefix("limit ")?;
+        (split_top_level_commas(args).len() == 3).then(|| format!("limit({args})"))
+    });
+    dedup_preserving_order(exprs)
+}
+
+/// `identity_pairs.csv` rows are `exp,simp,var[,mode]`: sweep the DIFF verb
+/// over each identity's expression with its declared variable.
+fn load_identity_pairs_as_diff_calls() -> Vec<String> {
+    let raw = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../cas_solver/tests/identity_pairs.csv"
+    ));
+    let exprs = data_lines(raw).filter_map(|line| {
+        let fields = split_top_level_commas(line);
+        match (fields.first(), fields.get(2)) {
+            (Some(exp), Some(var)) if !exp.is_empty() && var.len() == 1 => {
+                Some(format!("diff({exp}, {var})"))
+            }
+            _ => None,
+        }
+    });
+    dedup_preserving_order(exprs)
+}
+
+/// `derive_pairs.csv` sources (column 2, mostly polynomial/collect shapes —
+/// cheap to integrate) swept through the INTEGRATE verb; free symbols other
+/// than `x` are constants, which is a valid integrand shape of its own.
+fn load_derive_sources_as_integrate_calls() -> Vec<String> {
+    let raw = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../cas_solver/tests/derive_pairs.csv"
+    ));
+    let exprs = data_lines(raw).skip(1).filter_map(|line| {
+        let fields = split_top_level_commas(line);
+        fields
+            .get(2)
+            .filter(|src| !src.is_empty())
+            .map(|src| format!("integrate({src}, x)"))
+    });
+    dedup_preserving_order(exprs)
+}
+
 /// `equation_corpus.csv` rows are `equation,solve_var,...` — swept through the
 /// same `eval` surface as the pins do, as `solve(<eq>, <var>)`, so the solve
 /// pipeline's steps-gated shortcut layers are under the gate too.
@@ -435,6 +488,36 @@ fn equation_corpus_solve_result_is_steps_mode_invariant() {
         "equation_corpus.csv as solve()",
         load_equation_corpus_as_solve_calls(),
         40,
+    );
+}
+
+#[test]
+fn limits_corpus_result_is_steps_mode_invariant() {
+    assert_steps_mode_invariant(
+        "corpus/limits.txt as limit()",
+        load_limits_corpus_as_calls(),
+        25,
+    );
+}
+
+#[test]
+fn diff_verb_result_is_steps_mode_invariant() {
+    assert_steps_mode_invariant(
+        "identity_pairs.csv as diff()",
+        load_identity_pairs_as_diff_calls(),
+        450,
+    );
+}
+
+#[test]
+#[ignore = "integrate sweep is release-budget work (~45s release, several minutes debug) — \
+            runs with the pressure tier: cargo test -p cas_cli --test \
+            steps_divergence_gate_tests --release -- --ignored"]
+fn integrate_verb_result_is_steps_mode_invariant() {
+    assert_steps_mode_invariant(
+        "derive_pairs.csv sources as integrate()",
+        load_derive_sources_as_integrate_calls(),
+        300,
     );
 }
 
