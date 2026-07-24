@@ -40,6 +40,12 @@ pub(super) fn solve_linear_system_parts(
                                 values,
                                 nonzero_conditions: det_condition.into_iter().collect(),
                             }),
+                            Ok(crate::Symbolic2x2Outcome::DependentForAllParameters) => {
+                                Ok(crate::LinSolveResult::Infinite)
+                            }
+                            Ok(crate::Symbolic2x2Outcome::InconsistentForAllParameters) => {
+                                Ok(crate::LinSolveResult::Inconsistent)
+                            }
                             Ok(crate::Symbolic2x2Outcome::DegenerateSymbolic) => {
                                 Err(crate::LinearSystemError::NotLinear(
                                     "symbolic coefficients with det = 0: \
@@ -76,6 +82,12 @@ pub(super) fn solve_linear_system_parts(
                             values,
                             nonzero_conditions: det_condition.into_iter().collect(),
                         }),
+                        Ok(crate::Symbolic2x2Outcome::DependentForAllParameters) => {
+                            Ok(crate::LinSolveResult::Infinite)
+                        }
+                        Ok(crate::Symbolic2x2Outcome::InconsistentForAllParameters) => {
+                            Ok(crate::LinSolveResult::Inconsistent)
+                        }
                         Ok(crate::Symbolic2x2Outcome::DegenerateSymbolic) => {
                             Err(crate::LinearSystemError::NotLinear(
                                 "symbolic coefficients with det = 0: \
@@ -107,6 +119,12 @@ pub(super) fn solve_linear_system_parts(
                         values,
                         nonzero_conditions: det_condition.into_iter().collect(),
                     }),
+                    Ok(crate::Symbolic2x2Outcome::DependentForAllParameters) => {
+                        Ok(crate::LinSolveResult::Infinite)
+                    }
+                    Ok(crate::Symbolic2x2Outcome::InconsistentForAllParameters) => {
+                        Ok(crate::LinSolveResult::Inconsistent)
+                    }
                     Ok(crate::Symbolic2x2Outcome::DegenerateSymbolic) => {
                         Err(crate::LinearSystemError::NotLinear(
                             "symbolic coefficients with det = 0: \

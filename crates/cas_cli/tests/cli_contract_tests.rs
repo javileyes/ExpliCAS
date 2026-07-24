@@ -10256,12 +10256,30 @@ fn solve_system_parametric_3x3_s6_contract() {
         r("solve([x+y+z=p, x-y=0, y-z=0], [x, y, z])"),
         "{ x = 1/3·p, y = 1/3·p, z = 1/3·p }"
     );
-    // Degenerado simbólico 3×3: decline honesto nombrado.
+    // Degenerado simbólico 3×3 con par de filas coef-idénticas y aumentados
+    // 1 vs 2: la clasificación ESTRUCTURAL (cross-minors exactos) lo decide
+    // inconsistente para TODO valor de a — ya no declina.
     let degen = r("solve([a*x+y+z=1, a*x+y+z=2, x-y=0], [x, y, z])");
+    assert!(degen.contains("System has no solution"), "{degen}");
+    // El rank INTERMEDIO paramétrico (y la base que puede anularse) siguen
+    // siendo el decline honesto: para a=0 este sistema es 0=1 (inconsistente)
+    // y para a≠0 es dependiente — la clasificación depende del parámetro.
+    let param_edge = r("solve([a*x+a*y=1, 2*a*x+2*a*y=2], [x, y])");
     assert!(
-        degen.contains("rank classification is a future rung"),
-        "{degen}"
+        param_edge.contains("rank classification is a future rung"),
+        "{param_edge}"
     );
+    // Proporcionalidad estructural completa (aumentado incluido) con base que
+    // nunca se anula: dependiente para todo a.
+    let dep = r("solve([a*x+y=1, 2*a*x+2*y=2], [x, y])");
+    assert!(
+        dep.contains("System has infinitely many solutions"),
+        "{dep}"
+    );
+    // Coef-proporcionales con desajuste aumentado constante: inconsistente
+    // para todo a.
+    let inc = r("solve([x+a*y=1, x+a*y=2], [x, y])");
+    assert!(inc.contains("System has no solution"), "{inc}");
 
     // Pins de no-robo: racional 3×3 y paramétrico 2×2 byte-idénticos.
     assert_eq!(
@@ -10298,14 +10316,14 @@ fn solve_system_parametric_nxn_s7_contract() {
         r("solve([x+y+z+w=p, x-y=0, y-z=0, z-w=0], [x, y, z, w])"),
         "{ x = 1/4·p, y = 1/4·p, z = 1/4·p, w = 1/4·p }"
     );
-    // Racional 4×4 byte-idéntico (no-robo) y degenerado honesto.
+    // Racional 4×4 byte-idéntico (no-robo); el par coef-idéntico con
+    // aumentados 1 vs 2 ahora clasifica estructuralmente: inconsistente para
+    // todo a (el rank intermedio paramétrico sigue declinando — ver el pin
+    // 3×3 de la suite S6).
     assert_eq!(
         r("solve([x+y+z+w=10, y+z+w=9, z+w=7, w=4], [x, y, z, w])"),
         "{ x = 1, y = 2, z = 3, w = 4 }"
     );
     let degen = r("solve([a*x+y+z+w=1, a*x+y+z+w=2, x-y=0, y-z=0], [x, y, z, w])");
-    assert!(
-        degen.contains("rank classification is a future rung"),
-        "{degen}"
-    );
+    assert!(degen.contains("System has no solution"), "{degen}");
 }

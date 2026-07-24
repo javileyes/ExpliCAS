@@ -38,6 +38,17 @@ pub(crate) enum Symbolic2x2Outcome {
     /// parameter value, and rank classification with symbolic entries is a
     /// future rung — decline honestly instead of branching blind.
     DegenerateSymbolic,
+    /// `det ≡ 0` where every non-base row is STRUCTURALLY proportional to the
+    /// base row (augmented column included, all cross-minors ≡ 0) and the base
+    /// row can never vanish (some coefficient is a nonzero constant): the
+    /// system is one honest equation — infinitely many solutions for EVERY
+    /// parameter value.
+    DependentForAllParameters,
+    /// `det ≡ 0` with a row pair whose coefficient cross-minors are ≡ 0 while
+    /// an augmented cross-minor over a CONSTANT nonzero base column is a
+    /// nonzero constant: subtracting the constant-scaled pair yields
+    /// `0 = c ≠ 0` — inconsistent for EVERY parameter value.
+    InconsistentForAllParameters,
 }
 
 /// Linear coefficients `a·x + b·y + c` where each entry is a polynomial in the
@@ -202,7 +213,12 @@ pub(crate) fn solve_2x2_symbolic(
 
     let det = sub(mul(&a1, &b2)?, mul(&a2, &b1)?)?;
     if det.is_zero() {
-        return Ok(Symbolic2x2Outcome::DegenerateSymbolic);
+        let rows = vec![
+            vec![a1.clone(), b1.clone(), d1.clone()],
+            vec![a2.clone(), b2.clone(), d2.clone()],
+        ];
+        return Ok(classify_degenerate_structural(&rows, &budget)
+            .unwrap_or(Symbolic2x2Outcome::DegenerateSymbolic));
     }
     let x_num = sub(mul(&d1, &b2)?, mul(&b1, &d2)?)?;
     let y_num = sub(mul(&a1, &d2)?, mul(&d1, &a2)?)?;
@@ -229,6 +245,99 @@ pub(crate) fn solve_2x2_symbolic(
         values: vec![x, y],
         det_condition: Some(det_expr),
     })
+}
+
+/// Structural rank slice of the `det ≡ 0` "future rung" (frente S): pairwise
+/// row proportionality by exact cross-multiplication — no division, so it is
+/// parameter-safe. Each row is `n` coefficient polys plus the augmented
+/// entry. Returns `None` whenever the classification would depend on the
+/// parameter values (intermediate rank, parametric augmented minors, a base
+/// row that can vanish): those keep today's honest decline.
+///
+/// Soundness guards (derived, not optional):
+/// - `InconsistentForAllParameters` requires an augmented cross-minor that is
+///   a nonzero CONSTANT over a base column that is itself a nonzero CONSTANT
+///   (the scaled row subtraction `0 = c` is then valid for every parameter
+///   value — a parametric base column fails at its zeros).
+/// - `DependentForAllParameters` requires every non-base row fully
+///   proportional (augmented included) AND some base coefficient constant
+///   nonzero (so the base equation never degenerates to `0 = nonzero`; a
+///   proportional row with a vanishing factor becomes `0 = 0`, still
+///   consistent).
+fn classify_degenerate_structural(
+    rows: &[Vec<MultiPoly>],
+    budget: &PolyBudget,
+) -> Option<Symbolic2x2Outcome> {
+    let width = rows.first()?.len();
+    if width < 2 {
+        return None;
+    }
+    let coeff_cols = width - 1;
+    let cross_minor = |ra: &[MultiPoly], rb: &[MultiPoly], c1: usize, c2: usize| {
+        ra[c1]
+            .mul(&rb[c2], budget)
+            .ok()?
+            .sub(&rb[c1].mul(&ra[c2], budget).ok()?)
+            .ok()
+    };
+
+    // `0 = c` rows first.
+    let mut effective: Vec<usize> = Vec::new();
+    for (i, row) in rows.iter().enumerate() {
+        if row[..coeff_cols].iter().all(MultiPoly::is_zero) {
+            let aug = &row[coeff_cols];
+            if aug.is_zero() {
+                continue;
+            }
+            return aug
+                .constant_value()
+                .map(|_| Symbolic2x2Outcome::InconsistentForAllParameters);
+        }
+        effective.push(i);
+    }
+    let (&base_index, rest) = effective.split_first()?;
+    let base = &rows[base_index];
+    let base_never_vanishes = base[..coeff_cols]
+        .iter()
+        .any(|p| p.constant_value().is_some_and(|k| !k.is_zero()));
+
+    let mut all_redundant = true;
+    for &i in rest {
+        let row = &rows[i];
+        let mut coef_proportional = true;
+        'coef: for c1 in 0..coeff_cols {
+            for c2 in (c1 + 1)..coeff_cols {
+                if !cross_minor(base, row, c1, c2)?.is_zero() {
+                    coef_proportional = false;
+                    break 'coef;
+                }
+            }
+        }
+        if !coef_proportional {
+            all_redundant = false;
+            continue;
+        }
+
+        let mut redundant = true;
+        for c in 0..coeff_cols {
+            let minor = cross_minor(base, row, c, coeff_cols)?;
+            if minor.is_zero() {
+                continue;
+            }
+            redundant = false;
+            let base_col_constant = base[c].constant_value().is_some_and(|k| !k.is_zero());
+            if base_col_constant && minor.constant_value().is_some() {
+                return Some(Symbolic2x2Outcome::InconsistentForAllParameters);
+            }
+        }
+        if !redundant {
+            // Coefficient-proportional but the augmented mismatch is
+            // parameter-dependent: consistency varies with the parameters.
+            return None;
+        }
+    }
+
+    (all_redundant && base_never_vanishes).then_some(Symbolic2x2Outcome::DependentForAllParameters)
 }
 
 /// Determinant of a square matrix of `MultiPoly` entries by cofactor
@@ -318,7 +427,17 @@ pub(crate) fn solve_nxn_symbolic(
         ));
     };
     if det.is_zero() {
-        return Ok(Symbolic2x2Outcome::DegenerateSymbolic);
+        let rows: Vec<Vec<MultiPoly>> = matrix
+            .iter()
+            .zip(&d)
+            .map(|(coeffs, aug)| {
+                let mut row = coeffs.clone();
+                row.push(aug.clone());
+                row
+            })
+            .collect();
+        return Ok(classify_degenerate_structural(&rows, &budget)
+            .unwrap_or(Symbolic2x2Outcome::DegenerateSymbolic));
     }
 
     let mut numerators = Vec::with_capacity(n);

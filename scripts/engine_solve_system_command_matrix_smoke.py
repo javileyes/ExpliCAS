@@ -333,17 +333,15 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         coefficient_regime="symbolic_parameter",
     ),
     SolveSystemCommandMatrixCase(
-        name="residual_parametric_3x3_degenerate_det_zero",
+        name="parametric_3x3_structural_inconsistent_det_zero",
         expr="solve([a*x+y+z=1, a*x+y+z=2, x-y=0], [x, y, z])",
         expected_result=(
-            "Error: non-linear term: symbolic coefficients with det = 0: "
-            "rank classification is a future rung\n"
-            "solve_system() only handles linear equations."
+            "System has no solution.\nThe equations are inconsistent."
         ),
         family="parametrico",
         size_regime="three_by_three",
         coefficient_regime="symbolic_parameter",
-        outcome="honest_residual",
+        outcome="inconsistent",
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
@@ -367,8 +365,30 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         coefficient_regime="symbolic_parameter",
     ),
     SolveSystemCommandMatrixCase(
-        name="residual_parametric_degenerate_det_zero",
+        name="parametric_2x2_structural_inconsistent_det_zero",
         expr="solve([a*x+y=1, a*x+y=2], [x, y])",
+        expected_result=(
+            "System has no solution.\nThe equations are inconsistent."
+        ),
+        family="parametrico",
+        coefficient_regime="symbolic_parameter",
+        outcome="inconsistent",
+        presentation_regime="prose_outcome",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="parametric_2x2_structural_dependent_det_zero",
+        expr="solve([a*x+y=1, 2*a*x+2*y=2], [x, y])",
+        expected_result=(
+            "System has infinitely many solutions.\nThe equations are dependent."
+        ),
+        family="parametrico",
+        coefficient_regime="symbolic_parameter",
+        outcome="dependent",
+        presentation_regime="prose_outcome",
+    ),
+    SolveSystemCommandMatrixCase(
+        name="residual_parametric_rank_edge_base_vanishes",
+        expr="solve([a*x+a*y=1, 2*a*x+2*a*y=2], [x, y])",
         expected_result=(
             "Error: non-linear term: symbolic coefficients with det = 0: "
             "rank classification is a future rung\n"
