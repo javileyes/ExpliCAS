@@ -202,7 +202,13 @@ fn try_rewrite_extract_additive_common_square_factor_expr(
     }
     let inner = rebuild_add_from_signed_terms(ctx, &new_terms)?;
     let coeff_expr = ctx.add(Expr::Number(sqrt_gcd));
-    let sqrt_inner = ctx.call_builtin(BuiltinFn::Sqrt, vec![inner]);
+    // Pow-half, not Function-sqrt: the engine's canonical form for SYMBOLIC
+    // radicands is `base^(1/2)` (a raw `2*sqrt(x+1)` input normalizes to
+    // `2·(x+1)^(1/2)`), and the root shortcut returns this build without a
+    // revisit — as Function-sqrt it froze `√(9x+9)` at `3·sqrt(x+1)` while
+    // steps mode reached `3·(x+1)^(1/2)` (text-render steps divergence).
+    let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+    let sqrt_inner = ctx.add(Expr::Pow(inner, half));
     Some(ctx.add(Expr::Mul(coeff_expr, sqrt_inner)))
 }
 
@@ -3779,11 +3785,27 @@ mod tests {
     fn simplify_square_root_rewrite_extracts_additive_common_square_factor() {
         let mut ctx = Context::new();
         let expr = parse("sqrt(4*x^2 + 4)", &mut ctx).expect("expr");
-        let expected = parse("2*sqrt(x^2 + 1)", &mut ctx).expect("expected");
+        // Pow-half, the canonical symbolic-radicand form (the old
+        // Function-sqrt build diverged from the steps-mode pipeline render).
+        // Built by hand: parsing "(1/2)" yields Div(1,2), not Number(1/2).
+        let expected_base = parse("x^2 + 1", &mut ctx).expect("expected base");
+        let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let expected_pow = ctx.add(Expr::Pow(expected_base, half));
+        let two = ctx.add(Expr::Number(BigRational::from_integer(2.into())));
+        let expected = ctx.add(Expr::Mul(two, expected_pow));
         let rewrite = try_rewrite_simplify_square_root_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
-            std::cmp::Ordering::Equal
+            std::cmp::Ordering::Equal,
+            "rewritten: {} | expected: {}",
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            },
+            cas_formatter::DisplayExpr {
+                context: &ctx,
+                id: expected
+            }
         );
     }
 
