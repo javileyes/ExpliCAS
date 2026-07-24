@@ -2846,7 +2846,7 @@ fn try_solve_single_abs_polynomial_relation(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::RelOp;
     use cas_math::polynomial::Polynomial;
     use cas_solver_core::isolation_utils::contains_var;
@@ -2947,12 +2947,36 @@ fn try_solve_single_abs_polynomial_relation(
     let pos_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?;
     let neg_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Lt)?;
 
+    // Narration: the textbook sign split, one line per case with the
+    // SUBSTITUTED relation as its equation. Branch roots are candidates the
+    // case-domain intersection can clip, so only the STRUCTURE narrates
+    // (candidatos ≠ respuesta — the same rule the verified abs splits follow).
+    let steps = vec![
+        crate::SolveStep::new(
+            "Absolute value by sign: case argument nonnegative (|f| = f)".to_string(),
+            Equation {
+                lhs: pos_expr,
+                rhs: zero,
+                op: eq.op.clone(),
+            },
+            crate::ImportanceLevel::Medium,
+        ),
+        crate::SolveStep::new(
+            "Absolute value by sign: case argument negative (|f| = -f)".to_string(),
+            Equation {
+                lhs: neg_expr,
+                rhs: zero,
+                op: eq.op.clone(),
+            },
+            crate::ImportanceLevel::Medium,
+        ),
+    ];
+
     let final_pos = intersect_solution_sets(&simplifier.context, pos_branch, pos_domain);
     let final_neg = intersect_solution_sets(&simplifier.context, neg_branch, neg_domain);
-    Some(union_solution_sets(
-        &simplifier.context,
-        final_pos,
-        final_neg,
+    Some((
+        union_solution_sets(&simplifier.context, final_pos, final_neg),
+        steps,
     ))
 }
 
@@ -11072,8 +11096,8 @@ fn solve_local_core_inner(
         eq.op,
         cas_ast::RelOp::Lt | cas_ast::RelOp::Leq | cas_ast::RelOp::Gt | cas_ast::RelOp::Geq
     ) {
-        if let Some(set) = try_solve_single_abs_polynomial_relation(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
+        if let Some((set, steps)) = try_solve_single_abs_polynomial_relation(simplifier, eq, var) {
+            return Ok((set, steps));
         }
     }
     // `|g(x)| {op} c` (constant `c`) reduces to the polynomial inequalities on the
@@ -11189,8 +11213,8 @@ fn solve_local_core_inner(
     // equation handlers so they keep their forms (0 huella delta); equation ops only
     // (the inequality dispatch above owns those).
     if matches!(eq.op, cas_ast::RelOp::Eq) {
-        if let Some(set) = try_solve_single_abs_polynomial_relation(simplifier, eq, var) {
-            return Ok((set, Vec::new()));
+        if let Some((set, steps)) = try_solve_single_abs_polynomial_relation(simplifier, eq, var) {
+            return Ok((set, steps));
         }
     }
     // Equations that mix an exponential with its RECIPROCAL (`e^x + e^(−x) = 2`, `2^x − 3 + 2^(1−x) = 0`)

@@ -11145,4 +11145,50 @@ fn eval_solve_abs_equations_narrate_argument_zero_and_case_splits() {
         ],
         "expected the two split-case lines, got {steps:?}"
     );
+
+    // Sign-split (single |f| entangled with polynomial-in-x structure, linear
+    // g included): the two case lines carry the SUBSTITUTED relation.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(abs(x^2-1)=x+1,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs,
+        vec![
+            "Valor absoluto por signo: caso argumento ≥ 0 (|f| = f)",
+            "Valor absoluto por signo: caso argumento < 0 (|f| = −f)",
+        ],
+        "expected the sign-split case lines, got {steps:?}"
+    );
+    assert_eq!(steps[0]["equation"], "x^2 - x - 2 = 0");
+
+    // The inequality form is owned by the same handler and narrates the same way.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(x^2-3*abs(x)+2<0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    assert_eq!(
+        steps.len(),
+        2,
+        "expected two sign-split lines, got {steps:?}"
+    );
+    assert_eq!(steps[0]["equation"], "x^2 + 2 - 3·x < 0");
 }
