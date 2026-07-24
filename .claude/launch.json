@@ -4,8 +4,22 @@
     {
       "name": "pages-static",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "dist/pages"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "dist/pages"
+      ],
       "port": 8765
+    },
+    {
+      "name": "server-python",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "web/server.py"
+      ],
+      "port": 8080
     }
   ]
 }

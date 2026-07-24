@@ -2799,10 +2799,27 @@
                 const dataLatex = resultMathEl?.getAttribute('data-latex') || '';
                 const dataResult = resultMathEl?.getAttribute('data-result') || '';
 
+                // Robust input capture: LaTeX-rendered headers keep the raw
+                // text in .expression-plain-text (the .expression-input element
+                // only exists in the no-LaTeX fallback); sessionResults has the
+                // original input for #ref cards. Declarations rebuild their raw
+                // `name := value` form so a future import can REPLAY them.
+                const plainTextEl = card.querySelector('.expression-plain-text');
+                const capturedInput = (storedResult && storedResult.input)
+                    || plainTextEl?.textContent
+                    || inputEl?.textContent
+                    || '';
+                const rawInput = isFunction && functionName
+                    ? `${functionName}(${(sessionFunctions[functionName]?.params || []).join(', ')}) := ${sessionFunctions[functionName]?.display || capturedInput}`
+                    : isAssignment && assignmentName
+                        ? `${assignmentName} := ${sessionVariables[assignmentName] ?? capturedInput}`
+                        : capturedInput;
+
                 const entry = {
                     ref: refText,
                     ref_num: refNum,
-                    input: inputEl?.textContent || '',
+                    input: capturedInput,
+                    input_raw: rawInput,
                     // For assignments, the "value" is in the input element, not result
                     result_latex: isAssignment ? '' : (dataLatex || (storedResult?.result_latex) || (storedResult?.result) || ''),
                     result: isAssignment ? '' : (dataResult || (storedResult?.result) || ''),
@@ -2878,274 +2895,88 @@
                     document.getElementById('expressions').innerHTML = '';
                 }
 
-                // Restore variables
-                if (notebook.variables) {
-                    Object.assign(sessionVariables, notebook.variables);
-                }
-
-                // Restore functions
-                if (notebook.functions) {
-                    Object.assign(sessionFunctions, notebook.functions);
-                }
-
-                // Determine the highest ref number from the notebook
-                let maxRefNum = 0;
-                for (const entry of notebook.expressions) {
-                    const refNum = entry.ref_num || parseInt(entry.ref?.replace('#', '')) || 0;
-                    if (refNum > maxRefNum) maxRefNum = refNum;
-                }
-
-                // If replacing, use notebook's expressionCount or maxRefNum
+                // REPLAY the transcript through the ENGINE, in card order.
+                // Painting cards from the saved JSON (the old import) left the
+                // session engine empty in BOTH modes: `#1` pointed at the next
+                // fresh evaluation, and imported variables/functions were
+                // unusable. Re-evaluating each saved input rebuilds engine
+                // state, `#N` references, headers and the panels by
+                // construction — wasm and server take the same path (callAPI).
                 if (replaceExisting) {
-                    expressionCount = notebook.expressionCount || maxRefNum;
-                } else {
-                    // If appending, keep current but update if imported has higher
-                    expressionCount = Math.max(expressionCount, maxRefNum);
+                    try {
+                        if (window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled) {
+                            await window.EXPLICAS_WASM.clear();
+                        } else {
+                            await fetch('/api/clear', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ session_id: SESSION_ID })
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('Could not clear engine session before import:', e);
+                    }
                 }
 
-                // Restore expression cards
-                const container = document.getElementById('expressions');
-                // Hide empty state if present (use display:none instead of remove to avoid crashes)
-                const emptyState = container.querySelector('.empty-state') || document.getElementById('empty-state');
+                // Hide empty state if present
+                const emptyState = document.getElementById('empty-state');
                 if (emptyState) emptyState.style.display = 'none';
 
-                // Build serverResults for syncing with server
-                const serverResultsToSync = [];
-
-                for (const entry of notebook.expressions) {
-                    // Use original reference number from notebook
-                    const refNum = entry.ref_num || parseInt(entry.ref?.replace('#', '')) || (notebook.expressions.indexOf(entry) + 1);
-                    const isAssignment = entry.is_assignment;
-
-                    // Get result values from multiple sources (serverResults is most reliable for v2)
-                    const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
-                    const resultLatex = entry.result_latex || serverResult?.result_latex || serverResult?.result || entry.result || '';
-                    const resultParseable = entry.result || serverResult?.result || entry.result_latex || '';
-
-                    const isPolyResult = entry.poly_output || (resultLatex && resultLatex.length > 500);
-
-                    // Determine how to render steps: prefer steps array (re-render), fallback to HTML
-                    const hasStepsArray = entry.steps && entry.steps.length > 0;
-                    const hasStepsHtml = entry.steps_html && entry.steps_html.trim().length > 0;
-                    const hasSteps = hasStepsArray || hasStepsHtml;
-                    const stepsContent = hasStepsArray ? renderSteps(entry.steps) : (entry.steps_html || '');
-                    const stepsCount = hasStepsArray ? entry.steps.length : (hasStepsHtml ? t('steps.some_count') : 0);
-
-                    // Same for solve_steps
-                    const hasSolveStepsArray = entry.solve_steps && entry.solve_steps.length > 0;
-                    const hasSolveStepsHtml = entry.solve_steps_html && entry.solve_steps_html.trim().length > 0;
-                    const hasSolveSteps = hasSolveStepsArray || hasSolveStepsHtml;
-                    const solveStepsContent = hasSolveStepsArray ? renderSolveSteps(entry.solve_steps) : (entry.solve_steps_html || '');
-                    const solveStepsCount = hasSolveStepsArray ? entry.solve_steps.length : (hasSolveStepsHtml ? t('steps.some_count') : 0);
-
-                    // Create card element with proper ID (matching addExpressionCard)
-                    const card = document.createElement('div');
-                    card.className = 'expression-card'
-                        + (isAssignment ? ' variable-card' : '')
-                        + (entry.is_function ? ' function-card' : '');
-                    card.id = `expr-${refNum}`;
-                    if (entry.assignment_name) {
-                        card.dataset.varName = entry.assignment_name;
-                    }
-
-                    // Build card HTML using the SAME structure as addExpressionCard
-                    let cardHtml;
-
+                // Rebuild each entry's raw input. Newer exports carry
+                // `input_raw`; older ones rebuild declarations from the
+                // variables/functions maps, and fall back to replaying the
+                // stored RESULT for #ref cards whose input was exported blank
+                // (pre-fix files) — that keeps the reference VALUE correct
+                // even if the original expression text is lost.
+                const rebuildInput = (entry) => {
+                    if (entry.input_raw) return entry.input_raw;
                     if (entry.is_function && entry.function_name) {
-                        // Function definition card (no #ref, amber)
-                        card.id = `expr-fn-${entry.function_name}`;
-                        card.dataset.fnName = entry.function_name;
-                        const fnSig = `${entry.function_name}(${(entry.function_params || []).join(', ')})`;
-                        const fnValue = entry.function_value || '';
-                        cardHtml = `
-                            <div class="expression-header">
-                                <div class="expression-header-left">
-                                    <span class="fn-badge">${escapeHtml(fnSig)} :=</span>
-                                    <span class="expression-input">${escapeHtml(fnValue)}</span>
-                                </div>
-                                <div class="expression-header-right">
-                                    <button class="delete-btn" onclick="deleteFunctionCard('${escapeHtml(entry.function_name)}')" title="${t('card.delete_function')}">🗑️</button>
-                                </div>
-                            </div>
-                        `;
-                    } else if (isAssignment && entry.assignment_name) {
-                        // Variable assignment card (no #ref)
-                        card.id = `expr-var-${entry.assignment_name}`;
-                        const displayValue = entry.assignment_value || entry.input || '';
-                        const assignLatex = entry.result_latex;
-                        cardHtml = `
-                            <div class="expression-header">
-                                <div class="expression-header-left">
-                                    <span class="var-badge">${escapeHtml(entry.assignment_name)} :=</span>
-                                    ${assignLatex
-                                ? `<span class="expression-input-wrapper">
-                                               <span class="expression-latex-main">$${assignLatex}$</span>
-                                               <span class="expression-plain-tooltip">
-                                                   <span class="expression-plain-text">${escapeHtml(displayValue)}</span>
-                                                   <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(displayValue).replace(/'/g, "\\'")}')">📋</button>
-                                               </span>
-                                           </span>`
-                                : `<span class="expression-input">${escapeHtml(displayValue)}</span>`
-                            }
-                                </div>
-                                <div class="expression-header-right">
-                                    <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(entry.assignment_name)}')" title="${t('card.delete_variable')}">🗑️</button>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        // Regular expression card with #ref
-                        const inputLatex = entry.input_latex;
-                        const inputPlain = entry.input;
-                        cardHtml = `
-                            <div class="expression-header">
-                                <div class="expression-header-left">
-                                    <span class="expression-ref">#${refNum}</span>
-                                    ${inputLatex
-                                ? `<span class="expression-input-wrapper">
-                                               <span class="expression-latex-main">$${inputLatex}$</span>
-                                               <span class="expression-plain-tooltip">
-                                                   <span class="expression-plain-text">${escapeHtml(inputPlain)}</span>
-                                                   <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(inputPlain).replace(/'/g, "\\'")}')">📋</button>
-                                               </span>
-                                           </span>`
-                                : `<span class="expression-input">${escapeHtml(inputPlain)}</span>`
-                            }
-                                </div>
-                                <div class="expression-header-right">
-                                    <button class="delete-btn" onclick="deleteCard('${refNum}')" title="${t('card.delete_expression')}">🗑️</button>
-                                </div>
-                            </div>
-                            <div class="expression-body">
-                                ${hasSteps ? `
-                                    <button class="steps-toggle" onclick="toggleSteps('${refNum}')">
-                                        <span class="arrow">▶</span>
-                                        ${t('card.show_steps', stepsCount)}
-                                    </button>
-                                    <div class="steps-container" id="steps-${refNum}">
-                                        ${stepsContent}
-                                    </div>
-                                ` : ''}
-                                ${hasSolveSteps ? `
-                                    <button class="steps-toggle" onclick="toggleSolveSteps('${refNum}')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
-                                        <span class="arrow">▶</span>
-                                        ${t('card.show_solving_steps', solveStepsCount)}
-                                    </button>
-                                    <div class="steps-container" id="solve-steps-${refNum}">
-                                        ${solveStepsContent}
-                                    </div>
-                                ` : ''}
-                                
-                                <div class="result-section">
-                                    <div class="result-label">${t('card.result')}</div>
-                                    <div class="result-math" data-latex="${escapeHtml(resultLatex)}" data-result="${escapeHtml(resultParseable)}">
-                                        ${entry.error
-                                ? `<span class="error-message">${escapeHtml(entry.error)}</span>`
-                                : isPolyResult
-                                    ? `<pre class="poly-output">${escapeHtml(entry.poly_output || resultLatex)}</pre>`
-                                    : `$${resultLatex}$`
-                            }
-                                    </div>
-                                </div>
-                                ${entry.required_display && entry.required_display.length > 0 ? `
-                                    <div class="requires-section">
-                                        <div class="requires-label">${t('card.requires')}</div>
-                                        <ul class="requires-list">
-                                            ${entry.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
-                                        </ul>
-                                    </div>
-                                ` : ''}
-                                ${renderAssumptionsSection(entry.assumptions_used)}
-                                ${renderEquivalenceDiagnosticsSection(entry.equivalence_diagnostics)}
-                                ${renderWarningsSection(entry.warnings)}
-                            </div>
-                        `;
+                        const params = (entry.function_params || []).join(', ');
+                        const body = entry.function_value
+                            || (notebook.functions && notebook.functions[entry.function_name]?.display)
+                            || '';
+                        return body ? `${entry.function_name}(${params}) := ${body}` : null;
                     }
-
-                    card.innerHTML = cardHtml;
-                    container.appendChild(card);
-
-                    // Update sessionResults for references (use the original ref number)
-                    // IMPORTANT: Store complete object so reference substitution and re-export work correctly
-                    if (!isAssignment) {
-                        // Check if notebook has serverResults with parseable 'result' field
-                        const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
-                        sessionResults[refNum] = {
-                            result: serverResult?.result || entry.result || entry.result_latex || '',
-                            result_latex: entry.result_latex || serverResult?.result_latex || serverResult?.result || '',
-                            // Preserve steps for re-export
-                            steps: entry.steps || [],
-                            solve_steps: entry.solve_steps || [],
-                            // Preserve additional metadata
-                            stats: entry.stats || null,
-                            timings_us: entry.timings_us || null,
-                            warnings: entry.warnings || [],
-                            required_display: entry.required_display || [],
-                            assumptions_used: entry.assumptions_used || [],
-                            equivalence_diagnostics: entry.equivalence_diagnostics || null,
-                            poly_output: entry.poly_output || null
-                        };
-                    } else if (isAssignment && entry.assignment_name) {
-                        // Track variable assignment in sessionVariables for the badge and future exports
-                        const assignedValue = entry.assignment_value || entry.input || '';
-                        sessionVariables[entry.assignment_name] = assignedValue;
-                    } else if (entry.is_function && entry.function_name) {
-                        sessionFunctions[entry.function_name] = {
-                            params: entry.function_params || [],
-                            display: entry.function_value || ''
-                        };
+                    if (entry.is_assignment && entry.assignment_name) {
+                        const value = entry.assignment_value
+                            || (notebook.variables && notebook.variables[entry.assignment_name])
+                            || '';
+                        return value ? `${entry.assignment_name} := ${value}` : null;
                     }
+                    if (entry.input) return entry.input;
+                    return entry.result || null;
+                };
 
-                    // Collect for server sync - use parseable result from serverResults if available
-                    if (!isAssignment && (entry.result_latex || notebook.serverResults)) {
-                        const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
-                        serverResultsToSync.push({
-                            result: serverResult?.result || entry.result_latex,
-                            result_latex: entry.result_latex || serverResult?.result,
-                            ref: refNum
-                        });
+                let imported = 0;
+                let failed = 0;
+                for (const entry of notebook.expressions) {
+                    const rawInput = rebuildInput(entry);
+                    if (!rawInput) {
+                        failed += 1;
+                        continue;
+                    }
+                    try {
+                        const result = await callAPI(rawInput);
+                        addExpressionCard(rawInput, result);
+                        imported += 1;
+                    } catch (e) {
+                        addErrorCard(rawInput, e.message);
+                        failed += 1;
                     }
                 }
 
                 updateVariablesBadge();
                 updateFunctionsBadge();
 
-                // Sync with server so subsequent evaluations have correct references
-                try {
-                    // Use serverResults from v2 format or build from expressions
-                    const resultsForServer = notebook.serverResults || serverResultsToSync;
-
-                    const importResponse = await fetch('/api/import', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            session_id: SESSION_ID,
-                            variables: sessionVariables,
-                            functions: sessionFunctions,
-                            results: resultsForServer,
-                            replace: replaceExisting
-                        })
-                    });
-
-                    // Use server's next_ref to sync expressionCount
-                    const importData = await importResponse.json();
-                    if (importData.ok && importData.next_ref) {
-                        // next_ref is what the NEXT expression should be, so expressionCount = next_ref - 1
-                        expressionCount = importData.next_ref - 1;
-                    }
-                } catch (e) {
-                    console.warn('Could not sync with server:', e);
-                }
-
-                // Re-render MathJax
                 if (window.MathJax && MathJax.typesetPromise) {
                     await MathJax.typesetPromise();
                 }
 
-                alert(t('import.success_alert', notebook.expressions.length) +
-                    (Object.keys(notebook.variables || {}).length > 0 ?
-                        t('import.success_and_variables', Object.keys(notebook.variables).length) : '') +
-                    t('import.success_next_eval', expressionCount + 1));
+                alert(t('import.success_alert', imported) +
+                    (Object.keys(sessionVariables).length > 0 ?
+                        t('import.success_and_variables', Object.keys(sessionVariables).length) : '') +
+                    t('import.success_next_eval', expressionCount + 1) +
+                    (failed > 0 ? `\n(${failed} entradas no se pudieron reproducir)` : ''));
 
             } catch (e) {
                 console.error('Import error:', e);
