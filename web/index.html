@@ -1931,6 +1931,32 @@
                 if (data.ok === false) {
                     throw new Error(data.error?.message || data.error || t('error.generic'));
                 }
+                // Declaration decoration — the wasm session handles `:=`
+                // NATIVELY (state lives in Rust), but the UI's declaration
+                // cards and the Variables/Funciones panels are driven by the
+                // same response fields web/server.py builds. Mirror them here
+                // with the server's exact regexes; the Rust wire already
+                // returns the server-parity `result` (the evaluated RHS for a
+                // variable, the body for a function) and `stored_id` (#N ref).
+                const fnMatch = expr.match(
+                    /^([a-zA-Z_][a-zA-Z0-9_]*)\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)\s*\)\s*:=\s*(.+)$/
+                );
+                const varMatch = fnMatch ? null : expr.match(
+                    /^([a-zA-Z_][a-zA-Z0-9_]*)\s*:=\s*(.+)$/
+                );
+                const functionAssignment = fnMatch ? fnMatch[1] : null;
+                const functionParams = fnMatch
+                    ? fnMatch[2].split(',').map(p => p.trim())
+                    : [];
+                const assignment = varMatch ? varMatch[1] : null;
+                const knownVariables = Object.keys(sessionVariables);
+                if (assignment && !knownVariables.includes(assignment)) {
+                    knownVariables.push(assignment);
+                }
+                const knownFunctions = Object.keys(sessionFunctions);
+                if (functionAssignment && !knownFunctions.includes(functionAssignment)) {
+                    knownFunctions.push(functionAssignment);
+                }
                 return {
                     input: data.input || expr,
                     input_latex: data.input_latex || null,
@@ -1946,7 +1972,14 @@
                     assumptions_used: data.assumptions_used || [],
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
                     error: undefined,
-                    assignment: null,
+                    assignment: assignment,
+                    variables: knownVariables,
+                    function_assignment: functionAssignment,
+                    function_params: functionParams,
+                    functions: knownFunctions,
+                    ref: (assignment || functionAssignment)
+                        ? null
+                        : (typeof data.stored_id === 'number' ? data.stored_id : null)
                 };
             }
             try {
