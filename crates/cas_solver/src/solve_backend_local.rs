@@ -2177,6 +2177,7 @@ fn solve_polynomial_in_atom(
     u_var: &str,
     var: &str,
     back_sub_atom: ExprId,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use cas_math::polynomial::Polynomial;
     let u_poly = Polynomial::from_expr(&simplifier.context, u_expr, u_var).ok()?;
@@ -2195,6 +2196,38 @@ fn solve_polynomial_in_atom(
         SolutionSet::Empty => return Some(SolutionSet::Empty),
         _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
     };
+    // Narration: mirror the exp-substitution strategy's shape (detección +
+    // sustitución inversa por raíz). The internal `u_var` is a collision-safe
+    // synthetic name (`__trig_u`) the student never wrote, so the substituted
+    // equation narrates with a clean display `u` and the u-polynomial's own
+    // sub-steps are not appended (the exp route shows neither).
+    let atom_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: back_sub_atom
+        }
+    );
+    let display_u = simplifier.context.var("u");
+    let internal_u = simplifier.context.var(u_var);
+    let display_u_expr =
+        substitute_expr_by_id(&mut simplifier.context, u_expr, internal_u, display_u);
+    // Strip identity-zero noise (`u^2 - 3u + 2 - 0`) without a general simplify
+    // (which would factor/reorder the polynomial the student should recognize).
+    let display_u_expr = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+        &mut simplifier.context,
+        display_u_expr,
+    );
+    let display_zero = simplifier.context.num(0);
+    steps_out.push(crate::SolveStep::new(
+        format!("Detected substitution: u = {}", atom_display),
+        Equation {
+            lhs: display_u_expr,
+            rhs: display_zero,
+            op: cas_ast::RelOp::Eq,
+        },
+        crate::ImportanceLevel::Medium,
+    ));
     // Back-substitute each root `atom = u_root`, then union the branch solutions (periodic-aware).
     let mut branch_sets = Vec::with_capacity(u_roots.len());
     for u_root in u_roots {
@@ -2203,7 +2236,21 @@ fn solve_polynomial_in_atom(
             rhs: u_root,
             op: cas_ast::RelOp::Eq,
         };
-        let (xs, _) = crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
+        let root_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: u_root
+            }
+        );
+        steps_out.push(crate::SolveStep::new(
+            format!("Back-substitute: {} = {}", atom_display, root_display),
+            back_eq.clone(),
+            crate::ImportanceLevel::Medium,
+        ));
+        let (xs, branch_steps) =
+            crate::solver_entrypoints_solve::solve(&back_eq, var, simplifier).ok()?;
+        steps_out.extend(branch_steps);
         branch_sets.push(xs);
     }
     union_branch_solutions(simplifier, branch_sets)
@@ -2266,6 +2313,7 @@ fn try_solve_rational_power_polynomial(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use num_bigint::BigInt;
     use num_integer::Integer;
@@ -2298,7 +2346,7 @@ fn try_solve_rational_power_polynomial(
         .add(Expr::Number(BigRational::new(BigInt::one(), q_big)));
     let x = simplifier.context.var(var);
     let atom = simplifier.context.add(Expr::Pow(x, recip_q));
-    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom, steps_out)
 }
 
 /// Match a leaf `coeff · x^e` (any rational `e`, incl. negative), a `var`-free
@@ -2407,6 +2455,7 @@ fn try_solve_rational_power_laurent(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use num_bigint::BigInt;
     use num_integer::Integer;
@@ -2485,7 +2534,7 @@ fn try_solve_rational_power_laurent(
         .add(Expr::Number(BigRational::new(BigInt::one(), q_big)));
     let x = simplifier.context.var(var);
     let atom = simplifier.context.add(Expr::Pow(x, recip_q));
-    solve_polynomial_in_atom(simplifier, u_expr, "__rpl_u", var, atom)
+    solve_polynomial_in_atom(simplifier, u_expr, "__rpl_u", var, atom, steps_out)
 }
 
 /// Solve an EQUATION that is a polynomial of degree ≥ 2 in `ln(g)` for a single
@@ -2499,6 +2548,7 @@ fn try_solve_polynomial_in_log(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     if eq.op != cas_ast::RelOp::Eq {
         return None;
@@ -2515,7 +2565,7 @@ fn try_solve_polynomial_in_log(
     if expr_contains_named_var(&simplifier.context, u_expr, var) {
         return None; // a second, distinct log atom (or x elsewhere) remains
     }
-    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom, steps_out)
 }
 
 /// Solve an EQUATION that is a polynomial of degree ≥ 2 in `|x|`, e.g.
@@ -2535,6 +2585,7 @@ fn try_solve_polynomial_in_abs(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use cas_ast::{BuiltinFn, RelOp};
     use cas_solver_core::isolation_utils::contains_var;
@@ -2571,7 +2622,7 @@ fn try_solve_polynomial_in_abs(
     if contains_var(&simplifier.context, u_expr, var) {
         return None;
     }
-    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, abs_x)
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, abs_x, steps_out)
 }
 
 /// Collect every distinct `|f|` sub-term of `expr` whose argument contains
@@ -3048,6 +3099,7 @@ fn solve_polynomial_in_trig_from_diff(
     simplifier: &mut Simplifier,
     diff: ExprId,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     let atom = find_trig_atom_containing_var(&simplifier.context, diff, var)?;
     let u_var = "__trig_u";
@@ -3056,7 +3108,7 @@ fn solve_polynomial_in_trig_from_diff(
     if expr_contains_named_var(&simplifier.context, u_expr, var) {
         return None; // a second, distinct trig atom (or x elsewhere) remains
     }
-    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom, steps_out)
 }
 
 /// Rewrite every EVEN power of `atom` in `expr` via `atom² = sq_repl` (`atom^(2k) → sq_repl^k`),
@@ -3132,6 +3184,7 @@ fn try_solve_mixed_trig_via_pythagorean(
     simplifier: &mut Simplifier,
     diff: ExprId,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use cas_ast::BuiltinFn;
     let probe = find_trig_atom_containing_var(&simplifier.context, diff, var)?;
@@ -3151,7 +3204,7 @@ fn try_solve_mixed_trig_via_pythagorean(
     if let Some(reduced) =
         rewrite_even_power_of_atom(&mut simplifier.context, diff, cos_g, cos_repl)
     {
-        if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, reduced, var) {
+        if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, reduced, var, steps_out) {
             return Some(set);
         }
     }
@@ -3163,7 +3216,7 @@ fn try_solve_mixed_trig_via_pythagorean(
     if let Some(reduced) =
         rewrite_even_power_of_atom(&mut simplifier.context, diff, sin_g, sin_repl)
     {
-        return solve_polynomial_in_trig_from_diff(simplifier, reduced, var);
+        return solve_polynomial_in_trig_from_diff(simplifier, reduced, var, steps_out);
     }
     None
 }
@@ -3178,6 +3231,7 @@ fn try_solve_polynomial_in_trig(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     if eq.op != cas_ast::RelOp::Eq {
         return None;
@@ -3185,7 +3239,7 @@ fn try_solve_polynomial_in_trig(
     // Try the RAW difference FIRST: simplifying would fold `sin²(x)` into `cos(2x)`, destroying the
     // polynomial-in-`sin(x)` structure (the reason this handler exists).
     let raw_diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-    if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, raw_diff, var) {
+    if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, raw_diff, var, steps_out) {
         return Some(set);
     }
     // Fallback: the SIMPLIFIED difference. This is the DUAL case — a `cos(2x)` (double-angle) term folds
@@ -3194,13 +3248,15 @@ fn try_solve_polynomial_in_trig(
     // `sin²` case — we never reach here, so its structure is untouched.) The two-term `cos(2x) ± cos(x)`
     // instead simplifies to a PRODUCT and is solved by the product-equation path, not here.
     let (simplified_diff, _) = simplifier.simplify(raw_diff);
-    if let Some(set) = solve_polynomial_in_trig_from_diff(simplifier, simplified_diff, var) {
+    if let Some(set) =
+        solve_polynomial_in_trig_from_diff(simplifier, simplified_diff, var, steps_out)
+    {
         return Some(set);
     }
     // Last fallback: the simplified form mixes `sin(g)` and `cos(g)` (e.g. `cos(2x) − sin(x)` folds to
     // the MIXED `2·cos(x)² − sin(x) − 1`). If one atom is purely even, the Pythagorean identity reduces
     // it to a single-atom polynomial.
-    try_solve_mixed_trig_via_pythagorean(simplifier, simplified_diff, var)
+    try_solve_mixed_trig_via_pythagorean(simplifier, simplified_diff, var, steps_out)
 }
 
 /// Classify a leaf as a (possibly coefficiented) BARE `sin(g)`/`cos(g)` whose argument carries `var`:
@@ -3596,6 +3652,7 @@ fn try_solve_exponential_reciprocal_polynomial(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
+    steps_out: &mut Vec<crate::SolveStep>,
 ) -> Option<SolutionSet> {
     use num_rational::BigRational;
     use std::collections::BTreeMap;
@@ -3646,7 +3703,7 @@ fn try_solve_exponential_reciprocal_polynomial(
         let term = simplifier.context.add(Expr::Mul(coeff, power));
         u_expr = simplifier.context.add(Expr::Add(u_expr, term));
     }
-    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom)
+    solve_polynomial_in_atom(simplifier, u_expr, u_var, var, atom, steps_out)
 }
 
 /// Solve `|A(x)| = c` where `A` contains a trig atom and `c` is a nonnegative rational constant, by the
@@ -11026,27 +11083,40 @@ fn solve_local_core_inner(
     // `x^(2/3) - x^(1/3) - 2`, …) are quadratics-in-disguise: the isolation path
     // reorients to `x = f(x)` and leaks a malformed `solve(...)` residual while
     // dropping every root. Solve them by `u = x^(1/q)` substitution here first.
-    if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut atom_steps = Vec::new();
+        if let Some(set) = try_solve_rational_power_polynomial(simplifier, eq, var, &mut atom_steps)
+        {
+            return Ok((set, atom_steps));
+        }
     }
     // LAURENT polynomials in `x^(1/q)` — a root mixed with its reciprocal
     // (`√x − 1/√x = 1`, `√x + 1/√x = 5/2`) — leak the same malformed residual
     // (`x = (…)^(1/(1/2))`). Clear the `1/u^k` by shifting and solve in `u = x^(1/q)`.
-    if let Some(set) = try_solve_rational_power_laurent(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut atom_steps = Vec::new();
+        if let Some(set) = try_solve_rational_power_laurent(simplifier, eq, var, &mut atom_steps) {
+            return Ok((set, atom_steps));
+        }
     }
     // Equations that are a polynomial of degree ≥ 2 in `ln(x)`
     // (`ln(x)^2 - ln(x) - 2 = 0`, …) leak the same way; solve them by the
     // `u = ln(x)` substitution.
-    if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut atom_steps = Vec::new();
+        if let Some(set) = try_solve_polynomial_in_log(simplifier, eq, var, &mut atom_steps) {
+            return Ok((set, atom_steps));
+        }
     }
     // Equations that are a polynomial of degree ≥ 2 in `|x|` (`|x|² − 3·|x| + 2 = 0`,
     // stored as `x² − 3·|x| + 2` after `|x|² → x²`) leak the same way — the isolation
     // path reorients to `x = √(3·|x| − 2)`. Solve them by the `u = |x|` substitution
     // (with the `x² = |x|²` even-power unification) here first.
-    if let Some(set) = try_solve_polynomial_in_abs(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut atom_steps = Vec::new();
+        if let Some(set) = try_solve_polynomial_in_abs(simplifier, eq, var, &mut atom_steps) {
+            return Ok((set, atom_steps));
+        }
     }
     // A single `|f(x)|` term with a NON-CONSTANT quadratic-or-higher remainder
     // (`x² + |x−1| − 3 = 0`, `|x−1| = 3 − x²`) is `|f| = g(x)`. Isolating the abs
@@ -11073,14 +11143,22 @@ fn solve_local_core_inner(
     // are Laurent polynomials in `base^x`; the isolation path rewrites them via the cosh identity and
     // bails (`función [cosh] no definida` / `Cannot isolate`). Substitute `u = base^x`, clear the
     // reciprocal, and solve the polynomial in `u`. Pure positive-power forms decline (owned elsewhere).
-    if let Some(set) = try_solve_exponential_reciprocal_polynomial(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut atom_steps = Vec::new();
+        if let Some(set) =
+            try_solve_exponential_reciprocal_polynomial(simplifier, eq, var, &mut atom_steps)
+        {
+            return Ok((set, atom_steps));
+        }
     }
     // Equations that are a polynomial of degree ≥ 2 in a trig atom (`2·sin(x)² − 3·sin(x) + 1 = 0`)
     // leak an `arcsin(… − cos(2x) …)` residual once the double-angle identity fires; substitute
     // `u = sin(x)` (cos/tan) and back-substitute each root through the periodic solver.
-    if let Some(set) = try_solve_polynomial_in_trig(simplifier, eq, var) {
-        return Ok((set, Vec::new()));
+    {
+        let mut atom_steps = Vec::new();
+        if let Some(set) = try_solve_polynomial_in_trig(simplifier, eq, var, &mut atom_steps) {
+            return Ok((set, atom_steps));
+        }
     }
     // A HOMOGENEOUS linear trig equation `a·sin(g) + b·cos(g) = 0` (`sin(x) = cos(x)`,
     // `√3·sin(x) − cos(x) = 0`) reduces to `tan(g) = −b/a`; the isolation path otherwise leaks an

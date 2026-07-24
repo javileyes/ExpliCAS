@@ -11031,3 +11031,64 @@ fn eval_solve_periodic_trig_equation_narrates_solve_steps() {
         "expected the auxiliary-angle narration, got {steps:?}"
     );
 }
+
+#[test]
+fn eval_solve_polynomial_in_atom_narrates_substitution_and_back_substitution() {
+    // `u = x^(1/2)` quadratic-in-disguise: the substitution line shows the
+    // clean display `u` (never the collision-safe internal `__…_u` name) with
+    // identity-zero noise stripped, then one back-substitution line per root
+    // followed by that branch's own narration.
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(x-3*sqrt(x)+2=0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "{ 1, 4 }");
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(
+        descs.first().copied(),
+        Some("Sustitución detectada: u = x^(1/2)")
+    );
+    assert_eq!(steps[0]["equation"], "u^2 + 2 - 3·u = 0");
+    assert!(
+        descs.contains(&"Sustitución inversa: x^(1/2) = 1")
+            && descs.contains(&"Sustitución inversa: x^(1/2) = 2"),
+        "expected one back-substitution line per root, got {steps:?}"
+    );
+
+    // The trig-atom variant chains into the periodic narration and keeps the
+    // out-of-range branch honest (sin(x) = 2 narrated, no family emitted).
+    let (output, code) = run_cli(&[
+        "eval",
+        "solve(sin(x)^2-3*sin(x)+2=0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0, "output: {output}");
+    let wire = parse_wire(&output);
+    let steps = wire["solve_steps"].as_array().cloned().unwrap_or_default();
+    let descs: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["description"].as_str())
+        .collect();
+    assert_eq!(steps[0]["equation"], "u^2 - 3·u + 2 = 0");
+    assert!(
+        descs.contains(&"Sustitución inversa: sin(x) = 2"),
+        "the out-of-range branch must still narrate its back-substitution, got {steps:?}"
+    );
+    assert!(
+        descs.contains(&"Familia periódica de soluciones (k entero cualquiera)"),
+        "the in-range branch must chain into the periodic narration, got {steps:?}"
+    );
+}
