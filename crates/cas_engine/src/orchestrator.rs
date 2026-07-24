@@ -13113,6 +13113,15 @@ fn try_standard_simplify_square_root_shortcut(
         return None;
     }
     let rewrite = try_rewrite_simplify_square_root_expr(ctx, expr)?;
+    // Confluence: when the rewrite lands on an |·| form, the phase pipeline
+    // still owes it a canonicalization chain (Abs Positive Factor,
+    // Abs Distribute Over Odd Power, ...) that this single-shot shortcut
+    // does not replicate — returning here froze `√(4x²)` at `|2x|` while
+    // steps mode reached `2|x|` (a steps-mode divergence). Decline and let
+    // the full pipeline own every abs-bearing result.
+    if expr_contains_any_builtin_local(ctx, rewrite.rewritten, &[BuiltinFn::Abs]) {
+        return None;
+    }
     let rewrite = crate::rule::Rewrite::new(rewrite.rewritten).desc(
         format_standard_simplify_square_root_shortcut_desc(rewrite.kind),
     );

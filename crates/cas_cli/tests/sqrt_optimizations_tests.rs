@@ -76,7 +76,11 @@ fn test_sqrt_binomial_addition_squared() {
 
 #[test]
 fn test_sqrt_trinomial_squared() {
-    // sqrt((x^2 + 2*x + 1)^2) should simplify
+    // sqrt((x^2 + 2*x + 1)^2): the sqrt shortcut now declines abs-bearing
+    // results (steps-divergence confluence), so the phase pipeline owns the
+    // fold — and it goes further than the old `|x^2 + 2x + 1|` pin: the
+    // trinomial is a perfect square, provably nonnegative, so the bars drop.
+    // Both steps modes agree on this stronger form.
     let mut simplifier = create_simplifier();
     let expr = parse("sqrt((x^2 + 2*x + 1)^2)", &mut simplifier.context).unwrap();
     let (result, steps) = simplifier.simplify(expr);
@@ -89,9 +93,8 @@ fn test_sqrt_trinomial_squared() {
         }
     );
 
-    // Should contain abs
-    assert!(result_str.contains('|'));
-    // Should not expand significantly
+    assert_eq!(result_str, "x^2 + 2 * x + 1");
+    // Still must not blow up into a long expansion chain.
     assert!(steps.len() < 10, "Too many steps: {}", steps.len());
 }
 

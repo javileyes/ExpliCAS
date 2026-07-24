@@ -96,20 +96,6 @@ struct KnownDivergence {
 }
 
 const QUARANTINE: &[KnownDivergence] = &[
-    // substitution_identities.csv — sqrt root shortcut leaves |2x| where the
-    // full pipeline normalizes to 2|x| (cosmetic form divergence).
-    KnownDivergence {
-        input: "sqrt(4*x^2)",
-        off: "|2 * x|",
-        on: "2 * |x|",
-    },
-    // identity_pairs.csv — same sqrt-shortcut family: the shortcut keeps the
-    // whole odd power inside the bars, the pipeline extracts the even part.
-    KnownDivergence {
-        input: "sqrt(x^6)",
-        off: "|x^3|",
-        on: "|x| * x^2",
-    },
     // derive_pairs.csv — perfect-square-over-difference preorder path cancels
     // to `a - b` only on the steps-off path; with steps the quotient survives
     // (capability divergence: asking for steps LOSES the simplification).

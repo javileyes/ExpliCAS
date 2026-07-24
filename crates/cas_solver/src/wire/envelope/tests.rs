@@ -604,7 +604,13 @@ fn evaluate_envelope_wire_command_assume_collapses_even_power_and_abs_with_warni
         evaluate_envelope_wire_command("sqrt(x^2)", EvalDomainMode::Assume, EvalValueDomain::Real);
     let sqrt_wire = parse_envelope(&sqrt_payload);
 
-    assert_eq!(sqrt_wire["result"]["value"]["display"], "|x|");
+    // The sqrt arm now matches the ln arm above: with the root shortcut
+    // declining abs-bearing results (steps-divergence confluence), assume
+    // mode reaches Abs Under Positivity and collapses `√(x²) → |x| → x`
+    // with the assumption REGISTERED — the same transparency contract the
+    // even-power log collapse already had (the old `|x|` pin froze a
+    // shortcut-only inconsistency where sqrt skipped what ln performed).
+    assert_eq!(sqrt_wire["result"]["value"]["display"], "x");
     assert!(sqrt_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array")
@@ -612,7 +618,11 @@ fn evaluate_envelope_wire_command_assume_collapses_even_power_and_abs_with_warni
     let sqrt_assumed = sqrt_wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array");
-    assert!(sqrt_assumed.is_empty());
+    assert_eq!(sqrt_assumed.len(), 1);
+    assert_eq!(sqrt_assumed[0]["kind"], "positive");
+    assert_eq!(sqrt_assumed[0]["rule"], "Abs Under Positivity");
+    assert_eq!(sqrt_assumed[0]["display"], "x > 0");
+    assert_eq!(sqrt_assumed[0]["expr_canonical"], "x");
 }
 
 #[test]

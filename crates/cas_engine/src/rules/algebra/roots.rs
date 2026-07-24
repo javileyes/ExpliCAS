@@ -154,8 +154,13 @@ mod tests {
 
     #[test]
     fn simplifier_applies_simplify_square_root_rule_to_function_form() {
+        // Anchored to the ADDITIVE-common-factor arm: the |·|-emitting arms
+        // (perfect squares) are owned by RecognizeSqrtPerfectSquare in the
+        // phase pipeline, and the root shortcut declines abs-bearing results
+        // (steps-divergence confluence), so `sqrt(x^2+2x+1)` no longer routes
+        // through this rule. `sqrt(9x+9) → 3·sqrt(x+1)` still does.
         let mut simplifier = Simplifier::with_default_rules();
-        let expr = parse("sqrt(x^2 + 2*x + 1)", &mut simplifier.context).expect("parse");
+        let expr = parse("sqrt(9*x + 9)", &mut simplifier.context).expect("parse");
 
         let (_result, steps) = simplifier.simplify(expr);
 
