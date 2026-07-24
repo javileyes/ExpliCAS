@@ -77,7 +77,7 @@ pub(crate) use step_visibility::{
 };
 pub use substep::SubStep;
 pub(crate) use visible_rule_names::{
-    rule_name_es_to_en, visible_rule_name, visible_rule_name_for_step, visible_step_description,
+    rule_name_es_to_en, visible_rule_name_for_step, visible_step_description,
 };
 
 #[cfg(test)]

@@ -36,7 +36,7 @@ pub fn collect_step_payloads_with_events_localized(
     let mut base = if !collected.is_empty() || steps_mode != "on" {
         collected
     } else {
-        events::collect_event_step_payloads(events, ctx)
+        events::collect_event_step_payloads(events, ctx, language)
     };
     dedup_consecutive_step_payloads(&mut base);
     localize_step_payloads(base, language)
@@ -112,7 +112,11 @@ pub fn collect_step_payloads_with_events(
     if !collected.is_empty() || steps_mode != "on" {
         return collected;
     }
-    events::collect_event_step_payloads(events, ctx)
+    events::collect_event_step_payloads(
+        events,
+        ctx,
+        cas_solver_core::eval_option_axes::Language::Es,
+    )
 }
 
 fn is_noop_wire_step(step: &StepWire) -> bool {

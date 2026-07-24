@@ -2,12 +2,14 @@ use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;
 
-use super::build::render_human_expr;
-
-pub(super) fn collect_event_step_payloads(events: &[EngineEvent], ctx: &Context) -> Vec<StepWire> {
+pub(super) fn collect_event_step_payloads(
+    events: &[EngineEvent],
+    ctx: &Context,
+    language: cas_solver_core::eval_option_axes::Language,
+) -> Vec<StepWire> {
     let mut wires: Vec<StepWire> = events
         .iter()
-        .filter_map(|event| build_event_step_payload(event, ctx))
+        .filter_map(|event| build_event_step_payload(event, ctx, language))
         .collect();
     // Re-number after dropping no-op steps so the displayed indices stay 1..n with no gaps.
     for (display_index, wire) in wires.iter_mut().enumerate() {
@@ -16,7 +18,11 @@ pub(super) fn collect_event_step_payloads(events: &[EngineEvent], ctx: &Context)
     wires
 }
 
-fn build_event_step_payload(event: &EngineEvent, ctx: &Context) -> Option<StepWire> {
+fn build_event_step_payload(
+    event: &EngineEvent,
+    ctx: &Context,
+    language: cas_solver_core::eval_option_axes::Language,
+) -> Option<StepWire> {
     match event {
         EngineEvent::RuleApplied {
             rule_name,
@@ -28,8 +34,6 @@ fn build_event_step_payload(event: &EngineEvent, ctx: &Context) -> Option<StepWi
         } => {
             let before_expr = global_before.unwrap_or(*before);
             let after_expr = global_after.unwrap_or(*after);
-            let before_human = render_human_expr(ctx, before_expr);
-            let after_human = render_human_expr(ctx, after_expr);
 
             // `Canonicalize Negation` ("Quitar paréntesis tras el signo menos") is a pure normalization
             // rule — it reorders additive terms (`√19 − √17 + x → √19 + x − √17`) or distributes a
@@ -45,42 +49,40 @@ fn build_event_step_payload(event: &EngineEvent, ctx: &Context) -> Option<StepWi
                 return None;
             }
 
+            // Route the event through THE SAME wire builder as the engine-steps path
+            // (cleanup+normalize folded states, colored global before/after latex,
+            // span-derived rule_latex). The event path used to render raw
+            // (`x^(2-1)` machinery artifacts survived in equiv/dsolve chains) —
+            // the 6th two-paths-one-contract instance.
+            let mut base_step = crate::runtime::Step::new(
+                rule_name,
+                rule_name,
+                *before,
+                *after,
+                Vec::<crate::runtime::PathStep>::new(),
+                Some(ctx),
+            );
+            base_step.global_before = *global_before;
+            base_step.global_after = *global_after;
+            let enriched = crate::didactic::EnrichedStep {
+                base_step,
+                sub_steps: Vec::new(),
+            };
+            // Index 0 is provisional: collect_event_step_payloads renumbers after
+            // the no-op filter (no event step is the user's verbatim input echo).
+            let wire = super::build::build_step_wire(ctx, 0, &enriched, language);
+
             // Drop a no-op step: when the displayed expression is unchanged the step teaches nothing
-            // (the event/equiv path previously emitted ~10/19 such canonicalization no-ops, e.g. "Quitar
-            // paréntesis"/"Reescribir la división" that render identical before -> after). The normal
-            // step path already filters these; mirror it here. Always-keep rules (domain assumptions,
-            // etc.) are never dropped.
-            if before_human == after_human
+            // (the event/equiv path previously emitted ~10/19 such canonicalization no-ops). The
+            // normal step path already filters these; mirror it here. Always-keep rules (domain
+            // assumptions, etc.) are never dropped.
+            if wire.before == wire.after
                 && !cas_solver_core::step_rules::is_always_keep_step_rule_name(rule_name)
             {
                 return None;
             }
 
-            Some(StepWire {
-                index: 0, // reassigned in collect_event_step_payloads after the no-op filter
-                rule: crate::didactic::visible_rule_name(rule_name).to_string(),
-                // Build the colored `before -> after` transform like the normal step path. The raw
-                // `rule_name` string used to land here and the web wraps `rule_latex` in `$...$`, so
-                // the English rule name rendered as garbled MathJax. Use the LOCAL change.
-                rule_latex: crate::step_payload_render::render_local_rule_latex(
-                    ctx, *before, *after,
-                ),
-                before: before_human,
-                after: after_human,
-                before_latex: cas_formatter::LaTeXExpr {
-                    context: ctx,
-                    id: before_expr,
-                }
-                .to_latex()
-                .to_string(),
-                after_latex: cas_formatter::LaTeXExpr {
-                    context: ctx,
-                    id: after_expr,
-                }
-                .to_latex()
-                .to_string(),
-                substeps: Vec::new(),
-            })
+            Some(wire)
         }
     }
 }
