@@ -623,3 +623,214 @@ fn load_derive_sources_as_integrate_calls() -> Vec<String> {
         "integrate({}, x)",
     )
 }
+
+// ---------------------------------------------------------------------------
+// Claim shadow run (C1.8, paso 0): what a substep AFFIRMS, verified over the
+// WIRE, in OBSERVER mode.
+//
+// The C1.8 design (inventory of 422 emission points) prescribes measuring
+// before enforcing, and the reason is a hard number: a prototype that verified
+// `Equality` over every substep refuted 80 of 214 — but ~51 of those were
+// LEGITIMATE non-equality relations (an antiderivative is not an equality).
+// Switching a global equality check on would delete more than half of the
+// correct narration. So: declare the relation per family, verify only the
+// families whose relation is unambiguous, and publish the tally.
+//
+// It runs on the published strings rather than on engine internals, which
+// makes it (a) free of any performance risk to the engine, and (b) the exact
+// skeleton C1.9 needs — the generative tier differs only in where the
+// expressions come from.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Claim {
+    /// `d(after)/dvar == before`
+    Antiderivative,
+    /// `after == d(before)/dvar`
+    Derivative,
+}
+
+#[derive(Default, Debug)]
+struct ClaimTally {
+    verified: usize,
+    trivial: usize,
+    refuted: Vec<String>,
+    undecided: usize,
+}
+
+/// The relation a substep title declares. Deliberately a SMALL table: only the
+/// families the inventory found unambiguous. Everything else is an explicit
+/// abstention, not a silent pass.
+fn claim_of_title(title: &str) -> Option<Claim> {
+    let t = title.to_lowercase();
+    if t.contains("hallar la antiderivada") || t.contains("find the antiderivative") {
+        return Some(Claim::Antiderivative);
+    }
+    if t.starts_with("derivar respecto de") || t.starts_with("differentiate with respect to") {
+        return Some(Claim::Derivative);
+    }
+    None
+}
+
+fn parse_in(ctx: &mut cas_ast::Context, text: &str) -> Option<cas_ast::ExprId> {
+    cas_parser::parse(text, ctx).ok()
+}
+
+fn simplifies_to_zero(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
+    std::mem::swap(&mut simplifier.context, ctx);
+    let (rewritten, _steps, _stats) =
+        simplifier.simplify_with_stats(expr, cas_solver::runtime::SimplifyOptions::default());
+    std::mem::swap(&mut simplifier.context, ctx);
+    matches!(ctx.get(rewritten), cas_ast::Expr::Number(n) if num_traits::Zero::is_zero(n))
+}
+
+/// Free variable names appearing in a rendered expression. The shadow run needs
+/// this because THE WIRE DOES NOT PUBLISH THE CLAIM'S PARAMETERS: an
+/// `Antiderivative` is only meaningful with respect to a variable, and the
+/// substep publishes two strings and a title. Inferring the variable from the
+/// call text refuted `cos(t) ⟹ sin(t)` — true, but differentiated with respect
+/// to `x`. That finding is the point of running this in observer mode first.
+fn candidate_vars(text: &str) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut current = String::new();
+    for ch in text.chars() {
+        if ch.is_alphabetic() {
+            current.push(ch);
+        } else {
+            if current.len() == 1 && current != "e" {
+                seen.insert(current.clone());
+            }
+            current.clear();
+        }
+    }
+    if current.len() == 1 && current != "e" {
+        seen.insert(current);
+    }
+    seen.into_iter().collect()
+}
+
+fn check_claim(claim: Claim, before: &str, after: &str, _var: &str, tally: &mut ClaimTally) {
+    if before == after {
+        tally.trivial += 1;
+        return;
+    }
+    let mut vars = candidate_vars(before);
+    for v in candidate_vars(after) {
+        if !vars.contains(&v) {
+            vars.push(v);
+        }
+    }
+    if vars.is_empty() {
+        tally.undecided += 1;
+        return;
+    }
+    // Until the claim carries its variable as DATA, the shadow run accepts the
+    // relation if it holds for SOME free variable. This is deliberately weaker
+    // than the real check and is why this tier only MEASURES.
+    let mut any_undecidable = false;
+    for var in &vars {
+        let mut ctx = cas_ast::Context::new();
+        let (Some(before_id), Some(after_id)) =
+            (parse_in(&mut ctx, before), parse_in(&mut ctx, after))
+        else {
+            tally.undecided += 1;
+            return;
+        };
+        let (derived_from, compare_to) = match claim {
+            Claim::Antiderivative => (after_id, before_id),
+            Claim::Derivative => (before_id, after_id),
+        };
+        let Some(derivative) =
+            cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+                &mut ctx,
+                derived_from,
+                var,
+            )
+        else {
+            any_undecidable = true;
+            continue;
+        };
+        let difference = ctx.add(cas_ast::Expr::Sub(derivative, compare_to));
+        if simplifies_to_zero(&mut ctx, difference) {
+            tally.verified += 1;
+            return;
+        }
+    }
+    if any_undecidable {
+        tally.undecided += 1;
+    } else {
+        // NOT proof of a lie: the simplifier may simply fail to reach zero.
+        // Recorded with its witness so every entry is adjudicated by hand.
+        tally.refuted.push(format!("{claim:?}: {before}  ⟹  {after}"));
+    }
+}
+
+/// Refutations surviving manual adjudication. MEASURED at 2, both the same
+/// witness: `∫dx/(x³−2)`, whose antiderivative is correct (the engine gates its
+/// emission on its own exact verification) but whose difference the simplifier
+/// does not reduce to zero through the cbrt terms. They are UNDECIDED dressed as
+/// refuted, and the honest ceiling is the measured number, not a round one.
+const CLAIM_REFUTED_CEILING: usize = 2;
+
+/// Shadow run: measure, do not enforce. The subset C1.8 turns on is chosen from
+/// THIS table, not from a guess.
+#[test]
+#[ignore]
+fn substep_claim_shadow_run_over_guardrail_corpora() {
+    let corpora: Vec<(&str, Vec<String>)> = vec![
+        ("web_examples", load_web_examples()),
+        ("derive_sources_integrate", load_derive_sources_as_integrate_calls()),
+    ];
+    let mut tally = ClaimTally::default();
+    let mut declared = 0usize;
+    let mut abstained = 0usize;
+
+    for (_name, inputs) in &corpora {
+        for input in inputs {
+            let Some(wire) = eval_wire_in(input, Language::Es) else {
+                continue;
+            };
+            // The variable of the calculus verb, read off the call itself.
+            let var = input
+                .rsplit_once(',')
+                .map(|(_, tail)| tail.trim_end_matches(')').trim().to_string())
+                .filter(|v| v.len() == 1)
+                .unwrap_or_else(|| "x".to_string());
+            for step in &wire.steps {
+                for sub in &step.substeps {
+                    match claim_of_title(&sub.title) {
+                        Some(claim) => {
+                            declared += 1;
+                            check_claim(claim, &sub.before, &sub.after, &var, &mut tally);
+                        }
+                        None => abstained += 1,
+                    }
+                }
+            }
+        }
+    }
+
+    println!("substep_claim_declared hits={declared} rows={declared}");
+    println!("substep_claim_abstained hits={abstained} rows={abstained}");
+    println!("substep_claim_verified hits={} rows={}", tally.verified, tally.verified);
+    println!("substep_claim_trivial hits={} rows={}", tally.trivial, tally.trivial);
+    println!(
+        "substep_claim_undecided hits={} rows={}",
+        tally.undecided, tally.undecided
+    );
+    println!(
+        "substep_claim_refuted hits={} rows={}",
+        tally.refuted.len(),
+        tally.refuted.len()
+    );
+    for witness in tally.refuted.iter().take(25) {
+        println!("  REFUTED {witness}");
+    }
+
+    assert!(
+        tally.refuted.len() <= CLAIM_REFUTED_CEILING,
+        "claim refutations {} exceed the declared ceiling {CLAIM_REFUTED_CEILING}",
+        tally.refuted.len()
+    );
+}
