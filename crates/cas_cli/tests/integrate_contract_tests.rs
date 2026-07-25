@@ -16466,3 +16466,68 @@ fn integrate_contract_additive_integrand_narrates_linearity_then_each_term() {
         "a product is not a sum: {product:?}"
     );
 }
+
+/// A vector `integrate`/`diff` narrates component by component. The engine
+/// already worked that way and said so in its rule description, but the didactic
+/// chain did not recognise the `Expr::Matrix` shape and returned empty.
+#[test]
+fn integrate_contract_vector_calculus_narrates_each_component() {
+    let subs = |input: &str| -> Vec<(String, String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["before"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    for (input, header) in [
+        ("integrate([cos(x), e^x], x)", "Integrar cada componente del vector"),
+        ("diff([x^2, sin(x)], x)", "Derivar cada componente del vector"),
+        // Definite: the split rides the bounds along.
+        (
+            "integrate([cos(t), sin(t)], t, 0, pi)",
+            "Integrar cada componente del vector",
+        ),
+    ] {
+        let s = subs(input);
+        assert_eq!(
+            s.first().map(|(t, _, _)| t.as_str()),
+            Some(header),
+            "{input} must open with the component split: {s:?}"
+        );
+        // The header SHOWS the split (pending per-component operations); a
+        // header that merely restates the parent is pruned by policy.
+        assert_ne!(s[0].1, s[0].2, "{input} header restates its parent: {s:?}");
+        // At least one component narrates. NOT "every component": `∫e^x dx = e^x`
+        // is a fixed point and has nothing to narrate — demanding a substep per
+        // component is what would push a narrator into publishing `e^x -> e^x`.
+        assert!(
+            s.len() >= 2,
+            "{input} must narrate at least one component after the split: {s:?}"
+        );
+    }
+
+    // Both components non-trivial: one substep each on top of the header.
+    let both = subs("diff([x^2, sin(x)], x)");
+    assert!(
+        both.len() >= 3,
+        "both components of this one do narrate: {both:?}"
+    );
+
+    // And the fixed point publishes NOTHING rather than an identity substep.
+    let fixed_point = subs("integrate(e^x, x)");
+    assert!(
+        fixed_point.is_empty(),
+        "∫e^x dx is a fixed point; «use substitution: e^x -> e^x» teaches nothing: {fixed_point:?}"
+    );
+}

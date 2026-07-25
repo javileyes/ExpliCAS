@@ -122,6 +122,12 @@ fn generate_focused_rule_substeps_at_depth(
     // by-parts see it first is what produced the measured false labels
     // (`∫(ln x + x)` and `∫(x·e^x + sin 2x)` were titled "use integration by
     // parts" over the whole sum).
+    let vector_component_substeps =
+        generate_vector_component_calculus_substeps(ctx, step, depth);
+    if !vector_component_substeps.is_empty() {
+        return vector_component_substeps;
+    }
+
     let additive_integration_substeps =
         generate_additive_integration_substeps(ctx, step, depth);
     if !additive_integration_substeps.is_empty() {
@@ -12977,6 +12983,111 @@ fn differentiation_component_derivative_substep(
 ///    a CONSTANT (the theorem is "antiderivatives differ by a constant", not
 ///    "are equal"). Any term that fails to integrate declines the whole
 ///    narration — all-or-nothing, the doctrine the matrix arm already applies.
+/// A vector `integrate`/`diff` narrated component by component.
+///
+/// The engine already works component-wise and SAYS so in the rule description
+/// (`integrate_rule.rs:73`, "Integrar cada componente del vector"), but the
+/// didactic chain did not recognise the `Expr::Matrix` shape and returned empty,
+/// so `integrate([cos(x), e^x], x)` and `diff([x^2, sin(x)], x)` were mute while
+/// their scalar halves narrate fine.
+///
+/// Unlike the additive narrator, pairing IS positional here and that is sound:
+/// component `i` of the answer is by definition the image of component `i` of
+/// the input — a matrix has coordinates, a sum does not.
+fn generate_vector_component_calculus_substeps(
+    ctx: &Context,
+    step: &Step,
+    depth: usize,
+) -> Vec<SubStep> {
+    if depth >= MAX_NARRATION_RECURSION_DEPTH {
+        return Vec::new();
+    }
+    let (key, expects_var_arg) = match step.rule_name.as_str() {
+        "Symbolic Integration" => ("vector.integrate_each_component", true),
+        "Symbolic Differentiation" => ("vector.differentiate_each_component", true),
+        _ => return Vec::new(),
+    };
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    // 2 args = indefinite, 4 args = definite (`integrate(f, x, a, b)`); the
+    // component split is the same operation and the extra args ride along.
+    if !expects_var_arg || !matches!(args.len(), 2 | 4) {
+        return Vec::new();
+    }
+    let trailing: Vec<ExprId> = args[1..].to_vec();
+    let Expr::Matrix {
+        rows,
+        cols,
+        data: components,
+    } = ctx.get(args[0])
+    else {
+        return Vec::new();
+    };
+    let Expr::Matrix {
+        rows: after_rows,
+        cols: after_cols,
+        data: images,
+    } = ctx.get(after)
+    else {
+        return Vec::new();
+    };
+    if rows != after_rows || cols != after_cols || components.len() != images.len() {
+        return Vec::new();
+    }
+    let (components, images) = (components.clone(), images.clone());
+    let fn_id = *fn_id;
+
+    // The header must SHOW the split, not restate the parent: its `after` is the
+    // vector of PENDING per-component operations, the exact analogue of the
+    // linearity substep for a sum. A header whose sides equal the parent's is
+    // pruned by `prune_redundant_substeps` — correctly, and it would have left
+    // the reader with orphan component narrations and no mapping.
+    let mut scratch = ctx.clone();
+    let pending: Vec<ExprId> = components
+        .iter()
+        .map(|&component| {
+            let mut child_args = vec![component];
+            child_args.extend(trailing.iter().copied());
+            scratch.add(Expr::Function(fn_id, child_args))
+        })
+        .collect();
+    let pending_vector = scratch.add(Expr::Matrix {
+        rows: *rows,
+        cols: *cols,
+        data: pending,
+    });
+    let mut substeps = vec![SubStep::keyed(
+        key,
+        vec![],
+        display_expr(ctx, before),
+        display_expr(&scratch, pending_vector),
+    )
+    .with_before_latex(latex_expr(ctx, before))
+    .with_after_latex(latex_expr(&scratch, pending_vector))];
+
+    for (component, image) in components.iter().zip(images.iter()) {
+        let mut child_args = vec![*component];
+        child_args.extend(trailing.iter().copied());
+        let child_before = scratch.add(Expr::Function(fn_id, child_args));
+        let child_step = Step::new_compact(
+            step.description.as_str(),
+            step.rule_name.as_str(),
+            child_before,
+            *image,
+        );
+        substeps.extend(generate_focused_rule_substeps_at_depth(
+            &scratch,
+            &child_step,
+            depth + 1,
+        ));
+    }
+    substeps
+}
+
 fn generate_additive_integration_substeps(
     ctx: &Context,
     step: &Step,
@@ -20506,11 +20617,21 @@ fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec
         return substeps;
     }
 
+    // `∫e^x dx = e^x` is a fixed point: announcing "use substitution" over
+    // `e^x -> e^x` teaches nothing and reads like a bug. Pre-existing, and
+    // invisible until the vector arm (C3.2) started narrating the components of
+    // `integrate([cos(x), e^x], x)`.
+    let integrand_display = display_expr(ctx, args[0]);
+    let after_display = display_expr(ctx, after);
+    if integrand_display == after_display {
+        return Vec::new();
+    }
+
     vec![SubStep::keyed(
         "usub.use_substitution",
         vec![],
-        display_expr(ctx, args[0]),
-        display_expr(ctx, after),
+        integrand_display,
+        after_display,
     )
     .with_before_latex(latex_expr(ctx, args[0]))
     .with_after_latex(latex_expr(ctx, after))]

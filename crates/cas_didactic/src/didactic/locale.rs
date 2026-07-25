@@ -87,6 +87,8 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "usub.identify_affine_denominator" => ("Identificar el denominador afín", "Identify the affine denominator"),
         "integral.use_linearity" => ("Usar linealidad de la integral", "Use linearity of the integral"),
         "integral.integrate_each_term" => ("Integrar cada término", "Integrate each term"),
+        "vector.integrate_each_component" => ("Integrar cada componente del vector", "Integrate each component of the vector"),
+        "vector.differentiate_each_component" => ("Derivar cada componente del vector", "Differentiate each component of the vector"),
         "integral.reduce_positive_quadratic_to_square" => ("Reducir el cuadrático positivo al cuadrado", "Reduce the positive quadratic to a square"),
         "integral.integrate_arctan_and_rational_parts" => ("Integrar la parte arctan y la parte racional", "Integrate the arctan part and the rational part"),
         "usub.rule_cos_to_sin" => ("Usar la regla de cos(u) -> sin(u)", "Use the rule cos(u) -> sin(u)"),
