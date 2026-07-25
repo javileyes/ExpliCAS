@@ -53,7 +53,7 @@ la narración:
 | Sub-paso | `cas_didactic/src/didactic/focused_rule_substeps.rs` (219 de los 235 emisores) | `SubStep` | **Relación tipada** (Equality / Derivative / Antiderivative / DefiniteEval / abstención) |
 | Cadena de narradores | `focused_rule_substeps.rs:49` (`generate_focused_rule_substeps`) | sub-pasos hijos | **Re-derivación**: partir, re-derivar y comprobar que la suma reproduce el `after` |
 
-Coste: **23 ciclos acotados**, uno por entrada de ledger. Resultado: **0 falsedades publicadas, 0
+Coste: **24 ciclos acotados**, uno por entrada de ledger. Resultado: **0 falsedades publicadas, 0
 publicaciones sin verificar**, y un inventario medido y decreciente de declives y fronteras abiertas.
 **No** deja el corpus en 0 hallazgos, y eso se dice por adelantado.
 
@@ -136,7 +136,7 @@ Que exista un instrumento honesto **antes** de mover nada.
   publicados como medida.
 - `cargo test --workspace` failed:0, clippy 0, **huellas guardrail/fast/pressure con 0 deltas**.
 
-### F1 — Nada falso en pantalla (8 ciclos)
+### F1 — Nada falso en pantalla (9 ciclos)
 
 Que ninguna de las dos superficies publique una afirmación que no pueda verificar al emitirla.
 
@@ -155,6 +155,8 @@ Que ninguna de las dos superficies publique una afirmación que no pueda verific
 - 4 filas del grupo Complejo dejan de publicar un absoluto sin dominio.
 - `SubStep::checked` cubre el 100 % de los sub-pasos KEYED; el contador de emisores `Unchecked` (126)
   solo puede bajar.
+- `substep_checked_failures` = 0 sobre **≥ 5 000 expresiones GENERADAS** (C1.9), no sobre una lista:
+  es el único criterio de la campaña que no depende de qué corpus eligió una persona.
 - **Huellas guardrail IDÉNTICAS**: ningún ciclo de esta fase toca un resultado matemático.
 
 ### F2 — Recuperar la precisión del color (4 ciclos)
@@ -227,6 +229,7 @@ Esfuerzo: S ≈ media jornada · M ≈ 1-2 jornadas · L ≈ 3+ jornadas o tanda
 | **C1.6** | Por partes repetida: el cierre integra SU integrando + recomposición | P0-S3-2 | M | medio | 2 (1) | C1.8 |
 | **C1.7** | Honestidad de dominio: avisar cuando ℝ DESCARTÓ algo (no cuando el texto dice `i`) | RC-14 (B3) | S | bajo | 8 (2) | — |
 | **C1.8** | `SubStep::checked`: constructor verificador TIPADO POR RELACIÓN + inventario | P0-S3-GUARD | L | medio | 0 (red permanente) | C0.1 |
+| **C1.9** | Barrido GENERATIVO del invariante de sub-paso: el corpus deja de elegirlo una persona | P0-S3-GUARD | M | bajo | 0 (red permanente) | **C1.8** |
 | **C2.1** | Foco por CONTENIDO con el guard de desempate (absorbe RC-2 y RC-5) + fold + riders | RC-1, RC-5, RC-2, RC-15, RC-16 | L | medio | 39 (22) | C1.3 |
 | **C2.2** | Predicado multi-span: el contrato se queda sin excepciones | RC-3, RC-1 | S | medio | 0 | C2.1 |
 | **C2.3** | Orden aditivo con comparador CONSCIENTE DEL SIGNO + el span que empieza tras el `−` | RC-6 | M | medio | ~30 (1) | C1.3 |
@@ -242,7 +245,7 @@ Esfuerzo: S ≈ media jornada · M ≈ 1-2 jornadas · L ≈ 3+ jornadas o tanda
 | **C5.2** | Rellenar tablas ES→EN y adoptar claves en títulos de sub-paso | RC-4 | M | bajo | 9 (0) | C5.1 |
 | **C5.3** | Warnings por el catálogo i18n + UX del grupo Complejo en la web | RC-4, RC-14 | M | medio | 12 (0) | C5.1 |
 
-**Total: 23 ciclos.** Cierre estimado: **≈260 de 546 hallazgos (48 %) y ≈45 de 53 P0 (85 %)**, más
+**Total: 24 ciclos.** Cierre estimado: **≈260 de 546 hallazgos (48 %) y ≈45 de 53 P0 (85 %)**, más
 17 P0 (`highlight_wrong_subexpression`) que dejan de publicarse en C1.3 y quedan **cerrados con color
 correcto** en C2.1.
 
@@ -461,9 +464,57 @@ manual **es** el inventario vivo — se regenera solo y no envejece como un doc.
 Igual `steps_total` / `substeps_total` / `solve_steps_total` (292 / 214 / 128): son la fotografía
 honesta de la narración, no un umbral.
 
+### 7.5 El tier GENERATIVO — la única medida que no elige una persona (C1.9)
+
+**El problema que resuelve.** Todo lo anterior mide sobre listas: 210 filas de vitrina, y tras C5.1
+los corpus guardrail (~1 500 expresiones). Una lista mide lo que alguien pensó en poner, y **ese es
+exactamente el fallo que produjo esta auditoría**: el frente E se declaró completo contra sus propias
+métricas sobre su propio corpus, y dos filas elegidas al azar por el usuario fallaron las dos. Un
+carril sobre corpus hereda ese fallo de método por construcción.
+
+**Por qué es posible ahora y no antes.** `SubStep::checked` (C1.8) obliga a cada sub-paso a declarar
+la RELACIÓN que afirma —`Equality`, `Derivative`, `Antiderivative`, `DefiniteEval`, o abstención— y
+esa relación es *decidible con la maquinaria que ya existe*: derivar y comprobar cero exacto, o
+sustituir y comparar. Es decir: deja de ser «¿está bien este sub-paso?» (juicio) y pasa a ser un
+predicado ejecutable sobre CUALQUIER entrada. Sin C1.8 este tier no se puede escribir; con C1.8 es
+~un ciclo M.
+
+**La máquina ya está en el repo, apuntando a otro sitio.** `scripts/engine_simplify_equivalence_fuzz.py`
+y las suites metamórficas generan expresiones con semilla fija y las contrastan contra un oráculo
+numérico — pero **exclusivamente sobre la corrección matemática del RESULTADO**. Verificado: ninguna
+de las dos menciona `steps` ni `substep`. La capa didáctica nunca ha visto un generador.
+
+**Forma del ciclo.** Reutilizar el generador determinista (semilla fija, mismo molde que el fuzz de
+equivalencia), evaluar con `--steps on`, y asertar el invariante de C1.8 sobre cada sub-paso emitido:
+
+| Contador | Contrato |
+|---|---|
+| `generated_substep_checked_failures` | **0**, aserción dura. Un fallo es un bug de veracidad con reproducción exacta (la semilla). |
+| `generated_expressions` | medida descriptiva: cuántas se barrieron |
+| `generated_substeps_emitted` | medida descriptiva: sin esto, un generador que no dispara ningún emisor pasa verde por vacío |
+
+El tercer contador es la lección de `min_expected` del gate de divergencia aplicada al generador: un
+barrido que no ejerce nada **también** pasa verde, y esa es la forma silenciosa de que este tier se
+pudra.
+
+**Lo que este tier NO cubre — y hay que decirlo aquí para no repetir el error de sobrevender un carril.**
+Verifica **veracidad, no pedagogía**. Puede demostrar que ningún sub-paso miente; no puede demostrar
+que un paso no sea mágico, que el nombre de la regla describa lo que hace, ni que el orden sea
+didáctico. Esas son las categorías con MÁS hallazgos del informe (`magic_step` 112,
+`anti_pedagogical` 57, `wrong_rule_name` 24) y siguen midiéndose sobre corpus, porque su criterio es
+un juicio humano y no un predicado. Y aun dentro de la veracidad, un generador produce las formas que
+se le enseñaron: es una muestra mucho mayor, **no una demostración**.
+
 ---
 
 ## 8. Lo que NO se va a arreglar (y por qué)
+
+0. **«Verde en el motor» en el eje PEDAGÓGICO.** El tier generativo de C1.9 (§7.5) saca el eje de
+   VERACIDAD de la dependencia del corpus: sobre expresiones generadas, ningún sub-paso miente. Pero
+   `magic_step` (112), `anti_pedagogical` (57) y `wrong_rule_name` (24) —las tres categorías con más
+   hallazgos del informe— **no son predicados**, son juicios, y se seguirán midiendo sobre corpus.
+   Llamar «verde en el motor» a lo que este plan entrega sería exacto solo para la veracidad;
+   para la calidad didáctica es «verde en ~1 500 expresiones reales», que es mucho y no es lo mismo.
 
 1. **RC-1 opción (a), transportar el path** — el arreglo nº1 del informe. Refutado por medida
    (§2a). Sería un mes en `cas_ast` para un techo peor que el de la resolución por contenido.
