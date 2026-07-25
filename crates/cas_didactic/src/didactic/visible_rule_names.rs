@@ -302,6 +302,22 @@ pub(crate) fn visible_rule_name_for_step<'a>(
             return Cow::Borrowed("Aplicar producto de constante");
         }
     }
+    // `Distribute Division Into Sum` covers two DIFFERENT manoeuvres and the
+    // static table could only name one of them. On `taylor(sin(x), x, 0, 5)` the
+    // step reduces `(6x^5 - 120x^3)/720` to `(x^5 - 20x^3)/120` — it factors out
+    // the common coefficient 6, it distributes nothing — while the visible name
+    // said "Repartir el denominador entre los sumandos". The rule already tells
+    // which one it did in its description
+    // (`algebra/fractions/small_rules.rs:59-66`); this table just never asked.
+    if rule_name == "Distribute Division Into Sum" {
+        if description == "Factor common coefficient from sum" {
+            return Cow::Borrowed("Sacar el factor común del numerador");
+        }
+        if description == "All terms cancel" {
+            return Cow::Borrowed("Cancelar el denominador con todos los términos");
+        }
+    }
+
     if rule_name == "Finite Summation" && description.starts_with("Telescoping sum:") {
         return Cow::Borrowed("Evaluar suma telescópica finita");
     }
@@ -797,6 +813,8 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
             "Recognize a hyperbolic function in the exponentials"
         }
         "Repartir el denominador entre los sumandos" => "Split the denominator over the terms",
+        "Sacar el factor común del numerador" => "Factor the common coefficient out of the numerator",
+        "Cancelar el denominador con todos los términos" => "Cancel the denominator against every term",
         "Restar exponentes de la misma base" => "Subtract exponents of the same base",
         "Sacar constante de una fracción" => "Factor a constant out of the fraction",
         "Sacar el cuadrado perfecto de la raíz" => "Take the perfect square out of the root",

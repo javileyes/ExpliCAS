@@ -21850,3 +21850,16 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Reinyectar una cadena de narradores en un envoltorio no exige un canal nuevo: exige un `Step` sintético y un cap de profundidad.** El coste real es entender qué se poda después, no construir el hijo.
   - **Un contador de «cáscara» mide dos cosas distintas**: filas cuyo método no se narra (deuda) y filas cuyo método es un salto único (honestas). Separarlas antes de ponerle techo, o el techo pide inventar narración.
+
+## 2026-07-25 - VERACIDAD (plan · C2.4): el nombre visible se indexa por (rule_name, DESCRIPTION) — `Distribute Division Into Sum` cubre dos maniobras y la tabla solo sabía nombrar una
+
+- area: `cas_didactic/src/didactic/visible_rule_names.rs` (`visible_rule_name_for_step` gana el brazo `Distribute Division Into Sum` × description, y la tabla es→en sus dos entradas).
+- status: `retained`. Ciclo C2.4 del plan.
+- capture:
+  - **Es el nombre de regla del PRIMER testigo del usuario.** En `taylor(sin(x), x, 0, 5)` el paso 3 reduce `(6x⁵−120x³)/720` a `(x⁵−20x³)/120`: saca el factor común 6, no reparte NADA. El nombre publicado era «Repartir el denominador entre los sumandos».
+  - **La regla ya decía cuál de las dos hizo** — `format_div_scalar_into_add_desc` emite `"Factor common coefficient from sum"` o `"All terms cancel"` (`algebra/fractions/small_rules.rs:59-66`) — y `visible_rule_name_for_step` YA recibe la description y YA discrimina por ella en tres reglas (Collect Terms, Finite Product, Finite Summation). El brazo nuevo es el patrón existente: la información estaba, nadie la consultaba.
+  - Cubre las dos direcciones de idioma; el pin lo fija en es Y en en, porque una traducción olvidada devuelve la mentira por el otro lado.
+- observed: workspace failed:0, clippy 0. Corpus: 3 filas cambian (23, 104, 182), **0 cambian de `result`**. Huella: 1 delta, el pin nuevo.
+- decision: retener. **El resaltado de esa misma fila SIGUE mal** (`{\color{red}{x}} → {\color{green}{x}}`): es RC-1 (PATH DRIFT) y le toca a C1.3/C2.1. Este ciclo arregla la mitad del testigo que NO depende del path — conviene decirlo para que nadie lo dé por cerrado al ver el nombre correcto.
+- retained learning:
+  - **Un `rule_name` que cubre dos maniobras necesita la description como segunda clave, y suele estar ya en la firma**: aquí `visible_rule_name_for_step(rule_name, description)` recibía el dato desde el principio. Antes de escribir un detector de nombres que mienten, mirar cuántas reglas emiten >1 description — es una lista corta y el arreglo es un brazo por entrada.
