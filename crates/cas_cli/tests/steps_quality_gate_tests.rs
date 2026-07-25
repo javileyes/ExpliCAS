@@ -119,6 +119,44 @@ fn is_honest_residual(rule: &str) -> bool {
     )
 }
 
+/// `_`, `^` and `~` inside a `\text{…}` group are a HARD MathJax error
+/// (`'_' allowed only in math mode`), and a hard error does not degrade one
+/// line — it kills the rendering of the whole expression. Verified against
+/// MathJax 3 itself, the renderer `web/index.html:18` loads.
+///
+/// Returns the offending characters found in text mode.
+fn unescaped_specials_in_text_mode(latex: &str) -> Vec<char> {
+    let chars: Vec<char> = latex.chars().collect();
+    let mut found = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i..].starts_with(&['\\', 't', 'e', 'x', 't', '{']) {
+            let mut depth = 1;
+            let mut j = i + 6;
+            let mut escaped = false;
+            while j < chars.len() && depth > 0 {
+                let ch = chars[j];
+                if escaped {
+                    escaped = false;
+                } else {
+                    match ch {
+                        '\\' => escaped = true,
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        '_' | '^' | '~' => found.push(ch),
+                        _ => {}
+                    }
+                }
+                j += 1;
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    found
+}
+
 fn braces_balanced(latex: &str) -> bool {
     let mut depth: i32 = 0;
     let mut escaped = false;
@@ -215,12 +253,21 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
     // An unbalanced brace does not degrade the line, it breaks the whole row's
     // rendering in the browser.
     let mut unbalanced = 0;
+    let mut text_mode_specials = 0;
     let mut check = |label: &str, latex: &str| {
         if !braces_balanced(latex) {
             unbalanced += 1;
             report
                 .violations
                 .push(format!("[{input}] {label} has unbalanced braces: {latex}"));
+        }
+        let specials = unescaped_specials_in_text_mode(latex);
+        if !specials.is_empty() {
+            text_mode_specials += specials.len();
+            report.violations.push(format!(
+                "[{input}] {label} puts {specials:?} raw inside \\text{{…}} — a hard MathJax \
+                 error that kills the whole expression's rendering: {latex}"
+            ));
         }
     };
     for step in &wire.steps {
@@ -247,6 +294,7 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
         check(&format!("solve_steps[{}].rhs_latex", step.index), &step.rhs_latex);
     }
     report.measure("D9_unbalanced_braces", unbalanced);
+    report.measure("D10_text_mode_unescaped", text_mode_specials);
 
     // ---- published measures --------------------------------------------------
     report.measure("steps_total", wire.steps.len());

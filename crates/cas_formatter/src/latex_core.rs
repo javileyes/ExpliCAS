@@ -977,7 +977,7 @@ pub trait LaTeXRenderer {
             _ => {
                 let args_str: Vec<String> =
                     args.iter().map(|&a| self.expr_to_latex(a, false)).collect();
-                format!("\\text{{{}}}({})", name, args_str.join(", "))
+                format!("\\text{{{}}}({})", crate::escape::latex_text_name(name), args_str.join(", "))
             }
         }
     }
@@ -2562,7 +2562,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                     .enumerate()
                     .map(|(i, &a)| self.render_with_path(a, false, &self.child_path(path, i as u8)))
                     .collect();
-                format!("\\text{{{}}}({})", name, args_str.join(", "))
+                format!("\\text{{{}}}({})", crate::escape::latex_text_name(name), args_str.join(", "))
             }
         }
     }
