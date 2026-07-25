@@ -242,6 +242,9 @@ struct LanguageResidue {
     warnings: usize,
     rows_touched: usize,
     rows_swept: usize,
+    /// The DISTINCT offending strings. A count says how big the class is; this
+    /// says what to translate, and it is what turns the counter into work.
+    offenders: BTreeMap<String, usize>,
 }
 
 fn sweep_language_residue(inputs: &[String], residue: &mut LanguageResidue) {
@@ -254,16 +257,25 @@ fn sweep_language_residue(inputs: &[String], residue: &mut LanguageResidue) {
         for step in &wire.steps {
             if looks_spanish(&step.rule) {
                 residue.rules += 1;
+                *residue.offenders.entry(format!("rule: {}", step.rule)).or_insert(0) += 1;
             }
             for sub in &step.substeps {
                 if looks_spanish(&sub.title) {
                     residue.substep_titles += 1;
+                    *residue
+                        .offenders
+                        .entry(format!("substep: {}", sub.title))
+                        .or_insert(0) += 1;
                 }
             }
         }
         for step in &wire.solve_steps {
             if looks_spanish(&step.description) {
                 residue.solve_descriptions += 1;
+                *residue
+                    .offenders
+                    .entry(format!("solve: {}", step.description))
+                    .or_insert(0) += 1;
             }
         }
         // Warnings are a SEPARATE class: they do not go through the i18n
@@ -272,6 +284,10 @@ fn sweep_language_residue(inputs: &[String], residue: &mut LanguageResidue) {
         for warning in &wire.warnings {
             if looks_spanish(&warning.assumption) {
                 residue.warnings += 1;
+                *residue
+                    .offenders
+                    .entry(format!("warning: {}", warning.assumption))
+                    .or_insert(0) += 1;
             }
         }
         if residue.rules + residue.substep_titles + residue.solve_descriptions > before {
@@ -523,11 +539,16 @@ fn load_web_examples() -> Vec<String> {
 /// Ceilings for the language axis. Non-zero today by design: the point of C5.1
 /// is to MEASURE the class over the guardrail corpora, and the translation work
 /// itself is C5.2 (rule names / substep titles) and C5.3 (warnings).
-// MEDIDOS hoy sobre 1 049 expresiones de los tres corpus. El escaparate solo
-// veía 12 filas de 207 (5,8 %); los guardrail dan 305 de 1 049 (29 %) — la clase
-// estaba infra-medida 5×. C5.2 baja los dos primeros; C5.3, el tercero.
-const EN_RULE_RESIDUE_CEILING: usize = 382;
-const EN_SUBSTEP_RESIDUE_CEILING: usize = 262;
+// C5.1 los midió sobre 1 049 expresiones (382 / 262 / 13) y C5.2 los bajó.
+//
+// Los nombres de regla llegan a CERO y pasan a aserción dura: es contrato, no
+// techo. El sub-paso superviviente es UNA frase cuya cola sigue en español
+// DESPUÉS del parámetro («…los límites laterales en z = pi·i (por la izquierda
+// y por la derecha): si coinciden…»): la traducción por prefijo no la alcanza
+// por construcción, y su arreglo es migrarla a `desc_key` con argumentos.
+// Los warnings no pasan por el catálogo i18n en ninguna dirección — C5.3.
+const EN_RULE_RESIDUE_CEILING: usize = 0;
+const EN_SUBSTEP_RESIDUE_CEILING: usize = 1;
 const EN_WARNING_RESIDUE_CEILING: usize = 13;
 
 /// The narration must not leak Spanish into the English wire — swept over the
@@ -566,6 +587,16 @@ fn steps_quality_language_residue_over_guardrail_corpora() {
         total.warnings += per_corpus.warnings;
         total.rows_touched += per_corpus.rows_touched;
         total.rows_swept += per_corpus.rows_swept;
+        for (k, v) in per_corpus.offenders {
+            *total.offenders.entry(k).or_insert(0) += v;
+        }
+    }
+
+    let mut ranked: Vec<(&String, &usize)> = total.offenders.iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(a.1));
+    println!("--- cadenas distintas que fugan ({}) ---", ranked.len());
+    for (text, hits) in ranked {
+        println!("  {hits:5}x  {text}");
     }
 
     println!("es_residue_in_en_rules hits={} rows={}", total.rules, total.rows_touched);
@@ -583,10 +614,10 @@ fn steps_quality_language_residue_over_guardrail_corpora() {
     );
     println!("language_rows_swept hits={} rows={}", total.rows_swept, total.rows_swept);
 
-    assert!(
-        total.rules <= EN_RULE_RESIDUE_CEILING,
-        "rule-name residue {} exceeds the declared ceiling {EN_RULE_RESIDUE_CEILING}",
-        total.rules
+    assert_eq!(
+        total.rules, EN_RULE_RESIDUE_CEILING,
+        "rule-name residue is a CONTRACT at zero, not a ceiling: every visible \
+         rule name must have its English entry"
     );
     assert!(
         total.substep_titles <= EN_SUBSTEP_RESIDUE_CEILING,

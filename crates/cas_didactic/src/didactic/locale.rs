@@ -277,13 +277,98 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
 /// English for a STATIC Spanish sub-step description (no embedded values). Unkeyed sub-steps whose
 /// title is a fixed Spanish string are translated here at the wire boundary (the same pivot-through-
 /// Spanish approach as rule names); dynamic titles use the keyed path. Unmapped strings pass through.
-pub(crate) fn description_en(es: &str) -> &str {
-    match es {
+/// Prefix rules for the substep titles built with `format!` as
+/// "<phrase> <math>". A lookup table cannot reach them — the math varies per
+/// call — but the PHRASE is what carries the language, and the math is
+/// language-neutral by construction. Longest prefix first.
+const DESCRIPTION_EN_PREFIXES: &[(&str, &str)] = &[
+    (
+        "Usar que una función impar cumple ",
+        "Use that an odd function satisfies ",
+    ),
+    (
+        "Usar que una función par cumple ",
+        "Use that an even function satisfies ",
+    ),
+    ("Usar la diferencia de cuadrados: ", "Use the difference of squares: "),
+    (
+        "La política segura no decide este límite. Para investigarlo, calcula los límites laterales en ",
+        "The safe policy does not decide this limit. To investigate it, compute the one-sided limits at ",
+    ),
+    ("Multiplicar por ", "Multiply by "),
+    (
+        "Calcular el cateto restante del triángulo asociado a ",
+        "Compute the remaining leg of the triangle associated with ",
+    ),
+    (
+        "Calcular la hipotenusa del triángulo asociado a ",
+        "Compute the hypotenuse of the triangle associated with ",
+    ),
+    ("Ahora se cancela el factor ", "Now the factor cancels: "),
+    ("Usar la regla de ", "Use the rule "),
+    ("Usar que ", "Use that "),
+    ("Sacar factor común ", "Factor out "),
+    ("Aquí u = ", "Here u = "),
+    ("Usar ", "Use "),
+    ("Calcular ", "Compute "),
+];
+
+/// `, con u = x` and friends: the tail of a "phrase + math" title.
+const DESCRIPTION_EN_SUFFIXES: &[(&str, &str)] = &[(", con u = ", ", with u = ")];
+
+pub(crate) fn description_en(es: &str) -> std::borrow::Cow<'_, str> {
+    if let Some(exact) = description_en_exact(es) {
+        return std::borrow::Cow::Borrowed(exact);
+    }
+    for (es_prefix, en_prefix) in DESCRIPTION_EN_PREFIXES {
+        if let Some(tail) = es.strip_prefix(es_prefix) {
+            let mut rendered = format!("{en_prefix}{tail}");
+            for (es_suffix, en_suffix) in DESCRIPTION_EN_SUFFIXES {
+                if let Some(idx) = rendered.find(es_suffix) {
+                    rendered = format!(
+                        "{}{en_suffix}{}",
+                        &rendered[..idx],
+                        &rendered[idx + es_suffix.len()..]
+                    );
+                }
+            }
+            return std::borrow::Cow::Owned(rendered);
+        }
+    }
+    std::borrow::Cow::Borrowed(es)
+}
+
+fn description_en_exact(es: &str) -> Option<&str> {
+    let translated = match es {
         "Descomponer en fracciones parciales" => "Decompose into partial fractions",
         "Integrar los términos simples" => "Integrate the simple terms",
         "Identificar u y du" => "Identify u and du",
         "Ajustar el factor constante" => "Adjust the constant factor",
         "Hallar la antiderivada" => "Find the antiderivative",
+        "Usar asin(sin(u)) = u en el rango principal" => "Use asin(sin(u)) = u on the principal range",
+        "Usar la regla de asinh con derivada interna" => "Use the asinh rule with inner derivative",
+        "Usar la regla de cosh con derivada interna" => "Use the cosh rule with inner derivative",
+        "Usar la regla de la exponencial" => "Use the exponential rule",
+        "Usar que una potencia impar conserva el signo negativo" => "Use that an odd power keeps the negative sign",
+        "Usar que una potencia par elimina el signo" => "Use that an even power removes the sign",
+        "Aquí arcsin(x) y arccos(x) suman pi/2" => "Here arcsin(x) and arccos(x) add up to pi/2",
+        "Cancelar el factor común del numerador y del denominador" => "Cancel the common factor of numerator and denominator",
+        "Detectar base cero con exponente variable" => "Detect a zero base with a variable exponent",
+        "Detectar un polo dentro del intervalo de integración" => "Detect a pole inside the integration interval",
+        "El exponente exterior cancela el ln del exponente interior" => "The outer exponent cancels the ln of the inner exponent",
+        "Factorizar el denominador" => "Factor the denominator",
+        "Identificar la base del cuadrado" => "Identify the base of the square",
+        "Integrar una constante" => "Integrate a constant",
+        "La raíz de un cuadrado da un valor absoluto" => "The root of a square yields an absolute value",
+        "Leer el coseno desde ese triángulo" => "Read the cosine off that triangle",
+        "Leer el seno desde ese triángulo" => "Read the sine off that triangle",
+        "Leer la tangente desde ese triángulo" => "Read the tangent off that triangle",
+        "Reconocer el patrón sin(u) / cos(u) = tan(u)" => "Recognize the pattern sin(u) / cos(u) = tan(u)",
+        "Reescribir el cociente como producto exponencial" => "Rewrite the quotient as an exponential product",
+        "Reescribir el radicando como un cuadrado perfecto" => "Rewrite the radicand as a perfect square",
+        "Registrar dominio del logaritmo" => "Record the logarithm's domain",
+        "Simplificar las potencias" => "Simplify the powers",
+        "Sustituir dentro de arcsin" => "Substitute inside arcsin",
         "Evaluar la antiderivada en los límites" => "Evaluate the antiderivative at the bounds",
         "Identificar los productos que genera la distributiva" => "Identify the products produced by the distributive law",
         "Escribir los productos con los signos originales" => "Write the products with their original signs",
@@ -440,8 +525,9 @@ pub(crate) fn description_en(es: &str) -> &str {
         "Aplicar la recurrencia F(n) = F(n-1) + F(n-2)" => {
             "Apply the Fibonacci recurrence F(n) = F(n-1) + F(n-2)"
         }
-        other => other,
-    }
+        _ => return None,
+    };
+    Some(translated)
 }
 
 #[cfg(test)]

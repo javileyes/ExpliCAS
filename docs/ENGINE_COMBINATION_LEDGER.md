@@ -21916,3 +21916,18 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Un verificador global sobre una narración heterogénea borra lo correcto junto con lo falso**: el prior de 80 refutaciones con ~51 legítimas es la razón de que el enum se tipe POR RELACIÓN en vez de asumir igualdad. Regla del diseño que conviene conservar: *un brazo entra en el enum solo si su verificador entra en el mismo commit*.
   - **Para verificar una afirmación desde fuera, la afirmación tiene que publicar sus parámetros**: el wire publica `before`, `after` y un título, y con eso una antiderivada no es decidible. Lo descubrió la propia medida al refutar cosas ciertas.
+
+## 2026-07-25 - i18n (plan · C5.2): los nombres de regla en inglés pasan a CONTRATO (382 → 0) y los títulos de sub-paso a 1 — la traducción por prefijo cubre los títulos «frase + matemáticas»
+
+- area: `cas_didactic/src/didactic/visible_rule_names.rs` (40 entradas nuevas en `rule_name_es_to_en`) y `cas_didactic/src/didactic/locale.rs` (`description_en` pasa de `&str` a `Cow<str>` y gana **traducción por PREFIJO** + 25 entradas exactas); `cas_cli/tests/steps_quality_gate_tests.rs` (techos re-anclados; el de nombres de regla sube a **aserción dura**).
+- status: `retained`. Ciclo C5.2 del plan, dirigido por la medida de C5.1.
+- capture:
+  - **El inventario de cadenas distintas es lo que convirtió el contador en trabajo**: C5.1 daba «382 fugas»; añadirle el volcado de las cadenas DISTINTAS lo redujo a **115 strings** — 40 nombres de regla, 66 títulos de sub-paso, 9 warnings. Un contador dice cuánto; la lista dice qué.
+  - **Los títulos de sub-paso no son traducibles por tabla**: se construyen con `format!` como «frase + matemáticas» (`Ahora se cancela el factor (x - 1)`, `Usar la regla de sin(u) -> -cos(u)`). La frase es lo que lleva idioma; las matemáticas son neutras por construcción. De ahí `DESCRIPTION_EN_PREFIXES`, con los prefijos MÁS ESPECÍFICOS primero — el array se recorre en orden y `Usar que ` habría capturado a `Usar que una función impar cumple `.
+  - **El prefijo dejó a la vista su propio residuo**: tras la primera pasada salían títulos medio traducidos («Use that una función impar cumple f(-u) = -f(u)»), que es exactamente la señal de qué prefijo faltaba. Traducir por prefijo es autodiagnóstico.
+  - **Nombres de regla a CERO ⇒ aserción dura**, no techo: lo que llega a cero se convierte en contrato (doctrina del carril).
+- observed: workspace failed:0, clippy 0. Eje de idioma: **rules 382 → 0, substeps 262 → 1, filas tocadas 305 → 1**. **La salida en ESPAÑOL no cambia en ninguna de las 210 filas** (0 filas distintas, 0 `result`) — era el riesgo del ciclo y está medido, no supuesto. Huella: sin deltas estructurales.
+- decision: retener. El sub-paso superviviente es UNA frase cuya cola sigue en español DESPUÉS del parámetro («…los límites laterales en z = pi·i (por la izquierda y por la derecha): si coinciden…»): el prefijo no la alcanza por construcción y su arreglo es migrarla a `desc_key` con argumentos. Los 9 warnings son C5.3.
+- retained learning:
+  - **Un contador se vuelve accionable cuando publica sus cadenas DISTINTAS, no solo su total**: 382 hits eran 40 traducciones. Todo eje nuevo del carril debería volcar su inventario de ofensores desde el primer día.
+  - **Para un título «frase + matemáticas», el prefijo es la unidad de traducción correcta**: cubre una familia entera sin migrar el emisor, y cuando falla lo dice solo (deja media frase en el idioma origen).

@@ -18,7 +18,7 @@ pub(super) fn collect_step_payload_substeps(
             }
             None => match language {
                 cas_solver_core::eval_option_axes::Language::En => {
-                    crate::didactic::locale::description_en(&substep.description).to_string()
+                    crate::didactic::locale::description_en(&substep.description).into_owned()
                 }
                 _ => substep.description.clone(),
             },
