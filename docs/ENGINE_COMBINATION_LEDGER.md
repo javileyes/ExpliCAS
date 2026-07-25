@@ -21960,3 +21960,18 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Un inventario que solo detecta ALTAS es medio inventario**: sin el chequeo STALE, arreglar una fila y romper otra deja el contador igual y el pin verde. La lista tiene que ser EXACTA en ambos sentidos.
   - **Un tier que falla-por-diseño necesita su exclusión explícita del recolector de huellas el mismo día que nace**, o el siguiente ciclo hereda una huella roja que nadie sabe leer.
+
+## 2026-07-25 - VERACIDAD (plan · C1.3): el guard de veracidad del resaltado — un span se COMPRUEBA antes de publicarse, y el testigo del usuario deja de mentir
+
+- area: `cas_didactic/src/timeline/simplify_highlights/global.rs` (`span_transition_is_truthful` + `whole_state_transition` en `render_global_transition_latex`, el chokepoint que comparten las DOS superficies de resaltado) y `cas_didactic/src/step_payloads/build/latex.rs` (una línea de regla cuyos dos lados son idénticos no se publica).
+- status: `retained`. Ciclo C1.3 del plan, el núcleo de F1.
+- capture:
+  - **El rojo/verde de un paso es una AFIRMACIÓN**: «sustituye esta pieza por esa y obtienes el estado siguiente». Cuando el span cae en el subárbol equivocado la afirmación es FALSA, y el audit la encontró publicada como identidad bajo un nombre de regla. Ahora se comprueba: sustituir cada tramo rojo del `before` por su verde del `after` debe reproducir el `after`; si no, se DECLINA y se colorea el estado entero — menos preciso, pero cierto.
+  - **El testigo del usuario queda mejor de lo previsto.** `taylor(sin(x),x,0,5)` paso 3 publicaba `{\color{red}{x}} → {\color{green}{x}}`. Al declinar el span global, `rule_latex` cae al par LOCAL —que SIEMPRE fue correcto; lo que derivaba era la resolución del path global— y sale **preciso**: `(6x⁵−120x³)/720 → (x⁵−20x³)/120`. O sea que el fallback honesto no solo evita la mentira, en esta familia recupera la verdad exacta.
+  - **DOS pines cayeron y tenían razón**: fijaban resaltados MULTI-SPAN («estos N términos se combinan en ese uno»), una afirmación cierta que la sustitución no sabe expresar. Declinarlos habría borrado narración correcta. Se declara la **excepción multi-span** (plan §7.1, se levanta en C2.2): el guard cubre el caso uno-a-uno, que es donde viven las identidades falsas del audit.
+  - **Un bug mío que cazó el barrido de MathJax**: mi `strip_colour_wrappers` cerraba el span una llave antes de tiempo (`idx` apunta tras la llave INTERNA; la del envoltorio va después), dejando un `}` huérfano → «Extra close brace», que es error DURO y mata el render de la expresión entera. 2 filas. El barrido headless lo vio en la misma pasada.
+- observed: workspace failed:0, clippy 0, **0 errores de MathJax sobre 1728 campos**. Detectores: **D1_red_equals_green 6 → 0**, D2_hl_substitution_mismatch 39 → 7. Corpus: 25 filas cambian, **0 cambian de `result`**. Huella: 1 delta, el pin nuevo.
+- decision: retener. D2b vuelve a 19 por la excepción multi-span declarada — es el número que C2.2 tiene que cerrar, y está a la vista en vez de escondido tras un guard que borraba narración buena.
+- retained learning:
+  - **Un guard de veracidad tiene que saber qué afirmaciones NO sabe expresar**: la sustitución uno-a-uno no cubre «N piezas se combinan en una», y aplicarla igual convierte el guard en un borrador de narración correcta. La excepción se DECLARA con su contador, no se descubre cuando caen los pines.
+  - **Declinar un span puede MEJORAR la línea de regla**: al perder el span global, `rule_latex` cae al par local, que en las familias con path drift es exactamente el correcto. El fallback honesto no siempre es el peor de los dos.

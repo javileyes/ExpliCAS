@@ -16634,3 +16634,37 @@ fn integrate_contract_root_sum_names_its_method_and_its_resolvent() {
         "{split:?}"
     );
 }
+
+/// A step's red/green is an ASSERTION: "replace this piece with that piece and
+/// you get the next state". When the span lands on the wrong subtree the
+/// assertion is FALSE, and the audit found it published as an identity under a
+/// rule name. The witness the user reported: `taylor(sin(x), x, 0, 5)` step 3
+/// highlighted `x → x` — the one summand that does NOT change — while the
+/// fraction that actually reduced went unmarked.
+#[test]
+fn highlight_spans_are_verified_before_being_published() {
+    let (wire, _) =
+        cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let steps = wire["steps"].as_array().expect("steps with --steps on");
+    for step in steps {
+        let rule_latex = step["rule_latex"].as_str().unwrap_or_default();
+        // A rule line whose two sides are identical asserts nothing.
+        if let Some((lhs, rhs)) = rule_latex.split_once("\\rightarrow") {
+            assert_ne!(
+                lhs.replace("{\\color{red}{", "").replace(['{', '}', ' '], ""),
+                rhs.replace("{\\color{green}{", "").replace(['{', '}', ' '], ""),
+                "a rule line must not assert `A → A`: {rule_latex}"
+            );
+        }
+    }
+    // The witness step now names the fraction it reduces, not the untouched `x`.
+    let witness = steps
+        .iter()
+        .find(|s| s["before"].as_str().unwrap_or_default().contains("720"))
+        .expect("the step that reduces /720 must exist");
+    let rule_latex = witness["rule_latex"].as_str().unwrap_or_default();
+    assert!(
+        rule_latex.contains("720") && rule_latex.contains("120"),
+        "the rule line must show the fraction it reduces: {rule_latex}"
+    );
+}
