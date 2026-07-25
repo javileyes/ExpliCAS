@@ -16370,3 +16370,41 @@ fn nested_fraction_common_factor_substep_requires_the_identity_to_hold() {
         "the genuine manoeuvres must survive: {titles:?}"
     );
 }
+
+/// `equiv` answers a bare `true`/`false` with no steps to qualify it, so a
+/// `false` that is only false IN THE REAL DOMAIN reads as "this identity is
+/// wrong". `equiv(e^(i*pi), -1)` printed `false` with no warning at all: the
+/// student reads that Euler's identity does not hold. (With
+/// `--value-domain complex` the same call answers `true`.)
+#[test]
+fn equiv_false_over_the_reals_says_so_when_the_argument_is_complex() {
+    for input in [
+        "equiv(e^(i*pi), -1)",
+        "equiv(i^2, -1)",
+        "equiv(sin(i), i*sinh(1))",
+    ] {
+        let (wire, _) = cli_eval_json_with_stderr(input);
+        assert_eq!(wire["result"], "false", "{input}");
+        let warnings = wire["warnings"]
+            .as_array()
+            .expect("warnings array")
+            .iter()
+            .filter_map(|w| w["rule"].as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            warnings.contains(&"Imaginary Usage Warning"),
+            "{input} answered false over the reals without saying why: {warnings:?}"
+        );
+    }
+
+    // A real-domain equivalence must not gain noise.
+    for input in ["equiv(x+x, 2*x)", "equiv(ln(x*y), ln(x)+ln(y))"] {
+        let (wire, _) = cli_eval_json_with_stderr(input);
+        assert_eq!(wire["result"], "true", "{input}");
+        assert!(
+            wire["warnings"].as_array().expect("warnings").is_empty(),
+            "{input} should carry no imaginary warning: {:?}",
+            wire["warnings"]
+        );
+    }
+}
