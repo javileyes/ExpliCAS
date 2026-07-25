@@ -70,6 +70,15 @@ where
                     result
                 }
                 None => {
+                    // Name the proportional-pair residual instead of the
+                    // misleading linear-only message.
+                    let error = super::nonlinear::detect_proportional_nonlinear_pair(
+                        &engine.simplifier.context,
+                        &resolved_exprs,
+                        &vars,
+                    )
+                    .map(crate::LinearSystemError::NotLinear)
+                    .unwrap_or(error);
                     let message =
                 crate::linear_system_command_format::format_linear_system_command_error_message(
                     &crate::linear_system_command_eval::LinearSystemCommandEvalError::Solve(error),

@@ -34,7 +34,18 @@ pub(crate) fn evaluate_linear_system_command_input_with_simplifier(
         Err(error) => {
             match super::nonlinear::try_solve_nonlinear_2x2(simplifier, &spec.exprs, &spec.vars) {
                 Some((result, _narration)) => result,
-                None => return Err(LinearSystemCommandEvalError::Solve(error)),
+                None => {
+                    // Name the proportional-pair residual instead of the
+                    // misleading linear-only message.
+                    let error = super::nonlinear::detect_proportional_nonlinear_pair(
+                        &simplifier.context,
+                        &spec.exprs,
+                        &spec.vars,
+                    )
+                    .map(crate::LinearSystemError::NotLinear)
+                    .unwrap_or(error);
+                    return Err(LinearSystemCommandEvalError::Solve(error));
+                }
             }
         }
     };

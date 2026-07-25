@@ -10280,6 +10280,16 @@ fn solve_system_parametric_3x3_s6_contract() {
     // para todo a.
     let inc = r("solve([x+a*y=1, x+a*y=2], [x, y])");
     assert!(inc.contains("System has no solution"), "{inc}");
+    // El par NO-LINEAL proporcional (misma curva) nombra su residual propio —
+    // sin la coletilla lineal (contradiría al camino no-lineal) y sin afirmar
+    // cardinalidad (la curva compartida puede ser vacía o un punto en ℝ).
+    let curve = r("solve([x*y=6, 2*x*y=12], [x, y])");
+    assert!(
+        curve.contains("proportional non-linear equations")
+            && curve.contains("same curve")
+            && !curve.contains("only handles linear equations"),
+        "{curve}"
+    );
 
     // Pins de no-robo: racional 3×3 y paramétrico 2×2 byte-idénticos.
     assert_eq!(

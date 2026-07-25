@@ -387,6 +387,19 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         presentation_regime="prose_outcome",
     ),
     SolveSystemCommandMatrixCase(
+        name="residual_nonlinear_proportional_same_curve",
+        expr="solve([x*y=6, 2*x*y=12], [x, y])",
+        expected_result=(
+            "Error: proportional non-linear equations: both describe the same "
+            "curve, so the system reduces to a single equation (classifying "
+            "that curve's solution set is a future rung)"
+        ),
+        family="no_lineal",
+        coefficient_regime="rational",
+        outcome="honest_residual",
+        presentation_regime="prose_outcome",
+    ),
+    SolveSystemCommandMatrixCase(
         name="residual_parametric_rank_edge_base_vanishes",
         expr="solve([a*x+a*y=1, 2*a*x+2*a*y=2], [x, y])",
         expected_result=(

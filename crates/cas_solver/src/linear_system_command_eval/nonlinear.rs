@@ -104,6 +104,60 @@ pub(crate) struct NonlinearNarration {
     pub(crate) univariate: ExprId,
 }
 
+/// A PROPORTIONAL nonlinear pair (`eq2 = k·eq1`, both describing the same
+/// curve) has no isolation/resultant to run and used to fall through to the
+/// misleading "only handles linear equations" error. Detect it exactly
+/// (primitive parts modulo sign) and name the real residual. Cardinality is
+/// deliberately NOT claimed: the shared curve can be empty over the reals
+/// (`x²+y²=−1`) or a single point (`x²+y²=0`), so "infinitely many" would be
+/// a wrong answer — classifying the curve is its own future rung.
+pub(crate) fn detect_proportional_nonlinear_pair(
+    ctx: &Context,
+    exprs: &[ExprId],
+    vars: &[String],
+) -> Option<String> {
+    if exprs.len() != 2 {
+        return None;
+    }
+    let budget = nonlinear_budget();
+    let p1 = multipoly_from_expr(ctx, exprs[0], &budget).ok()?;
+    let p2 = multipoly_from_expr(ctx, exprs[1], &budget).ok()?;
+    if p1.is_zero() || p2.is_zero() {
+        return None;
+    }
+    // Nonlinear IN THE UNKNOWNS (a parameter-linear pair like
+    // `a·x + a·y = 1` belongs to the structural det≡0 classifier, whose
+    // decline names the parametric-rank residual — not to this message).
+    let unknown_degree_over_1 = |p: &MultiPoly| {
+        let idx: Vec<Option<usize>> = vars
+            .iter()
+            .map(|u| p.vars.iter().position(|v| v == u))
+            .collect();
+        p.terms
+            .iter()
+            .any(|(_, mono)| idx.iter().map(|i| i.map_or(0, |i| mono[i])).sum::<u32>() > 1)
+    };
+    if !unknown_degree_over_1(&p1) && !unknown_degree_over_1(&p2) {
+        return None;
+    }
+    let normalized = |p: &MultiPoly| -> Option<MultiPoly> {
+        let (_, mut prim) = p.primitive_part();
+        let negative_leading = prim
+            .leading_term_lex()
+            .map(|(coef, _)| coef < &num_rational::BigRational::from_integer(0.into()))?;
+        if negative_leading {
+            prim = prim.neg();
+        }
+        Some(prim)
+    };
+    (normalized(&p1)? == normalized(&p2)?).then(|| {
+        "proportional non-linear equations: both describe the same curve, so the \
+         system reduces to a single equation (classifying that curve's solution \
+         set is a future rung)"
+            .to_string()
+    })
+}
+
 /// Try to solve a parameter-free nonlinear 2×2 system by verified
 /// substitution. `exprs` are the normalized residuals (`lhs - rhs`).
 /// Returns `None` when out of scope — the caller keeps its honest decline.

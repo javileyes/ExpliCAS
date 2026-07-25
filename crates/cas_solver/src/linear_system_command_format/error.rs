@@ -10,6 +10,14 @@ fn format_not_linear_reply(message: &str) -> String {
         }
     };
 
+    // Named NONLINEAR residuals (e.g. the proportional same-curve pair) carry
+    // their own honest message — appending the linear-only tagline there would
+    // contradict it (the nonlinear path does handle nonlinear pairs; this one
+    // is out of scope for a different, named reason).
+    if message.starts_with("proportional non-linear") {
+        return format!("Error: {message}");
+    }
+
     if let Some((eq, detail)) = message
         .strip_prefix("equation ")
         .and_then(|rest| rest.split_once(": "))
