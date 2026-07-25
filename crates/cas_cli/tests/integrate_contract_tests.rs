@@ -16305,3 +16305,68 @@ fn integrate_contract_partial_fraction_substeps_never_claim_a_manoeuvre_they_ski
         "a real decomposition must still narrate: {genuine:?}"
     );
 }
+
+/// Row `k` of the Hessian differentiates `∂f/∂x_k`, not `f` — which is what the
+/// substep's own title says. Using `f` as the `before` made the line a false
+/// statement (from `y·x²` "comes" `[2y, 2x]`) and hid the gradient component,
+/// the one intermediate that makes the jump followable. The jacobian arm next
+/// door was already correct.
+#[test]
+fn hessian_row_substeps_start_from_the_first_derivative() {
+    let (wire, _) = cli_eval_json_with_stderr_args("hessian(x^2*y, [x,y])", &["--steps", "on"]);
+    let subs: Vec<(String, String, String)> = wire["steps"]
+        .as_array()
+        .expect("steps with --steps on")
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .map(|s| {
+            (
+                s["title"].as_str().unwrap_or_default().to_string(),
+                s["before"].as_str().unwrap_or_default().to_string(),
+                s["after"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(subs.len(), 2, "one substep per row: {subs:?}");
+    // ∂f/∂x = 2xy and ∂f/∂y = x², NOT f = y·x² twice.
+    assert_eq!(subs[0].1, "2·x·y");
+    assert_eq!(subs[1].1, "x^2");
+    // And both sides fold: the machinery's `x^(2 - 1 - 1)` never reaches the student.
+    for (title, before, after) in &subs {
+        assert!(
+            !before.contains("^(") && !after.contains("^("),
+            "raw exponent arithmetic leaked into «{title}»: {before} -> {after}"
+        );
+    }
+    assert_eq!(subs[0].2, "[2·y, 2·x]");
+    assert_eq!(subs[1].2, "[2·x, 0]");
+}
+
+/// The reverse-nested-fraction narrator may only claim `A = c·B` when that
+/// identity actually holds. It used to fire on pattern match alone and publish
+/// `A = (1-x)²·A` inside `diff(arctan((1+x)/(1-x)), x)`.
+#[test]
+fn nested_fraction_common_factor_substep_requires_the_identity_to_hold() {
+    let (wire, _) = cli_eval_json_with_stderr_args(
+        "diff(arctan((1+x)/(1-x)), x)",
+        &["--steps", "on"],
+    );
+    let titles: Vec<String> = wire["steps"]
+        .as_array()
+        .expect("steps with --steps on")
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .filter_map(|s| s["title"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        !titles.iter().any(|t| t.contains("sacando factor común")),
+        "the identity does not hold here, so the substep must decline: {titles:?}"
+    );
+    // The rest of the trace is untouched.
+    assert!(
+        titles.iter().any(|t| t.contains("Invertir la fracción")),
+        "the genuine manoeuvres must survive: {titles:?}"
+    );
+}

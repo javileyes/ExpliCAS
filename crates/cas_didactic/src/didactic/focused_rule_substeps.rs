@@ -3348,6 +3348,25 @@ fn sign_sort_key(sign: Sign) -> u8 {
     }
 }
 
+/// `whole ≡ factor · rest`, decided EXACTLY (build the difference and simplify
+/// it to zero), not assumed.
+///
+/// The reverse-nested-fraction narrator was written for one direction —
+/// `(c+d)/(a(c+d)+b) → 1/(a + b/(c+d))`, where `a(c+d)+b = (c+d)·(a + b/(c+d))`
+/// really holds — but it fired whenever the pattern MATCHED, including when
+/// `before_den` and `after_den` are the same expression rewritten. There it
+/// published `A = (1-x)²·A`, false unless `(1-x)² = 1`
+/// (`diff(arctan((1+x)/(1-x)), x)`, residual 86.70 / 35.17 / -6.83 measured at
+/// three points). Declining is the honest outcome when the identity does not
+/// hold.
+fn factors_exactly(ctx: &Context, whole: ExprId, factor: ExprId, rest: ExprId) -> bool {
+    let mut scratch = ctx.clone();
+    let product = scratch.add(Expr::Mul(factor, rest));
+    let difference = scratch.add(Expr::Sub(whole, product));
+    let simplified = simplify_expr_in_context(&mut scratch, difference);
+    is_zero(&scratch, simplified)
+}
+
 fn generate_reverse_nested_fraction_substeps(
     ctx: &Context,
     before: ExprId,
@@ -3365,6 +3384,9 @@ fn generate_reverse_nested_fraction_substeps(
                 return None;
             };
             let (_, common_den) = split_add_with_single_fraction(ctx, *after_den)?;
+            if !factors_exactly(ctx, *before_den, common_den, *after_den) {
+                return None;
+            }
             let common_den_display = human_expr(ctx, common_den);
             let common_den_grouped_display = grouped_substitution_display(ctx, common_den);
             let common_den_grouped_latex = grouped_substitution_latex(ctx, common_den);
@@ -3390,6 +3412,9 @@ fn generate_reverse_nested_fraction_substeps(
                 return None;
             };
             let (_, common_den) = split_add_with_single_fraction(ctx, *after_num)?;
+            if !factors_exactly(ctx, *before_num, common_den, *after_num) {
+                return None;
+            }
             let common_den_display = human_expr(ctx, common_den);
             let common_den_grouped_display = grouped_substitution_display(ctx, common_den);
             let common_den_grouped_latex = grouped_substitution_latex(ctx, common_den);
@@ -11959,10 +11984,18 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
     if row_sources.len() != rows {
         return Vec::new();
     }
+    // The cells arrive raw from the engine (`x^(2 - 1 - 1)`), and a substep whose
+    // `before` is folded while its `after` is not reads as two different states.
+    // Fold both with the SAME policy pair.
+    let mut cell_ctx = ctx.clone();
+    let folded_cells: Vec<ExprId> = cells
+        .iter()
+        .map(|&cell| simplify_expr_in_context(&mut cell_ctx, cell))
+        .collect();
     (0..rows)
         .map(|i| {
             let row_display = (0..cols)
-                .map(|j| display_expr(ctx, cells[i * cols + j]))
+                .map(|j| display_expr(&cell_ctx, folded_cells[i * cols + j]))
                 .collect::<Vec<_>>()
                 .join(", ");
             if is_jacobian {
@@ -11973,15 +12006,59 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
                     format!("[{row_display}]"),
                 )
             } else {
-                SubStep::keyed(
+                // Row i of the Hessian differentiates ∂f/∂x_i, NOT f — which is
+                // what the title already says. Using `target` made the line a
+                // false statement (from `y·x²` "comes" `[2y, 2x]`) and hid the
+                // one intermediate that makes the jump followable: the gradient
+                // component. The jacobian arm next door already does this right.
+                let first_derivative = hessian_row_first_derivative(ctx, target, &var_names[i]);
+                let (before_display, before_latex) = match first_derivative {
+                    Some((scratch, dfdx)) => {
+                        (display_expr(&scratch, dfdx), Some(latex_expr(&scratch, dfdx)))
+                    }
+                    None => (display_expr(ctx, target), None),
+                };
+                let sub = SubStep::keyed(
                     "hessian.row",
                     vec![(i + 1).to_string(), row_sources[i].clone()],
-                    display_expr(ctx, target),
+                    before_display,
                     format!("[{row_display}]"),
-                )
+                );
+                match before_latex {
+                    Some(latex) => sub.with_before_latex(latex).with_after_latex(format!(
+                        "[{}]",
+                        (0..cols)
+                            .map(|j| latex_expr(&cell_ctx, folded_cells[i * cols + j]))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                    None => sub,
+                }
             }
         })
         .collect()
+}
+
+/// `∂f/∂x_i`, simplified, on a scratch context — the state row `i` of the
+/// Hessian actually starts from. Returns `None` (and the caller falls back to
+/// `f`) when the derivative cannot be rebuilt, rather than inventing one.
+fn hessian_row_first_derivative(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(Context, ExprId)> {
+    let mut scratch = ctx.clone();
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        target,
+        var_name,
+    )?;
+    // The raw derivative carries the machinery's exponent arithmetic
+    // (`x^(2 - 1)`); simplifying is what gives the state the student would
+    // write. Same treatment as the cells, so the two sides of the substep are
+    // in the same form.
+    let folded = simplify_expr_in_context(&mut scratch, derivative);
+    Some((scratch, folded))
 }
 
 /// Formula-level narration for the scalar-output verbs `divergence` and
