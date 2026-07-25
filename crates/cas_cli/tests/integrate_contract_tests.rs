@@ -16238,3 +16238,70 @@ fn integrate_contract_definite_bounds_substep_subtracts_all_of_f_of_a() {
         "the subtrahend must be delimited when the limit branch is taken, got {improper}"
     );
 }
+
+/// A substep must not announce a manoeuvre it does not perform, and the thing
+/// being decomposed is the RATIONAL FUNCTION, not its denominator.
+///
+/// Three regressions pinned at once (audit rows 031/032/033):
+///  - over a denominator irreducible in Q (`x^3 - 2`), "factor the denominator"
+///    returned the denominator itself and "decompose" returned the integrand;
+///  - the decompose substep used the factored DENOMINATOR as its `before`, so
+///    on `x^5 - 1` it asserted that a polynomial equals a sum of fractions;
+///  - `∫dx/x` announced a partial-fraction decomposition of `1/x` into `1/x`.
+#[test]
+fn integrate_contract_partial_fraction_substeps_never_claim_a_manoeuvre_they_skip() {
+    let titles = |input: &str| -> Vec<(String, String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["before"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    // Irreducible in Q: no factorization claim, no identity "decomposition".
+    let irreducible = titles("integrate(1/(x^3-2), x)");
+    assert!(
+        !irreducible
+            .iter()
+            .any(|(t, _, _)| t.contains("Factorizar") || t.contains("Descomponer")),
+        "x^3 - 2 is irreducible in Q; neither claim may be published: {irreducible:?}"
+    );
+
+    // Real decomposition: the `before` is the integrand, not the denominator.
+    let quintic = titles("integrate(1/(x^5-1), x)");
+    let decompose = quintic
+        .iter()
+        .find(|(t, _, _)| t.contains("Descomponer"))
+        .expect("x^5 - 1 does decompose");
+    assert_eq!(decompose.1, "1 / (x^5 - 1)");
+
+    // Already decomposed: only the honest table statement survives.
+    let simple = titles("integrate(1/x, x)");
+    assert!(
+        !simple.iter().any(|(t, _, _)| t.contains("Descomponer")),
+        "1/x is already decomposed: {simple:?}"
+    );
+    assert!(
+        simple.iter().any(|(_, b, a)| b == "1 / x" && a == "ln(|x|)"),
+        "the table statement must survive: {simple:?}"
+    );
+
+    // A genuine decomposition is untouched.
+    let genuine = titles("integrate(1/(x^2+x), x)");
+    assert!(
+        genuine
+            .iter()
+            .any(|(t, b, a)| t.contains("Descomponer") && b == "1 / (x^2 + x)" && a != b),
+        "a real decomposition must still narrate: {genuine:?}"
+    );
+}

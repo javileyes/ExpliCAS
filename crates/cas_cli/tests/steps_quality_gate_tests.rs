@@ -318,7 +318,13 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
 /// Ceilings for the measures that are NOT yet zero. Each one names the cycle
 /// that closes it; a measure that drops below its ceiling must have the ceiling
 /// tightened in the same commit, so the numbers can only go down.
-const E8_SUBSTEP_NOOP_CEILING: usize = 5; // → 0 in C1.4 (partial fractions)
+// C1.4 took the partial-fraction pair (rows 032/033) out. The 3 survivors have
+// named owners and are NOT of the same class:
+//   - rows 194/195 `potential`: "Verificación exacta" restates φ — the vector
+//     verbs' mega-substep, its own cycle.
+//   - row 199 `limit(exp(z), z, i*pi)`: the residual-policy substep, where
+//     before == after IS the narration (same contract as `Conservar …`).
+const E8_SUBSTEP_NOOP_CEILING: usize = 3;
 
 fn run_gate(label: &str, inputs: &[String], min_expected: usize) {
     assert!(

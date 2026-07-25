@@ -14389,25 +14389,45 @@ fn generate_general_rational_integration_substeps(ctx: &Context, step: &Step) ->
             )),
         );
     }
-    substeps.push(
-        SubStep::new(
-            "Factorizar el denominador",
-            display_expr(ctx, *denominator),
-            display_expr(&scratch, parts.factored_denominator),
-        )
-        .with_before_latex(latex_expr(ctx, *denominator))
-        .with_after_latex(latex_expr(&scratch, parts.factored_denominator)),
-    );
-    substeps.push(
-        SubStep::keyed(
-            "partial_fractions.decompose",
-            vec![],
-            display_expr(&scratch, parts.factored_denominator),
-            display_expr(&scratch, parts.decomposition),
-        )
-        .with_before_latex(latex_expr(&scratch, parts.factored_denominator))
-        .with_after_latex(latex_expr(&scratch, parts.decomposition)),
-    );
+    // A substep that announces a manoeuvre it does not perform is worse than no
+    // substep (docs/DIDACTIC_SUBSTEP_NORMALIZATION.md). Over a denominator that
+    // is irreducible in Q — x^3 - 2, x^4 - 5 — "factor the denominator" returns
+    // the denominator itself, and the student is left believing it cannot be
+    // factored, while the row's own answer exhibits the real root.
+    let factored_display = display_expr(&scratch, parts.factored_denominator);
+    if factored_display != display_expr(ctx, *denominator) {
+        substeps.push(
+            SubStep::new(
+                "Factorizar el denominador",
+                display_expr(ctx, *denominator),
+                factored_display,
+            )
+            .with_before_latex(latex_expr(ctx, *denominator))
+            .with_after_latex(latex_expr(&scratch, parts.factored_denominator)),
+        );
+    }
+    // What gets decomposed is the RATIONAL FUNCTION, not the denominator. Using
+    // the factored denominator as `before` published a type-changing identity
+    // (`x^3 - 2 -> 1/(x^3 - 2)`), and on x^5 - 1 it asserted that a polynomial
+    // equals a sum of fractions. After an Ostrogradsky split the subject is the
+    // remaining squarefree integrand, not the original one.
+    let decompose_before = parts
+        .rational_part
+        .map(|(_, remaining)| remaining)
+        .unwrap_or(args[0]);
+    let decompose_before_display = display_expr(&scratch, decompose_before);
+    if decompose_before_display != display_expr(&scratch, parts.decomposition) {
+        substeps.push(
+            SubStep::keyed(
+                "partial_fractions.decompose",
+                vec![],
+                decompose_before_display,
+                display_expr(&scratch, parts.decomposition),
+            )
+            .with_before_latex(latex_expr(&scratch, decompose_before))
+            .with_after_latex(latex_expr(&scratch, parts.decomposition)),
+        );
+    }
     substeps.push(
         SubStep::keyed(
             "integral.integrate_simple_terms",
@@ -15232,16 +15252,26 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
     };
     let decomposition_display = display_expr(&scratch, decomposition);
     let decomposition_latex = latex_expr(&scratch, decomposition);
+    let integrand_display = display_expr(ctx, args[0]);
 
-    vec![
-        SubStep::keyed(
-            "partial_fractions.decompose",
-            vec![],
-            display_expr(ctx, args[0]),
-            decomposition_display.clone(),
-        )
-        .with_before_latex(latex_expr(ctx, args[0]))
-        .with_after_latex(decomposition_latex.clone()),
+    let mut substeps = Vec::new();
+    // The oracles return the identity when the integrand is ALREADY decomposed
+    // (`1/x`), and announcing a decomposition that does not happen is exactly
+    // the "generic template" the substep policy forbids. The honest table
+    // statement survives as the remaining substep: `1/x -> ln|x|`.
+    if decomposition_display != integrand_display {
+        substeps.push(
+            SubStep::keyed(
+                "partial_fractions.decompose",
+                vec![],
+                integrand_display,
+                decomposition_display.clone(),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(decomposition_latex.clone()),
+        );
+    }
+    substeps.push(
         SubStep::keyed(
             "integral.integrate_simple_terms",
             vec![],
@@ -15250,7 +15280,8 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
         )
         .with_before_latex(decomposition_latex)
         .with_after_latex(latex_expr(ctx, after)),
-    ]
+    );
+    substeps
 }
 
 fn generate_positive_quadratic_square_integration_substeps(
