@@ -12968,26 +12968,6 @@ fn differentiation_component_derivative_substep(
     )
 }
 
-/// Linearity over a SUM integrand, verified term by term, then recursion into
-/// each term's own narrator.
-///
-/// The audit's second witness: `integrate(2*x/sqrt(4+x^4)+1, x)` published one
-/// magic step while `integrate(2*x/sqrt(4+x^4), x)` — the same integrand without
-/// the `+1` — narrated fine. In the whole ~23-narrator chain there was ONE
-/// additive decomposition, and it sat behind a hard gate demanding the WHOLE
-/// integrand be a polynomial; every other matcher requires the entire integrand
-/// to match one shape, and the owner of `asinh` bails out the moment it sees an
-/// `Expr::Add`.
-///
-/// Two things this deliberately does NOT do:
-///  - it never pairs term `i` against summand `i` of `after`. That is RC-1 all
-///    over again: the witness records the integrand as `1 + 2x/√(x⁴+4)` and the
-///    result as `x + asinh(x²/2)`, so position carries no meaning.
-///  - it never publishes an unverified decomposition. Each term is integrated on
-///    its own, and the SUM of the pieces must differ from the engine's answer by
-///    a CONSTANT (the theorem is "antiderivatives differ by a constant", not
-///    "are equal"). Any term that fails to integrate declines the whole
-///    narration — all-or-nothing, the doctrine the matrix arm already applies.
 /// A vector `integrate`/`diff` narrated component by component.
 ///
 /// The engine already works component-wise and SAYS so in the rule description
@@ -13195,6 +13175,26 @@ fn generate_vector_component_calculus_substeps(
     substeps
 }
 
+/// Linearity over a SUM integrand, verified term by term, then recursion into
+/// each term's own narrator.
+///
+/// The audit's second witness: `integrate(2*x/sqrt(4+x^4)+1, x)` published one
+/// magic step while `integrate(2*x/sqrt(4+x^4), x)` — the same integrand without
+/// the `+1` — narrated fine. In the whole ~23-narrator chain there was ONE
+/// additive decomposition, and it sat behind a hard gate demanding the WHOLE
+/// integrand be a polynomial; every other matcher requires the entire integrand
+/// to match one shape, and the owner of `asinh` bails out the moment it sees an
+/// `Expr::Add`.
+///
+/// Two things this deliberately does NOT do:
+///  - it never pairs term `i` against summand `i` of `after`. That is RC-1 all
+///    over again: the witness records the integrand as `1 + 2x/√(x⁴+4)` and the
+///    result as `x + asinh(x²/2)`, so position carries no meaning.
+///  - it never publishes an unverified decomposition. Each term is integrated on
+///    its own, and the SUM of the pieces must differ from the engine's answer by
+///    a CONSTANT (the theorem is "antiderivatives differ by a constant", not
+///    "are equal"). Any term that fails to integrate declines the whole
+///    narration — all-or-nothing, the doctrine the matrix arm already applies.
 fn generate_additive_integration_substeps(
     ctx: &Context,
     step: &Step,

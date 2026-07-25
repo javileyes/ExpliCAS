@@ -21877,3 +21877,27 @@ Active entries: 706 (newest first)
 - decision: retener. Mudas restantes con dueño nombrado: 21 y 25 (gaussiana definida y by-parts cíclica — familias sin narrador, capacidad propia), 137 (el camino de `equiv` no enriquece NINGÚN paso, hallazgo de C3.1), 187 y 188 (ócticas, molde de cuadráticos reales).
 - retained learning:
   - **Cuando el resultado lleva dentro la estructura del método, el canal de traza sobra**: aquí `root_sum(R, t, w)` ES la traza, publicada en el propio wire. Antes de proponer un canal nuevo, mirar si el resultado ya contiene lo que se quiere narrar — es la 2ª vez en esta campaña que la respuesta estaba en el dato (la 1ª fue la description de la regla en C2.4).
+
+## 2026-07-25 - INFRAESTRUCTURA/MEDIDA (plan · C5.1): el eje de idioma sale del ESCAPARATE — el corpus de 210 infra-medía la clase 5×
+
+- area: `cas_cli/tests/steps_quality_gate_tests.rs` — eje de idioma nuevo (`steps_quality_language_residue_over_guardrail_corpora`, tier `--ignored`): segundo eval con `Language::En` y detector de residuo español sobre 4 canales del wire (nombres de regla, títulos de sub-paso, descripciones de solve_steps, warnings), barriendo `web/examples.csv` **más** `identity_pairs.csv` (como `diff`) y `derive_pairs.csv` (como `integrate`).
+- status: `retained`. Ciclo C5.1 del plan.
+- capture:
+  - **La medida es el entregable y confirma la 4ª refutación del plan.** El informe decía «9 nombres de regla, paridad estructural 210/210 correcta». Eso describe el escaparate. Medido hoy sobre 1 049 expresiones:
+
+    | corpus | filas con fuga | % |
+    |---|---|---|
+    | `web_examples` | 12 / 207 | 5,8 % |
+    | `identity_pairs` (guardrail) | 159 / 521 | **31 %** |
+    | `derive_sources` (guardrail) | 134 / 321 | **42 %** |
+    | **total** | **305 / 1 049** | **29 %** |
+
+    382 fugas en nombres de regla y 262 en títulos de sub-paso, frente a las 9+11 que veía el escaparate: la clase estaba **infra-medida 5×**. Es exactamente el fallo de método que produjo esta auditoría, cometido dentro de la auditoría.
+  - **Los warnings se cuentan APARTE** (13): no pasan por el catálogo i18n en ninguna dirección, son otra clase y otro dueño (C5.3). Mezclarlos habría contaminado el techo de la narración con un defecto que no le pertenece.
+  - `solve_steps` sale a **0**: su capa de descripciones sí está íntegramente traducida. Un cero medido también es entregable.
+  - Detector deliberadamente pequeño: marcadores españoles como palabra completa + letras acentuadas. El objetivo es un contador que no pueda dar falsos positivos, no un traductor.
+- observed: workspace failed:0, clippy 0, carril verde. Techos anclados a lo MEDIDO (382 / 262 / 13), así que solo pueden bajar. Huella: 1 delta (`passed 1 → 2`, el test nuevo) + 10 contadores nuevos. 30 s en release.
+- decision: retener. C5.2 baja nombres y títulos; C5.3 los warnings.
+- retained learning:
+  - **Un corpus de vitrina mide lo que la vitrina exhibe**: `web/examples.csv` enruta por los caminos de cálculo bien traducidos, así que cualquier contador que solo lo mire da una foto optimista por construcción. Regla para el resto de la campaña: todo contador nuevo nace sobre los corpus GUARDRAIL y el escaparate es un tramo más, nunca el universo.
+  - **Separar clases con dueños distintos ANTES de ponerles techo**: warnings y narración fugan por motivos distintos y se arreglan en ciclos distintos; un techo conjunto habría hecho ilegible cuál de los dos bajó.

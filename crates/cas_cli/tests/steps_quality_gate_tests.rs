@@ -180,6 +180,123 @@ fn braces_balanced(latex: &str) -> bool {
     depth == 0
 }
 
+// ---------------------------------------------------------------------------
+// Language axis (C5.1): the narration must not leak Spanish into the English
+// wire — measured over the GUARDRAIL corpora, not over the 210-row showcase.
+//
+// The audit reported "9 rule names, structural parity 210/210 correct". That
+// describes `web/examples.csv`, which is a shop window: it routes through the
+// well-translated calculus paths. The probe measured `identity_pairs.csv` and
+// found 26 % of rows leaking — six times more. A counter that only ever sees
+// the showcase is the same failure of method that produced this audit.
+// ---------------------------------------------------------------------------
+
+/// Whole-word Spanish markers that never occur in the English catalogue, plus
+/// the accented letters. Deliberately small and unambiguous: the point is a
+/// counter that cannot cry wolf, not a translator.
+const SPANISH_MARKERS: &[&str] = &[
+    "de", "del", "la", "el", "los", "las", "una", "por", "con", "para", "entre", "cada", "sobre",
+    "según", "usar", "sacar", "aplicar", "calcular", "reescribir", "agrupar", "cancelar",
+    "simplificar", "derivar", "integrar", "resolver", "evaluar", "sustituir",
+];
+
+fn looks_spanish(text: &str) -> bool {
+    if text.chars().any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'ñ' | '¿' | '¡')) {
+        return true;
+    }
+    text.split(|c: char| !c.is_alphabetic())
+        .filter(|w| !w.is_empty())
+        .any(|w| {
+            let lower = w.to_lowercase();
+            SPANISH_MARKERS.contains(&lower.as_str())
+        })
+}
+
+fn eval_wire_in(input: &str, language: Language) -> Option<EvalWireOutput> {
+    let (tx, rx) = mpsc::channel();
+    let owned = input.to_string();
+    thread::spawn(move || {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut state = cas_session::SessionState::new();
+        let out = evaluate_eval_command_in_memory_with_state(
+            &mut engine,
+            &mut state,
+            cli_default_config(&owned),
+            language,
+            move |steps, events, ctx, mode| {
+                cas_didactic::collect_step_payloads_with_events_localized(
+                    steps, events, ctx, mode, language,
+                )
+            },
+        );
+        let _ = tx.send(out.ok());
+    });
+    rx.recv_timeout(TERMINATION_NET).ok().flatten()
+}
+
+#[derive(Default)]
+struct LanguageResidue {
+    rules: usize,
+    substep_titles: usize,
+    solve_descriptions: usize,
+    warnings: usize,
+    rows_touched: usize,
+    rows_swept: usize,
+}
+
+fn sweep_language_residue(inputs: &[String], residue: &mut LanguageResidue) {
+    for input in inputs {
+        let Some(wire) = eval_wire_in(input, Language::En) else {
+            continue;
+        };
+        residue.rows_swept += 1;
+        let before = residue.rules + residue.substep_titles + residue.solve_descriptions;
+        for step in &wire.steps {
+            if looks_spanish(&step.rule) {
+                residue.rules += 1;
+            }
+            for sub in &step.substeps {
+                if looks_spanish(&sub.title) {
+                    residue.substep_titles += 1;
+                }
+            }
+        }
+        for step in &wire.solve_steps {
+            if looks_spanish(&step.description) {
+                residue.solve_descriptions += 1;
+            }
+        }
+        // Warnings are a SEPARATE class: they do not go through the i18n
+        // catalogue in either direction (C5.3 owns that). Counted apart so the
+        // narration ceiling is not polluted by a defect it does not own.
+        for warning in &wire.warnings {
+            if looks_spanish(&warning.assumption) {
+                residue.warnings += 1;
+            }
+        }
+        if residue.rules + residue.substep_titles + residue.solve_descriptions > before {
+            residue.rows_touched += 1;
+        }
+    }
+}
+
+fn load_expr_column_calls(raw: &str, skip: usize, column: usize, wrap: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    raw.lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+        .skip(skip)
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split(',').collect();
+            let expr = fields.get(column)?.trim();
+            if expr.is_empty() || expr.contains('"') {
+                return None;
+            }
+            Some(wrap.replace("{}", expr))
+        })
+        .filter(|e| seen.insert(e.clone()))
+        .collect()
+}
+
 #[derive(Default)]
 struct QualityReport {
     /// Hard invariants: any hit is a failure, with the offending row quoted.
@@ -401,4 +518,108 @@ fn load_web_examples() -> Vec<String> {
         })
         .filter(|expr| seen.insert(expr.clone()))
         .collect()
+}
+
+/// Ceilings for the language axis. Non-zero today by design: the point of C5.1
+/// is to MEASURE the class over the guardrail corpora, and the translation work
+/// itself is C5.2 (rule names / substep titles) and C5.3 (warnings).
+// MEDIDOS hoy sobre 1 049 expresiones de los tres corpus. El escaparate solo
+// veía 12 filas de 207 (5,8 %); los guardrail dan 305 de 1 049 (29 %) — la clase
+// estaba infra-medida 5×. C5.2 baja los dos primeros; C5.3, el tercero.
+const EN_RULE_RESIDUE_CEILING: usize = 382;
+const EN_SUBSTEP_RESIDUE_CEILING: usize = 262;
+const EN_WARNING_RESIDUE_CEILING: usize = 13;
+
+/// The narration must not leak Spanish into the English wire — swept over the
+/// GUARDRAIL corpora, not just the 210-row showcase.
+#[test]
+#[ignore]
+fn steps_quality_language_residue_over_guardrail_corpora() {
+    let corpora: Vec<(&str, Vec<String>)> = vec![
+        ("web_examples", load_web_examples()),
+        ("identity_pairs_diff", load_identity_pairs_as_diff_calls()),
+        ("derive_sources_integrate", load_derive_sources_as_integrate_calls()),
+    ];
+
+    let mut total = LanguageResidue::default();
+    for (name, inputs) in &corpora {
+        assert!(
+            inputs.len() >= 50,
+            "{name}: loader returned {} expressions — the corpus format drifted \
+             and the sweep would have passed on nothing",
+            inputs.len()
+        );
+        let mut per_corpus = LanguageResidue::default();
+        sweep_language_residue(inputs, &mut per_corpus);
+        println!(
+            "es_residue_{name} rules={} substeps={} solve={} warnings={} rows_touched={} rows_swept={}",
+            per_corpus.rules,
+            per_corpus.substep_titles,
+            per_corpus.solve_descriptions,
+            per_corpus.warnings,
+            per_corpus.rows_touched,
+            per_corpus.rows_swept
+        );
+        total.rules += per_corpus.rules;
+        total.substep_titles += per_corpus.substep_titles;
+        total.solve_descriptions += per_corpus.solve_descriptions;
+        total.warnings += per_corpus.warnings;
+        total.rows_touched += per_corpus.rows_touched;
+        total.rows_swept += per_corpus.rows_swept;
+    }
+
+    println!("es_residue_in_en_rules hits={} rows={}", total.rules, total.rows_touched);
+    println!(
+        "es_residue_in_en_substeps hits={} rows={}",
+        total.substep_titles, total.rows_touched
+    );
+    println!(
+        "es_residue_in_en_solve_steps hits={} rows={}",
+        total.solve_descriptions, total.rows_touched
+    );
+    println!(
+        "es_residue_in_en_warnings hits={} rows={}",
+        total.warnings, total.rows_touched
+    );
+    println!("language_rows_swept hits={} rows={}", total.rows_swept, total.rows_swept);
+
+    assert!(
+        total.rules <= EN_RULE_RESIDUE_CEILING,
+        "rule-name residue {} exceeds the declared ceiling {EN_RULE_RESIDUE_CEILING}",
+        total.rules
+    );
+    assert!(
+        total.substep_titles <= EN_SUBSTEP_RESIDUE_CEILING,
+        "substep-title residue {} exceeds the declared ceiling {EN_SUBSTEP_RESIDUE_CEILING}",
+        total.substep_titles
+    );
+    assert!(
+        total.warnings <= EN_WARNING_RESIDUE_CEILING,
+        "warning residue {} exceeds the declared ceiling {EN_WARNING_RESIDUE_CEILING}",
+        total.warnings
+    );
+}
+
+fn load_identity_pairs_as_diff_calls() -> Vec<String> {
+    load_expr_column_calls(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../cas_solver/tests/identity_pairs.csv"
+        )),
+        0,
+        0,
+        "diff({}, x)",
+    )
+}
+
+fn load_derive_sources_as_integrate_calls() -> Vec<String> {
+    load_expr_column_calls(
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../cas_solver/tests/derive_pairs.csv"
+        )),
+        1,
+        2,
+        "integrate({}, x)",
+    )
 }
