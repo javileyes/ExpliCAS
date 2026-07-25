@@ -185,6 +185,12 @@ SUITES: dict[str, SuiteSpec] = {
             "--",
             "--ignored",
             "--nocapture",
+            # The fail-by-design inventory tier (`*_should_be_empty`) is the
+            # living work item, not a measurement: registering an always-red
+            # suite would dirty every huella from here on. Plan §7, "Regla de
+            # aterrizaje": solo se registra el eje que MIDE.
+            "--skip",
+            "should_be_empty",
         ],
         env={},
         parser="steps_quality",

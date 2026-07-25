@@ -868,3 +868,96 @@ fn substep_claim_shadow_run_over_guardrail_corpora() {
         tally.refuted.len()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Solve narration inventory (C4.1)
+// ---------------------------------------------------------------------------
+
+/// Rows that return a REAL answer and narrate NOTHING — neither `steps` nor
+/// `solve_steps`. Anchored BY EXPRESSION (the csv reorders and the dedup
+/// renumbers), and the lane fails BOTH ways: a new mute row is a regression,
+/// and a row that stops being mute must leave this list in the same commit.
+/// The list can only shrink.
+const KNOWN_MUTE_SOLVE_ROWS: &[&str] = &[
+    "solve(4^x-9^x=0,x)",
+    "solve(sqrt(x+5)-sqrt(x)=1,x)",
+    "solve((x-1)/(x-2)<0,x)",
+    "solve(x+1/x>2,x)",
+    "solve((x+1)/(x-1)>=2,x)",
+    "solve(sqrt(x)>2,x)",
+    "solve(x^(2/3)>2,x)",
+    "solve(abs(x-2)>1,x)",
+    "solve(abs(x-1)<abs(x+2),x)",
+    "solve(ln(x)^2-3*ln(x)+2<0,x)",
+    "solve(2*sin(3*x)-1>0, x)",
+    "solve(abs(x-a)<2, x)",
+    "solve(sin(x)>1/2, x)",
+    "solve(tan(x)>1, x)",
+    "dsolve(diff(y,x) = x^2 + y^2, y, x)",
+];
+
+/// Nivel 1 — CONTRATO: the mute list is exact. A `solve` that stops narrating,
+/// or one that starts, must be reflected here in the same commit.
+///
+/// The asymmetry this fences (audit): of 16 inequality rows, 12 narrate nothing
+/// (75 %); of 19 equation rows, 2. The `=` side narrates and the `<`/`>` side
+/// does not, with the same left-hand side. The narration is not lost — for the
+/// inequality families it does not EXIST (measured: 39 call-sites return
+/// `(set, Vec::new())`, 21 of them inequality handlers).
+#[test]
+#[ignore]
+fn solve_mute_inventory_is_exact() {
+    let mut mute = Vec::new();
+    for input in load_web_examples() {
+        let is_solve = ["solve(", "solve_system(", "dsolve("]
+            .iter()
+            .any(|verb| input.starts_with(verb));
+        if !is_solve {
+            continue;
+        }
+        let Some(wire) = eval_wire_in(&input, Language::Es) else {
+            continue;
+        };
+        if wire.steps.is_empty() && wire.solve_steps.is_empty() {
+            mute.push(input.clone());
+        }
+    }
+    println!("solve_mute_rows hits={} rows={}", mute.len(), mute.len());
+    for row in &mute {
+        println!("  MUTE {row}");
+    }
+
+    let known: std::collections::BTreeSet<&str> = KNOWN_MUTE_SOLVE_ROWS.iter().copied().collect();
+    let found: std::collections::BTreeSet<&str> = mute.iter().map(String::as_str).collect();
+    let new: Vec<&&str> = found.difference(&known).collect();
+    let fixed: Vec<&&str> = known.difference(&found).collect();
+    assert!(
+        new.is_empty(),
+        "a solve row went MUTE and is not inventoried: {new:?}"
+    );
+    assert!(
+        fixed.is_empty(),
+        "these rows now narrate — remove them from KNOWN_MUTE_SOLVE_ROWS in the \
+         same commit that fixed them (STALE inventory): {fixed:?}"
+    );
+}
+
+/// Nivel 2 — FALLA POR DISEÑO mientras la clase esté abierta. This is the
+/// living inventory: the red is the work item, and it regenerates itself
+/// instead of ageing like a document.
+#[test]
+#[ignore]
+// Clippy is right that this is constant-false — that IS the design. The tier
+// exists to be red until the class closes, and the constant is what makes the
+// red self-regenerating instead of a doc that ages.
+#[allow(clippy::const_is_empty)]
+fn solve_mute_inventory_should_be_empty() {
+    assert!(
+        KNOWN_MUTE_SOLVE_ROWS.is_empty(),
+        "{} solve rows still return an answer with no narration at all. \
+         The student gets a correct interval or periodic family and ZERO \
+         explanation. Owner: frente E5 (one cycle per family). Current list: {:?}",
+        KNOWN_MUTE_SOLVE_ROWS.len(),
+        KNOWN_MUTE_SOLVE_ROWS
+    );
+}

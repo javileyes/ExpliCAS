@@ -21945,3 +21945,18 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Una tabla i18n que empareja por AMBOS lados arregla las dos direcciones de fuga a la vez**: no hace falta normalizar antes qué idioma hard-codeó cada emisor, que era el trabajo que hacía parecer caro este ciclo.
   - **La traducción por prefijo tiene un límite estructural nítido y compartido**: sirve para «frase + matemáticas» y falla en cuanto la frase CONTINÚA después del parámetro. Los 3 residuales de C5.2+C5.3 son exactamente esa forma, y por eso van juntos a la misma tanda futura en vez de repartirse por canal.
+
+## 2026-07-25 - MEDIDA (plan · C4.1): el inventario de solve MUDO entra como pin de DOS NIVELES — y el tier que falla-por-diseño se excluye de la huella
+
+- area: `cas_cli/tests/steps_quality_gate_tests.rs` (`KNOWN_MUTE_SOLVE_ROWS` + `solve_mute_inventory_is_exact` nivel 1 y `solve_mute_inventory_should_be_empty` nivel 2) y `scripts/engine_improvement_scorecard.py` (`--skip should_be_empty`).
+- status: `retained`. Ciclo C4.1 del plan.
+- capture:
+  - **15 filas de solve devuelven una respuesta REAL y no narran NADA** — ni `steps` ni `solve_steps`. El alumno recibe un intervalo o una familia periódica correctos y cero explicación. Inventariadas por EXPRESIÓN, nunca por índice (el csv se reordena y el dedup renumera).
+  - **El pin falla en las DOS direcciones**: una fila que enmudece es regresión, y una que deja de estar muda **tiene que salir de la lista en el mismo commit** (STALE). Eso es lo que impide el trueque silencioso «arreglo una y rompo otra», y es la razón de que la lista solo pueda encoger.
+  - **La asimetría que fija**: de 16 filas de inecuación, 12 no narran (75 %); de 19 de ecuación, 2. El lado `=` narra y el lado `<`/`>` no, con el mismo miembro izquierdo. Y la narración no se PIERDE: para las familias de inecuación **no existe** (39 call-sites devuelven `(set, Vec::new())`, 21 de ellos manejadores de inequality).
+  - **El nivel 2 falla por diseño y NO se registra en el scorecard**: `make engine-scorecard` corre todos los `--ignored`, así que un suite siempre-rojo habría ensuciado la huella de todos los ciclos siguientes. Se excluye con `--skip should_be_empty`, que es la «regla de aterrizaje» del plan §7 aplicada: solo se registra el eje que MIDE.
+- observed: workspace failed:0, clippy 0, suite del carril en `pass` con `solve_mute_rows = 15` publicado. Sin cambios de motor: 0 filas del corpus cambian.
+- decision: retener. El nivel 2 es el entregable de trabajo de E5: se pone verde solo cuando la clase se cierre, familia por familia.
+- retained learning:
+  - **Un inventario que solo detecta ALTAS es medio inventario**: sin el chequeo STALE, arreglar una fila y romper otra deja el contador igual y el pin verde. La lista tiene que ser EXACTA en ambos sentidos.
+  - **Un tier que falla-por-diseño necesita su exclusión explícita del recolector de huellas el mismo día que nace**, o el siguiente ciclo hereda una huella roja que nadie sabe leer.
