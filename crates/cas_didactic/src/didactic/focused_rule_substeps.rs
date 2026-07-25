@@ -122,6 +122,11 @@ fn generate_focused_rule_substeps_at_depth(
     // by-parts see it first is what produced the measured false labels
     // (`∫(ln x + x)` and `∫(x·e^x + sin 2x)` were titled "use integration by
     // parts" over the whole sum).
+    let root_sum_substeps = generate_root_sum_integration_substeps(ctx, step);
+    if !root_sum_substeps.is_empty() {
+        return root_sum_substeps;
+    }
+
     let vector_component_substeps =
         generate_vector_component_calculus_substeps(ctx, step, depth);
     if !vector_component_substeps.is_empty() {
@@ -12994,6 +12999,108 @@ fn differentiation_component_derivative_substep(
 /// Unlike the additive narrator, pairing IS positional here and that is sound:
 /// component `i` of the answer is by definition the image of component `i` of
 /// the input — a matrix has coordinates, a sum does not.
+/// The RootSum frontier narrated from the RESULT itself.
+///
+/// `integrate(1/(x^5-x-1), x)` answers with a correct
+/// `root_sum(R(t), t, t·ln(x − w(t)))` and published ZERO substeps: not even the
+/// name of the method, let alone why a closed form in radicals does not exist.
+/// These are precisely the rows the corpus advertises as the differentiator
+/// against sympy.
+///
+/// No engine signature is touched: the backend sums the RootSum node with the
+/// elementary part, so the resolvent `R` and the witness `w` travel INSIDE the
+/// answer and can be read back out of it.
+fn generate_root_sum_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+
+    // The RootSum may sit alone or added to an elementary part.
+    let (root_sum, elementary) = match ctx.get(result) {
+        Expr::Add(lhs, rhs) => {
+            if is_root_sum_call(ctx, *lhs) {
+                (*lhs, Some(*rhs))
+            } else if is_root_sum_call(ctx, *rhs) {
+                (*rhs, Some(*lhs))
+            } else {
+                return Vec::new();
+            }
+        }
+        _ if is_root_sum_call(ctx, result) => (result, None),
+        _ => return Vec::new(),
+    };
+    let Expr::Function(_, root_sum_args) = ctx.get(root_sum) else {
+        return Vec::new();
+    };
+    let (resolvent, summand) = (root_sum_args[0], root_sum_args[2]);
+
+    let mut substeps = Vec::new();
+    if let Some(elementary) = elementary {
+        substeps.push(
+            SubStep::keyed(
+                "rootsum.split_rational_part",
+                vec![],
+                display_expr(ctx, args[0]),
+                format!(
+                    "{} + {}",
+                    display_expr(ctx, elementary),
+                    display_expr(ctx, root_sum)
+                ),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(format!(
+                "{} + {}",
+                latex_expr(ctx, elementary),
+                latex_expr(ctx, root_sum)
+            )),
+        );
+    }
+    substeps.push(
+        SubStep::keyed(
+            "rootsum.no_radicals",
+            vec![],
+            display_expr(ctx, args[0]),
+            format!("R(t) = {}", display_expr(ctx, resolvent)),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(format!("R(t) = {}", latex_expr(ctx, resolvent))),
+    );
+    substeps.push(
+        SubStep::keyed(
+            "rootsum.read_the_sum",
+            vec![],
+            format!("R(t) = {}", display_expr(ctx, resolvent)),
+            display_expr(ctx, root_sum),
+        )
+        .with_before_latex(format!("R(t) = {}", latex_expr(ctx, resolvent)))
+        .with_after_latex(latex_expr(ctx, root_sum)),
+    );
+    let _ = summand;
+    substeps
+}
+
+fn is_root_sum_call(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Function(fn_id, args)
+        if ctx.sym_name(*fn_id) == "root_sum" && args.len() == 3)
+}
+
 fn generate_vector_component_calculus_substeps(
     ctx: &Context,
     step: &Step,

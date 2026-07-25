@@ -16591,3 +16591,46 @@ fn visible_rule_name_distinguishes_the_two_distribute_division_manoeuvres() {
         );
     }
 }
+
+/// The RootSum frontier narrated from the RESULT itself — no engine signature
+/// touched. `integrate(1/(x^5-x-1), x)` answered with a correct RootSum and
+/// published ZERO substeps: not even the method's name, let alone why no closed
+/// form in radicals exists. These are the rows the corpus advertises as the
+/// differentiator against sympy.
+#[test]
+fn integrate_contract_root_sum_names_its_method_and_its_resolvent() {
+    let subs = |input: &str| -> Vec<(String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    let bare = subs("integrate(1/(x^5-x-1), x)");
+    assert!(
+        bare.iter().any(|(t, _)| t.contains("no son expresables por radicales")),
+        "the method must be named: {bare:?}"
+    );
+    assert!(
+        bare.iter().any(|(_, a)| a.starts_with("R(t) = ")),
+        "and the concrete resolvent published: {bare:?}"
+    );
+
+    // With an elementary part, the split comes first.
+    let split = subs("integrate(1/(x^7-1), x)");
+    assert_eq!(
+        split.first().map(|(t, _)| t.as_str()),
+        Some("Separar la parte de raíces racionales"),
+        "{split:?}"
+    );
+}

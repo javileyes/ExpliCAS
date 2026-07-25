@@ -21863,3 +21863,17 @@ Active entries: 706 (newest first)
 - decision: retener. **El resaltado de esa misma fila SIGUE mal** (`{\color{red}{x}} → {\color{green}{x}}`): es RC-1 (PATH DRIFT) y le toca a C1.3/C2.1. Este ciclo arregla la mitad del testigo que NO depende del path — conviene decirlo para que nadie lo dé por cerrado al ver el nombre correcto.
 - retained learning:
   - **Un `rule_name` que cubre dos maniobras necesita la description como segunda clave, y suele estar ya en la firma**: aquí `visible_rule_name_for_step(rule_name, description)` recibía el dato desde el principio. Antes de escribir un detector de nombres que mienten, mirar cuántas reglas emiten >1 description — es una lista corta y el arreglo es un brazo por entrada.
+
+## 2026-07-25 - CAPACIDAD NARRATIVA (plan · C3.3): la frontera RootSum narra su método leyéndolo del PROPIO resultado — sin tocar una sola firma del motor
+
+- area: `cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_root_sum_integration_substeps` nuevo, primero en el bloque de integración) + 3 claves de locale es/en.
+- status: `retained`. Ciclo C3.3 del plan.
+- capture:
+  - **Las filas que el corpus vende como diferenciador frente a sympy eran las MÁS mudas**: `integrate(1/(x^5-x-1), x)` devuelve un `root_sum(R(t), t, t·ln(x − w(t)))` correcto y publicaba CERO sub-pasos — ni el nombre del método, ni por qué no hay forma cerrada en radicales.
+  - **La corrección clave sobre el informe (RC-9) se confirma**: NO hace falta cambiar la firma de `public_algorithmic_backend_fallback` ni convertir `IntegrationTraceKind` en `Backend(method)`. El backend SUMA el nodo RootSum a la parte elemental, así que el resolvente `R` y el testigo `w` viajan DENTRO del resultado y se leen de vuelta de él. El ciclo XL que el plan descartó (§8.3) sigue descartado y su valor narrativo está capturado.
+  - Tres sub-pasos: separar la parte de raíces racionales cuando la hay (`1/(x^7−1)` → `1/7·ln|x−1| + root_sum(...)`), nombrar el método publicando el resolvente concreto `R(t) = …`, y leer la suma.
+  - **Efecto de rebote con C3.4**: la fila 37 (definida) gana método sin tocarla, porque ahora la narración indefinida que se le reinyecta tiene intermedios propios y deja de podarse por duplicada. Era la predicción exacta del ciclo anterior.
+- observed: workspace failed:0, clippy 0, 0 errores de MathJax sobre 1728 campos. Corpus: 6 filas cambian (34, 35, 36, 37, 39, 191), **0 cambian de `result`**; **integrales mudas 10 → 5**. Carril verde con E8 en 3. Huella: 3 deltas, los 3 intencionados.
+- decision: retener. Mudas restantes con dueño nombrado: 21 y 25 (gaussiana definida y by-parts cíclica — familias sin narrador, capacidad propia), 137 (el camino de `equiv` no enriquece NINGÚN paso, hallazgo de C3.1), 187 y 188 (ócticas, molde de cuadráticos reales).
+- retained learning:
+  - **Cuando el resultado lleva dentro la estructura del método, el canal de traza sobra**: aquí `root_sum(R, t, w)` ES la traza, publicada en el propio wire. Antes de proponer un canal nuevo, mirar si el resultado ya contiene lo que se quiere narrar — es la 2ª vez en esta campaña que la respuesta estaba en el dato (la 1ª fue la description de la regla en C2.4).
