@@ -7,7 +7,7 @@ ejemplos elegidos al azar de `web/examples.csv` que fallaban pese a estar dados 
 **Alcance:** las 210 filas de `web/examples.csv`, evaluadas con
 `cas_cli eval "<expr>" --steps on --lang es --format json` (exactamente lo que sirve la web —
 verificado contra `web/index.html:2373 renderSteps`, que pinta `rule_latex`, `before_latex`,
-`after_latex` y `substeps[]` literalmente con KaTeX). Corpus completo: **292 steps de
+`after_latex` y `substeps[]` literalmente con MathJax 3 tex-svg, `web/index.html:18`). Corpus completo: **292 steps de
 simplificación + 214 sub-pasos + 128 solve_steps**. Se auditaron las tres superficies.
 
 **Este documento es un INFORME: no se ha tocado ni una línea de código del motor.**
