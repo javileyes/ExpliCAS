@@ -124,10 +124,19 @@ de la fuente 7 chocan, **gana P0/soundness**.
   `|afín|⋚c`/`|f|<|g|`, `x^(2/3)>c`, E2b precisión path global, F 44.
 - **De dónde sale la capacidad nueva HOY** (en orden): (1) peldaños
   nombrados de frentes cerrados (ledger + memoria — acotados y de bajo
-  riesgo); (2) opcionales F11b/F12 de Fase 3; (3) residuales estrechos de
-  Fase 1 (pulido); (4) series de Fase 4 SOLO con decisión de usuario; (5)
-  si nada retenible: frontier-audit nuevo (workflow) para re-descubrir la
-  frontera real — no elegir de memoria.
+  riesgo, PERO se pudren igual que los docs: el peldaño «3×3 paramétrico»
+  llevaba graduado en secreto por S6/S7 — sondear el CLI antes de elegir);
+  (2) los inventarios del harness de consistencia
+  (`cas_cli/tests/steps_divergence_gate_tests.rs`): cada eje mide una clase
+  con reproducción exacta — el eje steps-off/on quedó a CERO (tandas
+  2026-07-24/25) y el eje de ASOCIATIVIDAD de entrada tiene 60/240 pares
+  divergentes esperando el frente de canon (test
+  `input_associativity_pairs_inventory`, falla-por-diseño en `--ignored`);
+  añadir un eje/corpus nuevo al harness es ~80 líneas y también es un ciclo
+  válido (medida); (3) opcionales F11b/F12 de Fase 3; (4) residuales
+  estrechos de Fase 1 (pulido); (5) series de Fase 4 SOLO con decisión de
+  usuario; (6) si nada retenible: frontier-audit nuevo (workflow) para
+  re-descubrir la frontera real — no elegir de memoria.
 - El complejo multivaluado / análisis complejo completo y Gröbner para
   3+ incógnitas polinómicas generales están FUERA del norte (Gröbner
   entraría solo con mini-scoping propio).
@@ -516,4 +525,9 @@ frente E — estado E añadido a fases, 5 lecciones nuevas; la pasada A verific�
 contra el CLI que las filas P3 de CALCULUS_FRONTIER_AUDIT que parecían
 graduables NO lo están —`ln(e)` sigue vivo en diff orden ≥4, el corpus da D=0
 porque no ejercita orden 4— y se dejaron intactas: el chequeo vivo evitó un
-falso stamp.)*
+falso stamp. 2026-07-25: pasada A+B tras las tandas del gate de consistencia —
+dos podredumbres cazadas EN CICLO (peldaño 3×3 secretamente graduado; «residual
+cosmético» abs(-pi) que era familia divergente entera) motivaron adelantar la
+pasada; memorias de frentes S/E/gate actualizadas con verificación CLI, y el
+harness de consistencia entró como fuente (2) de candidatos — sus inventarios
+por eje son medida reproducible, no estimación.)*
