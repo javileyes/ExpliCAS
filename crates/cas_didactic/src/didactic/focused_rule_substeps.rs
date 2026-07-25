@@ -14169,60 +14169,134 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         }
     }
 
-    let boundary_strings = |scratch: &mut Context, bound: ExprId| -> (String, String) {
-        if let Some(sign) = bound_is_infinite(scratch, bound) {
-            let latex_sign = if sign == "∞" {
-                "\\infty".to_string()
-            } else {
-                "-\\infty".to_string()
-            };
-            (
-                format!(
-                    "lim_{{{} → {}}} {}",
-                    var_name,
-                    sign,
-                    display_expr(scratch, antiderivative)
-                ),
-                format!(
-                    "\\lim_{{{} \\to {}}} {}",
-                    var_name,
-                    latex_sign,
-                    latex_expr(scratch, antiderivative)
-                ),
-            )
+    // A sum or difference must be delimited wherever it lands under an operator
+    // that binds tighter than its own terms: as the operand of a `lim`, and as
+    // the subtrahend of `F(b) - F(a)`. Without this the minus (or the limit)
+    // only reaches the first term and the substep publishes a false identity.
+    fn is_additive_chain(ctx: &Context, expr: ExprId) -> bool {
+        // The antiderivative can arrive wrapped in `Hold` (the integration
+        // pipeline wraps backend results); `Hold` is transparent to the
+        // renderers, so it must be transparent to this check too.
+        let mut current = expr;
+        loop {
+            let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, current);
+            if unwrapped == current {
+                break;
+            }
+            current = unwrapped;
+        }
+        matches!(
+            ctx.get(current),
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+        )
+    }
+    let delimit_display = |ctx: &Context, expr: ExprId| -> String {
+        if is_additive_chain(ctx, expr) {
+            format!("({})", display_expr(ctx, expr))
         } else {
-            let substituted =
-                cas_ast::substitute_expr_by_id(scratch, antiderivative, var_expr, bound);
-            if substituted_form_is_undefined(scratch, substituted) {
-                // Touched endpoint: one-sided limit notation. The side is
-                // a presentation choice; the lower bound approaches from
-                // the right and the upper from the left in the common
-                // oriented case.
-                let arrow = format!("{} → {}", var_name, display_expr(scratch, bound));
+            display_expr(ctx, expr)
+        }
+    };
+    let delimit_latex = |ctx: &Context, expr: ExprId| -> String {
+        if is_additive_chain(ctx, expr) {
+            format!("\\left({}\\right)", latex_expr(ctx, expr))
+        } else {
+            latex_expr(ctx, expr)
+        }
+    };
+
+    // The third element is the substituted endpoint value when the bound is
+    // finite and defined; `None` means the string is limit notation, which has
+    // no expression node to subtract from.
+    let boundary_strings =
+        |scratch: &mut Context, bound: ExprId| -> (String, String, Option<ExprId>) {
+            if let Some(sign) = bound_is_infinite(scratch, bound) {
+                let latex_sign = if sign == "∞" {
+                    "\\infty".to_string()
+                } else {
+                    "-\\infty".to_string()
+                };
                 return (
                     format!(
-                        "lim_{{{}}} {}",
-                        arrow,
-                        display_expr(scratch, antiderivative)
+                        "lim_{{{} → {}}} {}",
+                        var_name,
+                        sign,
+                        delimit_display(scratch, antiderivative)
                     ),
                     format!(
                         "\\lim_{{{} \\to {}}} {}",
                         var_name,
-                        latex_expr(scratch, bound),
-                        latex_expr(scratch, antiderivative)
+                        latex_sign,
+                        delimit_latex(scratch, antiderivative)
                     ),
+                    None,
                 );
             }
+            {
+                let substituted =
+                    cas_ast::substitute_expr_by_id(scratch, antiderivative, var_expr, bound);
+                if substituted_form_is_undefined(scratch, substituted) {
+                    // Touched endpoint: one-sided limit notation. The side is
+                    // a presentation choice; the lower bound approaches from
+                    // the right and the upper from the left in the common
+                    // oriented case.
+                    let arrow = format!("{} → {}", var_name, display_expr(scratch, bound));
+                    return (
+                        format!(
+                            "lim_{{{}}} {}",
+                            arrow,
+                            delimit_display(scratch, antiderivative)
+                        ),
+                        format!(
+                            "\\lim_{{{} \\to {}}} {}",
+                            var_name,
+                            latex_expr(scratch, bound),
+                            delimit_latex(scratch, antiderivative)
+                        ),
+                        None,
+                    );
+                }
+                (
+                    display_expr(scratch, substituted),
+                    latex_expr(scratch, substituted),
+                    Some(substituted),
+                )
+            }
+        };
+    let (upper_display, upper_latex, upper_value) = boundary_strings(&mut scratch, upper);
+    let (lower_display, lower_latex, lower_value) = boundary_strings(&mut scratch, lower);
+    // When both endpoints are plain values, F(b) - F(a) is an EXPRESSION: build
+    // the `Sub` node and let the renderers place the parentheses they already
+    // know how to place (`cas_formatter::latex::test_latex_sub_with_add_rhs`).
+    // Concatenating the two strings is what made the minus reach only the first
+    // term of F(a). `add_raw` keeps the didactic shape: `add` would canonicalize
+    // the difference away.
+    let (difference_display, difference_latex) = match (upper_value, lower_value) {
+        (Some(upper_id), Some(lower_id)) => {
+            let difference = scratch.add_raw(Expr::Sub(upper_id, lower_id));
             (
-                display_expr(scratch, substituted),
-                latex_expr(scratch, substituted),
+                display_expr(&scratch, difference),
+                latex_expr(&scratch, difference),
             )
         }
+        // At least one endpoint is limit notation, which has no node to
+        // subtract from. Delimit the subtrahend by hand so the minus still
+        // reaches all of it.
+        (_, lower_value) => {
+            let needs_parens = lower_value.is_none_or(|id| is_additive_chain(&scratch, id));
+            if needs_parens {
+                (
+                    format!("{} - ({})", upper_display, lower_display),
+                    format!("{} - \\left({}\\right)", upper_latex, lower_latex),
+                )
+            } else {
+                (
+                    format!("{} - {}", upper_display, lower_display),
+                    format!("{} - {}", upper_latex, lower_latex),
+                )
+            }
+        }
     };
-    let (upper_display, upper_latex) = boundary_strings(&mut scratch, upper);
-    let (lower_display, lower_latex) = boundary_strings(&mut scratch, lower);
-    let difference_display = format!("{} - {}", upper_display, lower_display);
-    let difference_latex = format!("{} - {}", upper_latex, lower_latex);
 
     vec![
         SubStep::keyed(

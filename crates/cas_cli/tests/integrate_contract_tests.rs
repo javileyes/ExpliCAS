@@ -16180,3 +16180,61 @@ fn definite_rational_atanh_domain_gate_is_strict() {
         "integrate(1 / (1 - x^2 - x), x, 2, 3)"
     );
 }
+
+/// Returns the `after_latex` of the "evaluate the antiderivative at the bounds"
+/// substep, i.e. the line where the student reads `F(b) - F(a)`.
+fn definite_bounds_substep_after_latex(input: &str) -> String {
+    let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let substep = steps
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .find(|substep| substep["title"] == "Evaluar la antiderivada en los límites")
+        .unwrap_or_else(|| panic!("no bounds-evaluation substep for {input}"));
+    substep["after_latex"]
+        .as_str()
+        .unwrap_or_else(|| panic!("bounds substep without after_latex for {input}"))
+        .to_string()
+}
+
+/// `F(b) - F(a)` is an EXPRESSION, not two strings glued with a minus sign.
+///
+/// The regression this pins: the substep used to be built with
+/// `format!("{} - {}", upper, lower)`, so when `F(a)` had two or more terms the
+/// minus only reached the first one and the line published a FALSE identity —
+/// `integrate(cos(t)^2, t, pi/6, pi/3)` displayed a value of `pi/4` while the
+/// step itself answered `pi/12`. Building the `Sub` node lets the renderer place
+/// the parentheses it already knows how to place (see
+/// `cas_formatter::latex::test_latex_sub_with_add_rhs`).
+#[test]
+fn integrate_contract_definite_bounds_substep_subtracts_all_of_f_of_a() {
+    // Finite bounds, multi-term F(a): the whole subtrahend must be grouped.
+    assert_eq!(
+        definite_bounds_substep_after_latex("integrate(cos(t)^2, t, pi/6, pi/3)"),
+        "\\frac{\\sin(\\frac{2}{3}\\cdot \\pi)}{4} + \\frac{\\frac{\\pi}{3}}{2} \
+         - (\\frac{\\sin(\\frac{2}{6}\\cdot \\pi)}{4} + \\frac{\\frac{\\pi}{6}}{2})"
+    );
+
+    // Single-term F(a) needs no grouping: the fix must not add noise.
+    let single_term = definite_bounds_substep_after_latex("integrate(2*x, x, 1, 3)");
+    assert!(
+        !single_term.contains("- ("),
+        "a one-term F(a) should not be parenthesized, got {single_term}"
+    );
+
+    // Improper bound: `lim` has no node to subtract from, so the operand is
+    // delimited by hand — otherwise the limit appears to apply to the first
+    // summand only (and each summand diverges on its own).
+    let improper = definite_bounds_substep_after_latex("integrate(1/(x^4-1), x, 2, oo)");
+    assert!(
+        improper.starts_with("\\lim_{x \\to \\infty} \\left("),
+        "the limit operand must be delimited, got {improper}"
+    );
+    assert!(
+        improper.contains("\\right) - \\left("),
+        "the subtrahend must be delimited when the limit branch is taken, got {improper}"
+    );
+}
