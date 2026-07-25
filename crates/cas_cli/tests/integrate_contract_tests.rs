@@ -16408,3 +16408,61 @@ fn equiv_false_over_the_reals_says_so_when_the_argument_is_complex() {
         );
     }
 }
+
+/// Linearity over a sum integrand, verified term by term.
+///
+/// The audit's second witness: `integrate(2*x/sqrt(4+x^4)+1, x)` published one
+/// magic step while the same integrand WITHOUT the `+1` narrated fine — the
+/// chain's only additive decomposition sat behind a gate demanding the whole
+/// integrand be a polynomial.
+#[test]
+fn integrate_contract_additive_integrand_narrates_linearity_then_each_term() {
+    let subs = |input: &str| -> Vec<(String, String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["before"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    let witness = subs("integrate(2*x/sqrt(4+x^4)+1, x)");
+    assert!(
+        witness.iter().any(|(t, _, _)| t.contains("linealidad")),
+        "the witness must open with linearity: {witness:?}"
+    );
+    assert!(
+        witness.iter().any(|(t, _, _)| t.contains("asinh")),
+        "and each term keeps its own method: {witness:?}"
+    );
+
+    // A sum must never be labelled with a single term's method.
+    for input in ["integrate(ln(x)+x, x)", "integrate(x*e^x+sin(2*x), x)"] {
+        let s = subs(input);
+        assert_eq!(
+            s.first().map(|(t, _, _)| t.as_str()),
+            Some("Usar linealidad de la integral"),
+            "{input} must open with linearity, not with one term's method: {s:?}"
+        );
+    }
+
+    // The polynomial arm keeps ownership (its pins fix a 2-substep narration).
+    let poly = subs("integrate(x^2+3*x+1, x)");
+    assert_eq!(poly.len(), 2, "polynomial arm must still own this: {poly:?}");
+
+    // A PRODUCT integrand is not linearity and must be untouched.
+    let product = subs("integrate(e^x*sin(x), x)");
+    assert!(
+        !product.iter().any(|(t, _, _)| t.contains("linealidad")),
+        "a product is not a sum: {product:?}"
+    );
+}

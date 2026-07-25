@@ -37,6 +37,13 @@ use std::collections::BTreeMap;
 /// decreases each level, so it always terminates first).
 const MAX_REPEATED_BY_PARTS_NARRATION_LEVELS: usize = 8;
 
+/// Defensive cap for narrators that re-enter the dispatch chain on a synthetic
+/// child `Step` (linearity over a sum, component-wise over a vector).
+/// Termination is already STRUCTURAL — the terms of an `AddView` are never
+/// themselves an `Add`, the rows of a `Matrix` are never the matrix — so this is
+/// a backstop, not the argument.
+const MAX_NARRATION_RECURSION_DEPTH: usize = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BinomialSquareKind {
     Sum,
@@ -47,6 +54,14 @@ type SignedTerms = Vec<(ExprId, Sign)>;
 type ConcreteLogExpansion = (ExprId, ExprId, SignedTerms);
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    generate_focused_rule_substeps_at_depth(ctx, step, 0)
+}
+
+fn generate_focused_rule_substeps_at_depth(
+    ctx: &Context,
+    step: &Step,
+    depth: usize,
+) -> Vec<SubStep> {
     let differentiation_substeps = generate_symbolic_differentiation_substeps(ctx, step);
     if !differentiation_substeps.is_empty() {
         return differentiation_substeps;
@@ -101,6 +116,16 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         generate_basic_polynomial_integration_substeps(ctx, step);
     if !basic_polynomial_integration_substeps.is_empty() {
         return basic_polynomial_integration_substeps;
+    }
+
+    // Before by-parts: an integrand that is a SUM is linearity, and letting
+    // by-parts see it first is what produced the measured false labels
+    // (`∫(ln x + x)` and `∫(x·e^x + sin 2x)` were titled "use integration by
+    // parts" over the whole sum).
+    let additive_integration_substeps =
+        generate_additive_integration_substeps(ctx, step, depth);
+    if !additive_integration_substeps.is_empty() {
+        return additive_integration_substeps;
     }
 
     let integration_by_parts_substeps = generate_integration_by_parts_substeps(ctx, step);
@@ -12930,6 +12955,147 @@ fn differentiation_component_derivative_substep(
         .with_before_latex(latex_expr(ctx, component))
         .with_after_latex(latex_expr(&scratch, derivative)),
     )
+}
+
+/// Linearity over a SUM integrand, verified term by term, then recursion into
+/// each term's own narrator.
+///
+/// The audit's second witness: `integrate(2*x/sqrt(4+x^4)+1, x)` published one
+/// magic step while `integrate(2*x/sqrt(4+x^4), x)` — the same integrand without
+/// the `+1` — narrated fine. In the whole ~23-narrator chain there was ONE
+/// additive decomposition, and it sat behind a hard gate demanding the WHOLE
+/// integrand be a polynomial; every other matcher requires the entire integrand
+/// to match one shape, and the owner of `asinh` bails out the moment it sees an
+/// `Expr::Add`.
+///
+/// Two things this deliberately does NOT do:
+///  - it never pairs term `i` against summand `i` of `after`. That is RC-1 all
+///    over again: the witness records the integrand as `1 + 2x/√(x⁴+4)` and the
+///    result as `x + asinh(x²/2)`, so position carries no meaning.
+///  - it never publishes an unverified decomposition. Each term is integrated on
+///    its own, and the SUM of the pieces must differ from the engine's answer by
+///    a CONSTANT (the theorem is "antiderivatives differ by a constant", not
+///    "are equal"). Any term that fails to integrate declines the whole
+///    narration — all-or-nothing, the doctrine the matrix arm already applies.
+fn generate_additive_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+    depth: usize,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" || depth >= MAX_NARRATION_RECURSION_DEPTH {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+    let integrand = args[0];
+    let var_expr = args[1];
+
+    // A residual `integrate(...)` in the answer means the engine did not finish;
+    // narrating linearity over an unfinished result would invent a method.
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    if expr_contains_integrate_call(ctx, result) {
+        return Vec::new();
+    }
+
+    let terms = AddView::from_expr(ctx, integrand).terms;
+    if terms.len() < 2 {
+        return Vec::new();
+    }
+
+    // One scratch for the whole batch, not one per term.
+    let mut scratch = ctx.clone();
+    let mut antiderivatives: Vec<(ExprId, Sign)> = Vec::with_capacity(terms.len());
+    for (term, sign) in &terms {
+        let Some(anti) = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            &mut scratch,
+            *term,
+            &var_name,
+        ) else {
+            return Vec::new();
+        };
+        if expr_contains_integrate_call(&scratch, anti) {
+            return Vec::new();
+        }
+        antiderivatives.push((anti, *sign));
+    }
+
+    // Σ ±aᵢ − after must be a CONSTANT.
+    let mut total: Option<ExprId> = None;
+    for (anti, sign) in &antiderivatives {
+        total = Some(match (total, sign) {
+            (None, Sign::Pos) => *anti,
+            (None, Sign::Neg) => scratch.add(Expr::Neg(*anti)),
+            (Some(acc), Sign::Pos) => scratch.add(Expr::Add(acc, *anti)),
+            (Some(acc), Sign::Neg) => scratch.add(Expr::Sub(acc, *anti)),
+        });
+    }
+    let Some(total) = total else {
+        return Vec::new();
+    };
+    let difference = scratch.add(Expr::Sub(total, result));
+    let residual = simplify_expr_in_context(&mut scratch, difference);
+    if !matches!(scratch.get(residual), Expr::Number(_)) {
+        return Vec::new();
+    }
+
+    let linearity_display = integral_sum_display(ctx, terms.as_slice(), &var_name);
+    let linearity_latex = integral_sum_latex(ctx, terms.as_slice(), &var_name);
+    let mut substeps = vec![SubStep::keyed(
+        "integral.use_linearity",
+        vec![],
+        display_expr(ctx, integrand),
+        linearity_display.clone(),
+    )
+    .with_before_latex(latex_expr(ctx, integrand))
+    .with_after_latex(linearity_latex.clone())];
+
+    // Each term now gets the narrator it would have got on its own. The child
+    // substeps are FLATTENED into the parent's list: `SubStep` does not nest,
+    // and flattening is what keeps the `flat_map(substeps)` pins working.
+    for ((term, _), (anti, _)) in terms.iter().zip(antiderivatives.iter()) {
+        let child_before = scratch.add(Expr::Function(*fn_id, vec![*term, var_expr]));
+        let child_step = Step::new_compact(
+            step.description.as_str(),
+            step.rule_name.as_str(),
+            child_before,
+            *anti,
+        );
+        substeps.extend(generate_focused_rule_substeps_at_depth(
+            &scratch,
+            &child_step,
+            depth + 1,
+        ));
+    }
+
+    substeps.push(
+        SubStep::keyed(
+            "integral.integrate_each_term",
+            vec![],
+            linearity_display,
+            display_expr(ctx, result),
+        )
+        .with_before_latex(linearity_latex)
+        .with_after_latex(latex_expr(ctx, result)),
+    );
+    substeps
 }
 
 fn generate_basic_polynomial_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
