@@ -16531,3 +16531,28 @@ fn integrate_contract_vector_calculus_narrates_each_component() {
         "∫e^x dx is a fixed point; «use substitution: e^x -> e^x» teaches nothing: {fixed_point:?}"
     );
 }
+
+/// The FTC wrapper narrated the SHELL and never the method: "find the
+/// antiderivative" states WHAT was obtained and never HOW. The rest of the chain
+/// already knows how to narrate the indefinite integral, so it gets handed a
+/// synthetic 2-arg step and its narration is spliced in between.
+#[test]
+fn integrate_contract_definite_integral_shows_how_the_antiderivative_was_found() {
+    let (wire, _) =
+        cli_eval_json_with_stderr_args("integrate(1/(x^4-1), x, 2, oo)", &["--steps", "on"]);
+    let titles: Vec<String> = wire["steps"]
+        .as_array()
+        .expect("steps with --steps on")
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .filter_map(|s| s["title"].as_str().map(str::to_string))
+        .collect();
+    let find = titles.iter().position(|t| t.contains("Hallar la antiderivada"));
+    let method = titles.iter().position(|t| t.contains("Descomponer"));
+    let evaluate = titles.iter().position(|t| t.contains("los límites"));
+    assert!(
+        matches!((find, method, evaluate), (Some(f), Some(m), Some(e)) if f < m && m < e),
+        "the method must sit BETWEEN finding and evaluating: {titles:?}"
+    );
+}

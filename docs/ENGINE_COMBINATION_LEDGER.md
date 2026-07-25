@@ -21836,3 +21836,17 @@ Active entries: 706 (newest first)
   - **Nunca encadenar el commit al comando que lo valida**: `make engine-scorecard && git commit` habría parado; con `;` el commit entra igual. El carril existe para eso y esta vez lo salté yo.
   - **Un pin que exige «una narración por cada parte» es un pin que fabrica no-ops**: el contrato honesto es «al menos una parte narra», más un caso explícito de que la parte trivial no publica nada. Un aserto de cobertura mal calibrado es presión para mentir.
   - **Añadir un narrador donde antes había silencio DESTAPA defectos de los narradores hijos**: el ciclo que abre una superficie hereda la deuda de lo que ahora se ve. Presupuestar eso, no tratarlo como regresión.
+
+## 2026-07-25 - CAPACIDAD NARRATIVA (plan · C3.4): la integral definida deja de narrar solo la cáscara — el método de la antiderivada se reinyecta desde la propia cadena
+
+- area: `cas_didactic/src/didactic/focused_rule_substeps.rs` (`generate_definite_integral_substeps` toma `depth` y, entre «Hallar la antiderivada» y «Evaluar en los límites», inserta la narración del `Step` sintético `integrate(integrand, var) → antiderivada` pasada por `generate_focused_rule_substeps_at_depth`).
+- status: `retained`. Ciclo C3.4 del plan, apoyado en el molde de recursión de C3.1.
+- capture:
+  - «Hallar la antiderivada» enuncia QUÉ se obtuvo y nunca CÓMO: en `∫dx/(x⁵−x−1)` aparece un `root_sum` de 200 caracteres de la nada. La cadena YA sabe narrar la integral indefinida; solo había que dejarle el problema.
+  - **La recursión es segura por construcción**, no por el cap: este narrador exige `args.len() == 4` y el `Step` sintético tiene 2, así que declina solo.
+  - **El rendimiento es menor que el que predecía la sonda (1 fila de 5) y la razón es la política funcionando, no un fallo**: cuando la narración indefinida es UN solo sub-paso cuyos lados coinciden con los de «Hallar la antiderivada» (`∫dx/(x³−2)`, `∫dx/(x²+1)`), `prune_duplicate_snapshot_substeps` la elimina por duplicada — correctamente, restaría lo mismo dos veces. La reinyección aporta cuando la narración inyectada tiene INTERMEDIOS propios: en la fila 23 aporta «Descomponer en fracciones parciales» + «Integrar los términos simples» entre las dos mitades del TFC. El rendimiento crecerá solo con C3.3 (root_sum narra con estados intermedios distintos).
+- observed: workspace failed:0, clippy 0, 0 errores de MathJax sobre 1702 campos. Corpus: 2 filas cambian (23, 156), **0 cambian de `result`**; filas cáscara 9 → 8. Huella: 2 deltas, los 2 intencionados.
+- decision: retener. Residual nombrado: las 8 filas cáscara restantes esperan a que su familia tenga narración con intermedios (root_sum en C3.3; arctan/tabla no la tendrá nunca porque su método ES un solo salto — para esas, «cáscara» es la forma honesta y deben salir del contador, no del código).
+- retained learning:
+  - **Reinyectar una cadena de narradores en un envoltorio no exige un canal nuevo: exige un `Step` sintético y un cap de profundidad.** El coste real es entender qué se poda después, no construir el hijo.
+  - **Un contador de «cáscara» mide dos cosas distintas**: filas cuyo método no se narra (deuda) y filas cuyo método es un salto único (honestas). Separarlas antes de ponerle techo, o el techo pide inventar narración.

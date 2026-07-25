@@ -199,7 +199,7 @@ fn generate_focused_rule_substeps_at_depth(
         return exponential_div_substeps;
     }
 
-    let definite_integral_substeps = generate_definite_integral_substeps(ctx, step);
+    let definite_integral_substeps = generate_definite_integral_substeps(ctx, step, depth);
     if !definite_integral_substeps.is_empty() {
         return definite_integral_substeps;
     }
@@ -14398,7 +14398,7 @@ fn generate_abs_linear_definite_integral_substeps(
     Some(substeps)
 }
 
-fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+fn generate_definite_integral_substeps(ctx: &Context, step: &Step, depth: usize) -> Vec<SubStep> {
     if step.rule_name != "Symbolic Integration" {
         return Vec::new();
     }
@@ -14652,15 +14652,38 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         }
     };
 
-    vec![
-        SubStep::keyed(
-            "integral.find_antiderivative",
-            vec![],
-            display_expr(ctx, integrand),
-            display_expr(&scratch, antiderivative),
-        )
-        .with_before_latex(latex_expr(ctx, integrand))
-        .with_after_latex(latex_expr(&scratch, antiderivative)),
+    let mut substeps = vec![SubStep::keyed(
+        "integral.find_antiderivative",
+        vec![],
+        display_expr(ctx, integrand),
+        display_expr(&scratch, antiderivative),
+    )
+    .with_before_latex(latex_expr(ctx, integrand))
+    .with_after_latex(latex_expr(&scratch, antiderivative))];
+
+    // "Find the antiderivative" states WHAT was obtained and never HOW: on
+    // `∫dx/(x^5-x-1)` a 200-character `root_sum` appears out of nowhere. The
+    // rest of the chain already knows how to narrate the INDEFINITE integral, so
+    // hand it a synthetic 2-arg step and splice its narration in between.
+    // Recursion is safe by construction: this narrator requires `args.len() == 4`
+    // and the synthetic step has 2, so it declines itself.
+    if depth < MAX_NARRATION_RECURSION_DEPTH {
+        let mut method_scratch = scratch.clone();
+        let indefinite = method_scratch.add(Expr::Function(*fn_id, vec![integrand, var_expr]));
+        let synthetic = Step::new_compact(
+            step.description.as_str(),
+            "Symbolic Integration",
+            indefinite,
+            antiderivative,
+        );
+        substeps.extend(generate_focused_rule_substeps_at_depth(
+            &method_scratch,
+            &synthetic,
+            depth + 1,
+        ));
+    }
+
+    substeps.push(
         SubStep::keyed(
             "integral.evaluate_antiderivative_at_bounds",
             vec![],
@@ -14669,7 +14692,8 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         )
         .with_before_latex(latex_expr(&scratch, antiderivative))
         .with_after_latex(difference_latex),
-    ]
+    );
+    substeps
 }
 
 /// Narrate the general rational backend family (Ostrogradsky reduction,
