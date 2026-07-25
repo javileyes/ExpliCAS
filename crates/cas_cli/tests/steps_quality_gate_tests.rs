@@ -546,10 +546,13 @@ fn load_web_examples() -> Vec<String> {
 // DESPUÉS del parámetro («…los límites laterales en z = pi·i (por la izquierda
 // y por la derecha): si coinciden…»): la traducción por prefijo no la alcanza
 // por construcción, y su arreglo es migrarla a `desc_key` con argumentos.
-// Los warnings no pasan por el catálogo i18n en ninguna dirección — C5.3.
+// C5.3 enrutó los warnings por un catálogo bidireccional (13 → 2). Los 2 que
+// sobreviven son de la MISMA clase que el sub-paso: la frase sigue en español
+// DESPUÉS del parámetro, así que el prefijo no la alcanza y su arreglo es
+// migrarlos a mensaje con argumentos.
 const EN_RULE_RESIDUE_CEILING: usize = 0;
 const EN_SUBSTEP_RESIDUE_CEILING: usize = 1;
-const EN_WARNING_RESIDUE_CEILING: usize = 13;
+const EN_WARNING_RESIDUE_CEILING: usize = 2;
 
 /// The narration must not leak Spanish into the English wire — swept over the
 /// GUARDRAIL corpora, not just the 210-row showcase.

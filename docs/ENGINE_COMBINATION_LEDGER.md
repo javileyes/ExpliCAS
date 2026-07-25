@@ -21931,3 +21931,17 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Un contador se vuelve accionable cuando publica sus cadenas DISTINTAS, no solo su total**: 382 hits eran 40 traducciones. Todo eje nuevo del carril debería volcar su inventario de ofensores desde el primer día.
   - **Para un título «frase + matemáticas», el prefijo es la unidad de traducción correcta**: cubre una familia entera sin migrar el emisor, y cuando falla lo dice solo (deja media frase en el idioma origen).
+
+## 2026-07-25 - i18n (plan · C5.3): los warnings entran por fin al catálogo — bidireccional, 13 → 2, y un pin que fijaba el defecto se REFUERZA
+
+- area: `cas_solver/src/eval_output_presentation_conditions.rs` (`collect_output_warnings` toma `language`; tabla `WARNING_MESSAGES` de pares `(es, en)` + `WARNING_PREFIXES` para los construidos con `format!`) y su llamante `eval_command_runtime/present/collect.rs:100`, donde `language` YA estaba en ámbito. `cas_cli/tests/cli_contract_tests.rs`: el pin `test_eval_limit_imaginary_point_real_domain_residual` se actualiza.
+- status: `retained`. Ciclo C5.3 del plan.
+- capture:
+  - **La capa de warnings nunca pasó por el catálogo i18n que sí usan `rule` y `solve_steps.description`**, y fugaba en LAS DOS direcciones: 16 mensajes en inglés bajo `--lang es` (complejo/límites) y 9 distintos en español bajo `--lang en` (EDOs/límites multivariables). La tabla empareja **por cualquiera de los dos lados**, así que un mensaje sigue funcionando lo hard-codee su emisor en el idioma que lo hard-codee — que es lo que permite arreglar las dos direcciones con una sola tabla.
+  - El arreglo fue barato porque `language` ya viajaba hasta el llamante: sobraba un parámetro, no un canal.
+  - **Un pin cayó y pedía lo contrario del ciclo… solo en apariencia**: `test_eval_limit_imaginary_point_real_domain_residual` asertaba `warnings.contains("imaginary unit")` **corriendo en modo español**. Estaba fijando el defecto (un aviso sin traducir). Se refuerza al motivo en el idioma correcto (`"unidad imaginaria"`), que es un contrato más fuerte, no más flojo. 5ª aparición de la doctrina «si el pin pedía lo mismo que persigue el ciclo, reforzar».
+- observed: workspace failed:0, clippy 0. Eje de idioma: **warnings 13 → 2**. Corpus ES: **16 filas cambian** (el aviso complejo pasa a español, que es el arreglo), **0 cambian de `result`**. Huella: 1 delta, el contador del carril.
+- decision: retener. Los 2 supervivientes son de la MISMA clase que el sub-paso que sobrevivió a C5.2: la frase sigue en español DESPUÉS del parámetro (`el límite no existe: por y = 0 el límite es 0; por y = x es 1/2`), así que el prefijo no la alcanza por construcción. Su arreglo es migrarlos a mensaje con argumentos — tanda propia, con la clase ya nombrada y contada.
+- retained learning:
+  - **Una tabla i18n que empareja por AMBOS lados arregla las dos direcciones de fuga a la vez**: no hace falta normalizar antes qué idioma hard-codeó cada emisor, que era el trabajo que hacía parecer caro este ciclo.
+  - **La traducción por prefijo tiene un límite estructural nítido y compartido**: sirve para «frase + matemáticas» y falla en cuanto la frase CONTINÚA después del parámetro. Los 3 residuales de C5.2+C5.3 son exactamente esa forma, y por eso van juntos a la misma tanda futura en vez de repartirse por canal.
