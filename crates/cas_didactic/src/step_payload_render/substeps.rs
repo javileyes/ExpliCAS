@@ -25,6 +25,8 @@ pub(super) fn collect_step_payload_substeps(
         };
         substeps.push(SubStepWire {
             title,
+            before: substep.before_expr.clone(),
+            after: substep.after_expr.clone(),
             lines: vec![],
             before_latex: Some(render_substep_side(
                 substep.before_latex.clone(),

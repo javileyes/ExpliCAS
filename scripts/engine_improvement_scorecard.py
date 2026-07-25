@@ -169,6 +169,27 @@ SUITES: dict[str, SuiteSpec] = {
         parser="corpus",
         description="Embedded equivalence context corpus over wire eval.",
     ),
+    "steps_quality_gate": SuiteSpec(
+        name="steps_quality_gate",
+        category="didactic",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "steps_quality_gate_tests",
+            "--",
+            "--ignored",
+            "--nocapture",
+        ],
+        env={},
+        parser="steps_quality",
+        description="Didactic quality invariants over the 210 rows the web serves.",
+    ),
     "simplify_zero_mixed": SuiteSpec(
         name="simplify_zero_mixed",
         category="simplify",
@@ -973,6 +994,33 @@ def leading_int(text: str) -> int:
     if not match:
         raise ValueError(f"expected integer in {text!r}")
     return int(match.group(0))
+
+
+def parse_steps_quality(output: str) -> dict[str, Any]:
+    """Steps-quality gate: the `NAME hits=N rows=M` counter lines that the lane
+    prints, plus the cargo summary. The counters ARE the contract: the hard
+    invariants must stay at zero and the ceilinged measures may only shrink."""
+    metrics: dict[str, Any] = {}
+    result = re.search(
+        r"test result:\s+(ok|FAILED)\.\s+(\d+) passed;\s+(\d+) failed;",
+        output,
+    )
+    if not result:
+        raise ValueError("missing cargo test result summary")
+    metrics["cargo_status"] = result.group(1)
+    metrics["passed"] = int(result.group(2))
+    metrics["failed"] = int(result.group(3))
+
+    counters: dict[str, Any] = {}
+    for name, hits, rows in re.findall(
+        r"^([A-Za-z][A-Za-z0-9_]*) hits=(\d+) rows=(\d+)$", output, re.MULTILINE
+    ):
+        counters[f"{name}_hits"] = int(hits)
+        counters[f"{name}_rows"] = int(rows)
+    if not counters:
+        raise ValueError("steps-quality lane printed no counter lines")
+    metrics.update(counters)
+    return metrics
 
 
 def parse_corpus(output: str) -> dict[str, Any]:
@@ -8330,6 +8378,7 @@ PARSERS = {
     "calculus_integrate_command_matrix": parse_calculus_integrate_command_matrix,
     "algorithmic_backend_observability": parse_algorithmic_backend_observability,
     "algorithmic_backend_mode_boundary": parse_algorithmic_backend_mode_boundary,
+    "steps_quality": parse_steps_quality,
 }
 
 

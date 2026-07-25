@@ -57,6 +57,8 @@ fn build_assignment_wire_output(
         strategy: None,
         steps_mode: config.steps_mode.as_str(),
         steps_count: 0,
+        solve_steps_count: 0,
+        substeps_count: 0,
         steps: Vec::new(),
         solve_steps: Vec::new(),
         warnings: Vec::new(),

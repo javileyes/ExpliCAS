@@ -45,6 +45,9 @@ pub(super) fn build_eval_output(
     shared: EvalOutputFinalizeShared<'_>,
     wire: Option<serde_json::Value>,
 ) -> EvalOutputWire {
+    // Computed before the destructure moves the two step vectors out.
+    let solve_steps_count = shared.solve_steps_count();
+    let substeps_count = shared.substeps_count();
     let EvalOutputFinalizeShared {
         input,
         input_latex,
@@ -96,6 +99,8 @@ pub(super) fn build_eval_output(
         strategy,
         steps_mode,
         steps_count,
+        solve_steps_count,
+        substeps_count,
         steps,
         solve_steps,
         warnings,

@@ -31,6 +31,9 @@ criterion = "0.7.0"
 predicates = "3.0"
 num-traits = "0.2"
 cas_math = { path = "../cas_math" }
+# steps_quality_gate_tests identifies the honest-residual steps by RULE
+# CONSTANT, not by their Spanish text.
+cas_solver_core = { path = "../cas_solver_core" }
 
 [[bench]]
 name = "frontend_cli"

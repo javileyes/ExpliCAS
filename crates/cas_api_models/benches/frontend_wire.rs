@@ -75,6 +75,8 @@ fn build_eval_wire(light: bool) -> EvalWireOutput {
         strategy: None,
         steps_mode: if light { "off" } else { "on" },
         steps_count: steps.len(),
+        solve_steps_count: 0,
+        substeps_count: steps.iter().map(|step| step.substeps.len()).sum(),
         steps,
         solve_steps: Vec::new(),
         warnings,

@@ -172,6 +172,11 @@ pub struct StepWire {
 #[derive(Serialize, Debug, Clone)]
 pub struct SubStepWire {
     pub title: String,
+    /// Plain-text sides, mirroring `StepWire`. Without them a substep is
+    /// readable only as LaTeX, and roughly half of the didactic narration lives
+    /// here — invisible to every text consumer and to every detector.
+    pub before: String,
+    pub after: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -359,7 +364,12 @@ pub struct EvalWireOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strategy: Option<String>,
     pub steps_mode: String,
+    /// Length of `steps`, always — never a mix of channels. `solve_steps` and
+    /// the didactic `substeps` publish their own counts so a consumer never has
+    /// to guess which channel a number describes.
     pub steps_count: usize,
+    pub solve_steps_count: usize,
+    pub substeps_count: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<StepWire>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -397,6 +407,8 @@ pub struct EvalOutputBuild<'a> {
     pub strategy: Option<String>,
     pub steps_mode: &'a str,
     pub steps_count: usize,
+    pub solve_steps_count: usize,
+    pub substeps_count: usize,
     pub steps: Vec<StepWire>,
     pub solve_steps: Vec<SolveStepWire>,
     pub warnings: Vec<WarningWire>,
@@ -438,6 +450,8 @@ impl EvalWireOutput {
             strategy: parts.strategy,
             steps_mode: parts.steps_mode.to_string(),
             steps_count: parts.steps_count,
+            solve_steps_count: parts.solve_steps_count,
+            substeps_count: parts.substeps_count,
             steps: parts.steps,
             solve_steps: parts.solve_steps,
             warnings: parts.warnings,
@@ -2575,6 +2589,8 @@ mod tests {
             strategy: Some("expand".to_string()),
             steps_mode: "off",
             steps_count: 0,
+            solve_steps_count: 0,
+            substeps_count: 0,
             steps: vec![],
             solve_steps: vec![],
             warnings: vec![],
