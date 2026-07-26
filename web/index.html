@@ -998,18 +998,114 @@
             transform: translateY(0);
         }
 
+        /* Mobile-only controls: the hamburger that collects the header
+           actions and the gear that folds the mode selects away. Hidden on
+           desktop, where everything fits inline. */
+        .menu-toggle,
+        .options-toggle {
+            display: none;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1em;
+            padding: 8px 14px;
+            transition: all 0.2s;
+        }
+
+        .menu-toggle:hover,
+        .options-toggle:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: var(--accent);
+        }
+
+        /* A dot on the gear when any mode differs from its default: the
+           selects are hidden on mobile, and a non-default mode silently
+           changing semantics must stay visible. */
+        .options-toggle.has-nondefault::after {
+            content: "";
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-left: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+            vertical-align: middle;
+        }
+
         @media (max-width: 720px) {
             body {
                 padding-bottom: 155px;
+            }
+
+            /* With the options unfolded the input bar grows several rows tall;
+               the page needs matching clearance or the last card hides
+               permanently behind it. */
+            body.options-open {
+                padding-bottom: 480px;
+            }
+
+            /* Header: title + hamburger; the action buttons become a
+               slide-down menu under the sticky header. */
+            .menu-toggle {
+                display: flex;
+                align-items: center;
+            }
+
+            .header-left p {
+                display: none;
+            }
+
+            .header-buttons {
+                display: none;
+            }
+
+            header.menu-open .header-buttons {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: var(--bg-secondary);
+                border-bottom: 2px solid var(--accent);
+                padding: 10px 14px 14px;
+                gap: 8px;
+                box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45);
+            }
+
+            header.menu-open .header-buttons .header-btn {
+                justify-content: flex-start;
+                padding: 12px 14px;
+                font-size: 1em;
+            }
+
+            header.menu-open .lang-switch {
+                align-self: flex-start;
             }
 
             .input-wrapper {
                 flex-wrap: wrap;
             }
 
-            .mode-control {
-                flex: 1 1 150px;
+            /* Mode selects fold behind the gear; the default bar is just
+               input + gear + Evaluar. */
+            .options-toggle {
+                display: flex;
+                align-items: center;
                 height: 48px;
+            }
+
+            .mode-control {
+                display: none;
+                flex: 1 1 45%;
+                height: 48px;
+            }
+
+            .input-bar.options-open .mode-control {
+                display: flex;
             }
 
             .input-field {
@@ -1020,6 +1116,24 @@
             .submit-btn {
                 flex: 1 1 130px;
             }
+
+            .container {
+                padding: 14px 12px;
+            }
+        }
+
+        /* Every MathJax container inside a card or panel pans horizontally
+           on its own, so a long formula never forces the PAGE to scroll
+           sideways and a phone can flick through it with one finger. */
+        .expression-card mjx-container,
+        .steps-container mjx-container,
+        .variables-panel mjx-container,
+        .functions-panel mjx-container {
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 3px;
         }
 
         /* Loading state */
@@ -1432,7 +1546,13 @@
             <h1>🧮 ExpliCAS</h1>
             <p data-i18n="header.tagline">Simplificador matemático interactivo paso a paso</p>
         </div>
-        <div class="header-buttons">
+        <button type="button" class="menu-toggle" id="menu-toggle" onclick="toggleHeaderMenu()"
+            aria-expanded="false" aria-controls="header-buttons"
+            data-i18n-aria="header.menu.aria_label" aria-label="Menú"
+            data-i18n-title="header.menu.title" title="Menú">
+            ☰
+        </button>
+        <div class="header-buttons" id="header-buttons">
             <div class="lang-switch" id="lang-switch" role="group"
                 data-i18n-aria="lang_switch.aria_label" aria-label="Idioma"
                 data-i18n-title="lang_switch.title" title="Idioma de la interfaz y del paso a paso">
@@ -1522,6 +1642,12 @@
             </label>
             <input type="text" class="input-field" id="expression-input"
                 data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
+            <button type="button" class="options-toggle" id="options-toggle" onclick="toggleInputOptions()"
+                aria-expanded="false"
+                data-i18n-aria="input.options_toggle.aria_label" aria-label="Opciones de evaluación"
+                data-i18n-title="input.options_toggle.title" title="Opciones de evaluación (modo, rama, complejo, números)">
+                ⚙️
+            </button>
             <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()" data-i18n="input.submit.label">
                 Evaluar
             </button>
@@ -1602,9 +1728,78 @@
         const LANG_MODE_STORAGE_KEY = 'expliCAS_step_language';
 
         // ===== Interface i18n (es/en) — one catalog, driven by the ES/EN language toggle =====
+        // --- Mobile chrome: header menu + input options fold -------------
+        function toggleHeaderMenu(force) {
+            const header = document.querySelector("header");
+            const open = force !== undefined ? force : !header.classList.contains("menu-open");
+            header.classList.toggle("menu-open", open);
+            document.getElementById("menu-toggle").setAttribute("aria-expanded", String(open));
+        }
+
+        function toggleInputOptions() {
+            const bar = document.querySelector(".input-bar");
+            const open = !bar.classList.contains("options-open");
+            bar.classList.toggle("options-open", open);
+            document.body.classList.toggle("options-open", open);
+            document.getElementById("options-toggle").setAttribute("aria-expanded", String(open));
+        }
+
+        // The gear hides the mode selects on mobile; a non-default mode must
+        // stay visible, so the gear carries a dot whenever one is active.
+        const MODE_SELECT_DEFAULTS = {
+            "domain-mode-select": "generic",
+            "branch-mode-select": "strict",
+            "complex-mode-select": "off",
+            "numeric-display-select": "exact",
+        };
+
+        function refreshOptionsIndicator() {
+            const nondefault = Object.entries(MODE_SELECT_DEFAULTS).some(
+                ([id, def]) => {
+                    const el = document.getElementById(id);
+                    return el && el.value !== def;
+                }
+            );
+            document
+                .getElementById("options-toggle")
+                .classList.toggle("has-nondefault", nondefault);
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Acting on a menu entry closes the menu; so does tapping outside
+            // or pressing Escape.
+            document.getElementById("header-buttons").addEventListener("click", (ev) => {
+                if (ev.target.closest("button")) {
+                    toggleHeaderMenu(false);
+                }
+            });
+            document.addEventListener("click", (ev) => {
+                const header = document.querySelector("header");
+                if (header.classList.contains("menu-open") && !header.contains(ev.target)) {
+                    toggleHeaderMenu(false);
+                }
+            });
+            document.addEventListener("keydown", (ev) => {
+                if (ev.key === "Escape") {
+                    toggleHeaderMenu(false);
+                }
+            });
+            for (const id of Object.keys(MODE_SELECT_DEFAULTS)) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener("change", refreshOptionsIndicator);
+                }
+            }
+            refreshOptionsIndicator();
+        });
+
         const I18N = {
             "es": {
                         "header.tagline": "Simplificador matemático interactivo paso a paso",
+                        "header.menu.title": "Menú",
+                        "header.menu.aria_label": "Abrir el menú de acciones",
+                        "input.options_toggle.title": "Opciones de evaluación (modo, rama, complejo, números)",
+                        "input.options_toggle.aria_label": "Mostrar u ocultar las opciones de evaluación",
                         "header.theme_toggle.title": "Cambiar tema",
                         "header.theme_toggle.label": "🌙 Oscuro",
                         "header.export.title": "Exportar sesión como JSON",
@@ -1686,6 +1881,10 @@
             },
             "en": {
                         "header.tagline": "Interactive Step-by-Step Math Simplifier",
+                        "header.menu.title": "Menu",
+                        "header.menu.aria_label": "Open the actions menu",
+                        "input.options_toggle.title": "Evaluation options (mode, branch, complex, numbers)",
+                        "input.options_toggle.aria_label": "Show or hide the evaluation options",
                         "header.theme_toggle.title": "Toggle theme",
                         "header.theme_toggle.label": "🌙 Dark",
                         "header.export.title": "Export session as JSON",
