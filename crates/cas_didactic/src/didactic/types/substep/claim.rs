@@ -55,11 +55,25 @@ pub enum ClaimVerdict {
     Refuted,
 }
 
+/// Wall-clock ceiling for ONE claim check.
+///
+/// The verification runs a full simplify, and the design warned that this layer
+/// could come to dominate the cost of `--steps on`. It did, immediately: the
+/// first migration made `integrate(1/(x^3-2), x, 2, 3)` blow the divergence
+/// gate's 30 s net, because the cbrt residual is precisely the one the
+/// simplifier grinds on without converging. A verifier that cannot finish must
+/// answer `Undecided`, not hang — the budget IS the answer, not a workaround.
+const CLAIM_VERIFICATION_BUDGET_MS: u64 = 250;
+
 fn simplify_in(context: &mut Context, expr: ExprId) -> ExprId {
     let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, context);
+    let options = cas_solver::runtime::SimplifyOptions {
+        time_budget_ms: Some(CLAIM_VERIFICATION_BUDGET_MS),
+        ..Default::default()
+    };
     let (rewritten, _steps, _stats) = cas_engine::with_suppressed_depth_overflow_warnings(|| {
-        simplifier.simplify_with_stats(expr, cas_solver::runtime::SimplifyOptions::default())
+        simplifier.simplify_with_stats(expr, options)
     });
     std::mem::swap(&mut simplifier.context, context);
     rewritten
