@@ -6,9 +6,10 @@ mod direct;
 mod scope;
 
 use self::scope::render_local_scope_transition;
+use super::renderers::render_with_single_path;
 use super::TimelineStepSnapshots;
 use crate::runtime::Step;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId, ExprPath};
 use cas_formatter::{DisplayContext, StylePreferences};
 
 /// Truthfulness guard for a partial colour span.
@@ -158,6 +159,135 @@ fn span_transition_is_truthful(before: &str, after: &str) -> bool {
     normalized(&strip_colours(&before_context)) == normalized(&strip_colours(&after_context))
 }
 
+/// Structural diff between the two states: the MINIMAL set of paths where they
+/// differ.
+///
+/// This is the answer to PATH DRIFT (RC-1). The recorded `step.path()` is valid
+/// on the RAW tree and the presentation renders the CANONICALISED one, so the
+/// index no longer designates the node it was recorded against — measured at
+/// 30 % of steps. Rather than transporting the path through the normalisation
+/// (refuted: `Context::add` flattens to n-ary and changes the path's LENGTH),
+/// the focus is recomputed from the two states themselves.
+///
+/// By construction the result is TRUE: everything outside the returned paths is
+/// structurally identical on both sides, which is exactly what the guard checks.
+/// It also absorbs RC-5 (first-occurrence ambiguity under hash-consing): a diff
+/// walks positions, so two identical subtrees at different positions are told
+/// apart by where they sit, not by their id.
+fn minimal_diff_paths(
+    context: &Context,
+    before: ExprId,
+    after: ExprId,
+    prefix: &mut ExprPath,
+    out: &mut Vec<ExprPath>,
+    budget: &mut usize,
+) {
+    if before == after {
+        return;
+    }
+    if *budget == 0 {
+        out.push(prefix.clone());
+        return;
+    }
+    *budget -= 1;
+    let before_children = expr_children(context, before);
+    let after_children = expr_children(context, after);
+    // Different shape, or different arity: the difference IS this node.
+    if before_children.is_none()
+        || after_children.is_none()
+        || !same_variant(context, before, after)
+    {
+        out.push(prefix.clone());
+        return;
+    }
+    let (bc, ac) = (before_children.unwrap(), after_children.unwrap());
+    if bc.len() != ac.len() {
+        out.push(prefix.clone());
+        return;
+    }
+    let differing: Vec<usize> = (0..bc.len()).filter(|&i| bc[i] != ac[i]).collect();
+    // More than one child differs: colouring each separately would claim they
+    // changed independently. Claim the node instead — true, and less precise.
+    if differing.len() != 1 {
+        out.push(prefix.clone());
+        return;
+    }
+    let i = differing[0];
+    prefix.push(i as u8);
+    minimal_diff_paths(context, bc[i], ac[i], prefix, out, budget);
+    prefix.pop();
+}
+
+fn same_variant(context: &Context, a: ExprId, b: ExprId) -> bool {
+    use cas_ast::Expr::*;
+    matches!(
+        (context.get(a), context.get(b)),
+        (Add(_, _), Add(_, _))
+            | (Sub(_, _), Sub(_, _))
+            | (Mul(_, _), Mul(_, _))
+            | (Div(_, _), Div(_, _))
+            | (Pow(_, _), Pow(_, _))
+            | (Neg(_), Neg(_))
+            | (Hold(_), Hold(_))
+            | (Function(_, _), Function(_, _))
+    )
+}
+
+fn expr_children(context: &Context, id: ExprId) -> Option<Vec<ExprId>> {
+    use cas_ast::Expr::*;
+    Some(match context.get(id) {
+        Add(a, b) | Sub(a, b) | Mul(a, b) | Div(a, b) | Pow(a, b) => vec![*a, *b],
+        Neg(a) | Hold(a) => vec![*a],
+        Function(_, args) => args.clone(),
+        _ => return None,
+    })
+}
+
+/// Recompute the highlight from the two states, and publish it only if the
+/// guard agrees. Returns `None` when the diff is the whole expression (nothing
+/// gained over the honest whole-state fallback).
+fn content_focus_transition(
+    context: &Context,
+    snapshots: TimelineStepSnapshots,
+    display_hints: &DisplayContext,
+    style_prefs: &StylePreferences,
+) -> Option<(String, String)> {
+    let mut paths = Vec::new();
+    let mut prefix = ExprPath::new();
+    let mut budget = 64usize;
+    minimal_diff_paths(
+        context,
+        snapshots.global_before_expr,
+        snapshots.global_after_expr,
+        &mut prefix,
+        &mut paths,
+        &mut budget,
+    );
+    let [path] = paths.as_slice() else {
+        return None;
+    };
+    if path.is_empty() {
+        return None;
+    }
+    let before = render_with_single_path(
+        context,
+        snapshots.global_before_expr,
+        path.clone(),
+        cas_formatter::HighlightColor::Red,
+        display_hints,
+        style_prefs,
+    );
+    let after = render_with_single_path(
+        context,
+        snapshots.global_after_expr,
+        path.clone(),
+        cas_formatter::HighlightColor::Green,
+        display_hints,
+        style_prefs,
+    );
+    span_transition_is_truthful(&before, &after).then_some((before, after))
+}
+
 /// Whole-state fallback for a declined span: still true, just less precise.
 fn whole_state_transition(before: &str, after: &str) -> (String, String) {
     (
@@ -195,10 +325,16 @@ pub(super) fn render_global_transition_latex(
     };
 
     if span_transition_is_truthful(&before, &after) {
-        (before, after)
-    } else {
-        whole_state_transition(&before, &after)
+        return (before, after);
     }
+    // The recorded focus lied. Recompute it from the two states before falling
+    // back to colouring everything: the structural diff yields a span that is
+    // true by construction, so most declines recover their precision.
+    if let Some(recovered) = content_focus_transition(context, snapshots, display_hints, style_prefs)
+    {
+        return recovered;
+    }
+    whole_state_transition(&before, &after)
 }
 
 fn preferred_local_scope(context: &Context, step: &Step) -> Option<ExprId> {

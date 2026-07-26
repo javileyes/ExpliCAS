@@ -21991,3 +21991,19 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Cuando un invariante necesita una excepción, suele ser que el invariante está mal formulado**: la excepción multi-span de C1.3 no era una limitación del dominio sino de la FORMA de la comprobación. Reformulado sobre el contexto invariante, el caso «excepcional» pasa a ser el caso general.
   - **Una afirmación de cambio se verifica por lo que NO cambia**: comprobar el complemento (el resto idéntico) es más simple y más general que comprobar la transformación.
+
+## 2026-07-25 - VERACIDAD (plan · C2.1): el foco se RECALCULA del diff estructural cuando el path grabado miente — el testigo del usuario queda cerrado de punta a punta
+
+- area: `cas_didactic/src/timeline/simplify_highlights/global.rs` — `minimal_diff_paths` + `content_focus_transition`: cuando el span del sub-renderizador falla el guard, el foco se recalcula comparando los DOS estados y se publica solo si el guard lo acepta.
+- status: `retained`. Ciclo C2.1 del plan, apoyado en el guard de C1.3/C2.2.
+- capture:
+  - **Es la respuesta a RC-1 (PATH DRIFT) sin transportar el path.** El plan ya había REFUTADO el transporte por medida (`Context::add` aplana a n-ario y cambia la LONGITUD del path, y en 87/480 pasos el nodo foco no tiene imagen en el árbol normalizado). Recalcular el foco desde los dos estados evita el problema entero: el diff estructural da un span **verdadero por construcción** — todo lo que queda fuera es idéntico en ambos lados, que es exactamente lo que el guard comprueba.
+  - **Absorbe RC-5 de propina**: un diff recorre POSICIONES, así que dos subárboles idénticos en sitios distintos se distinguen por dónde están, no por su id — que era la ambigüedad de primera-ocurrencia bajo hash-consing.
+  - Reglas de honestidad dentro del diff: si difieren DOS o más hijos, se reclama el nodo padre en vez de colorearlos por separado (colorearlos afirmaría que cambiaron de forma independiente); si se agota el presupuesto de profundidad, se reclama el nodo actual. Siempre cierto, a veces menos preciso.
+  - **El testigo del usuario queda cerrado de punta a punta**: `taylor(sin(x),x,0,5)` paso 3 publica hoy `x + {\color{red}{\frac{6x⁵−120x³}{720}}}` → `x + {\color{green}{\frac{x⁵−20x³}{120}}}`. La `x` intacta queda FUERA del span, que es justo lo que el usuario denunció. Nombre de regla (C2.4) + decline honesto (C1.3) + span preciso (C2.1).
+- observed: workspace failed:0, clippy 0, 0 errores de MathJax sobre 1728 campos. **Precisión recuperada: spans parciales 98 → 119, estados enteros 191 → 170** (21 pasos recuperan su span fino sin publicar una sola afirmación falsa). Huella: 1 delta, los 2 pines nuevos.
+- decision: retener.
+  - **Un pin MÍO de C2.2 quedó obsoleto y se reformuló**: asertaba que el testigo declinaba al estado entero. Con la recuperación ya no declina — pero el contrato que fijaba (la `x` intacta nunca es el span) sigue vivo y es el que ahora comprueba. Un pin que describe el MECANISMO envejece; uno que describe la PROPIEDAD, no.
+- retained learning:
+  - **Cuando una referencia grabada deja de ser fiable, recalcular vence a reparar**: el path drift se resolvió no arreglando el path sino dejando de necesitarlo. El diff de los dos estados es la fuente de verdad que siempre estuvo disponible.
+  - **Un guard que sabe decir «no» permite intentar cosas**: la recuperación por contenido se puede probar sin riesgo porque el guard la valida antes de publicar. La verificación no solo evita mentiras: habilita heurísticas que sin ella no se podrían arriesgar.

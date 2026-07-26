@@ -16692,7 +16692,10 @@ fn highlight_guard_accepts_many_to_one_spans_and_still_rejects_the_witness() {
         "a many-to-one span is a truthful claim and must survive the guard"
     );
 
-    // And the witness still declines: its untouched remainder changed.
+    // And the witness never publishes the FALSE span. (C1.3 made it decline to
+    // the whole state; C2.1 recovers a TRUE partial span from the structural
+    // diff. What must hold in both is the same: the untouched `x` is never what
+    // the step claims it changed.)
     let (witness, _) =
         cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
     let reduce_step = witness["steps"]
@@ -16703,7 +16706,37 @@ fn highlight_guard_accepts_many_to_one_spans_and_still_rejects_the_witness() {
         .expect("the /720 step");
     let before_latex = reduce_step["before_latex"].as_str().unwrap_or_default();
     assert!(
-        before_latex.starts_with("{\\color{red}{") && before_latex.ends_with("}}"),
-        "the declined step colours the WHOLE state, not a wrong piece: {before_latex}"
+        !before_latex.contains("{\\color{red}{x}}"),
+        "the bare `x` does not change and must never be the span: {before_latex}"
+    );
+}
+
+/// When the recorded focus lies (PATH DRIFT), the span is recomputed from the
+/// two states themselves: the minimal structural diff. That is true by
+/// construction — everything outside it is identical on both sides — so the
+/// guard passes and the step keeps its PRECISION instead of falling back to
+/// colouring everything.
+///
+/// This closes the user's reported witness end to end: the rule name (C2.4),
+/// the honest decline (C1.3) and now the precise span.
+#[test]
+fn declined_spans_recover_precision_from_the_structural_diff() {
+    let (wire, _) = cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let step = wire["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["before"].as_str().unwrap_or_default().contains("720"))
+        .expect("the /720 step");
+    let before = step["before_latex"].as_str().unwrap_or_default();
+    let after = step["after_latex"].as_str().unwrap_or_default();
+    // PARTIAL span (the fraction), not the whole state, and not the `x`.
+    assert!(
+        before.starts_with("x + {\\color{red}{"),
+        "the untouched `x` must stay outside the span: {before}"
+    );
+    assert!(
+        before.contains("720") && after.contains("120"),
+        "the span must be the fraction that reduces: {before} / {after}"
     );
 }
