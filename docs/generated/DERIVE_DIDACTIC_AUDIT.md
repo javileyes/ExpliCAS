@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.05`
-- Total web substeps: `484`
+- Total web substeps: `491`
 
 ## Flag Summary
 
@@ -39,11 +39,11 @@ No audit flags emitted.
 | `power_merge` | 10 | 0 | 0 | 2 |
 | `radical_power` | 6 | 0 | 0 | 12 |
 | `rationalize` | 9 | 0 | 0 | 25 |
-| `simplify` | 90 | 0 | 0 | 82 |
+| `simplify` | 90 | 0 | 0 | 83 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 49 | 0 | 0 | 25 |
-| `trig_expand` | 87 | 0 | 0 | 59 |
+| `trig_contract` | 49 | 0 | 0 | 27 |
+| `trig_expand` | 87 | 0 | 0 | 63 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
@@ -135,8 +135,8 @@ No audit flags emitted.
 | `contract_trig_double_tangent` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_half_angle_cos_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_half_angle_sin_squared` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_half_angle_tangent` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_half_angle_tangent_alt` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_half_angle_tangent` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_half_angle_tangent_alt` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_half_scaled_double_sin` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_negative_double_cos_from_square_diff` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_negative_double_sin` | `trig_contract` | 1 | 0 | none |
@@ -284,10 +284,10 @@ No audit flags emitted.
 | `expand_trig_double_tangent` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_half_angle_cos_squared` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_half_angle_sin_squared` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_half_angle_tangent` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_half_angle_tangent_alt` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_half_angle_tangent_one_minus_cos_over_sin` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_half_angle_tangent_sin_over_one_plus_cos` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_half_angle_tangent` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_half_angle_tangent_alt` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_half_angle_tangent_one_minus_cos_over_sin` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_half_angle_tangent_sin_over_one_plus_cos` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_negative_double_cos_as_square_diff` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_negative_double_sin` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_negative_tangent_parity` | `trig_expand` | 1 | 1 | none |
@@ -486,7 +486,7 @@ No audit flags emitted.
 | `rationalize_symbolic_linear_root_plus` | `rationalize` | 1 | 3 | none |
 | `rationalize_then_cancel_to_zero` | `rationalize` | 2 | 3 | none |
 | `reciprocal_trig_cos_sec_product_to_one` | `simplify` | 1 | 0 | none |
-| `reciprocal_trig_product_to_one` | `simplify` | 1 | 0 | none |
+| `reciprocal_trig_product_to_one` | `simplify` | 1 | 1 | none |
 | `reciprocal_trig_product_to_one_with_passthrough` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_sin_csc_product_to_one` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_special_value_sec_pi_fourth` | `simplify` | 1 | 0 | none |
@@ -3412,7 +3412,7 @@ Result: sin(x)^(2)
 - Target: `tan(x)`
 - Result: `tan(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3436,7 +3436,8 @@ Result: tan(x)
 1. `Aplicar identidad de tangente de ángulo mitad`
    - before: `(1 - cos(2 · x))/sin(2 · x)`
    - after: `tan(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar (1 - cos(2u)) / sin(2u) = tan(u)`
 
 ## contract_trig_half_angle_tangent_alt (trig_contract)
 
@@ -3444,7 +3445,7 @@ Result: tan(x)
 - Target: `tan(x)`
 - Result: `tan(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3468,7 +3469,8 @@ Result: tan(x)
 1. `Aplicar identidad de tangente de ángulo mitad`
    - before: `sin(2 · x)/(cos(2 · x) + 1)`
    - after: `tan(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(2u) / (1 + cos(2u)) = tan(u)`
 
 ## contract_trig_half_scaled_double_sin (trig_contract)
 
@@ -8265,7 +8267,7 @@ Result: (1 - cos(2 * x)) / 2
 - Target: `(1-cos(2*x))/sin(2*x)`
 - Result: `(1 - cos(2 * x)) / sin(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8289,7 +8291,8 @@ Result: (1 - cos(2 * x)) / sin(2 * x)
 1. `Aplicar identidad de tangente de ángulo mitad`
    - before: `tan(x)`
    - after: `(1 - cos(2 · x))/sin(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar (1 - cos(2u)) / sin(2u) = tan(u)`
 
 ## expand_trig_half_angle_tangent_alt (trig_expand)
 
@@ -8297,7 +8300,7 @@ Result: (1 - cos(2 * x)) / sin(2 * x)
 - Target: `sin(2*x)/(1+cos(2*x))`
 - Result: `sin(2 * x) / (cos(2 * x) + 1)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8321,7 +8324,8 @@ Result: sin(2 * x) / (cos(2 * x) + 1)
 1. `Aplicar identidad de tangente de ángulo mitad`
    - before: `tan(x)`
    - after: `sin(2 · x)/(cos(2 · x) + 1)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(2u) / (1 + cos(2u)) = tan(u)`
 
 ## expand_trig_half_angle_tangent_one_minus_cos_over_sin (trig_expand)
 
@@ -8329,7 +8333,7 @@ Result: sin(2 * x) / (cos(2 * x) + 1)
 - Target: `(1-cos(x))/sin(x)`
 - Result: `(1 - cos(x)) / sin(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8353,7 +8357,8 @@ Result: (1 - cos(x)) / sin(x)
 1. `Aplicar identidad de tangente de ángulo mitad`
    - before: `tan(x/2)`
    - after: `(1 - cos(x))/sin(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar tan(u) = (1 - cos(2u)) / sin(2u)`
 
 ## expand_trig_half_angle_tangent_sin_over_one_plus_cos (trig_expand)
 
@@ -8361,7 +8366,7 @@ Result: (1 - cos(x)) / sin(x)
 - Target: `sin(x)/(1+cos(x))`
 - Result: `sin(x) / (cos(x) + 1)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8385,7 +8390,8 @@ Result: sin(x) / (cos(x) + 1)
 1. `Aplicar identidad de tangente de ángulo mitad`
    - before: `tan(x/2)`
    - after: `sin(x)/(cos(x) + 1)`
-   - substeps: none
+   - substeps:
+     1. `Usar tan(u) = (1 - cos(2u)) / sin(2u)`
 
 ## expand_trig_negative_double_cos_as_square_diff (trig_expand)
 
@@ -14863,7 +14869,7 @@ Result: 1
 - Target: `1`
 - Result: `1`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -14885,7 +14891,8 @@ Result: 1
 1. `Reconocer tangente por cotangente como 1`
    - before: `tan(x) · cot(x)`
    - after: `1`
-   - substeps: none
+   - substeps:
+     1. `Usar tan(u) · cot(u) = 1`
 
 ## reciprocal_trig_product_to_one_with_passthrough (simplify)
 

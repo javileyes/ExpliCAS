@@ -2324,10 +2324,19 @@ fn derive_didactic_reciprocal_trig_product_to_one_uses_direct_identity_language(
             .unwrap_or_else(|| panic!("expected reciprocal product step for {case_id}"));
 
         let titles = step_substep_titles(step);
-        assert!(
-            titles.is_empty(),
-            "{case_id} should not need padded substeps"
-        );
+        // tan·cot is migrated to the verified matcher and must SAY its
+        // identity; sin·csc and cos·sec are not migrated yet — their titles
+        // would still be unverified claims, so they stay correctly silent.
+        // Moving one of them to this list requires migrating its emitter to
+        // `named_identity_substep` first, never the other way around.
+        if case_id == "reciprocal_trig_product_to_one" {
+            assert_eq!(titles, vec!["Usar tan(u) · cot(u) = 1"]);
+        } else {
+            assert!(
+                titles.is_empty(),
+                "{case_id} should not need padded substeps"
+            );
+        }
     }
 }
 
@@ -4018,8 +4027,12 @@ fn derive_didactic_half_angle_tangent_uses_the_direct_identity() {
         })
         .expect("expected half-angle tangent step");
 
+    // The mute was pre-matcher policy: an UNVERIFIED «Usar L = R» title was
+    // the lying-title class, and silence was the sound answer. This emitter now
+    // publishes only matcher-verified instances of census-adjudicated
+    // templates, so the pin flips: the step must SAY the verified identity.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar (1 - cos(2u)) / sin(2u) = tan(u)"]);
 }
 
 #[test]
@@ -4036,8 +4049,12 @@ fn derive_didactic_half_angle_tangent_alt_uses_the_direct_identity() {
         })
         .expect("expected half-angle tangent alternative step");
 
+    // The mute was pre-matcher policy: an UNVERIFIED «Usar L = R» title was
+    // the lying-title class, and silence was the sound answer. This emitter now
+    // publishes only matcher-verified instances of census-adjudicated
+    // templates, so the pin flips: the step must SAY the verified identity.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sin(2u) / (1 + cos(2u)) = tan(u)"]);
 }
 
 #[test]
@@ -4054,8 +4071,12 @@ fn derive_didactic_half_angle_tangent_expansion_uses_the_direct_identity() {
         })
         .expect("expected half-angle tangent expansion step");
 
+    // The mute was pre-matcher policy: an UNVERIFIED «Usar L = R» title was
+    // the lying-title class, and silence was the sound answer. This emitter now
+    // publishes only matcher-verified instances of census-adjudicated
+    // templates, so the pin flips: the step must SAY the verified identity.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar (1 - cos(2u)) / sin(2u) = tan(u)"]);
 }
 
 #[test]
@@ -4072,20 +4093,43 @@ fn derive_didactic_half_angle_tangent_alt_expansion_uses_the_direct_identity() {
         })
         .expect("expected half-angle tangent alternative expansion step");
 
+    // The mute was pre-matcher policy: an UNVERIFIED «Usar L = R» title was
+    // the lying-title class, and silence was the sound answer. This emitter now
+    // publishes only matcher-verified instances of census-adjudicated
+    // templates, so the pin flips: the step must SAY the verified identity.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sin(2u) / (1 + cos(2u)) = tan(u)"]);
 }
 
 #[test]
 fn derive_didactic_half_angle_tangent_simplified_argument_uses_specific_identity() {
+    // The folded-double pairs (`tan(x/2)` against forms in `x`) narrate via the
+    // matcher's DIRECTED mode: no variant recognizer fires, yet the pair
+    // provably instantiates the identity once σ(rhs) is rebuilt and folded in
+    // the instance context. The title states the census template (its
+    // reversed orientation), verified — with folded doubles every half-angle
+    // form is value-equal, so the cited form is the canonical one.
     for case_id in [
         "expand_trig_half_angle_tangent_sin_over_one_plus_cos",
         "expand_trig_half_angle_tangent_one_minus_cos_over_sin",
-        "expand_trig_tangent_half_angle_substitution_sine",
     ] {
-        assert_case_step_has_no_substeps(case_id, "Aplicar identidad de tangente de ángulo mitad");
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = step_by_rule(&artifact, "Aplicar identidad de tangente de ángulo mitad");
+        assert_eq!(
+            step_substep_titles(step),
+            vec!["Usar tan(u) = (1 - cos(2u)) / sin(2u)"],
+            "{case_id} must narrate its verified identity"
+        );
         assert_case_has_no_no_web_substeps_flag(case_id);
     }
+    // The sine-substitution route does NOT instantiate any half-angle
+    // template; the matcher declines and the step stays direct. Correctly
+    // silent, not mute.
+    assert_case_step_has_no_substeps(
+        "expand_trig_tangent_half_angle_substitution_sine",
+        "Aplicar identidad de tangente de ángulo mitad",
+    );
+    assert_case_has_no_no_web_substeps_flag("expand_trig_tangent_half_angle_substitution_sine");
 }
 
 #[test]

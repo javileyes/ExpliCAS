@@ -1086,3 +1086,44 @@ fn substep_plain_holes_carry_no_latex_commands() {
         violations.len()
     );
 }
+
+// ---------------------------------------------------------------------------
+// Verified identity narrations REACH the wire (task_104e701b)
+// ---------------------------------------------------------------------------
+
+/// These two narrations were MUTE end-to-end: the generators worked (their
+/// unit tests were green) while the wire published the step with zero
+/// sub-steps. The silencer was deliberate policy, not broken wiring —
+/// `is_single_formula_template_rule` cleared single «Usar L = R» sub-steps
+/// because, pre-matcher, those titles were unverified claims and silence was
+/// the sound answer to the lying-title class. Both emitters now publish only
+/// matcher-verified instances of census-adjudicated templates, so the reason
+/// for the mute is gone — and this pins the whole route, generator through
+/// prune through wire, in both directions: the narration must arrive, and it
+/// must arrive saying a VERIFIED identity.
+#[test]
+fn verified_identity_narrations_reach_the_wire() {
+    let cases = [
+        ("derive(tan(x)*cot(x), 1)", "Usar tan(u) · cot(u) = 1"),
+        (
+            "(1-cos(2*x))/sin(2*x)",
+            // The half-angle emitter may narrate either orientation of the
+            // identity; both state the same census-adjudicated template.
+            "(1 - cos(2u)) / sin(2u)",
+        ),
+    ];
+    for (input, expected_fragment) in cases {
+        let wire = eval_wire_in(input, Language::Es)
+            .unwrap_or_else(|| panic!("repro input failed to evaluate: {input}"));
+        let titles: Vec<&str> = wire
+            .steps
+            .iter()
+            .flat_map(|step| step.substeps.iter().map(|sub| sub.title.as_str()))
+            .collect();
+        assert!(
+            titles.iter().any(|t| t.contains(expected_fragment)),
+            "[{input}] the verified identity narration must reach the wire; \
+             got substep titles: {titles:?}"
+        );
+    }
+}

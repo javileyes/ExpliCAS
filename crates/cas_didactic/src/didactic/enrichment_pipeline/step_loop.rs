@@ -174,7 +174,20 @@ fn is_noisy_template_substep(sub_step: &SubStep) -> bool {
 fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) -> bool {
     // A limit substep names the method/theorem (notable limit, squeeze, …) over the SAME
     // before/after as the limit step — that naming IS the didactic content, so keep it.
-    step.rule_name.starts_with("Evaluar límite")
+    //
+    // The same principle covers the named-identity substeps of the two rules
+    // whose emitters went through the C1.8 instance↔template matcher: their
+    // «Usar L = R» titles only publish when the pair PROVABLY instantiates a
+    // census-adjudicated template. These were muted here while the titles were
+    // unverified claims — silence was the sound answer to the lying-title
+    // class — but a VERIFIED theorem name over the step's own pair is exactly
+    // the didactic content this escape exists for. Extend this list only as
+    // emitters migrate to `named_identity_substep`, never wholesale.
+    (matches!(
+        step.rule_name.as_str(),
+        "Reciprocal Product Identity" | "Half-Angle Tangent Identity"
+    ) && normalized_substep.starts_with("usar "))
+        || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
         || normalized_substep.starts_with("aqui ")
         || normalized_substep.starts_with("reescribir el denominador sacando factor común ")
@@ -204,10 +217,8 @@ fn is_single_formula_template_rule(rule_name: &str) -> bool {
             | "Recognize Secant Squared"
             | "Recognize Cosecant Squared"
             | "Reciprocal Trig Identity"
-            | "Reciprocal Product Identity"
             | "Reciprocal Pythagorean Identity"
             | "Half-Angle Square Identity"
-            | "Half-Angle Tangent Identity"
             | "Trig Quotient"
             | "Canonicalize Roots"
             | "expand_log"
