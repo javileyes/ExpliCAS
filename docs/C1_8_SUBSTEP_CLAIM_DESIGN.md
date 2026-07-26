@@ -422,3 +422,61 @@ motivo explícito:
   sobre una cadena;
 - las familias que el §1 ya aplazaba: `Limit`, `SchematicIdentity` /
   `NamedIdentity`, `VectorOp`, `DomainVerdict`.
+
+---
+
+## ADENDA 2026-07-26 (c) — el brazo `Limit`: el motivo del aplazamiento era falso, y el bloqueo real era otro
+
+El §1 aplazaba `Limit { var, point, at_infinity, side }` (9 sitios) con este
+motivo: *«Su verificador es el oráculo de límites del propio motor, que hoy no es
+invocable desde la capa didáctica sin reentrada»*.
+
+**No hay reentrada.** `cas_didactic` ya depende de `cas_math`, donde vive
+`limits_support::eval_limit_at_infinity`; el oráculo no llama nunca de vuelta a la
+capa didáctica (el grafo de cargo lo prohíbe); y la narración se genera DESPUÉS
+de que el motor haya terminado, sobre los `Step` ya emitidos. Llamarlo son dos
+líneas.
+
+**El bloqueo real era que el APPROACH no existía como dato.** `StepMeta` solo
+guardaba `limit_point`, que se rellena únicamente para `Approach::Finite`, y las
+dos infinitudes comparten un mismo `rule_name` (`"Evaluar límite en infinito"`).
+La capa didáctica venía leyendo la dirección de un `contains("infinito")` sobre
+esa cadena — es decir, **no podía distinguir `+∞` de `−∞`**.
+
+### Exigir el dato destapó dos mentiras vivas en `−∞`
+
+| Entrada | Publicaba | Por qué es falso |
+|---|---|---|
+| `limit((1+1/x)^x, x, -infinity)` | «Aplicar el límite notable: lím(x**→∞**) (1 + 1/x)^x = e» | El valor es `e` en ambos lados, pero el sub-paso justifica el límite pedido citando un teorema sobre **otro** límite. |
+| `limit((1+1/x)^x, x, -infinity)` | «La base tiende a 1 y el exponente a **∞**» | El exponente ES la variable: tiende a `−∞`. |
+| `limit(x^3/(x^2+1), x, -infinity)` | «**Numerador y denominador → ∞**» | Con grado impar el numerador tiende a `−∞`. La forma sigue llamándose `∞/∞`; lo falso es la frase. |
+
+Se cierran llevando `Approach` en `StepMeta::limit_approach`, que el emisor del
+eval rellena siempre. La regla general: **un sub-paso que afirma algo sobre un
+límite necesita saber DE QUÉ límite habla**, y no había forma de que lo supiera.
+
+### De los 9 sitios: 8 encontrados, y solo 3 son verificables de verdad
+
+El noveno del inventario es `generate_limit_residual_substeps`, cuyos dos lados
+son la MISMA expresión (reafirma el residual y sugiere el método): es
+`Statement`, no `Limit`.
+
+De los 8 restantes, **5 pasan el par `(before, after)` propio del `Step`** — es
+decir, preguntarle al oráculo es pedirle que confirme su propia respuesta. Es
+exactamente la familia `Equality` de la adenda (a): cobertura sin hallazgos. **No
+se migran**, y la razón se mide, no se estima.
+
+Los **3 con lado izquierdo RECONSTRUIDO** por la capa didáctica sí enfrentan dos
+productores distintos, y son los que se migran:
+
+| Sitio | Lado izquierdo | Veredicto del oráculo (medido) |
+|---|---|---|
+| `generate_limit_squeeze_substeps` | `\|uᵏ\|` reconstruido | **decide** → comprobación real |
+| `generate_limit_common_denom_substeps` | fracción combinada | **decide** → comprobación real |
+| `generate_limit_conjugate_substeps` | cociente racionalizado | **DECLINA** → `Undecided`, publica |
+
+El tercero es el hallazgo interesante y queda fijado en un test: el oráculo
+**decide `√(x²+x) − x` en `+∞` y declina el cociente racionalizado que la
+narración construye a partir de él**. La ruta didáctica y la ruta del motor no
+son la misma ruta. Por eso `Undecided` no puede tratarse jamás como refutación:
+lo contrario borraría esa narración, que es correcta.

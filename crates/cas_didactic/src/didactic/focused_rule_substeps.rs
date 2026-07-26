@@ -13,6 +13,7 @@ use cas_math::expr_extract::{
 };
 use cas_math::expr_nary::build_balanced_mul;
 use cas_math::expr_nary::{self, AddView, MulView, Sign};
+use cas_math::limit_types::Approach;
 use cas_math::poly_compare::poly_eq;
 use cas_math::polynomial::Polynomial;
 use cas_math::summation_support::{
@@ -127,14 +128,12 @@ fn generate_focused_rule_substeps_at_depth(
         return root_sum_substeps;
     }
 
-    let vector_component_substeps =
-        generate_vector_component_calculus_substeps(ctx, step, depth);
+    let vector_component_substeps = generate_vector_component_calculus_substeps(ctx, step, depth);
     if !vector_component_substeps.is_empty() {
         return vector_component_substeps;
     }
 
-    let additive_integration_substeps =
-        generate_additive_integration_substeps(ctx, step, depth);
+    let additive_integration_substeps = generate_additive_integration_substeps(ctx, step, depth);
     if !additive_integration_substeps.is_empty() {
         return additive_integration_substeps;
     }
@@ -12095,9 +12094,10 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
                 // component. The jacobian arm next door already does this right.
                 let first_derivative = hessian_row_first_derivative(ctx, target, &var_names[i]);
                 let (before_display, before_latex) = match &first_derivative {
-                    Some((scratch, dfdx)) => {
-                        (display_expr(scratch, *dfdx), Some(latex_expr(scratch, *dfdx)))
-                    }
+                    Some((scratch, dfdx)) => (
+                        display_expr(scratch, *dfdx),
+                        Some(latex_expr(scratch, *dfdx)),
+                    ),
                     None => (display_expr(ctx, target), None),
                 };
                 // C1.8: the row asserts that its cells are the derivatives of
@@ -15747,16 +15747,14 @@ fn generate_linear_elementary_table_integration_substeps(
         checked_antiderivative_substep(ctx, title, args[0], after, var_name)
             .into_iter()
             .collect();
-    substeps.extend([
-        SubStep::keyed(
-            "usub.identify_affine_argument",
-            vec![],
-            display_expr(ctx, arg),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, arg))
-        .with_after_latex(latex_expr(ctx, after)),
-    ]);
+    substeps.extend([SubStep::keyed(
+        "usub.identify_affine_argument",
+        vec![],
+        display_expr(ctx, arg),
+        display_expr(ctx, after),
+    )
+    .with_before_latex(latex_expr(ctx, arg))
+    .with_after_latex(latex_expr(ctx, after))]);
 
     if !slope.is_one() {
         substeps.push(
@@ -21149,11 +21147,38 @@ const LIMIT_CONJUGATE_TITLE: &str =
 const LIMIT_COMMON_DENOM_TITLE: &str =
     "Combina las fracciones sobre un común denominador (indeterminación ∞−∞)";
 
+/// The approach a limit step is about, sign included.
+///
+/// Read from the step's metadata, which the eval path now records. The rule
+/// name only says "en infinito" — it cannot tell `+∞` from `−∞`, and reading
+/// the direction off that substring is what let the `−∞` narration cite the
+/// `x→+∞` theorem. The fallback keeps a producer that forgets the field from
+/// silencing the narration, but it is a fallback, not the source of truth.
+fn limit_step_approach(step: &Step) -> Option<Approach> {
+    step.meta.as_ref().and_then(|m| m.limit_approach)
+}
+
+/// True when the sub-step's `−∞` phrasing applies. Only certain when the
+/// approach is recorded; an unrecorded step keeps the old behaviour.
+fn limit_approaches_negative_infinity(step: &Step) -> bool {
+    matches!(limit_step_approach(step), Some(Approach::NegInfinity))
+}
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    let at_infinity = step.rule_name.contains("infinito");
+    let approach = limit_step_approach(step);
+    let at_infinity = match approach {
+        Some(approach) => matches!(approach, Approach::PosInfinity | Approach::NegInfinity),
+        None => step.rule_name.contains("infinito"),
+    };
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
-    let Some(description) = notable_limit_name(ctx, step.before, step.after, at_infinity, point)
-    else {
+    let Some(description) = notable_limit_name(
+        ctx,
+        step.before,
+        step.after,
+        at_infinity,
+        limit_approaches_negative_infinity(step),
+        point,
+    ) else {
         return Vec::new();
     };
     // Deepened narratives that SHOW the work (factor → cancel → substitute, …).
@@ -21184,7 +21209,7 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         return generate_limit_lhopital_substeps(ctx, step, point, description);
     }
     if description == LIMIT_SQUEEZE_TITLE {
-        if let Some(substeps) = generate_limit_squeeze_substeps(ctx, step) {
+        if let Some(substeps) = generate_limit_squeeze_substeps(ctx, step, approach) {
             return substeps;
         }
     }
@@ -21194,7 +21219,7 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         }
     }
     if description == LIMIT_CONJUGATE_TITLE {
-        if let Some(substeps) = generate_limit_conjugate_substeps(ctx, step) {
+        if let Some(substeps) = generate_limit_conjugate_substeps(ctx, step, approach) {
             return substeps;
         }
     }
@@ -21529,29 +21554,50 @@ fn limit_squeeze_parts(ctx: &Context, before: ExprId) -> Option<(ExprId, ExprId)
 
 /// Deepen the squeeze theorem into the bounding argument: the oscillator is bounded
 /// (`|sin/cos| ≤ 1`), so `|uᵏ · osc| ≤ |uᵏ|`, and `|uᵏ| → 0`, hence the product → 0.
-fn generate_limit_squeeze_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+fn generate_limit_squeeze_substeps(
+    ctx: &Context,
+    step: &Step,
+    approach: Option<Approach>,
+) -> Option<Vec<SubStep>> {
     let (power, osc) = limit_squeeze_parts(ctx, step.before)?;
+    let var = limit_single_var_name(ctx, step.before)?;
     let mut scratch = ctx.clone();
     let abs_id = scratch.builtin_id(BuiltinFn::Abs);
     let abs_power = scratch.add(Expr::Function(abs_id, vec![power]));
     let osc_disp = display_expr(ctx, osc);
     let before_disp = display_expr(ctx, step.before);
     let abs_disp = display_expr(&scratch, abs_power);
+    // C1.8: the closing line ASSERTS that the bounding infinitesimal has the
+    // step's limit. `|uᵏ|` is rebuilt HERE and `step.after` is the engine's
+    // answer for a different expression (the product), so the engine's own
+    // limit oracle has something real to disagree with.
+    let conclusion = SubStep::checked_new(
+        &scratch,
+        crate::didactic::substep::Claim::Limit {
+            var,
+            approach: approach?,
+        },
+        abs_power,
+        step.after,
+        format!(
+            "El infinitésimo {abs_disp} → 0, así que por el teorema del sándwich el límite es 0"
+        ),
+        abs_disp.clone(),
+        display_expr(ctx, step.after),
+    )?
+    .with_before_latex(latex_expr(&scratch, abs_power))
+    .with_after_latex(latex_expr(ctx, step.after));
     Some(vec![
         SubStep::new(
-            format!("Acota el factor oscilante: |{osc_disp}| ≤ 1, luego |{before_disp}| ≤ {abs_disp}"),
+            format!(
+                "Acota el factor oscilante: |{osc_disp}| ≤ 1, luego |{before_disp}| ≤ {abs_disp}"
+            ),
             before_disp,
-            abs_disp.clone(),
+            abs_disp,
         )
         .with_before_latex(latex_expr(ctx, step.before))
         .with_after_latex(latex_expr(&scratch, abs_power)),
-        SubStep::new(
-            format!("El infinitésimo {abs_disp} → 0, así que por el teorema del sándwich el límite es 0"),
-            abs_disp,
-            display_expr(ctx, step.after),
-        )
-        .with_before_latex(latex_expr(&scratch, abs_power))
-        .with_after_latex(latex_expr(ctx, step.after)),
+        conclusion,
     ])
 }
 
@@ -21578,15 +21624,18 @@ fn generate_limit_dominance_substeps(
     }
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
+    // At `x→−∞` an odd-degree numerator tends to −∞, so "numerator and
+    // denominator → ∞" is simply false there. The form is still ∞/∞; the
+    // recorded approach is what lets the line say so without lying.
+    let indeterminate_key = if limit_approaches_negative_infinity(step) {
+        "limit.numerator_denominator_inf_over_inf_negative"
+    } else {
+        "limit.numerator_denominator_inf_over_inf"
+    };
     Some(vec![
-        SubStep::keyed(
-            "limit.numerator_denominator_inf_over_inf",
-            vec![],
-            before_disp.clone(),
-            "∞/∞",
-        )
-        .with_before_latex(before_latex.clone())
-        .with_after_latex(r"\frac{\infty}{\infty}"),
+        SubStep::keyed(indeterminate_key, vec![], before_disp.clone(), "∞/∞")
+            .with_before_latex(before_latex.clone())
+            .with_after_latex(r"\frac{\infty}{\infty}"),
         SubStep::new(
             description.to_string(),
             before_disp,
@@ -21663,7 +21712,11 @@ fn limit_infinity_conjugate_radical(
 /// equals `(√P − L)(√P + L)`. A self-check re-multiplies `before · conjugate` and
 /// requires it to fold to that (signed) numerator, so any construction error
 /// DECLINES to the one-line technique name rather than narrating false algebra.
-fn generate_limit_conjugate_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+fn generate_limit_conjugate_substeps(
+    ctx: &Context,
+    step: &Step,
+    approach: Option<Approach>,
+) -> Option<Vec<SubStep>> {
     let before = step.before;
     let (surd, linear, surd_first) = limit_conjugate_parts(ctx, before)?;
     let radicand = as_sqrt_radicand(ctx, surd)?;
@@ -21715,12 +21768,25 @@ fn generate_limit_conjugate_substeps(ctx: &Context, step: &Step) -> Option<Vec<S
         )
         .with_before_latex(latex_expr(ctx, before))
         .with_after_latex(latex_expr(&scratch, rationalized)),
-        SubStep::keyed(
+        // C1.8: the closing line ASSERTS that the RATIONALIZED form — rebuilt
+        // here — has the step's limit. Declared and handed to the engine's own
+        // oracle. MEASURED: the oracle's conservative policy decides the
+        // original `√P − L` but declines the rationalized quotient, so this one
+        // lands on `Undecided` and publishes. That is the honest outcome, not a
+        // silent pass: an abstention by the oracle is not evidence of a lie.
+        SubStep::checked(
+            &scratch,
+            crate::didactic::substep::Claim::Limit {
+                var: var.clone(),
+                approach: approach?,
+            },
+            rationalized,
+            step.after,
             "limit.divide_by_dominant_power_evaluate",
             vec![surd_disp, var, after_disp.clone()],
             rationalized_disp,
             after_disp,
-        )
+        )?
         .with_before_latex(latex_expr(&scratch, rationalized))
         .with_after_latex(latex_expr(ctx, step.after)),
     ])
@@ -21811,15 +21877,30 @@ fn generate_limit_common_denom_substeps(
     // is a `Div`, never a `Sub`-of-reciprocals, so this recognizer cannot re-fire.
     let mut synthetic = Step::new_compact("desc", "Evaluar límite finito", combined, step.after);
     synthetic.meta_mut().limit_point = Some(point);
+    // The recursion inherits the approach too. A synthetic step that carries the
+    // point but not the direction would make every claim downstream decline for
+    // want of a datum this function already has.
+    synthetic.meta_mut().limit_approach = Some(Approach::Finite(point));
     let tail = generate_limit_substeps(&scratch, &synthetic);
     if tail.is_empty() {
+        // C1.8: this closing line ASSERTS that the COMBINED fraction — rebuilt
+        // here by the cross-multiply combiner — has the step's limit. The
+        // engine's own oracle decides it (measured), so the reconstruction is
+        // checked against the value rather than trusted.
         substeps.push(
-            SubStep::keyed(
+            SubStep::checked(
+                &scratch,
+                crate::didactic::substep::Claim::Limit {
+                    var: var.clone(),
+                    approach: Approach::Finite(point),
+                },
+                combined,
+                step.after,
                 "limit.generic_0_0_lhopital_or_taylor",
                 vec![var, display_expr(ctx, point)],
                 combined_disp,
                 after_disp,
-            )
+            )?
             .with_before_latex(combined_latex)
             .with_after_latex(latex_expr(ctx, step.after)),
         );
@@ -21835,15 +21916,16 @@ fn generate_limit_common_denom_substeps(
 fn generate_limit_e_form_substeps(ctx: &Context, step: &Step, description: String) -> Vec<SubStep> {
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
+    // The exponent is the VARIABLE, so at `x→−∞` it tends to `−∞`, not `∞`.
+    let indeterminate_key = if limit_approaches_negative_infinity(step) {
+        "limit.base_to_1_exponent_to_inf_1_pow_inf_negative"
+    } else {
+        "limit.base_to_1_exponent_to_inf_1_pow_inf"
+    };
     vec![
-        SubStep::keyed(
-            "limit.base_to_1_exponent_to_inf_1_pow_inf",
-            vec![],
-            before_disp.clone(),
-            "1^∞",
-        )
-        .with_before_latex(before_latex.clone())
-        .with_after_latex(r"1^{\infty}"),
+        SubStep::keyed(indeterminate_key, vec![], before_disp.clone(), "1^∞")
+            .with_before_latex(before_latex.clone())
+            .with_after_latex(r"1^{\infty}"),
         SubStep::new(description, before_disp, display_expr(ctx, step.after))
             .with_before_latex(before_latex)
             .with_after_latex(latex_expr(ctx, step.after)),
@@ -21859,6 +21941,7 @@ fn notable_limit_name(
     before: ExprId,
     after: ExprId,
     at_infinity: bool,
+    negative_infinity: bool,
     point: Option<ExprId>,
 ) -> Option<String> {
     // Limits at infinity have their own dominance methods; the finite forms below (notable
@@ -21868,7 +21951,19 @@ fn notable_limit_name(
         if matches!(ctx.get(after), Expr::Constant(Constant::E))
             && limit_is_one_plus_reciprocal_power(ctx, before)
         {
-            return Some("Aplicar el límite notable: lím(x→∞) (1 + 1/x)^x = e".to_string());
+            // NAME THE DIRECTION. `(1 + 1/x)^x → e` holds at both infinities,
+            // but the sub-step used to cite the `x→∞` theorem while narrating a
+            // limit at `x→−∞` — a true value justified by a statement about a
+            // different limit. The step's recorded approach settles it; without
+            // that datum this line had no way to be right.
+            let arrow = if negative_infinity {
+                "x→−∞"
+            } else {
+                "x→∞"
+            };
+            return Some(format!(
+                "Aplicar el límite notable: lím({arrow}) (1 + 1/x)^x = e"
+            ));
         }
         if let Some(desc) = limit_infinity_conjugate_radical(ctx, before, after) {
             return Some(desc);
@@ -24075,6 +24170,7 @@ mod limit_notable_tests {
     use super::{generate_limit_residual_substeps, generate_limit_substeps};
     use crate::runtime::Step;
     use cas_ast::Context;
+    use cas_math::limit_types::Approach;
     use cas_parser::parse;
 
     fn substep_titles(before_src: &str, after_src: &str) -> Vec<String> {
@@ -24089,7 +24185,9 @@ mod limit_notable_tests {
         let mut ctx = Context::new();
         let before = parse(before_src, &mut ctx).expect("parse before");
         let after = parse(after_src, &mut ctx).expect("parse after");
-        let step = Step::new_compact("desc", "Evaluar límite en infinito", before, after);
+        let mut step = Step::new_compact("desc", "Evaluar límite en infinito", before, after);
+        // Mirror the emitter: a limit step carries its approach, sign included.
+        step.meta_mut().limit_approach = Some(Approach::PosInfinity);
         generate_limit_substeps(&ctx, &step)
     }
 
@@ -24097,7 +24195,10 @@ mod limit_notable_tests {
         let mut ctx = Context::new();
         let before = parse(before_src, &mut ctx).expect("parse before");
         let after = parse(after_src, &mut ctx).expect("parse after");
-        let step = Step::new_compact("desc", rule, before, after);
+        let mut step = Step::new_compact("desc", rule, before, after);
+        if rule.contains("infinito") {
+            step.meta_mut().limit_approach = Some(Approach::PosInfinity);
+        }
         generate_limit_substeps(&ctx, &step)
             .into_iter()
             .map(|s| s.description)
@@ -24115,6 +24216,7 @@ mod limit_notable_tests {
         let point = parse(point_src, &mut ctx).expect("parse point");
         let mut step = Step::new_compact("desc", "Evaluar límite finito", before, after);
         step.meta_mut().limit_point = Some(point);
+        step.meta_mut().limit_approach = Some(Approach::Finite(point));
         generate_limit_substeps(&ctx, &step)
             .into_iter()
             .map(|s| s.description)
@@ -24132,6 +24234,7 @@ mod limit_notable_tests {
         let point = parse(point_src, &mut ctx).expect("parse point");
         let mut step = Step::new_compact("desc", "Evaluar límite finito", before, after);
         step.meta_mut().limit_point = Some(point);
+        step.meta_mut().limit_approach = Some(Approach::Finite(point));
         generate_limit_substeps(&ctx, &step)
     }
 

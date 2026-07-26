@@ -649,6 +649,11 @@ impl Engine {
                     if let crate::limits::Approach::Finite(point) = approach {
                         step.meta_mut().limit_point = Some(point);
                     }
+                    // And the approach ITSELF, sign included. `limit_point` says
+                    // nothing about the infinities, and both share this rule
+                    // name — so without this the narration downstream can only
+                    // guess the direction, and it guessed `+∞` for both.
+                    step.meta_mut().limit_approach = Some(approach);
                     steps.push(step);
                 }
                 let mut warnings: Vec<DomainWarning> = result

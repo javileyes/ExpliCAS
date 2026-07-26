@@ -57,6 +57,17 @@ pub enum Claim {
     },
     /// `after == before|_{var:=point}`.
     EvalAt { var: String, point: ExprId },
+    /// `after == lim_{var → approach} before`.
+    ///
+    /// The approach travels as DATA including its SIGN. It has to: the didactic
+    /// layer used to read the direction off a substring of the rule name, both
+    /// infinities share one rule name, and the result was narration that cited
+    /// the `x→+∞` theorem to justify a limit at `−∞`. A claim that cannot name
+    /// the approach it is asserting cannot be checked against it.
+    Limit {
+        var: String,
+        approach: cas_math::limit_types::Approach,
+    },
     /// The sub-step does not assert a relation between two sides: it names a
     /// manoeuvre, identifies a substitution, states a formula. An explicit
     /// abstention, not a gap.
@@ -140,6 +151,33 @@ pub fn verify_claim(
             let substituted = substitute_var(&mut scratch, before, var, *point);
             decide_equality(&mut scratch, substituted, after)
         }
+        Claim::Limit { var, approach } => {
+            let mut scratch = context.clone();
+            let var_expr = scratch.var(var);
+            // The engine's OWN limit evaluator, with the options the eval path
+            // uses (`presimplify: Off`, real domain) — these narrations only
+            // exist under the real domain, and every limit rule reasons with the
+            // real order anyway.
+            let options = cas_math::limit_types::LimitOptions::default();
+            let outcome = cas_engine::with_suppressed_depth_overflow_warnings(|| {
+                cas_math::limits_support::eval_limit_at_infinity(
+                    &mut scratch,
+                    before,
+                    var_expr,
+                    *approach,
+                    &options,
+                )
+            });
+            // The oracle declining is not a disproof. It answers with a residual
+            // `limit(...)` call plus a warning when its conservative policy does
+            // not decide, and reading that as a refutation would delete correct
+            // narration wherever the didactic layer knows a technique the safe
+            // policy declines to apply.
+            if outcome.warning.is_some() || expr_contains_limit_call(&scratch, outcome.expr) {
+                return ClaimVerdict::Undecided;
+            }
+            decide_equality(&mut scratch, outcome.expr, after)
+        }
         Claim::DefiniteEval { var, lower, upper } => {
             let mut scratch = context.clone();
             let at_upper = substitute_var(&mut scratch, before, var, *upper);
@@ -180,6 +218,24 @@ fn decide_equality(scratch: &mut Context, a: ExprId, b: ExprId) -> ClaimVerdict 
         ClaimVerdict::Refuted
     } else {
         ClaimVerdict::Undecided
+    }
+}
+
+/// Whether the oracle's answer is still an unevaluated `limit(...)` residual —
+/// its way of saying "the safe policy does not decide this".
+fn expr_contains_limit_call(context: &Context, expr: ExprId) -> bool {
+    match context.get(expr) {
+        Expr::Function(fn_id, args) => {
+            context.sym_name(*fn_id) == "limit"
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_limit_call(context, *arg))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            expr_contains_limit_call(context, *l) || expr_contains_limit_call(context, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_limit_call(context, *inner),
+        _ => false,
     }
 }
 
@@ -252,7 +308,8 @@ mod tests {
     #[test]
     fn antiderivative_claim_refutes_the_by_parts_witness() {
         let (mut context, integrand) = ctx_with("-2*sin(x)");
-        let after = cas_parser::parse("2*x*sin(x) + (2 - x^2)*cos(x)", &mut context).expect("parse");
+        let after =
+            cas_parser::parse("2*x*sin(x) + (2 - x^2)*cos(x)", &mut context).expect("parse");
         assert_ne!(
             verify_claim(
                 &context,
@@ -402,6 +459,121 @@ mod tests {
             ),
             ClaimVerdict::Refuted,
             "evaluating at the wrong bound must not pass"
+        );
+    }
+
+    /// The arm the design deferred because "the verifier is the engine's own
+    /// limit oracle, not invocable from here without re-entrancy". It is
+    /// invocable: `cas_didactic` already depends on `cas_math`, the oracle never
+    /// calls back into the didactic layer, and the narration runs AFTER the
+    /// engine has finished — there is no recursion to fall into.
+    #[test]
+    fn limit_claim_verifies_a_reconstructed_intermediate() {
+        // The common-denominator narration rebuilds `1/tan(x) − 1/x` as this
+        // quotient and then asserts the step's value for it. Two producers, one
+        // claim.
+        let (mut context, combined) = ctx_with("(x*cos(x) - sin(x))/(x*sin(x))");
+        let point = cas_parser::parse("0", &mut context).expect("parse");
+        let value = cas_parser::parse("0", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::Limit {
+                    var: "x".into(),
+                    approach: cas_math::limit_types::Approach::Finite(point),
+                },
+                combined,
+                value
+            ),
+            ClaimVerdict::Verified
+        );
+    }
+
+    /// MEASURED, and worth pinning: the oracle decides `√(x²+x) − x` at `+∞` but
+    /// DECLINES the rationalized quotient the conjugate narration rebuilds from
+    /// it. The didactic route and the engine's route are not the same route, so
+    /// that sub-step publishes as an abstention — which is the honest answer,
+    /// and the reason `Undecided` must never be treated as a refutation.
+    #[test]
+    fn limit_claim_abstains_on_the_conjugate_intermediate_the_oracle_declines() {
+        let (mut context, rationalized) = ctx_with("x / (sqrt(x^2 + x) + x)");
+        let value = cas_parser::parse("1/2", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::Limit {
+                    var: "x".into(),
+                    approach: cas_math::limit_types::Approach::PosInfinity,
+                },
+                rationalized,
+                value
+            ),
+            ClaimVerdict::Undecided
+        );
+    }
+
+    #[test]
+    fn limit_claim_refutes_a_wrong_value() {
+        let (mut context, quotient) = ctx_with("(x^2 + 1)/(2*x^2 - 3)");
+        let wrong = cas_parser::parse("2", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::Limit {
+                    var: "x".into(),
+                    approach: cas_math::limit_types::Approach::PosInfinity,
+                },
+                quotient,
+                wrong
+            ),
+            ClaimVerdict::Refuted
+        );
+    }
+
+    /// WHY the approach travels as data. Same expression, same claim shape, two
+    /// signs: `x/sqrt(x^2+1)` is `1` at `+∞` and `−1` at `−∞`. A claim that
+    /// could not name its direction would pass the wrong one.
+    #[test]
+    fn limit_claim_separates_the_two_infinities() {
+        let (mut context, quotient) = ctx_with("x/sqrt(x^2 + 1)");
+        let one = cas_parser::parse("1", &mut context).expect("parse");
+        let pos = Claim::Limit {
+            var: "x".into(),
+            approach: cas_math::limit_types::Approach::PosInfinity,
+        };
+        let neg = Claim::Limit {
+            var: "x".into(),
+            approach: cas_math::limit_types::Approach::NegInfinity,
+        };
+        assert_eq!(
+            verify_claim(&context, &pos, quotient, one),
+            ClaimVerdict::Verified
+        );
+        assert_eq!(
+            verify_claim(&context, &neg, quotient, one),
+            ClaimVerdict::Refuted,
+            "the limit at -infinity is -1; naming the direction is what catches this"
+        );
+    }
+
+    /// The oracle's conservative policy declines plenty of real limits. That is
+    /// an abstention, not a disproof — reading it as one would delete every
+    /// narration whose technique the safe policy does not implement.
+    #[test]
+    fn limit_claim_treats_an_undecided_oracle_as_abstention() {
+        let (mut context, expr) = ctx_with("ln(x)/x");
+        let value = cas_parser::parse("0", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::Limit {
+                    var: "x".into(),
+                    approach: cas_math::limit_types::Approach::NegInfinity,
+                },
+                expr,
+                value
+            ),
+            ClaimVerdict::Undecided
         );
     }
 

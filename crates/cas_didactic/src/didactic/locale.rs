@@ -109,7 +109,12 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "usub.rule_power_to_power_plus_one" => ("Usar la regla de u'·u^p -> u^(p+1)/(p+1)", "Use the rule u'·u^p -> u^(p+1)/(p+1)"),
         "limit.direct_substitution_0_0" => ("La sustitución directa da la indeterminación 0/0", "Direct substitution gives the indeterminate form 0/0"),
         "limit.numerator_denominator_inf_over_inf" => ("Numerador y denominador → ∞: indeterminación ∞/∞", "Numerator and denominator → ∞: indeterminate form ∞/∞"),
+        // At x→−∞ an odd-degree numerator tends to −∞, so the twin above states
+        // the wrong thing there. The form is still called ∞/∞; what is not true
+        // is that both sides tend to +∞.
+        "limit.numerator_denominator_inf_over_inf_negative" => ("Numerador y denominador → ±∞ (x→−∞): indeterminación ∞/∞", "Numerator and denominator → ±∞ (x→−∞): indeterminate form ∞/∞"),
         "limit.base_to_1_exponent_to_inf_1_pow_inf" => ("La base tiende a 1 y el exponente a ∞: indeterminación 1^∞", "The base tends to 1 and the exponent to ∞: indeterminate form 1^∞"),
+        "limit.base_to_1_exponent_to_inf_1_pow_inf_negative" => ("La base tiende a 1 y el exponente a −∞: indeterminación 1^∞", "The base tends to 1 and the exponent to −∞: indeterminate form 1^∞"),
         "limit.notable_sin_u_over_u" => ("Aplicar el límite notable: lím(u→0) sin(u)/u = 1", "Apply the standard limit: lim(u→0) sin(u)/u = 1"),
         "limit.notable_one_minus_cos_over_u2" => ("Aplicar el límite notable: lím(u→0) (1 − cos(u))/u² = 1/2", "Apply the standard limit: lim(u→0) (1 − cos(u))/u² = 1/2"),
         "limit.notable_a_pow_u_minus_1_over_u" => ("Aplicar el límite notable: lím(u→0) (aᵘ − 1)/u = ln(a)", "Apply the standard limit: lim(u→0) (aᵘ − 1)/u = ln(a)"),
