@@ -68,6 +68,15 @@ pub enum Claim {
         var: String,
         approach: cas_math::limit_types::Approach,
     },
+    /// The two sides are a SCHEMA — an identity stated with metavariables
+    /// (`tan(u)·cot(u) = 1`), not a fact about the expression in front of the
+    /// reader. Its truth is a property of the TEMPLATE, so it is adjudicated
+    /// once in [`super::schema`] and looked up here rather than re-decided on
+    /// every emission.
+    SchematicIdentity {
+        lhs: &'static str,
+        rhs: &'static str,
+    },
     /// The sub-step does not assert a relation between two sides: it names a
     /// manoeuvre, identifies a substitution, states a formula. An explicit
     /// abstention, not a gap.
@@ -151,6 +160,14 @@ pub fn verify_claim(
             let substituted = substitute_var(&mut scratch, before, var, *point);
             decide_equality(&mut scratch, substituted, after)
         }
+        Claim::SchematicIdentity { lhs, rhs } => {
+            // A LOOKUP, deliberately: see the module docs of `schema`. An
+            // unadjudicated schema is `Undecided` — a declared gap, never a
+            // silent pass — and so is every classified exception, because the
+            // table's `Refuted` rows are defects with their own owners and
+            // deleting their narration is not this arm's decision to make.
+            verify_schematic_identity(lhs, rhs)
+        }
         Claim::Limit { var, approach } => {
             let mut scratch = context.clone();
             let var_expr = scratch.var(var);
@@ -197,6 +214,29 @@ pub fn verify_claim(
         }
         Claim::Antiderivative { var } => verify_by_differentiation(context, after, before, var),
         Claim::Derivative { var } => verify_by_differentiation(context, before, after, var),
+    }
+}
+
+/// Decide a schema by LOOKUP. Unlike every other arm this one needs no context
+/// and no nodes: the two sides are templates, and their truth was adjudicated
+/// once by the census instead of on every emission.
+pub fn verify_schematic_identity(lhs: &'static str, rhs: &'static str) -> ClaimVerdict {
+    let status = super::schema::schema_status(lhs, rhs);
+    // The census's enforcement teeth: in debug builds — which is what every
+    // test suite and the divergence-gate corpus run — stating a schema the
+    // census never adjudicated is a loud, attributable failure that names the
+    // exact pair. In release it publishes and abstains: the reader loses
+    // nothing while the drift gets caught by the next test run.
+    debug_assert!(
+        status.is_some(),
+        "schema `{lhs}` ⇒ `{rhs}` was never adjudicated: add it to \
+         SCHEMATIC_IDENTITIES with its MEASURED status in this same commit"
+    );
+    match status {
+        Some(super::schema::SchemaStatus::Proven) => ClaimVerdict::Verified,
+        // A classified exception abstains: each class is a declared gap with
+        // its own owner, and deleting its narration is not this arm's decision.
+        _ => ClaimVerdict::Undecided,
     }
 }
 

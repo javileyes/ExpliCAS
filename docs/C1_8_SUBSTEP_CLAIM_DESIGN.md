@@ -480,3 +480,81 @@ El tercero es el hallazgo interesante y queda fijado en un test: el oráculo
 narración construye a partir de él**. La ruta didáctica y la ruta del motor no
 son la misma ruta. Por eso `Undecided` no puede tratarse jamás como refutación:
 lo contrario borraría esa narración, que es correcta.
+
+---
+
+## ADENDA 2026-07-26 (d) — `SchematicIdentity`: el discriminador es el SISTEMA DE TIPOS, y el censo se prueba UNA vez
+
+El §1 aplazaba `SchematicIdentity { plantilla, ligaduras }` como «el segundo
+ciclo más grande de la campaña» porque exigía «parser de plantillas + matcher
+contra el par». La mitad tabla-y-verdad está CERRADA en este ciclo, y tres de
+las premisas del plan no sobrevivieron a la ejecución:
+
+### 1. Ninguna heurística textual distingue una plantilla de una instancia
+
+El primer intento detectó esquemas por texto («ambos lados mencionan una letra
+metavariable») y se ahogó dos veces: `x^2 + a ⇒ integrate(a, x) + …` es la
+expresión del USUARIO con un símbolo llamado `a`, indistinguible por texto de un
+esquema sobre `a`; y `formula_substep` — que el §5 daba como la familia entera —
+mezcla plantillas con teoría de números e instancias construidas con `format!`
+(el volcado dio 379 «plantillas» para 98 llamadas).
+
+**La solución es el tipo.** Una plantilla es una CONSTANTE del fuente, así que
+`schema_substep(lhs: &'static str, rhs: &'static str, …)` deja que el
+COMPILADOR haga la partición: una instancia toma prestado de un render
+por-emisión y no puede vivir `'static`. Migración medida: 100 sitios de
+llamada → **35 plantillas** (17 literales directas + 18 ligadas vía tuplas
+`match`/helpers) y **65 instancias**, con la frontera dictada por errores de
+borrow-checker, no por opinión.
+
+### 2. El censo: 78 pares, adjudicados con refutador POSITIVO
+
+Resueltas las indirecciones (tuplas `match`, helpers, dispatchers a dos
+niveles), las 35 plantillas publican **78 pares distintos**:
+
+| Estado | Pares | Qué significa |
+|---|---|---|
+| `Proven` | **68** | `lhs ≡ rhs` con metavariables LIBRES; el simplificador pliega la diferencia a 0 |
+| `OpenUnproven` | 2 | ciertas en muestreo numérico; el simplificador no pliega (ángulo cuádruple `sin(4u)`) |
+| `DerivedMetavar` | 2 | FALSAS como identidad libre (contraejemplo numérico): `R·sin(u+φ) ⇔ a·sin(u)+b·cos(u)` exige `R,φ` derivadas |
+| `FunctionMetavar` | 2 | `f(-u) = ±f(u)` cuantifica sobre `f` bajo hipótesis de paridad |
+| `DisplayNotation` | 4 | cadenas `log_b(c)` con subíndices: el parser no las acepta |
+
+**La regla de refutación es la misma que la de los verificadores**: solo refuta
+un testigo positivo (muestreo numérico con contraejemplo claro), jamás «el
+simplificador no plegó». Sin esa regla, las dos filas de ángulo cuádruple —
+identidades CIERTAS — habrían salido refutadas. Y dos gotchas de medición que
+casi contaminan la tabla: `sin²(u)` debe normalizarse a `sin(u)^2` (no
+`sin^2(u)`, que el parser lee como `sin^(2u)`), y al sustituir muestras en
+`4u` el lookbehind no puede excluir dígitos o deja la variable libre.
+
+### 3. Verificar la plantilla en runtime probaría lo mismo 213 veces por corpus
+
+La verdad de una plantilla es una propiedad ESTÁTICA. Por eso:
+
+- **La prueba corre UNA vez**: `every_proven_schema_folds_to_zero` (68 pliegues
+  en ~4 s de test), no una por emisión con `--steps on`.
+- **El runtime es un LOOKUP** (`Claim::SchematicIdentity` → `schema_status`),
+  más una aserción de debug que revienta —nombrando el par exacto— si un emisor
+  declara un esquema que el censo nunca adjudicó. Las suites y el gate corren
+  en debug: la deriva se caza en el siguiente `cargo test`.
+- **El pin es auto-invalidante en las DOS direcciones**: una fila `Proven` que
+  deja de plegar rompe; una excepción que empieza a plegar rompe y exige su
+  promoción en el mismo commit. Y `OpenUnproven` no puede cobijar mentiras:
+  sus filas se re-verifican numéricamente en el propio test.
+
+### Lo que queda de la otra mitad (y ya tiene el prerrequisito)
+
+El matcher instancia↔plantilla — el que cazaría «Usar tan(u)·cot(u) = 1»
+emitido en la rama equivocada — sigue siendo su propio ciclo, pero su entrada
+ya existe: los 78 pares están en una tabla de datos con status, y los 35
+emisores ya declaran qué plantilla afirman. Las 65 instancias de
+`formula_substep` pertenecen a la familia del §5 (render sin nodo), no a esta.
+
+### Hallazgos colaterales del ciclo, con dueño propio
+
+- **67 sub-pasos publican LaTeX crudo en el hueco de texto plano**
+  (`\sqrt{y} - 1` llega al lector de la CLI). Chip task_580326b0.
+- **Un numerador aritméticamente falso** en la narración de denominador común
+  (`c + x - b + x` donde va `(c+x) − (b+x)`: error de 2x), con formateador y
+  `Context::add` ya exonerados por prueba directa. Chip task_cbce7fb9.

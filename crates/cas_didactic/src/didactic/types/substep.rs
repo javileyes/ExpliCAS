@@ -1,5 +1,7 @@
 #[path = "substep/claim.rs"]
 pub mod claim;
+#[path = "substep/schema.rs"]
+pub mod schema;
 #[path = "substep/methods.rs"]
 mod methods;
 

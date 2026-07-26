@@ -85,6 +85,21 @@ impl SubStep {
         }
     }
 
+    /// Build a sub-step whose two sides are a SCHEMA. The relation is declared
+    /// and adjudicated by the census in [`super::schema`]; publishing is not
+    /// gated on it, because a schema the census classifies as an exception is a
+    /// DECLARED gap with its own owner, not a lie this constructor gets to
+    /// delete. What it does buy: an emitter can no longer state a schema that
+    /// nothing has ever looked at, and the verdict is available to the caller.
+    pub fn checked_schema(
+        lhs: &'static str,
+        rhs: &'static str,
+        description: impl Into<String>,
+    ) -> (Self, super::claim::ClaimVerdict) {
+        let verdict = super::claim::verify_schematic_identity(lhs, rhs);
+        (Self::new(description, lhs, rhs), verdict)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn checked(
         context: &cas_ast::Context,

@@ -542,14 +542,14 @@ fn phase_shift_formula_substep(ctx: &Context, before: ExprId, after: ExprId) -> 
     let after_is_add_sub = matches!(ctx.get(after), Expr::Add(_, _) | Expr::Sub(_, _));
 
     match (before_is_add_sub, after_is_add_sub) {
-        (true, false) => Some(formula_substep(
+        (true, false) => Some(schema_substep(
             "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)",
             "a·sin(u) + b·cos(u)",
             "R·sin(u + φ)",
             "a\\cdot\\sin(u)+b\\cdot\\cos(u)",
             "R\\cdot\\sin(u+\\varphi)",
         )),
-        (false, true) => Some(formula_substep(
+        (false, true) => Some(schema_substep(
             "Expandir R·sin(u + φ)",
             "R·sin(u + φ)",
             "a·sin(u) + b·cos(u)",
@@ -590,14 +590,14 @@ fn phase_shift_shifted_trig_formula_substep(
     let after_trig = single_sin_cos_function_name(ctx, after)?;
 
     match (before_trig, after_trig) {
-        ("sin", "cos") => Some(formula_substep(
+        ("sin", "cos") => Some(schema_substep(
             "Usar sin(u + φ) = cos(u - (π/2 - φ))",
             "sin(u + φ)",
             "cos(u - (π/2 - φ))",
             "\\sin(u+\\varphi)",
             "\\cos(u-(\\pi/2-\\varphi))",
         )),
-        ("cos", "sin") => Some(formula_substep(
+        ("cos", "sin") => Some(schema_substep(
             "Usar cos(u - φ) = sin(u + (π/2 - φ))",
             "cos(u - φ)",
             "sin(u + (π/2 - φ))",
@@ -2475,7 +2475,7 @@ fn exponential_sum_diff_identity_substep(
         };
 
     if reverse {
-        Some(formula_substep(
+        Some(schema_substep(
             expand_title,
             exp_formula,
             product_formula,
@@ -2483,7 +2483,7 @@ fn exponential_sum_diff_identity_substep(
             product_latex,
         ))
     } else {
-        Some(formula_substep(
+        Some(schema_substep(
             contract_title,
             product_formula,
             exp_formula,
@@ -2519,7 +2519,7 @@ fn exponential_reciprocal_identity_substep(
     }
 
     if reverse {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar e^(-A) = 1/e^A",
             "e^(-A)",
             "1/e^A",
@@ -2527,7 +2527,7 @@ fn exponential_reciprocal_identity_substep(
             "\\frac{1}{{e}^{A}}",
         ))
     } else {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar 1/e^A = e^(-A)",
             "1/e^A",
             "e^(-A)",
@@ -2563,7 +2563,7 @@ fn exponential_power_identity_substep(
     }
 
     if reverse {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar e^(n·A) = (e^A)^n",
             "e^(n·A)",
             "(e^A)^n",
@@ -2571,7 +2571,7 @@ fn exponential_power_identity_substep(
             "({e}^{A})^{n}",
         ))
     } else {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar (e^A)^n = e^(n·A)",
             "(e^A)^n",
             "e^(n·A)",
@@ -5569,7 +5569,7 @@ fn generate_log_change_of_base_chain_substeps(
 ) -> Option<Vec<SubStep>> {
     if let Some(chain_len) = log_change_of_base_chain_contraction_len(ctx, before, after) {
         if chain_len == 2 {
-            return Some(vec![formula_substep(
+            return Some(vec![schema_substep(
                 "Usar log_b(a) · log_a(c) = log_b(c)",
                 "log_b(a) · log_a(c)",
                 "log_b(c)",
@@ -5578,7 +5578,7 @@ fn generate_log_change_of_base_chain_substeps(
             )]);
         }
 
-        return Some(vec![formula_substep(
+        return Some(vec![schema_substep(
             "Encadenar los cambios de base intermedios",
             "log_{u0}(u1) · log_{u1}(u2) · ... · log_{u_{n-1}}(u_n)",
             "log_{u0}(u_n)",
@@ -5589,7 +5589,7 @@ fn generate_log_change_of_base_chain_substeps(
 
     if let Some(chain_len) = log_change_of_base_chain_expansion_len(ctx, before, after) {
         if chain_len == 2 {
-            return Some(vec![formula_substep(
+            return Some(vec![schema_substep(
                 "Usar log_b(c) = log_a(c) · log_b(a)",
                 "log_b(c)",
                 "log_a(c) · log_b(a)",
@@ -5598,7 +5598,7 @@ fn generate_log_change_of_base_chain_substeps(
             )]);
         }
 
-        return Some(vec![formula_substep(
+        return Some(vec![schema_substep(
             "Desplegar un logaritmo en una cadena de cambios de base",
             "log_{u0}(u_n)",
             "log_{u0}(u1) · log_{u1}(u2) · ... · log_{u_{n-1}}(u_n)",
@@ -6001,7 +6001,7 @@ fn generate_trig_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Vec<SubS
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         trig_angle_sum_diff_formula(ctx, before)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -6017,7 +6017,7 @@ fn generate_trig_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Vec<SubS
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         trig_angle_sum_diff_formula(ctx, after)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6177,7 +6177,7 @@ fn generate_hyperbolic_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_angle_sum_diff_formula(ctx, before)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -6193,7 +6193,7 @@ fn generate_hyperbolic_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_angle_sum_diff_formula(ctx, after)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6412,7 +6412,7 @@ fn generate_product_to_sum_substeps(step: &Step) -> Vec<SubStep> {
         return Vec::new();
     };
 
-    vec![formula_substep(
+    vec![schema_substep(
         title,
         product_plain,
         sum_plain,
@@ -6470,7 +6470,7 @@ fn generate_hyperbolic_product_to_sum_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_product_to_sum_formula(ctx, before)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -6482,7 +6482,7 @@ fn generate_hyperbolic_product_to_sum_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_product_to_sum_formula(ctx, after)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6894,7 +6894,7 @@ fn build_power_reduction_formula_substep(
         power_reduction_formula_template(kind);
     let title = format!("{title}, con u = {arg_plain}");
 
-    formula_substep(title, before_plain, after_plain, before_latex, after_latex)
+    schema_substep(title, before_plain, after_plain, before_latex, after_latex)
 }
 
 fn power_reduction_formula_template(
@@ -6938,7 +6938,7 @@ fn generate_square_double_angle_contraction_substeps(ctx: &Context, step: &Step)
     };
 
     let arg_plain = human_formula_title_plain(&display_expr(ctx, arg));
-    vec![formula_substep(
+    vec![schema_substep(
         format!("Usar sin²(u)·cos²(u) = sin²(2u) / 4, con u = {arg_plain}"),
         "sin(u)^2 · cos(u)^2",
         "sin(2u)^2 / 4",
@@ -7020,7 +7020,7 @@ fn build_trig_triple_angle_formula_substep(
     );
 
     if reverse {
-        formula_substep(
+        schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -7028,7 +7028,7 @@ fn build_trig_triple_angle_formula_substep(
             compact_latex,
         )
     } else {
-        formula_substep(
+        schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -7163,7 +7163,7 @@ fn build_trig_quadruple_angle_formula_substep(
     );
 
     if reverse {
-        formula_substep(
+        schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -7171,7 +7171,7 @@ fn build_trig_quadruple_angle_formula_substep(
             compact_latex,
         )
     } else {
-        formula_substep(
+        schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -7275,7 +7275,7 @@ fn build_trig_quintuple_angle_formula_substep(
     );
 
     if reverse {
-        formula_substep(
+        schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -7283,7 +7283,7 @@ fn build_trig_quintuple_angle_formula_substep(
             compact_latex,
         )
     } else {
-        formula_substep(
+        schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -8038,7 +8038,7 @@ fn generate_trig_parity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     .unwrap_or_else(|| matches!(ctx.get(after), Expr::Neg(_)));
 
     if is_odd {
-        vec![formula_substep(
+        vec![schema_substep(
             "Usar que una función impar cumple f(-u) = -f(u)",
             "f(-u)",
             "-f(u)",
@@ -8046,7 +8046,7 @@ fn generate_trig_parity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
             "-f(u)",
         )]
     } else {
-        vec![formula_substep(
+        vec![schema_substep(
             "Usar que una función par cumple f(-u) = f(u)",
             "f(-u)",
             "f(u)",
@@ -8183,7 +8183,7 @@ fn generate_hyperbolic_quotient_substeps(_ctx: &Context, step: &Step) -> Vec<Sub
             )
         };
 
-    vec![formula_substep(
+    vec![schema_substep(
         title,
         before_display,
         after_display,
@@ -8255,14 +8255,14 @@ fn generate_consecutive_factorial_ratio_substeps(ctx: &Context, step: &Step) -> 
     let after = step.after_local().unwrap_or(step.after);
     let Some((expanded, gap)) = build_consecutive_factorial_ratio_expansion(ctx, before) else {
         return vec![
-            formula_substep(
+            schema_substep(
                 "Escribir el factorial superior como el siguiente número por el factorial anterior",
                 "(k + 1)! / k!",
                 "((k + 1) · k!) / k!",
                 "\\frac{(k+1)!}{k!}",
                 "\\frac{(k+1)\\cdot k!}{k!}",
             ),
-            formula_substep(
+            schema_substep(
                 "Cancelar el factorial común",
                 "((k + 1) · k!) / k!",
                 "k + 1",
@@ -8672,6 +8672,21 @@ fn render_unit_fraction_latex(denominator: &str) -> String {
     render_fraction_latex("1", denominator)
 }
 
+/// Emit a sub-step whose two sides are a SCHEMA: an identity written with
+/// metavariables (`sin²(u)·cos²(u) = sin²(2u)/4`), not the expression in front
+/// of the reader.
+///
+/// C1.8: the pair is DECLARED as `SchematicIdentity` and adjudicated by the
+/// census in `substep::schema`, which proves the 133 provable templates once in
+/// a test instead of re-deciding each of them on every emission. Publishing is
+/// unaffected — the classified exceptions are declared gaps, and each has its
+/// own owner — but an emitter can no longer state a schema that nothing has
+/// ever looked at.
+/// Emit a sub-step from four INDEPENDENT rendered strings. This is the
+/// instance emitter: its sides are built per-emission from the reader's
+/// expression, so no static census can adjudicate them. The template twin is
+/// [`schema_substep`], whose `&'static str` sides are what makes the schema
+/// census possible — the COMPILER partitions the two families, not a heuristic.
 fn formula_substep(
     description: impl Into<String>,
     before_expr: &str,
@@ -8682,6 +8697,30 @@ fn formula_substep(
     SubStep::new(description, before_expr, after_expr)
         .with_before_latex(before_latex)
         .with_after_latex(after_latex)
+}
+
+/// Emit a sub-step whose two sides are a SCHEMA: an identity written with
+/// metavariables (`sin²(u)·cos²(u) = sin²(2u)/4`), not the reader's
+/// expression.
+///
+/// C1.8 (`SchematicIdentity`): the sides are `&'static str` ON PURPOSE. A
+/// template is a constant of the source; requiring `'static` makes the type
+/// system separate template sites from instance sites — the earlier textual
+/// detector confused a user symbol named `a` with a metavariable, and no
+/// string heuristic can tell them apart. The pair is declared as a claim and
+/// adjudicated by the census in `substep::schema`, which proves every provable
+/// template ONCE in a test instead of once per emission.
+fn schema_substep(
+    description: impl Into<String>,
+    lhs: &'static str,
+    rhs: &'static str,
+    lhs_latex: &'static str,
+    rhs_latex: &'static str,
+) -> SubStep {
+    let (substep, _verdict) = SubStep::checked_schema(lhs, rhs, description);
+    substep
+        .with_before_latex(lhs_latex)
+        .with_after_latex(rhs_latex)
 }
 
 fn concrete_expr_substep(
