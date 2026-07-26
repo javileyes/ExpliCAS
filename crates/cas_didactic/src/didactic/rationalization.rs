@@ -116,6 +116,17 @@ fn rationalization_latex(
     latex::rationalization_latex(ctx, hints, id)
 }
 
+/// Plain twin of [`rationalization_latex`], same fn-pointer signature so the
+/// conjugate extraction machinery can run once per surface. The `hints` only
+/// steer LaTeX root notation; plain display has one spelling of a root.
+fn rationalization_display(
+    ctx: &Context,
+    _hints: &cas_formatter::DisplayContext,
+    id: ExprId,
+) -> String {
+    format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+}
+
 fn collect_add_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     add_terms::collect_add_terms(ctx, expr)
 }

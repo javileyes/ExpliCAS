@@ -20,6 +20,7 @@ pub(crate) enum NestedFractionPattern {
 }
 
 pub(crate) use self::classify::classify_nested_fraction;
+pub(crate) use self::combined::extract_combined_fraction_plain;
 pub(crate) use self::combined::extract_combined_fraction_str;
 pub(crate) use self::search::find_div_in_expr;
 

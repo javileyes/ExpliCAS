@@ -13,6 +13,7 @@ use cas_math::expr_extract::{
 };
 use cas_math::expr_nary::build_balanced_mul;
 use cas_math::expr_nary::{self, AddView, MulView, Sign};
+use cas_math::limit_types::Approach;
 use cas_math::poly_compare::poly_eq;
 use cas_math::polynomial::Polynomial;
 use cas_math::summation_support::{
@@ -37,6 +38,13 @@ use std::collections::BTreeMap;
 /// decreases each level, so it always terminates first).
 const MAX_REPEATED_BY_PARTS_NARRATION_LEVELS: usize = 8;
 
+/// Defensive cap for narrators that re-enter the dispatch chain on a synthetic
+/// child `Step` (linearity over a sum, component-wise over a vector).
+/// Termination is already STRUCTURAL — the terms of an `AddView` are never
+/// themselves an `Add`, the rows of a `Matrix` are never the matrix — so this is
+/// a backstop, not the argument.
+const MAX_NARRATION_RECURSION_DEPTH: usize = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BinomialSquareKind {
     Sum,
@@ -47,6 +55,14 @@ type SignedTerms = Vec<(ExprId, Sign)>;
 type ConcreteLogExpansion = (ExprId, ExprId, SignedTerms);
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    generate_focused_rule_substeps_at_depth(ctx, step, 0)
+}
+
+fn generate_focused_rule_substeps_at_depth(
+    ctx: &Context,
+    step: &Step,
+    depth: usize,
+) -> Vec<SubStep> {
     let differentiation_substeps = generate_symbolic_differentiation_substeps(ctx, step);
     if !differentiation_substeps.is_empty() {
         return differentiation_substeps;
@@ -101,6 +117,25 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         generate_basic_polynomial_integration_substeps(ctx, step);
     if !basic_polynomial_integration_substeps.is_empty() {
         return basic_polynomial_integration_substeps;
+    }
+
+    // Before by-parts: an integrand that is a SUM is linearity, and letting
+    // by-parts see it first is what produced the measured false labels
+    // (`∫(ln x + x)` and `∫(x·e^x + sin 2x)` were titled "use integration by
+    // parts" over the whole sum).
+    let root_sum_substeps = generate_root_sum_integration_substeps(ctx, step);
+    if !root_sum_substeps.is_empty() {
+        return root_sum_substeps;
+    }
+
+    let vector_component_substeps = generate_vector_component_calculus_substeps(ctx, step, depth);
+    if !vector_component_substeps.is_empty() {
+        return vector_component_substeps;
+    }
+
+    let additive_integration_substeps = generate_additive_integration_substeps(ctx, step, depth);
+    if !additive_integration_substeps.is_empty() {
+        return additive_integration_substeps;
     }
 
     let integration_by_parts_substeps = generate_integration_by_parts_substeps(ctx, step);
@@ -168,7 +203,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return exponential_div_substeps;
     }
 
-    let definite_integral_substeps = generate_definite_integral_substeps(ctx, step);
+    let definite_integral_substeps = generate_definite_integral_substeps(ctx, step, depth);
     if !definite_integral_substeps.is_empty() {
         return definite_integral_substeps;
     }
@@ -507,14 +542,14 @@ fn phase_shift_formula_substep(ctx: &Context, before: ExprId, after: ExprId) -> 
     let after_is_add_sub = matches!(ctx.get(after), Expr::Add(_, _) | Expr::Sub(_, _));
 
     match (before_is_add_sub, after_is_add_sub) {
-        (true, false) => Some(formula_substep(
+        (true, false) => Some(schema_substep(
             "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)",
             "a·sin(u) + b·cos(u)",
             "R·sin(u + φ)",
             "a\\cdot\\sin(u)+b\\cdot\\cos(u)",
             "R\\cdot\\sin(u+\\varphi)",
         )),
-        (false, true) => Some(formula_substep(
+        (false, true) => Some(schema_substep(
             "Expandir R·sin(u + φ)",
             "R·sin(u + φ)",
             "a·sin(u) + b·cos(u)",
@@ -555,14 +590,14 @@ fn phase_shift_shifted_trig_formula_substep(
     let after_trig = single_sin_cos_function_name(ctx, after)?;
 
     match (before_trig, after_trig) {
-        ("sin", "cos") => Some(formula_substep(
+        ("sin", "cos") => Some(schema_substep(
             "Usar sin(u + φ) = cos(u - (π/2 - φ))",
             "sin(u + φ)",
             "cos(u - (π/2 - φ))",
             "\\sin(u+\\varphi)",
             "\\cos(u-(\\pi/2-\\varphi))",
         )),
-        ("cos", "sin") => Some(formula_substep(
+        ("cos", "sin") => Some(schema_substep(
             "Usar cos(u - φ) = sin(u + (π/2 - φ))",
             "cos(u - φ)",
             "sin(u + (π/2 - φ))",
@@ -1299,6 +1334,16 @@ fn build_two_fraction_common_denominator_intermediate(
     let (right_num, right_den) = as_div(ctx, right)?;
 
     let common_den = ctx.add(Expr::Mul(left_den, right_den));
+    // The `Mul(1, den)` lifts are DELIBERATE and load-bearing: an opaque Mul
+    // term blocks both node-level canonicalization AND the display layer's
+    // term reordering, which is what keeps this didactic intermediate shaped
+    // like the story it narrates (`x + 1 + x - 1` over the common
+    // denominator) instead of folding into the step's own after and gating
+    // the bridge sub-step off as a no-op. A cleaner-looking unit-free lift
+    // was tried and measured: it DELETED the narration of every
+    // unit-numerator Add pair in the corpus. The `2x` lie this shape once
+    // caused lived in the renderers — the unit-elision-vs-parenthesization
+    // mismatch — and is fixed there, where the class belongs.
     let lifted_left = ctx.add(Expr::Mul(left_num, right_den));
     let lifted_right = ctx.add(Expr::Mul(right_num, left_den));
     let numerator = if is_subtraction {
@@ -2440,7 +2485,7 @@ fn exponential_sum_diff_identity_substep(
         };
 
     if reverse {
-        Some(formula_substep(
+        Some(schema_substep(
             expand_title,
             exp_formula,
             product_formula,
@@ -2448,7 +2493,7 @@ fn exponential_sum_diff_identity_substep(
             product_latex,
         ))
     } else {
-        Some(formula_substep(
+        Some(schema_substep(
             contract_title,
             product_formula,
             exp_formula,
@@ -2484,7 +2529,7 @@ fn exponential_reciprocal_identity_substep(
     }
 
     if reverse {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar e^(-A) = 1/e^A",
             "e^(-A)",
             "1/e^A",
@@ -2492,7 +2537,7 @@ fn exponential_reciprocal_identity_substep(
             "\\frac{1}{{e}^{A}}",
         ))
     } else {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar 1/e^A = e^(-A)",
             "1/e^A",
             "e^(-A)",
@@ -2528,7 +2573,7 @@ fn exponential_power_identity_substep(
     }
 
     if reverse {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar e^(n·A) = (e^A)^n",
             "e^(n·A)",
             "(e^A)^n",
@@ -2536,7 +2581,7 @@ fn exponential_power_identity_substep(
             "({e}^{A})^{n}",
         ))
     } else {
-        Some(formula_substep(
+        Some(schema_substep(
             "Usar (e^A)^n = e^(n·A)",
             "(e^A)^n",
             "e^(n·A)",
@@ -3348,6 +3393,25 @@ fn sign_sort_key(sign: Sign) -> u8 {
     }
 }
 
+/// `whole ≡ factor · rest`, decided EXACTLY (build the difference and simplify
+/// it to zero), not assumed.
+///
+/// The reverse-nested-fraction narrator was written for one direction —
+/// `(c+d)/(a(c+d)+b) → 1/(a + b/(c+d))`, where `a(c+d)+b = (c+d)·(a + b/(c+d))`
+/// really holds — but it fired whenever the pattern MATCHED, including when
+/// `before_den` and `after_den` are the same expression rewritten. There it
+/// published `A = (1-x)²·A`, false unless `(1-x)² = 1`
+/// (`diff(arctan((1+x)/(1-x)), x)`, residual 86.70 / 35.17 / -6.83 measured at
+/// three points). Declining is the honest outcome when the identity does not
+/// hold.
+fn factors_exactly(ctx: &Context, whole: ExprId, factor: ExprId, rest: ExprId) -> bool {
+    let mut scratch = ctx.clone();
+    let product = scratch.add(Expr::Mul(factor, rest));
+    let difference = scratch.add(Expr::Sub(whole, product));
+    let simplified = simplify_expr_in_context(&mut scratch, difference);
+    is_zero(&scratch, simplified)
+}
+
 fn generate_reverse_nested_fraction_substeps(
     ctx: &Context,
     before: ExprId,
@@ -3365,6 +3429,9 @@ fn generate_reverse_nested_fraction_substeps(
                 return None;
             };
             let (_, common_den) = split_add_with_single_fraction(ctx, *after_den)?;
+            if !factors_exactly(ctx, *before_den, common_den, *after_den) {
+                return None;
+            }
             let common_den_display = human_expr(ctx, common_den);
             let common_den_grouped_display = grouped_substitution_display(ctx, common_den);
             let common_den_grouped_latex = grouped_substitution_latex(ctx, common_den);
@@ -3390,6 +3457,9 @@ fn generate_reverse_nested_fraction_substeps(
                 return None;
             };
             let (_, common_den) = split_add_with_single_fraction(ctx, *after_num)?;
+            if !factors_exactly(ctx, *before_num, common_den, *after_num) {
+                return None;
+            }
             let common_den_display = human_expr(ctx, common_den);
             let common_den_grouped_display = grouped_substitution_display(ctx, common_den);
             let common_den_grouped_latex = grouped_substitution_latex(ctx, common_den);
@@ -5509,7 +5579,7 @@ fn generate_log_change_of_base_chain_substeps(
 ) -> Option<Vec<SubStep>> {
     if let Some(chain_len) = log_change_of_base_chain_contraction_len(ctx, before, after) {
         if chain_len == 2 {
-            return Some(vec![formula_substep(
+            return Some(vec![schema_substep(
                 "Usar log_b(a) · log_a(c) = log_b(c)",
                 "log_b(a) · log_a(c)",
                 "log_b(c)",
@@ -5518,7 +5588,7 @@ fn generate_log_change_of_base_chain_substeps(
             )]);
         }
 
-        return Some(vec![formula_substep(
+        return Some(vec![schema_substep(
             "Encadenar los cambios de base intermedios",
             "log_{u0}(u1) · log_{u1}(u2) · ... · log_{u_{n-1}}(u_n)",
             "log_{u0}(u_n)",
@@ -5529,7 +5599,7 @@ fn generate_log_change_of_base_chain_substeps(
 
     if let Some(chain_len) = log_change_of_base_chain_expansion_len(ctx, before, after) {
         if chain_len == 2 {
-            return Some(vec![formula_substep(
+            return Some(vec![schema_substep(
                 "Usar log_b(c) = log_a(c) · log_b(a)",
                 "log_b(c)",
                 "log_a(c) · log_b(a)",
@@ -5538,7 +5608,7 @@ fn generate_log_change_of_base_chain_substeps(
             )]);
         }
 
-        return Some(vec![formula_substep(
+        return Some(vec![schema_substep(
             "Desplegar un logaritmo en una cadena de cambios de base",
             "log_{u0}(u_n)",
             "log_{u0}(u1) · log_{u1}(u2) · ... · log_{u_{n-1}}(u_n)",
@@ -5941,7 +6011,7 @@ fn generate_trig_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Vec<SubS
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         trig_angle_sum_diff_formula(ctx, before)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -5957,7 +6027,7 @@ fn generate_trig_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Vec<SubS
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         trig_angle_sum_diff_formula(ctx, after)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6117,7 +6187,7 @@ fn generate_hyperbolic_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_angle_sum_diff_formula(ctx, before)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -6133,7 +6203,7 @@ fn generate_hyperbolic_angle_sum_diff_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_angle_sum_diff_formula(ctx, after)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6352,7 +6422,7 @@ fn generate_product_to_sum_substeps(step: &Step) -> Vec<SubStep> {
         return Vec::new();
     };
 
-    vec![formula_substep(
+    vec![schema_substep(
         title,
         product_plain,
         sum_plain,
@@ -6410,7 +6480,7 @@ fn generate_hyperbolic_product_to_sum_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_product_to_sum_formula(ctx, before)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -6422,7 +6492,7 @@ fn generate_hyperbolic_product_to_sum_substeps(ctx: &Context, step: &Step) -> Ve
     if let Some((title, compact_plain, expanded_plain, compact_latex, expanded_latex)) =
         hyperbolic_product_to_sum_formula(ctx, after)
     {
-        return vec![formula_substep(
+        return vec![schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6834,7 +6904,7 @@ fn build_power_reduction_formula_substep(
         power_reduction_formula_template(kind);
     let title = format!("{title}, con u = {arg_plain}");
 
-    formula_substep(title, before_plain, after_plain, before_latex, after_latex)
+    schema_substep(title, before_plain, after_plain, before_latex, after_latex)
 }
 
 fn power_reduction_formula_template(
@@ -6878,7 +6948,7 @@ fn generate_square_double_angle_contraction_substeps(ctx: &Context, step: &Step)
     };
 
     let arg_plain = human_formula_title_plain(&display_expr(ctx, arg));
-    vec![formula_substep(
+    vec![schema_substep(
         format!("Usar sin²(u)·cos²(u) = sin²(2u) / 4, con u = {arg_plain}"),
         "sin(u)^2 · cos(u)^2",
         "sin(2u)^2 / 4",
@@ -6960,7 +7030,7 @@ fn build_trig_triple_angle_formula_substep(
     );
 
     if reverse {
-        formula_substep(
+        schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -6968,7 +7038,7 @@ fn build_trig_triple_angle_formula_substep(
             compact_latex,
         )
     } else {
-        formula_substep(
+        schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -7103,7 +7173,7 @@ fn build_trig_quadruple_angle_formula_substep(
     );
 
     if reverse {
-        formula_substep(
+        schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -7111,7 +7181,7 @@ fn build_trig_quadruple_angle_formula_substep(
             compact_latex,
         )
     } else {
-        formula_substep(
+        schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -7215,7 +7285,7 @@ fn build_trig_quintuple_angle_formula_substep(
     );
 
     if reverse {
-        formula_substep(
+        schema_substep(
             title,
             expanded_plain,
             compact_plain,
@@ -7223,7 +7293,7 @@ fn build_trig_quintuple_angle_formula_substep(
             compact_latex,
         )
     } else {
-        formula_substep(
+        schema_substep(
             title,
             compact_plain,
             expanded_plain,
@@ -7397,25 +7467,24 @@ fn generate_half_angle_tangent_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
         let after = step.after_local().unwrap_or(step.after);
         let variant = half_angle_tangent_variant(ctx, before)
             .or_else(|| half_angle_tangent_variant(ctx, after));
+        // C1.8: the audit's second named lie lived in the `None` branch —
+        // «Usar tan(u) = …» from the arm that recognized NO variant. Every
+        // branch now publishes only if the pair instantiates the template it
+        // cites, σ shared across both sides.
         return match variant {
-            Some(HalfAngleTangentVariant::OneMinusCosOverSin) => vec![concrete_expr_substep(
-                ctx,
-                "Usar (1 - cos(2u)) / sin(2u) = tan(u)",
-                before,
-                after,
-            )],
-            Some(HalfAngleTangentVariant::SinOverOnePlusCos) => vec![concrete_expr_substep(
-                ctx,
-                "Usar sin(2u) / (1 + cos(2u)) = tan(u)",
-                before,
-                after,
-            )],
-            None => vec![concrete_expr_substep(
-                ctx,
-                "Usar tan(u) = (1 - cos(2u)) / sin(2u)",
-                before,
-                after,
-            )],
+            Some(HalfAngleTangentVariant::OneMinusCosOverSin) => {
+                named_identity_substep(ctx, "(1 - cos(2u)) / sin(2u)", "tan(u)", before, after)
+                    .into_iter()
+                    .collect()
+            }
+            Some(HalfAngleTangentVariant::SinOverOnePlusCos) => {
+                named_identity_substep(ctx, "sin(2u) / (1 + cos(2u))", "tan(u)", before, after)
+                    .into_iter()
+                    .collect()
+            }
+            None => named_identity_substep(ctx, "tan(u)", "(1 - cos(2u)) / sin(2u)", before, after)
+                .into_iter()
+                .collect(),
         };
     }
     Vec::new()
@@ -7660,6 +7729,40 @@ fn temp_ctx_substep(
     SubStep::new(title, human_expr(ctx, before), human_expr(ctx, after))
         .with_before_latex(latex_expr(ctx, before))
         .with_after_latex(latex_expr(ctx, after))
+}
+
+/// Node twin of [`temp_ctx_substep`] for the sub-steps that APPLY a function to
+/// their left side instead of rewriting it: the missing leg of a reference
+/// triangle (`1 − x² ⇒ sqrt(1 − x²)`), the change-of-base numerator
+/// (`x ⇒ ln(x)`).
+///
+/// C1.8: these pairs are FALSE as equalities. Declaring `Applied{op}` is what
+/// makes them legible as intentional — to a reader, to the chain invariant that
+/// C1.9 will impose, and to any future sweep that would otherwise read a
+/// non-equality as a broken link and delete correct narration. The check itself
+/// is structural and free: the emitter that built the after by applying `op`
+/// proves its own claim through hash-consing, so this migration buys the
+/// DECLARATION, not a bug hunt.
+fn applied_substep(
+    title: impl Into<String>,
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+    op: BuiltinFn,
+) -> Option<SubStep> {
+    Some(
+        SubStep::checked_new(
+            ctx,
+            crate::didactic::substep::Claim::Applied { op },
+            before,
+            after,
+            title,
+            human_expr(ctx, before),
+            human_expr(ctx, after),
+        )?
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(latex_expr(ctx, after)),
+    )
 }
 
 fn mixed_ctx_substep(
@@ -7944,7 +8047,7 @@ fn generate_trig_parity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     .unwrap_or_else(|| matches!(ctx.get(after), Expr::Neg(_)));
 
     if is_odd {
-        vec![formula_substep(
+        vec![schema_substep(
             "Usar que una función impar cumple f(-u) = -f(u)",
             "f(-u)",
             "-f(u)",
@@ -7952,7 +8055,7 @@ fn generate_trig_parity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
             "-f(u)",
         )]
     } else {
-        vec![formula_substep(
+        vec![schema_substep(
             "Usar que una función par cumple f(-u) = f(u)",
             "f(-u)",
             "f(u)",
@@ -8023,12 +8126,12 @@ fn generate_reciprocal_trig_identity_substeps(ctx: &Context, step: &Step) -> Vec
 fn generate_reciprocal_product_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    vec![concrete_expr_substep(
-        ctx,
-        "Usar tan(u) · cot(u) = 1",
-        before,
-        after,
-    )]
+    // C1.8: the audit's first named lie — this title used to publish over ANY
+    // pair. Now the pair must be tan(σu)·cot(σu) ⇒ 1 for some σ, or nothing
+    // is published.
+    named_identity_substep(ctx, "tan(u) · cot(u)", "1", before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_reciprocal_pythagorean_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -8089,7 +8192,7 @@ fn generate_hyperbolic_quotient_substeps(_ctx: &Context, step: &Step) -> Vec<Sub
             )
         };
 
-    vec![formula_substep(
+    vec![schema_substep(
         title,
         before_display,
         after_display,
@@ -8161,14 +8264,14 @@ fn generate_consecutive_factorial_ratio_substeps(ctx: &Context, step: &Step) -> 
     let after = step.after_local().unwrap_or(step.after);
     let Some((expanded, gap)) = build_consecutive_factorial_ratio_expansion(ctx, before) else {
         return vec![
-            formula_substep(
+            schema_substep(
                 "Escribir el factorial superior como el siguiente número por el factorial anterior",
                 "(k + 1)! / k!",
                 "((k + 1) · k!) / k!",
                 "\\frac{(k+1)!}{k!}",
                 "\\frac{(k+1)\\cdot k!}{k!}",
             ),
-            formula_substep(
+            schema_substep(
                 "Cancelar el factorial común",
                 "((k + 1) · k!) / k!",
                 "k + 1",
@@ -8578,6 +8681,21 @@ fn render_unit_fraction_latex(denominator: &str) -> String {
     render_fraction_latex("1", denominator)
 }
 
+/// Emit a sub-step whose two sides are a SCHEMA: an identity written with
+/// metavariables (`sin²(u)·cos²(u) = sin²(2u)/4`), not the expression in front
+/// of the reader.
+///
+/// C1.8: the pair is DECLARED as `SchematicIdentity` and adjudicated by the
+/// census in `substep::schema`, which proves the 133 provable templates once in
+/// a test instead of re-deciding each of them on every emission. Publishing is
+/// unaffected — the classified exceptions are declared gaps, and each has its
+/// own owner — but an emitter can no longer state a schema that nothing has
+/// ever looked at.
+/// Emit a sub-step from four INDEPENDENT rendered strings. This is the
+/// instance emitter: its sides are built per-emission from the reader's
+/// expression, so no static census can adjudicate them. The template twin is
+/// [`schema_substep`], whose `&'static str` sides are what makes the schema
+/// census possible — the COMPILER partitions the two families, not a heuristic.
 fn formula_substep(
     description: impl Into<String>,
     before_expr: &str,
@@ -8588,6 +8706,70 @@ fn formula_substep(
     SubStep::new(description, before_expr, after_expr)
         .with_before_latex(before_latex)
         .with_after_latex(after_latex)
+}
+
+/// Emit a sub-step whose two sides are a SCHEMA: an identity written with
+/// metavariables (`sin²(u)·cos²(u) = sin²(2u)/4`), not the reader's
+/// expression.
+///
+/// C1.8 (`SchematicIdentity`): the sides are `&'static str` ON PURPOSE. A
+/// template is a constant of the source; requiring `'static` makes the type
+/// system separate template sites from instance sites — the earlier textual
+/// detector confused a user symbol named `a` with a metavariable, and no
+/// string heuristic can tell them apart. The pair is declared as a claim and
+/// adjudicated by the census in `substep::schema`, which proves every provable
+/// template ONCE in a test instead of once per emission.
+/// Emit a «Usar LHS = RHS» sub-step over a CONCRETE pair, publishing ONLY if
+/// the pair is an instance of the template (C1.8, instance↔template matcher).
+///
+/// This is the constructor that kills the audit's named lies by construction:
+/// «Usar tan(u)·cot(u) = 1» emitted unconditionally, and the half-angle branch
+/// that recognized no variant yet still cited the identity. The template's own
+/// truth is the census's job; whether it APPLIES to this pair is decided here,
+/// and a pair that instantiates nothing publishes nothing.
+///
+/// Migration policy: emitter by emitter, each with a decline test — the
+/// matcher is incomplete by design, and a blanket sweep would delete correct
+/// narration wherever a true application outruns the matcher's coverage
+/// (measured precedent: the assume-equality prototype deleted 51 legitimate
+/// sub-steps).
+fn named_identity_substep(
+    ctx: &Context,
+    lhs: &'static str,
+    rhs: &'static str,
+    before: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    // The template itself must be adjudicated by the census (debug-asserts on
+    // a pair nothing has measured).
+    let _ = crate::didactic::substep::claim::verify_schematic_identity(lhs, rhs);
+    let template = crate::didactic::substep::matching::parse_template(lhs, rhs)?;
+    // «Usar L = R» names an IDENTITY, which has no direction: the pair may
+    // apply it left-to-right (contraction) or right-to-left (expansion), and
+    // the half-angle emitter genuinely produces both. Either orientation is a
+    // valid application; neither is a licence for a non-instance.
+    crate::didactic::substep::matching::match_instance(&template, ctx, before, after).or_else(
+        || crate::didactic::substep::matching::match_instance(&template, ctx, after, before),
+    )?;
+    Some(concrete_expr_substep(
+        ctx,
+        format!("Usar {lhs} = {rhs}"),
+        before,
+        after,
+    ))
+}
+
+fn schema_substep(
+    description: impl Into<String>,
+    lhs: &'static str,
+    rhs: &'static str,
+    lhs_latex: &'static str,
+    rhs_latex: &'static str,
+) -> SubStep {
+    let (substep, _verdict) = SubStep::checked_schema(lhs, rhs, description);
+    substep
+        .with_before_latex(lhs_latex)
+        .with_after_latex(rhs_latex)
 }
 
 fn concrete_expr_substep(
@@ -10962,15 +11144,16 @@ fn generate_arcsin_arccos_complement_composition_substeps(
     .with_before_latex(side_latex)
     .with_after_latex(latex_expr(&work, after));
 
-    vec![
-        temp_ctx_substep(
-            format!("Calcular el cateto restante del triángulo asociado a {inverse_name}"),
-            &work,
-            radicand,
-            missing_side,
-        ),
-        projection_substep,
-    ]
+    applied_substep(
+        format!("Calcular el cateto restante del triángulo asociado a {inverse_name}"),
+        &work,
+        radicand,
+        missing_side,
+        BuiltinFn::Sqrt,
+    )
+    .into_iter()
+    .chain(std::iter::once(projection_substep))
+    .collect()
 }
 
 fn generate_arctan_right_triangle_composition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -11040,15 +11223,16 @@ fn generate_arctan_right_triangle_composition_substeps(ctx: &Context, step: &Ste
     .with_before_latex(side_latex)
     .with_after_latex(latex_expr(&work, after));
 
-    vec![
-        temp_ctx_substep(
-            "Calcular la hipotenusa del triángulo asociado a arctan(x)",
-            &work,
-            radicand,
-            hypotenuse,
-        ),
-        projection_substep,
-    ]
+    applied_substep(
+        "Calcular la hipotenusa del triángulo asociado a arctan(x)",
+        &work,
+        radicand,
+        hypotenuse,
+        BuiltinFn::Sqrt,
+    )
+    .into_iter()
+    .chain(std::iter::once(projection_substep))
+    .collect()
 }
 
 fn generate_change_of_base_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -11062,15 +11246,25 @@ fn generate_change_of_base_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> 
         let mut work = ctx.clone();
         let ln_argument = work.call_builtin(BuiltinFn::Ln, vec![argument]);
         let ln_base = work.call_builtin(BuiltinFn::Ln, vec![base]);
-        return vec![
-            temp_ctx_substep(
+        return [
+            applied_substep(
                 "Poner el argumento en el numerador",
                 &work,
                 argument,
                 ln_argument,
+                BuiltinFn::Ln,
             ),
-            temp_ctx_substep("Poner la base en el denominador", &work, base, ln_base),
-        ];
+            applied_substep(
+                "Poner la base en el denominador",
+                &work,
+                base,
+                ln_base,
+                BuiltinFn::Ln,
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
     }
 
     if let Some((argument, base, numerator, denominator)) =
@@ -11959,29 +12153,105 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
     if row_sources.len() != rows {
         return Vec::new();
     }
+    // The cells arrive raw from the engine (`x^(2 - 1 - 1)`), and a substep whose
+    // `before` is folded while its `after` is not reads as two different states.
+    // Fold both with the SAME policy pair.
+    let mut cell_ctx = ctx.clone();
+    let folded_cells: Vec<ExprId> = cells
+        .iter()
+        .map(|&cell| simplify_expr_in_context(&mut cell_ctx, cell))
+        .collect();
     (0..rows)
-        .map(|i| {
+        .filter_map(|i| {
             let row_display = (0..cols)
-                .map(|j| display_expr(ctx, cells[i * cols + j]))
+                .map(|j| display_expr(&cell_ctx, folded_cells[i * cols + j]))
                 .collect::<Vec<_>>()
                 .join(", ");
             if is_jacobian {
-                SubStep::keyed(
+                Some(SubStep::keyed(
                     "jacobian.row",
                     vec![(i + 1).to_string()],
                     row_sources[i].clone(),
                     format!("[{row_display}]"),
-                )
+                ))
             } else {
-                SubStep::keyed(
-                    "hessian.row",
-                    vec![(i + 1).to_string(), row_sources[i].clone()],
-                    display_expr(ctx, target),
-                    format!("[{row_display}]"),
-                )
+                // Row i of the Hessian differentiates ∂f/∂x_i, NOT f — which is
+                // what the title already says. Using `target` made the line a
+                // false statement (from `y·x²` "comes" `[2y, 2x]`) and hid the
+                // one intermediate that makes the jump followable: the gradient
+                // component. The jacobian arm next door already does this right.
+                let first_derivative = hessian_row_first_derivative(ctx, target, &var_names[i]);
+                let (before_display, before_latex) = match &first_derivative {
+                    Some((scratch, dfdx)) => (
+                        display_expr(scratch, *dfdx),
+                        Some(latex_expr(scratch, *dfdx)),
+                    ),
+                    None => (display_expr(ctx, target), None),
+                };
+                // C1.8: the row asserts that its cells are the derivatives of
+                // the FIRST derivative. Verifiable only when that first
+                // derivative could be rebuilt; otherwise it is a Statement, and
+                // saying so is better than asserting a relation we cannot check.
+                let claim = match (&first_derivative, cols) {
+                    (Some(_), 1) => crate::didactic::substep::Claim::Derivative {
+                        var: var_names[0].clone(),
+                    },
+                    _ => crate::didactic::substep::Claim::Statement,
+                };
+                let sub = match first_derivative.as_ref() {
+                    Some((scratch, dfdx)) => SubStep::checked(
+                        scratch,
+                        claim,
+                        *dfdx,
+                        cells[i * cols],
+                        "hessian.row",
+                        vec![(i + 1).to_string(), row_sources[i].clone()],
+                        before_display,
+                        format!("[{row_display}]"),
+                    ),
+                    None => Some(SubStep::keyed(
+                        "hessian.row",
+                        vec![(i + 1).to_string(), row_sources[i].clone()],
+                        before_display,
+                        format!("[{row_display}]"),
+                    )),
+                };
+                let sub = sub?;
+                Some(match before_latex {
+                    Some(latex) => sub.with_before_latex(latex).with_after_latex(format!(
+                        "[{}]",
+                        (0..cols)
+                            .map(|j| latex_expr(&cell_ctx, folded_cells[i * cols + j]))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )),
+                    None => sub,
+                })
             }
         })
         .collect()
+}
+
+/// `∂f/∂x_i`, simplified, on a scratch context — the state row `i` of the
+/// Hessian actually starts from. Returns `None` (and the caller falls back to
+/// `f`) when the derivative cannot be rebuilt, rather than inventing one.
+fn hessian_row_first_derivative(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(Context, ExprId)> {
+    let mut scratch = ctx.clone();
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        target,
+        var_name,
+    )?;
+    // The raw derivative carries the machinery's exponent arithmetic
+    // (`x^(2 - 1)`); simplifying is what gives the state the student would
+    // write. Same treatment as the cells, so the two sides of the substep are
+    // in the same form.
+    let folded = simplify_expr_in_context(&mut scratch, derivative);
+    Some((scratch, folded))
 }
 
 /// Formula-level narration for the scalar-output verbs `divergence` and
@@ -12233,12 +12503,20 @@ fn generate_vector_gradient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 return None;
             };
             let var_name = ctx.sym_name(*sym).to_string();
-            Some(SubStep::keyed(
+            // C1.8: the component ASSERTS `c == ∂field/∂var`. Declared and
+            // checked by differentiating the field.
+            SubStep::checked(
+                ctx,
+                crate::didactic::substep::Claim::Derivative {
+                    var: var_name.clone(),
+                },
+                field,
+                c,
                 "gradient.component",
                 vec![var_name],
                 field_display.clone(),
                 display_expr(ctx, c),
-            ))
+            )
         })
         .collect()
 }
@@ -12855,6 +13133,399 @@ fn differentiation_component_derivative_substep(
     )
 }
 
+/// A vector `integrate`/`diff` narrated component by component.
+///
+/// The engine already works component-wise and SAYS so in the rule description
+/// (`integrate_rule.rs:73`, "Integrar cada componente del vector"), but the
+/// didactic chain did not recognise the `Expr::Matrix` shape and returned empty,
+/// so `integrate([cos(x), e^x], x)` and `diff([x^2, sin(x)], x)` were mute while
+/// their scalar halves narrate fine.
+///
+/// Unlike the additive narrator, pairing IS positional here and that is sound:
+/// component `i` of the answer is by definition the image of component `i` of
+/// the input — a matrix has coordinates, a sum does not.
+/// The RootSum frontier narrated from the RESULT itself.
+///
+/// `integrate(1/(x^5-x-1), x)` answers with a correct
+/// `root_sum(R(t), t, t·ln(x − w(t)))` and published ZERO substeps: not even the
+/// name of the method, let alone why a closed form in radicals does not exist.
+/// These are precisely the rows the corpus advertises as the differentiator
+/// against sympy.
+///
+/// No engine signature is touched: the backend sums the RootSum node with the
+/// elementary part, so the resolvent `R` and the witness `w` travel INSIDE the
+/// answer and can be read back out of it.
+fn generate_root_sum_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+
+    // The RootSum may sit alone or added to an elementary part.
+    let (root_sum, elementary) = match ctx.get(result) {
+        Expr::Add(lhs, rhs) => {
+            if is_root_sum_call(ctx, *lhs) {
+                (*lhs, Some(*rhs))
+            } else if is_root_sum_call(ctx, *rhs) {
+                (*rhs, Some(*lhs))
+            } else {
+                return Vec::new();
+            }
+        }
+        _ if is_root_sum_call(ctx, result) => (result, None),
+        _ => return Vec::new(),
+    };
+    let Expr::Function(_, root_sum_args) = ctx.get(root_sum) else {
+        return Vec::new();
+    };
+    let (resolvent, summand) = (root_sum_args[0], root_sum_args[2]);
+
+    let mut substeps = Vec::new();
+    if let Some(elementary) = elementary {
+        substeps.push(
+            SubStep::keyed(
+                "rootsum.split_rational_part",
+                vec![],
+                display_expr(ctx, args[0]),
+                format!(
+                    "{} + {}",
+                    display_expr(ctx, elementary),
+                    display_expr(ctx, root_sum)
+                ),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(format!(
+                "{} + {}",
+                latex_expr(ctx, elementary),
+                latex_expr(ctx, root_sum)
+            )),
+        );
+    }
+    substeps.push(
+        SubStep::keyed(
+            "rootsum.no_radicals",
+            vec![],
+            display_expr(ctx, args[0]),
+            format!("R(t) = {}", display_expr(ctx, resolvent)),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(format!("R(t) = {}", latex_expr(ctx, resolvent))),
+    );
+    substeps.push(
+        SubStep::keyed(
+            "rootsum.read_the_sum",
+            vec![],
+            format!("R(t) = {}", display_expr(ctx, resolvent)),
+            display_expr(ctx, root_sum),
+        )
+        .with_before_latex(format!("R(t) = {}", latex_expr(ctx, resolvent)))
+        .with_after_latex(latex_expr(ctx, root_sum)),
+    );
+    let _ = summand;
+    substeps
+}
+
+fn is_root_sum_call(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Function(fn_id, args)
+        if ctx.sym_name(*fn_id) == "root_sum" && args.len() == 3)
+}
+
+fn generate_vector_component_calculus_substeps(
+    ctx: &Context,
+    step: &Step,
+    depth: usize,
+) -> Vec<SubStep> {
+    if depth >= MAX_NARRATION_RECURSION_DEPTH {
+        return Vec::new();
+    }
+    let (key, expects_var_arg) = match step.rule_name.as_str() {
+        "Symbolic Integration" => ("vector.integrate_each_component", true),
+        "Symbolic Differentiation" => ("vector.differentiate_each_component", true),
+        _ => return Vec::new(),
+    };
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    // 2 args = indefinite, 4 args = definite (`integrate(f, x, a, b)`); the
+    // component split is the same operation and the extra args ride along.
+    if !expects_var_arg || !matches!(args.len(), 2 | 4) {
+        return Vec::new();
+    }
+    let trailing: Vec<ExprId> = args[1..].to_vec();
+    let Expr::Matrix {
+        rows,
+        cols,
+        data: components,
+    } = ctx.get(args[0])
+    else {
+        return Vec::new();
+    };
+    let Expr::Matrix {
+        rows: after_rows,
+        cols: after_cols,
+        data: images,
+    } = ctx.get(after)
+    else {
+        return Vec::new();
+    };
+    if rows != after_rows || cols != after_cols || components.len() != images.len() {
+        return Vec::new();
+    }
+    let (components, images) = (components.clone(), images.clone());
+    let fn_id = *fn_id;
+
+    // The header must SHOW the split, not restate the parent: its `after` is the
+    // vector of PENDING per-component operations, the exact analogue of the
+    // linearity substep for a sum. A header whose sides equal the parent's is
+    // pruned by `prune_redundant_substeps` — correctly, and it would have left
+    // the reader with orphan component narrations and no mapping.
+    let mut scratch = ctx.clone();
+    let pending: Vec<ExprId> = components
+        .iter()
+        .map(|&component| {
+            let mut child_args = vec![component];
+            child_args.extend(trailing.iter().copied());
+            scratch.add(Expr::Function(fn_id, child_args))
+        })
+        .collect();
+    let pending_vector = scratch.add(Expr::Matrix {
+        rows: *rows,
+        cols: *cols,
+        data: pending,
+    });
+    let mut substeps = vec![SubStep::keyed(
+        key,
+        vec![],
+        display_expr(ctx, before),
+        display_expr(&scratch, pending_vector),
+    )
+    .with_before_latex(latex_expr(ctx, before))
+    .with_after_latex(latex_expr(&scratch, pending_vector))];
+
+    for (component, image) in components.iter().zip(images.iter()) {
+        let mut child_args = vec![*component];
+        child_args.extend(trailing.iter().copied());
+        let child_before = scratch.add(Expr::Function(fn_id, child_args));
+        let child_step = Step::new_compact(
+            step.description.as_str(),
+            step.rule_name.as_str(),
+            child_before,
+            *image,
+        );
+        substeps.extend(generate_focused_rule_substeps_at_depth(
+            &scratch,
+            &child_step,
+            depth + 1,
+        ));
+    }
+    substeps
+}
+
+/// Linearity over a SUM integrand, verified term by term, then recursion into
+/// each term's own narrator.
+///
+/// The audit's second witness: `integrate(2*x/sqrt(4+x^4)+1, x)` published one
+/// magic step while `integrate(2*x/sqrt(4+x^4), x)` — the same integrand without
+/// the `+1` — narrated fine. In the whole ~23-narrator chain there was ONE
+/// additive decomposition, and it sat behind a hard gate demanding the WHOLE
+/// integrand be a polynomial; every other matcher requires the entire integrand
+/// to match one shape, and the owner of `asinh` bails out the moment it sees an
+/// `Expr::Add`.
+///
+/// Two things this deliberately does NOT do:
+///  - it never pairs term `i` against summand `i` of `after`. That is RC-1 all
+///    over again: the witness records the integrand as `1 + 2x/√(x⁴+4)` and the
+///    result as `x + asinh(x²/2)`, so position carries no meaning.
+///  - it never publishes an unverified decomposition. Each term is integrated on
+///    its own, and the SUM of the pieces must differ from the engine's answer by
+///    a CONSTANT (the theorem is "antiderivatives differ by a constant", not
+///    "are equal"). Any term that fails to integrate declines the whole
+///    narration — all-or-nothing, the doctrine the matrix arm already applies.
+fn generate_additive_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+    depth: usize,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" || depth >= MAX_NARRATION_RECURSION_DEPTH {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+    let integrand = args[0];
+    let var_expr = args[1];
+
+    // A residual `integrate(...)` in the answer means the engine did not finish;
+    // narrating linearity over an unfinished result would invent a method.
+    let mut result = after;
+    loop {
+        let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, result);
+        if unwrapped == result {
+            break;
+        }
+        result = unwrapped;
+    }
+    if expr_contains_integrate_call(ctx, result) {
+        return Vec::new();
+    }
+
+    let terms = AddView::from_expr(ctx, integrand).terms;
+    if terms.len() < 2 {
+        return Vec::new();
+    }
+
+    // One scratch for the whole batch, not one per term.
+    let mut scratch = ctx.clone();
+    let mut antiderivatives: Vec<(ExprId, Sign)> = Vec::with_capacity(terms.len());
+    for (term, sign) in &terms {
+        let Some(anti) = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            &mut scratch,
+            *term,
+            &var_name,
+        ) else {
+            return Vec::new();
+        };
+        if expr_contains_integrate_call(&scratch, anti) {
+            return Vec::new();
+        }
+        antiderivatives.push((anti, *sign));
+    }
+
+    // Σ ±aᵢ − after must be a CONSTANT.
+    let mut total: Option<ExprId> = None;
+    for (anti, sign) in &antiderivatives {
+        total = Some(match (total, sign) {
+            (None, Sign::Pos) => *anti,
+            (None, Sign::Neg) => scratch.add(Expr::Neg(*anti)),
+            (Some(acc), Sign::Pos) => scratch.add(Expr::Add(acc, *anti)),
+            (Some(acc), Sign::Neg) => scratch.add(Expr::Sub(acc, *anti)),
+        });
+    }
+    let Some(total) = total else {
+        return Vec::new();
+    };
+    let difference = scratch.add(Expr::Sub(total, result));
+    let residual = simplify_expr_in_context(&mut scratch, difference);
+    if !matches!(scratch.get(residual), Expr::Number(_)) {
+        return Vec::new();
+    }
+
+    let linearity_display = integral_sum_display(ctx, terms.as_slice(), &var_name);
+    let linearity_latex = integral_sum_latex(ctx, terms.as_slice(), &var_name);
+    // Linearity is a STATEMENT (it reshapes the problem, it does not assert an
+    // identity between two expressions), so it declares that explicitly rather
+    // than pretending to be an equality the checker would reject.
+    let mut substeps = vec![SubStep::checked(
+        ctx,
+        crate::didactic::substep::Claim::Statement,
+        integrand,
+        integrand,
+        "integral.use_linearity",
+        vec![],
+        display_expr(ctx, integrand),
+        linearity_display.clone(),
+    )
+    .expect("Statement never refutes")
+    .with_before_latex(latex_expr(ctx, integrand))
+    .with_after_latex(linearity_latex.clone())];
+
+    // Each term now gets the narrator it would have got on its own. The child
+    // substeps are FLATTENED into the parent's list: `SubStep` does not nest,
+    // and flattening is what keeps the `flat_map(substeps)` pins working.
+    for ((term, _), (anti, _)) in terms.iter().zip(antiderivatives.iter()) {
+        let child_before = scratch.add(Expr::Function(*fn_id, vec![*term, var_expr]));
+        let child_step = Step::new_compact(
+            step.description.as_str(),
+            step.rule_name.as_str(),
+            child_before,
+            *anti,
+        );
+        substeps.extend(generate_focused_rule_substeps_at_depth(
+            &scratch,
+            &child_step,
+            depth + 1,
+        ));
+    }
+
+    // The closing line DOES assert something checkable: the assembled result is
+    // an antiderivative of the original integrand.
+    if let Some(step) = SubStep::checked(
+        ctx,
+        crate::didactic::substep::Claim::Antiderivative {
+            var: var_name.clone(),
+        },
+        integrand,
+        result,
+        "integral.integrate_each_term",
+        vec![],
+        linearity_display,
+        display_expr(ctx, result),
+    ) {
+        substeps.push(
+            step.with_before_latex(linearity_latex)
+                .with_after_latex(latex_expr(ctx, result)),
+        );
+    }
+    substeps
+}
+
+/// A table-rule integration sub-step ASSERTS that `after` is an antiderivative
+/// of the integrand — the single most repeated shape in this file. Declared and
+/// checked (C1.8): a refuted pair is not published, an undecided one is (a surd
+/// the simplifier cannot fold is not evidence of a lie).
+fn checked_antiderivative_substep(
+    ctx: &Context,
+    title: &str,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Option<SubStep> {
+    SubStep::checked_new(
+        ctx,
+        crate::didactic::substep::Claim::Antiderivative {
+            var: var_name.to_string(),
+        },
+        integrand,
+        after,
+        title,
+        display_expr(ctx, integrand),
+        display_expr(ctx, after),
+    )
+    .map(|step| {
+        step.with_before_latex(latex_expr(ctx, integrand))
+            .with_after_latex(latex_expr(ctx, after))
+    })
+}
+
 fn generate_basic_polynomial_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     if step.rule_name != "Symbolic Integration" {
         return Vec::new();
@@ -13055,12 +13726,10 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
         "Usar integración por partes"
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.extend(generate_polynomial_affine_log_by_parts_substeps(
         ctx, args[0], after, var_name,
     ));
@@ -14036,15 +14705,84 @@ fn generate_abs_linear_definite_integral_substeps(
             signed,
         ));
     }
-    substeps.push(SubStep::new(
+    // The closing line used to publish `∫ |2·x - 1| dx ⇒ 5/2`: an INDEFINITE
+    // integral equated to a number. It was false as written and unfixable as
+    // written, because the sub-step never carried the bounds it was evaluating
+    // at. Now it shows the per-piece work the title describes, which is true
+    // AND checkable: the left side is rebuilt here from the coefficients, the
+    // right side is the engine's value, and `Equality` decides between them by
+    // pure rational arithmetic.
+    //
+    // The two branches show different things because the informative thing IS
+    // different. With the root inside there are two areas and the SUM is the
+    // news, so the pieces go in as their values: `1/4 + 9/4`. Writing them as
+    // `|G(b) − G(a)|` differences instead would cost more than it buys — a
+    // subtrahend that is negative renders `2 - -1/4` in plain text and
+    // `2 + \frac{1}{4}` in LaTeX (one sub-step, two different-looking claims),
+    // and the commutative reordering both renderers apply to `Add` puts the
+    // pieces out of narrative order.
+    //
+    // With a single piece there is no sum to show, and the area value alone
+    // would just restate the result the parent step already carries. There the
+    // EVALUATION is the news, so the difference goes in explicitly — with the
+    // negative subtrahend folded into an addition, which is what keeps the two
+    // renderers saying the same thing.
+    //
+    // The orientation is part of the claim. `∫_2^0 |2x−1| dx` is −5/2 while the
+    // sum of areas is +5/2, so a reversed interval carries the sign; without it
+    // the sub-step would assert `5/2 = −5/2` and be refuted, which is exactly
+    // what the check is there for.
+    let mut work = ctx.clone();
+    let g_at = |t: &BigRational| -> BigRational {
+        &slope * t * t / BigRational::from_integer(2.into()) + &intercept * t
+    };
+    let mut area_sum = if root_inside {
+        let first = (g_at(&root) - g_at(&left)).abs();
+        let second = (g_at(&right) - g_at(&root)).abs();
+        let first = work.add(Expr::Number(first));
+        let second = work.add(Expr::Number(second));
+        work.add_raw(Expr::Add(first, second))
+    } else {
+        let from = g_at(&left);
+        let to = work.add(Expr::Number(g_at(&right)));
+        let difference = if from.is_negative() {
+            let addend = work.add(Expr::Number(-from));
+            work.add_raw(Expr::Add(to, addend))
+        } else {
+            let from = work.add(Expr::Number(from));
+            work.add_raw(Expr::Sub(to, from))
+        };
+        work.call_builtin(BuiltinFn::Abs, vec![difference])
+    };
+    if lo > hi {
+        area_sum = work.add_raw(Expr::Neg(area_sum));
+    }
+    // Backstop for the degenerate case both branches can still reach (an empty
+    // or single-point interval): a line whose sides read the same narrates
+    // nothing, and the parent step already carries that value.
+    let sum_display = display_expr(&work, area_sum);
+    if sum_display == result_str {
+        return Some(substeps);
+    }
+    if let Some(substep) = SubStep::checked_new(
+        &work,
+        crate::didactic::substep::Claim::Equality,
+        area_sum,
+        result,
         "Integrar por tramos con G(x) = c·x²/2 + d·x y sumar las áreas",
-        format!("∫ |{inner_str}| dx"),
+        sum_display,
         result_str,
-    ));
+    ) {
+        substeps.push(
+            substep
+                .with_before_latex(latex_expr(&work, area_sum))
+                .with_after_latex(latex_expr(ctx, result)),
+        );
+    }
     Some(substeps)
 }
 
-fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+fn generate_definite_integral_substeps(ctx: &Context, step: &Step, depth: usize) -> Vec<SubStep> {
     if step.rule_name != "Symbolic Integration" {
         return Vec::new();
     }
@@ -14169,79 +14907,223 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step) -> Vec<SubSte
         }
     }
 
-    let boundary_strings = |scratch: &mut Context, bound: ExprId| -> (String, String) {
-        if let Some(sign) = bound_is_infinite(scratch, bound) {
-            let latex_sign = if sign == "∞" {
-                "\\infty".to_string()
-            } else {
-                "-\\infty".to_string()
-            };
-            (
-                format!(
-                    "lim_{{{} → {}}} {}",
-                    var_name,
-                    sign,
-                    display_expr(scratch, antiderivative)
-                ),
-                format!(
-                    "\\lim_{{{} \\to {}}} {}",
-                    var_name,
-                    latex_sign,
-                    latex_expr(scratch, antiderivative)
-                ),
-            )
+    // A sum or difference must be delimited wherever it lands under an operator
+    // that binds tighter than its own terms: as the operand of a `lim`, and as
+    // the subtrahend of `F(b) - F(a)`. Without this the minus (or the limit)
+    // only reaches the first term and the substep publishes a false identity.
+    fn is_additive_chain(ctx: &Context, expr: ExprId) -> bool {
+        // The antiderivative can arrive wrapped in `Hold` (the integration
+        // pipeline wraps backend results); `Hold` is transparent to the
+        // renderers, so it must be transparent to this check too.
+        let mut current = expr;
+        loop {
+            let unwrapped = cas_ast::hold::unwrap_internal_hold(ctx, current);
+            if unwrapped == current {
+                break;
+            }
+            current = unwrapped;
+        }
+        matches!(
+            ctx.get(current),
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+        )
+    }
+    let delimit_display = |ctx: &Context, expr: ExprId| -> String {
+        if is_additive_chain(ctx, expr) {
+            format!("({})", display_expr(ctx, expr))
         } else {
-            let substituted =
-                cas_ast::substitute_expr_by_id(scratch, antiderivative, var_expr, bound);
-            if substituted_form_is_undefined(scratch, substituted) {
-                // Touched endpoint: one-sided limit notation. The side is
-                // a presentation choice; the lower bound approaches from
-                // the right and the upper from the left in the common
-                // oriented case.
-                let arrow = format!("{} → {}", var_name, display_expr(scratch, bound));
+            display_expr(ctx, expr)
+        }
+    };
+    let delimit_latex = |ctx: &Context, expr: ExprId| -> String {
+        if is_additive_chain(ctx, expr) {
+            format!("\\left({}\\right)", latex_expr(ctx, expr))
+        } else {
+            latex_expr(ctx, expr)
+        }
+    };
+
+    // The third element is the substituted endpoint value when the bound is
+    // finite and defined; `None` means the string is limit notation, which has
+    // no expression node to subtract from.
+    let boundary_strings =
+        |scratch: &mut Context, bound: ExprId| -> (String, String, Option<ExprId>) {
+            if let Some(sign) = bound_is_infinite(scratch, bound) {
+                let latex_sign = if sign == "∞" {
+                    "\\infty".to_string()
+                } else {
+                    "-\\infty".to_string()
+                };
                 return (
                     format!(
-                        "lim_{{{}}} {}",
-                        arrow,
-                        display_expr(scratch, antiderivative)
+                        "lim_{{{} → {}}} {}",
+                        var_name,
+                        sign,
+                        delimit_display(scratch, antiderivative)
                     ),
                     format!(
                         "\\lim_{{{} \\to {}}} {}",
                         var_name,
-                        latex_expr(scratch, bound),
-                        latex_expr(scratch, antiderivative)
+                        latex_sign,
+                        delimit_latex(scratch, antiderivative)
                     ),
+                    None,
                 );
             }
+            {
+                let substituted =
+                    cas_ast::substitute_expr_by_id(scratch, antiderivative, var_expr, bound);
+                if substituted_form_is_undefined(scratch, substituted) {
+                    // Touched endpoint: one-sided limit notation. The side is
+                    // a presentation choice; the lower bound approaches from
+                    // the right and the upper from the left in the common
+                    // oriented case.
+                    let arrow = format!("{} → {}", var_name, display_expr(scratch, bound));
+                    return (
+                        format!(
+                            "lim_{{{}}} {}",
+                            arrow,
+                            delimit_display(scratch, antiderivative)
+                        ),
+                        format!(
+                            "\\lim_{{{} \\to {}}} {}",
+                            var_name,
+                            latex_expr(scratch, bound),
+                            delimit_latex(scratch, antiderivative)
+                        ),
+                        None,
+                    );
+                }
+                (
+                    display_expr(scratch, substituted),
+                    latex_expr(scratch, substituted),
+                    Some(substituted),
+                )
+            }
+        };
+    let (upper_display, upper_latex, upper_value) = boundary_strings(&mut scratch, upper);
+    let (lower_display, lower_latex, lower_value) = boundary_strings(&mut scratch, lower);
+    // When both endpoints are plain values, F(b) - F(a) is an EXPRESSION: build
+    // the `Sub` node and let the renderers place the parentheses they already
+    // know how to place (`cas_formatter::latex::test_latex_sub_with_add_rhs`).
+    // Concatenating the two strings is what made the minus reach only the first
+    // term of F(a). `add_raw` keeps the didactic shape: `add` would canonicalize
+    // the difference away.
+    let (difference_display, difference_latex, difference_node) = match (upper_value, lower_value) {
+        (Some(upper_id), Some(lower_id)) => {
+            let difference = scratch.add_raw(Expr::Sub(upper_id, lower_id));
             (
-                display_expr(scratch, substituted),
-                latex_expr(scratch, substituted),
+                display_expr(&scratch, difference),
+                latex_expr(&scratch, difference),
+                Some(difference),
             )
         }
+        // At least one endpoint is limit notation, which has no node to
+        // subtract from. Delimit the subtrahend by hand so the minus still
+        // reaches all of it.
+        (_, lower_value) => {
+            let needs_parens = lower_value.is_none_or(|id| is_additive_chain(&scratch, id));
+            if needs_parens {
+                (
+                    format!("{} - ({})", upper_display, lower_display),
+                    format!("{} - \\left({}\\right)", upper_latex, lower_latex),
+                    None,
+                )
+            } else {
+                (
+                    format!("{} - {}", upper_display, lower_display),
+                    format!("{} - {}", upper_latex, lower_latex),
+                    None,
+                )
+            }
+        }
     };
-    let (upper_display, upper_latex) = boundary_strings(&mut scratch, upper);
-    let (lower_display, lower_latex) = boundary_strings(&mut scratch, lower);
-    let difference_display = format!("{} - {}", upper_display, lower_display);
-    let difference_latex = format!("{} - {}", upper_latex, lower_latex);
 
-    vec![
-        SubStep::keyed(
-            "integral.find_antiderivative",
-            vec![],
-            display_expr(ctx, integrand),
-            display_expr(&scratch, antiderivative),
-        )
-        .with_before_latex(latex_expr(ctx, integrand))
-        .with_after_latex(latex_expr(&scratch, antiderivative)),
-        SubStep::keyed(
+    // C1.8: this sub-step ASSERTS that `after` is an antiderivative of `before`.
+    // Declared and checked (differentiate the after, compare to the before)
+    // instead of trusted. A refuted claim is not published; an undecided one is
+    // (a surd the simplifier cannot fold is not evidence of a lie).
+    let mut substeps = Vec::new();
+    if let Some(step) = SubStep::checked(
+        &scratch,
+        crate::didactic::substep::Claim::Antiderivative {
+            var: var_name.clone(),
+        },
+        integrand,
+        antiderivative,
+        "integral.find_antiderivative",
+        vec![],
+        display_expr(ctx, integrand),
+        display_expr(&scratch, antiderivative),
+    ) {
+        substeps.push(
+            step.with_before_latex(latex_expr(ctx, integrand))
+                .with_after_latex(latex_expr(&scratch, antiderivative)),
+        );
+    }
+
+    // "Find the antiderivative" states WHAT was obtained and never HOW: on
+    // `∫dx/(x^5-x-1)` a 200-character `root_sum` appears out of nowhere. The
+    // rest of the chain already knows how to narrate the INDEFINITE integral, so
+    // hand it a synthetic 2-arg step and splice its narration in between.
+    // Recursion is safe by construction: this narrator requires `args.len() == 4`
+    // and the synthetic step has 2, so it declines itself.
+    if depth < MAX_NARRATION_RECURSION_DEPTH {
+        let mut method_scratch = scratch.clone();
+        let indefinite = method_scratch.add(Expr::Function(*fn_id, vec![integrand, var_expr]));
+        let synthetic = Step::new_compact(
+            step.description.as_str(),
+            "Symbolic Integration",
+            indefinite,
+            antiderivative,
+        );
+        substeps.extend(generate_focused_rule_substeps_at_depth(
+            &method_scratch,
+            &synthetic,
+            depth + 1,
+        ));
+    }
+
+    // C1.8: this sub-step ASSERTS `F(upper) − F(lower)`, so it must CARRY the
+    // bounds — the type takes them as data precisely because a sub-step that
+    // evaluates at bounds it does not hold cannot render them, which is how
+    // `∫|2x−1|dx ⇒ 5/2` reached the page.
+    //
+    // Only the both-endpoints-finite branch declares the relation. When an
+    // endpoint is infinite or the substituted form is undefined, the after is
+    // LIMIT NOTATION with no node behind it: the honest answer is that this
+    // layer cannot check it yet (the `Limit` arm is a cycle of its own), not a
+    // relation asserted over a string.
+    let evaluation = match difference_node {
+        Some(difference) => SubStep::checked(
+            &scratch,
+            crate::didactic::substep::Claim::DefiniteEval {
+                var: var_name.clone(),
+                lower,
+                upper,
+            },
+            antiderivative,
+            difference,
             "integral.evaluate_antiderivative_at_bounds",
             vec![],
             display_expr(&scratch, antiderivative),
             difference_display,
-        )
-        .with_before_latex(latex_expr(&scratch, antiderivative))
-        .with_after_latex(difference_latex),
-    ]
+        ),
+        None => Some(SubStep::keyed(
+            "integral.evaluate_antiderivative_at_bounds",
+            vec![],
+            display_expr(&scratch, antiderivative),
+            difference_display,
+        )),
+    };
+    if let Some(evaluation) = evaluation {
+        substeps.push(
+            evaluation
+                .with_before_latex(latex_expr(&scratch, antiderivative))
+                .with_after_latex(difference_latex),
+        );
+    }
+    substeps
 }
 
 /// Narrate the general rational backend family (Ostrogradsky reduction,
@@ -14315,25 +15197,45 @@ fn generate_general_rational_integration_substeps(ctx: &Context, step: &Step) ->
             )),
         );
     }
-    substeps.push(
-        SubStep::new(
-            "Factorizar el denominador",
-            display_expr(ctx, *denominator),
-            display_expr(&scratch, parts.factored_denominator),
-        )
-        .with_before_latex(latex_expr(ctx, *denominator))
-        .with_after_latex(latex_expr(&scratch, parts.factored_denominator)),
-    );
-    substeps.push(
-        SubStep::keyed(
-            "partial_fractions.decompose",
-            vec![],
-            display_expr(&scratch, parts.factored_denominator),
-            display_expr(&scratch, parts.decomposition),
-        )
-        .with_before_latex(latex_expr(&scratch, parts.factored_denominator))
-        .with_after_latex(latex_expr(&scratch, parts.decomposition)),
-    );
+    // A substep that announces a manoeuvre it does not perform is worse than no
+    // substep (docs/DIDACTIC_SUBSTEP_NORMALIZATION.md). Over a denominator that
+    // is irreducible in Q — x^3 - 2, x^4 - 5 — "factor the denominator" returns
+    // the denominator itself, and the student is left believing it cannot be
+    // factored, while the row's own answer exhibits the real root.
+    let factored_display = display_expr(&scratch, parts.factored_denominator);
+    if factored_display != display_expr(ctx, *denominator) {
+        substeps.push(
+            SubStep::new(
+                "Factorizar el denominador",
+                display_expr(ctx, *denominator),
+                factored_display,
+            )
+            .with_before_latex(latex_expr(ctx, *denominator))
+            .with_after_latex(latex_expr(&scratch, parts.factored_denominator)),
+        );
+    }
+    // What gets decomposed is the RATIONAL FUNCTION, not the denominator. Using
+    // the factored denominator as `before` published a type-changing identity
+    // (`x^3 - 2 -> 1/(x^3 - 2)`), and on x^5 - 1 it asserted that a polynomial
+    // equals a sum of fractions. After an Ostrogradsky split the subject is the
+    // remaining squarefree integrand, not the original one.
+    let decompose_before = parts
+        .rational_part
+        .map(|(_, remaining)| remaining)
+        .unwrap_or(args[0]);
+    let decompose_before_display = display_expr(&scratch, decompose_before);
+    if decompose_before_display != display_expr(&scratch, parts.decomposition) {
+        substeps.push(
+            SubStep::keyed(
+                "partial_fractions.decompose",
+                vec![],
+                decompose_before_display,
+                display_expr(&scratch, parts.decomposition),
+            )
+            .with_before_latex(latex_expr(&scratch, decompose_before))
+            .with_after_latex(latex_expr(&scratch, parts.decomposition)),
+        );
+    }
     substeps.push(
         SubStep::keyed(
             "integral.integrate_simple_terms",
@@ -14671,12 +15573,10 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         _ => return Vec::new(),
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
 
     if nontrivial_affine_argument(ctx, arg, var_name) {
         substeps.push(
@@ -14931,19 +15831,18 @@ fn generate_linear_elementary_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    let mut substeps = vec![
-        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-            .with_before_latex(latex_expr(ctx, args[0]))
-            .with_after_latex(latex_expr(ctx, after)),
-        SubStep::keyed(
-            "usub.identify_affine_argument",
-            vec![],
-            display_expr(ctx, arg),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, arg))
-        .with_after_latex(latex_expr(ctx, after)),
-    ];
+    let mut substeps: Vec<SubStep> =
+        checked_antiderivative_substep(ctx, title, args[0], after, var_name)
+            .into_iter()
+            .collect();
+    substeps.extend([SubStep::keyed(
+        "usub.identify_affine_argument",
+        vec![],
+        display_expr(ctx, arg),
+        display_expr(ctx, after),
+    )
+    .with_before_latex(latex_expr(ctx, arg))
+    .with_after_latex(latex_expr(ctx, after))]);
 
     if !slope.is_one() {
         substeps.push(
@@ -15158,16 +16057,26 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
     };
     let decomposition_display = display_expr(&scratch, decomposition);
     let decomposition_latex = latex_expr(&scratch, decomposition);
+    let integrand_display = display_expr(ctx, args[0]);
 
-    vec![
-        SubStep::keyed(
-            "partial_fractions.decompose",
-            vec![],
-            display_expr(ctx, args[0]),
-            decomposition_display.clone(),
-        )
-        .with_before_latex(latex_expr(ctx, args[0]))
-        .with_after_latex(decomposition_latex.clone()),
+    let mut substeps = Vec::new();
+    // The oracles return the identity when the integrand is ALREADY decomposed
+    // (`1/x`), and announcing a decomposition that does not happen is exactly
+    // the "generic template" the substep policy forbids. The honest table
+    // statement survives as the remaining substep: `1/x -> ln|x|`.
+    if decomposition_display != integrand_display {
+        substeps.push(
+            SubStep::keyed(
+                "partial_fractions.decompose",
+                vec![],
+                integrand_display,
+                decomposition_display.clone(),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(decomposition_latex.clone()),
+        );
+    }
+    substeps.push(
         SubStep::keyed(
             "integral.integrate_simple_terms",
             vec![],
@@ -15176,7 +16085,8 @@ fn generate_rational_linear_partial_fraction_integration_substeps(
         )
         .with_before_latex(decomposition_latex)
         .with_after_latex(latex_expr(ctx, after)),
-    ]
+    );
+    substeps
 }
 
 fn generate_positive_quadratic_square_integration_substeps(
@@ -15367,12 +16277,10 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
         TrigLogTableKind::Cosecant => "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
 
     match table_match.trace {
         TrigLogTableTrace::AffineArgument => {
@@ -16416,12 +17324,10 @@ fn generate_hyperbolic_log_table_integration_substeps(ctx: &Context, step: &Step
         HyperbolicLogTableKind::CoshOverSinh => "Usar la regla de cosh(u)/sinh(u) -> ln|sinh(u)|",
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -16803,12 +17709,10 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
         }
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -17265,12 +18169,10 @@ fn generate_polynomial_derivative_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -17706,12 +18608,10 @@ fn generate_log_power_product_table_integration_substeps(
         "Usar la regla de u'·log_b(u)^n por partes"
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -18141,10 +19041,11 @@ fn generate_nested_inverse_polynomial_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    vec![
-        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-            .with_before_latex(latex_expr(ctx, args[0]))
-            .with_after_latex(latex_expr(ctx, after)),
+    let mut substeps: Vec<SubStep> =
+        checked_antiderivative_substep(ctx, title, args[0], after, var_name)
+            .into_iter()
+            .collect();
+    substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
             vec![],
@@ -18153,7 +19054,8 @@ fn generate_nested_inverse_polynomial_table_integration_substeps(
         )
         .with_before_latex(latex_expr(ctx, table_match.arg))
         .with_after_latex(table_match.derivative_latex),
-    ]
+    );
+    substeps
 }
 
 fn nested_inverse_polynomial_result(
@@ -18681,12 +19583,10 @@ fn generate_trig_quotient_table_integration_substeps(ctx: &Context, step: &Step)
         TrigQuotientTableKind::CosecantSquare => "Usar la regla de 1/sin(u)^2 -> -cot(u)",
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -18960,12 +19860,10 @@ fn generate_reciprocal_trig_derivative_product_integration_substeps(
         }
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -20158,11 +21056,21 @@ fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec
         return substeps;
     }
 
+    // `∫e^x dx = e^x` is a fixed point: announcing "use substitution" over
+    // `e^x -> e^x` teaches nothing and reads like a bug. Pre-existing, and
+    // invisible until the vector arm (C3.2) started narrating the components of
+    // `integrate([cos(x), e^x], x)`.
+    let integrand_display = display_expr(ctx, args[0]);
+    let after_display = display_expr(ctx, after);
+    if integrand_display == after_display {
+        return Vec::new();
+    }
+
     vec![SubStep::keyed(
         "usub.use_substitution",
         vec![],
-        display_expr(ctx, args[0]),
-        display_expr(ctx, after),
+        integrand_display,
+        after_display,
     )
     .with_before_latex(latex_expr(ctx, args[0]))
     .with_after_latex(latex_expr(ctx, after))]
@@ -20327,11 +21235,38 @@ const LIMIT_CONJUGATE_TITLE: &str =
 const LIMIT_COMMON_DENOM_TITLE: &str =
     "Combina las fracciones sobre un común denominador (indeterminación ∞−∞)";
 
+/// The approach a limit step is about, sign included.
+///
+/// Read from the step's metadata, which the eval path now records. The rule
+/// name only says "en infinito" — it cannot tell `+∞` from `−∞`, and reading
+/// the direction off that substring is what let the `−∞` narration cite the
+/// `x→+∞` theorem. The fallback keeps a producer that forgets the field from
+/// silencing the narration, but it is a fallback, not the source of truth.
+fn limit_step_approach(step: &Step) -> Option<Approach> {
+    step.meta.as_ref().and_then(|m| m.limit_approach)
+}
+
+/// True when the sub-step's `−∞` phrasing applies. Only certain when the
+/// approach is recorded; an unrecorded step keeps the old behaviour.
+fn limit_approaches_negative_infinity(step: &Step) -> bool {
+    matches!(limit_step_approach(step), Some(Approach::NegInfinity))
+}
+
 pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    let at_infinity = step.rule_name.contains("infinito");
+    let approach = limit_step_approach(step);
+    let at_infinity = match approach {
+        Some(approach) => matches!(approach, Approach::PosInfinity | Approach::NegInfinity),
+        None => step.rule_name.contains("infinito"),
+    };
     let point = step.meta.as_ref().and_then(|m| m.limit_point);
-    let Some(description) = notable_limit_name(ctx, step.before, step.after, at_infinity, point)
-    else {
+    let Some(description) = notable_limit_name(
+        ctx,
+        step.before,
+        step.after,
+        at_infinity,
+        limit_approaches_negative_infinity(step),
+        point,
+    ) else {
         return Vec::new();
     };
     // Deepened narratives that SHOW the work (factor → cancel → substitute, …).
@@ -20362,7 +21297,7 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         return generate_limit_lhopital_substeps(ctx, step, point, description);
     }
     if description == LIMIT_SQUEEZE_TITLE {
-        if let Some(substeps) = generate_limit_squeeze_substeps(ctx, step) {
+        if let Some(substeps) = generate_limit_squeeze_substeps(ctx, step, approach) {
             return substeps;
         }
     }
@@ -20372,7 +21307,7 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         }
     }
     if description == LIMIT_CONJUGATE_TITLE {
-        if let Some(substeps) = generate_limit_conjugate_substeps(ctx, step) {
+        if let Some(substeps) = generate_limit_conjugate_substeps(ctx, step, approach) {
             return substeps;
         }
     }
@@ -20485,6 +21420,26 @@ fn generate_limit_factor_cancel_substeps(
     let g_disp = display_expr(&scratch, g_expr);
     let point_disp = display_expr(ctx, point);
 
+    // C1.8: the closing line ASSERTS that substituting the point into the
+    // cancelled form lands on the engine's answer. Unlike the emitter-built
+    // pairs above it, the two sides come from different places — the cancelled
+    // form was rebuilt here, `step.after` is the limit oracle — so the check has
+    // something real to disagree about.
+    let substitution = SubStep::checked_new(
+        &scratch,
+        crate::didactic::substep::Claim::EvalAt {
+            var: var.clone(),
+            point,
+        },
+        cancelled,
+        step.after,
+        format!("Sustituye {var} = {point_disp} en la expresión simplificada"),
+        display_expr(&scratch, cancelled),
+        display_expr(ctx, step.after),
+    )?
+    .with_before_latex(latex_expr(&scratch, cancelled))
+    .with_after_latex(latex_expr(ctx, step.after));
+
     Some(vec![
         SubStep::keyed(
             "limit.factor_numerator_denominator",
@@ -20501,13 +21456,7 @@ fn generate_limit_factor_cancel_substeps(
         )
         .with_before_latex(latex_expr(&scratch, factored))
         .with_after_latex(latex_expr(&scratch, cancelled)),
-        SubStep::new(
-            format!("Sustituye {var} = {point_disp} en la expresión simplificada"),
-            display_expr(&scratch, cancelled),
-            display_expr(ctx, step.after),
-        )
-        .with_before_latex(latex_expr(&scratch, cancelled))
-        .with_after_latex(latex_expr(ctx, step.after)),
+        substitution,
     ])
 }
 
@@ -20600,6 +21549,9 @@ fn generate_limit_lhopital_iteration(
     let mut substeps: Vec<SubStep> = Vec::new();
     let mut cur_num = num;
     let mut cur_den = den;
+    // Kept as a NODE, not only as strings: the closing sub-step declares a
+    // relation about it, and a claim cannot be checked against a render.
+    let mut cur_form = step.before;
     let mut cur_disp = display_expr(ctx, step.before);
     let mut cur_latex = latex_expr(ctx, step.before);
     for k in 0..steps_needed {
@@ -20642,16 +21594,30 @@ fn generate_limit_lhopital_iteration(
         );
         cur_num = next_num;
         cur_den = next_den;
+        cur_form = next_form;
         cur_disp = next_disp;
         cur_latex = next_latex;
     }
+    // C1.8: same shape as the factor-and-cancel closing line — the iterated
+    // quotient was rebuilt here, `step.after` is the engine's answer, and the
+    // sub-step asserts that one substituted into the other gives the other. A
+    // refutation means the reconstruction diverged from the oracle somewhere in
+    // the iteration, so the WHOLE deepened narration declines and the caller
+    // falls back to the one-line technique name.
     substeps.push(
-        SubStep::keyed(
+        SubStep::checked(
+            &scratch,
+            crate::didactic::substep::Claim::EvalAt {
+                var: var.clone(),
+                point,
+            },
+            cur_form,
+            step.after,
             "limit.lhopital_denominator_nonzero_substitute",
             vec![format!("{var}"), format!("{point_disp}")],
             cur_disp,
             display_expr(ctx, step.after),
-        )
+        )?
         .with_before_latex(cur_latex)
         .with_after_latex(latex_expr(ctx, step.after)),
     );
@@ -20676,29 +21642,50 @@ fn limit_squeeze_parts(ctx: &Context, before: ExprId) -> Option<(ExprId, ExprId)
 
 /// Deepen the squeeze theorem into the bounding argument: the oscillator is bounded
 /// (`|sin/cos| ≤ 1`), so `|uᵏ · osc| ≤ |uᵏ|`, and `|uᵏ| → 0`, hence the product → 0.
-fn generate_limit_squeeze_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+fn generate_limit_squeeze_substeps(
+    ctx: &Context,
+    step: &Step,
+    approach: Option<Approach>,
+) -> Option<Vec<SubStep>> {
     let (power, osc) = limit_squeeze_parts(ctx, step.before)?;
+    let var = limit_single_var_name(ctx, step.before)?;
     let mut scratch = ctx.clone();
     let abs_id = scratch.builtin_id(BuiltinFn::Abs);
     let abs_power = scratch.add(Expr::Function(abs_id, vec![power]));
     let osc_disp = display_expr(ctx, osc);
     let before_disp = display_expr(ctx, step.before);
     let abs_disp = display_expr(&scratch, abs_power);
+    // C1.8: the closing line ASSERTS that the bounding infinitesimal has the
+    // step's limit. `|uᵏ|` is rebuilt HERE and `step.after` is the engine's
+    // answer for a different expression (the product), so the engine's own
+    // limit oracle has something real to disagree with.
+    let conclusion = SubStep::checked_new(
+        &scratch,
+        crate::didactic::substep::Claim::Limit {
+            var,
+            approach: approach?,
+        },
+        abs_power,
+        step.after,
+        format!(
+            "El infinitésimo {abs_disp} → 0, así que por el teorema del sándwich el límite es 0"
+        ),
+        abs_disp.clone(),
+        display_expr(ctx, step.after),
+    )?
+    .with_before_latex(latex_expr(&scratch, abs_power))
+    .with_after_latex(latex_expr(ctx, step.after));
     Some(vec![
         SubStep::new(
-            format!("Acota el factor oscilante: |{osc_disp}| ≤ 1, luego |{before_disp}| ≤ {abs_disp}"),
+            format!(
+                "Acota el factor oscilante: |{osc_disp}| ≤ 1, luego |{before_disp}| ≤ {abs_disp}"
+            ),
             before_disp,
-            abs_disp.clone(),
+            abs_disp,
         )
         .with_before_latex(latex_expr(ctx, step.before))
         .with_after_latex(latex_expr(&scratch, abs_power)),
-        SubStep::new(
-            format!("El infinitésimo {abs_disp} → 0, así que por el teorema del sándwich el límite es 0"),
-            abs_disp,
-            display_expr(ctx, step.after),
-        )
-        .with_before_latex(latex_expr(&scratch, abs_power))
-        .with_after_latex(latex_expr(ctx, step.after)),
+        conclusion,
     ])
 }
 
@@ -20725,15 +21712,18 @@ fn generate_limit_dominance_substeps(
     }
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
+    // At `x→−∞` an odd-degree numerator tends to −∞, so "numerator and
+    // denominator → ∞" is simply false there. The form is still ∞/∞; the
+    // recorded approach is what lets the line say so without lying.
+    let indeterminate_key = if limit_approaches_negative_infinity(step) {
+        "limit.numerator_denominator_inf_over_inf_negative"
+    } else {
+        "limit.numerator_denominator_inf_over_inf"
+    };
     Some(vec![
-        SubStep::keyed(
-            "limit.numerator_denominator_inf_over_inf",
-            vec![],
-            before_disp.clone(),
-            "∞/∞",
-        )
-        .with_before_latex(before_latex.clone())
-        .with_after_latex(r"\frac{\infty}{\infty}"),
+        SubStep::keyed(indeterminate_key, vec![], before_disp.clone(), "∞/∞")
+            .with_before_latex(before_latex.clone())
+            .with_after_latex(r"\frac{\infty}{\infty}"),
         SubStep::new(
             description.to_string(),
             before_disp,
@@ -20810,7 +21800,11 @@ fn limit_infinity_conjugate_radical(
 /// equals `(√P − L)(√P + L)`. A self-check re-multiplies `before · conjugate` and
 /// requires it to fold to that (signed) numerator, so any construction error
 /// DECLINES to the one-line technique name rather than narrating false algebra.
-fn generate_limit_conjugate_substeps(ctx: &Context, step: &Step) -> Option<Vec<SubStep>> {
+fn generate_limit_conjugate_substeps(
+    ctx: &Context,
+    step: &Step,
+    approach: Option<Approach>,
+) -> Option<Vec<SubStep>> {
     let before = step.before;
     let (surd, linear, surd_first) = limit_conjugate_parts(ctx, before)?;
     let radicand = as_sqrt_radicand(ctx, surd)?;
@@ -20862,12 +21856,25 @@ fn generate_limit_conjugate_substeps(ctx: &Context, step: &Step) -> Option<Vec<S
         )
         .with_before_latex(latex_expr(ctx, before))
         .with_after_latex(latex_expr(&scratch, rationalized)),
-        SubStep::keyed(
+        // C1.8: the closing line ASSERTS that the RATIONALIZED form — rebuilt
+        // here — has the step's limit. Declared and handed to the engine's own
+        // oracle. MEASURED: the oracle's conservative policy decides the
+        // original `√P − L` but declines the rationalized quotient, so this one
+        // lands on `Undecided` and publishes. That is the honest outcome, not a
+        // silent pass: an abstention by the oracle is not evidence of a lie.
+        SubStep::checked(
+            &scratch,
+            crate::didactic::substep::Claim::Limit {
+                var: var.clone(),
+                approach: approach?,
+            },
+            rationalized,
+            step.after,
             "limit.divide_by_dominant_power_evaluate",
             vec![surd_disp, var, after_disp.clone()],
             rationalized_disp,
             after_disp,
-        )
+        )?
         .with_before_latex(latex_expr(&scratch, rationalized))
         .with_after_latex(latex_expr(ctx, step.after)),
     ])
@@ -20958,15 +21965,30 @@ fn generate_limit_common_denom_substeps(
     // is a `Div`, never a `Sub`-of-reciprocals, so this recognizer cannot re-fire.
     let mut synthetic = Step::new_compact("desc", "Evaluar límite finito", combined, step.after);
     synthetic.meta_mut().limit_point = Some(point);
+    // The recursion inherits the approach too. A synthetic step that carries the
+    // point but not the direction would make every claim downstream decline for
+    // want of a datum this function already has.
+    synthetic.meta_mut().limit_approach = Some(Approach::Finite(point));
     let tail = generate_limit_substeps(&scratch, &synthetic);
     if tail.is_empty() {
+        // C1.8: this closing line ASSERTS that the COMBINED fraction — rebuilt
+        // here by the cross-multiply combiner — has the step's limit. The
+        // engine's own oracle decides it (measured), so the reconstruction is
+        // checked against the value rather than trusted.
         substeps.push(
-            SubStep::keyed(
+            SubStep::checked(
+                &scratch,
+                crate::didactic::substep::Claim::Limit {
+                    var: var.clone(),
+                    approach: Approach::Finite(point),
+                },
+                combined,
+                step.after,
                 "limit.generic_0_0_lhopital_or_taylor",
                 vec![var, display_expr(ctx, point)],
                 combined_disp,
                 after_disp,
-            )
+            )?
             .with_before_latex(combined_latex)
             .with_after_latex(latex_expr(ctx, step.after)),
         );
@@ -20982,15 +22004,16 @@ fn generate_limit_common_denom_substeps(
 fn generate_limit_e_form_substeps(ctx: &Context, step: &Step, description: String) -> Vec<SubStep> {
     let before_disp = display_expr(ctx, step.before);
     let before_latex = latex_expr(ctx, step.before);
+    // The exponent is the VARIABLE, so at `x→−∞` it tends to `−∞`, not `∞`.
+    let indeterminate_key = if limit_approaches_negative_infinity(step) {
+        "limit.base_to_1_exponent_to_inf_1_pow_inf_negative"
+    } else {
+        "limit.base_to_1_exponent_to_inf_1_pow_inf"
+    };
     vec![
-        SubStep::keyed(
-            "limit.base_to_1_exponent_to_inf_1_pow_inf",
-            vec![],
-            before_disp.clone(),
-            "1^∞",
-        )
-        .with_before_latex(before_latex.clone())
-        .with_after_latex(r"1^{\infty}"),
+        SubStep::keyed(indeterminate_key, vec![], before_disp.clone(), "1^∞")
+            .with_before_latex(before_latex.clone())
+            .with_after_latex(r"1^{\infty}"),
         SubStep::new(description, before_disp, display_expr(ctx, step.after))
             .with_before_latex(before_latex)
             .with_after_latex(latex_expr(ctx, step.after)),
@@ -21006,6 +22029,7 @@ fn notable_limit_name(
     before: ExprId,
     after: ExprId,
     at_infinity: bool,
+    negative_infinity: bool,
     point: Option<ExprId>,
 ) -> Option<String> {
     // Limits at infinity have their own dominance methods; the finite forms below (notable
@@ -21015,7 +22039,19 @@ fn notable_limit_name(
         if matches!(ctx.get(after), Expr::Constant(Constant::E))
             && limit_is_one_plus_reciprocal_power(ctx, before)
         {
-            return Some("Aplicar el límite notable: lím(x→∞) (1 + 1/x)^x = e".to_string());
+            // NAME THE DIRECTION. `(1 + 1/x)^x → e` holds at both infinities,
+            // but the sub-step used to cite the `x→∞` theorem while narrating a
+            // limit at `x→−∞` — a true value justified by a statement about a
+            // different limit. The step's recorded approach settles it; without
+            // that datum this line had no way to be right.
+            let arrow = if negative_infinity {
+                "x→−∞"
+            } else {
+                "x→∞"
+            };
+            return Some(format!(
+                "Aplicar el límite notable: lím({arrow}) (1 + 1/x)^x = e"
+            ));
         }
         if let Some(desc) = limit_infinity_conjugate_radical(ctx, before, after) {
             return Some(desc);
@@ -23222,6 +24258,7 @@ mod limit_notable_tests {
     use super::{generate_limit_residual_substeps, generate_limit_substeps};
     use crate::runtime::Step;
     use cas_ast::Context;
+    use cas_math::limit_types::Approach;
     use cas_parser::parse;
 
     fn substep_titles(before_src: &str, after_src: &str) -> Vec<String> {
@@ -23236,7 +24273,9 @@ mod limit_notable_tests {
         let mut ctx = Context::new();
         let before = parse(before_src, &mut ctx).expect("parse before");
         let after = parse(after_src, &mut ctx).expect("parse after");
-        let step = Step::new_compact("desc", "Evaluar límite en infinito", before, after);
+        let mut step = Step::new_compact("desc", "Evaluar límite en infinito", before, after);
+        // Mirror the emitter: a limit step carries its approach, sign included.
+        step.meta_mut().limit_approach = Some(Approach::PosInfinity);
         generate_limit_substeps(&ctx, &step)
     }
 
@@ -23244,7 +24283,10 @@ mod limit_notable_tests {
         let mut ctx = Context::new();
         let before = parse(before_src, &mut ctx).expect("parse before");
         let after = parse(after_src, &mut ctx).expect("parse after");
-        let step = Step::new_compact("desc", rule, before, after);
+        let mut step = Step::new_compact("desc", rule, before, after);
+        if rule.contains("infinito") {
+            step.meta_mut().limit_approach = Some(Approach::PosInfinity);
+        }
         generate_limit_substeps(&ctx, &step)
             .into_iter()
             .map(|s| s.description)
@@ -23262,6 +24304,7 @@ mod limit_notable_tests {
         let point = parse(point_src, &mut ctx).expect("parse point");
         let mut step = Step::new_compact("desc", "Evaluar límite finito", before, after);
         step.meta_mut().limit_point = Some(point);
+        step.meta_mut().limit_approach = Some(Approach::Finite(point));
         generate_limit_substeps(&ctx, &step)
             .into_iter()
             .map(|s| s.description)
@@ -23279,6 +24322,7 @@ mod limit_notable_tests {
         let point = parse(point_src, &mut ctx).expect("parse point");
         let mut step = Step::new_compact("desc", "Evaluar límite finito", before, after);
         step.meta_mut().limit_point = Some(point);
+        step.meta_mut().limit_approach = Some(Approach::Finite(point));
         generate_limit_substeps(&ctx, &step)
     }
 
@@ -23325,6 +24369,30 @@ mod limit_notable_tests {
         let flat = substep_titles_for_rule("Evaluar límite finito", "(x^2-1)/(x-1)", "2");
         assert_eq!(flat.len(), 1);
         assert!(flat[0].contains("cancelar el factor común"));
+    }
+
+    /// C1.8 with teeth: the closing line asserts `EvalAt`, and the two sides of
+    /// that assertion come from different places — the cancelled form is rebuilt
+    /// here, the value is the engine's. Hand it a value that does not match and
+    /// the whole deepened chain must refuse to publish, falling back to the
+    /// one-line technique name.
+    ///
+    /// This is what separates a declared relation from a decorative one: the
+    /// corpus never produced a mismatch, but nothing in the code guaranteed
+    /// that before the claim was checked.
+    #[test]
+    fn factor_cancel_declines_when_the_substitution_misses_the_engine_value() {
+        assert_eq!(
+            substeps_finite_at_point("(x^2-1)/(x-1)", "2", "1").len(),
+            3,
+            "the honest chain publishes"
+        );
+        let subs = substeps_finite_at_point("(x^2-1)/(x-1)", "7", "1");
+        let titles: Vec<&str> = subs.iter().map(|s| s.description.as_str()).collect();
+        assert!(
+            !titles.iter().any(|t| t.contains("Sustituye")),
+            "substituting x = 1 into x + 1 is not 7; the chain must decline: {titles:?}"
+        );
     }
 
     #[test]
@@ -23943,5 +25011,158 @@ mod limit_notable_tests {
         assert!(substep_titles("x*sin(x)", "0").is_empty());
         // (2^x − 1)/x → ln(3) would be a fabricated base; the result must be ln of the base.
         assert!(substep_titles("(2^x-1)/x", "ln(3)").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod named_identity_matcher_tests {
+    use super::{
+        generate_half_angle_tangent_substeps, generate_reciprocal_product_identity_substeps,
+    };
+    use crate::runtime::Step;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    fn run<F>(generator: F, rule: &str, before_src: &str, after_src: &str) -> Vec<super::SubStep>
+    where
+        F: Fn(&Context, &Step) -> Vec<super::SubStep>,
+    {
+        let mut ctx = Context::new();
+        let before = parse(before_src, &mut ctx).expect("parse before");
+        let after = parse(after_src, &mut ctx).expect("parse after");
+        let step = Step::new_compact("desc", rule, before, after);
+        generator(&ctx, &step)
+    }
+
+    /// The TRUE application publishes, byte-identical to what it always said.
+    #[test]
+    fn tan_cot_still_narrates_its_genuine_instances() {
+        let subs = run(
+            generate_reciprocal_product_identity_substeps,
+            "Reciprocal Product Identity",
+            "tan(x^2) * cot(x^2)",
+            "1",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar tan(u) · cot(u) = 1");
+    }
+
+    /// The audit's first named lie: the same title used to publish over ANY
+    /// pair this generator received. A pair that instantiates nothing now
+    /// publishes nothing.
+    #[test]
+    fn tan_cot_declines_a_pair_that_is_no_instance() {
+        let subs = run(
+            generate_reciprocal_product_identity_substeps,
+            "Reciprocal Product Identity",
+            "sin(x) + 1",
+            "1",
+        );
+        assert!(
+            subs.is_empty(),
+            "a non-instance pair must not be narrated as tan·cot = 1: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// The second named lie lived in the `None` branch. Its GENUINE case is
+    /// the pair whose doubling already folded away (`u = x/2` makes `2u` read
+    /// `x`): no variant recognizer fires, yet the pair truly instantiates the
+    /// identity — the directed matcher rebuilds σ(rhs) in the instance context
+    /// and lets the engine's own equality own the comparison.
+    #[test]
+    fn half_angle_none_branch_narrates_a_genuine_tan_pair() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "tan(x/2)",
+            "(1 - cos(x)) / sin(x)",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar tan(u) = (1 - cos(2u)) / sin(2u)");
+    }
+
+    /// A pair with the doubling EXPLICIT is a recognized variant — and the
+    /// orientation-agnostic matcher accepts it in the expansion direction too
+    /// (the variant was detected on `after`, so the pair applies the identity
+    /// right-to-left).
+    #[test]
+    fn half_angle_variant_accepts_the_expansion_direction() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "tan(x/2)",
+            "(1 - cos(2*(x/2))) / sin(2*(x/2))",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar (1 - cos(2u)) / sin(2u) = tan(u)");
+    }
+
+    /// …and the unrecognized-variant pair the audit saw declines.
+    #[test]
+    fn half_angle_none_branch_declines_what_it_did_not_recognize() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "(1 - cos(x)) / (1 + cos(x))",
+            "tan(x/2)^2",
+        );
+        assert!(
+            subs.is_empty(),
+            "the branch that recognized no variant must not cite the identity: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// The recognized variants keep narrating exactly as before.
+    #[test]
+    fn half_angle_recognized_variants_still_narrate() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "(1 - cos(2*x)) / sin(2*x)",
+            "tan(x)",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar (1 - cos(2u)) / sin(2u) = tan(u)");
+    }
+}
+
+#[cfg(test)]
+mod common_denominator_numerator_tests {
+    use super::generate_add_subtract_fractions_substeps;
+    use crate::runtime::Step;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    /// The audit's arithmetically-false numerator: «Llevar a denominador
+    /// común» published `(c + x - b + x) / …` — worth `c − b + 2x` — for a
+    /// difference whose numerator is `c − b`. Two coupled defects: the lift
+    /// built `Mul(1, …)` nodes, and both renderers elided the `1 ·` without
+    /// re-checking the parenthesization their precedence decision assumed.
+    /// This pins the whole published chain, plain AND LaTeX.
+    #[test]
+    fn common_denominator_numerator_keeps_the_subtrahend_grouped() {
+        let mut ctx = Context::new();
+        let before = parse("1/(b+x) - 1/(c+x)", &mut ctx).expect("parse before");
+        let after = parse("(c-b)/(x^2+(b+c)*x+b*c)", &mut ctx).expect("parse after");
+        let step = Step::new_compact("desc", "Subtract Fractions", before, after);
+        let subs = generate_add_subtract_fractions_substeps(&ctx, &step);
+        assert!(!subs.is_empty(), "the narration must exist");
+        let first = &subs[0];
+        assert_eq!(
+            first.after_expr, "(c + x - (b + x)) / ((b + x) * (c + x))",
+            "plain numerator must keep the subtrahend grouped"
+        );
+        let latex = first.after_latex.as_deref().expect("latex populated");
+        assert!(
+            latex.contains("c + x - (b + x)"),
+            "latex numerator must keep the subtrahend grouped: {latex}"
+        );
+        assert!(
+            !first.after_expr.contains("x - b + x"),
+            "the 2x lie must not resurface: {}",
+            first.after_expr
+        );
     }
 }

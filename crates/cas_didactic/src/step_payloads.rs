@@ -7,7 +7,10 @@ use cas_api_models::StepWire;
 use cas_ast::Context;
 use cas_solver_core::engine_events::EngineEvent;
 use cas_solver_core::eval_option_axes::Language;
-use cas_solver_core::rule_names::RULE_CONSERVAR_INTEGRAL_RESIDUAL;
+use cas_solver_core::rule_names::{
+    RULE_CONSERVAR_DERIVADA_RESIDUAL, RULE_CONSERVAR_INTEGRAL_RESIDUAL,
+    RULE_CONSERVAR_LIMITE_RESIDUAL,
+};
 
 /// Localize already-built step payloads into `language`. The step-by-step is built in Spanish (the
 /// source language); for `En` the visible `rule` name is translated through the Spanish->English
@@ -52,7 +55,18 @@ fn dedup_consecutive_step_payloads(payloads: &mut Vec<StepWire>) {
     // the honest-residual conservation steps ("Conservar … residual") are
     // the one legitimate before == after narration — their whole point is
     // "this stays as itself"; pruning them would erase the honesty contract.
-    payloads.retain(|w| w.before != w.after || w.rule.starts_with("Conservar"));
+    // Identity by RULE CONSTANT, not by a Spanish prefix: `starts_with("Conservar")`
+    // only worked because this runs before `localize_step_payloads`, so reordering
+    // the two phases would have silently deleted the honesty contract in English.
+    payloads.retain(|w| {
+        w.before != w.after
+            || matches!(
+                w.rule.as_str(),
+                RULE_CONSERVAR_DERIVADA_RESIDUAL
+                    | RULE_CONSERVAR_INTEGRAL_RESIDUAL
+                    | RULE_CONSERVAR_LIMITE_RESIDUAL
+            )
+    });
     payloads.dedup_by(|b, a| b.rule == a.rule && b.before == a.before && b.after == a.after);
     for (i, wire) in payloads.iter_mut().enumerate() {
         wire.index = i + 1;

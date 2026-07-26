@@ -505,9 +505,29 @@ impl Engine {
             crate::semantics::ValueDomain::RealOnly,
         );
         let solver_required = rhs_domain.conditions().iter().cloned().collect();
+        // `equiv` answers a bare `true`/`false` with no steps to qualify it, so a
+        // `false` that is only false IN THE REAL DOMAIN is read as "this identity
+        // is wrong". `equiv(e^(i·pi), -1)` printed `false` with no warning at all:
+        // the student reads that Euler's identity does not hold. The hint already
+        // exists for expression results (`simplify_action.rs`, "Imaginary Usage
+        // Warning"); this path just never populated its warning slot.
+        let mut warnings = Vec::new();
+        if options.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
+            && (cas_math::numeric_eval::expr_contains_imaginary(&self.simplifier.context, resolved)
+                || cas_math::numeric_eval::expr_contains_imaginary(
+                    &self.simplifier.context,
+                    resolved_other,
+                ))
+        {
+            warnings.push(DomainWarning {
+                message: "To use complex arithmetic (i² = -1), run: semantics set value complex"
+                    .to_string(),
+                rule_name: "Imaginary Usage Warning".to_string(),
+            });
+        }
         Ok((
             EvalResult::Bool(are_eq),
-            vec![],
+            warnings,
             vec![],
             vec![],
             vec![],
@@ -627,6 +647,11 @@ impl Engine {
                     if let crate::limits::Approach::Finite(point) = approach {
                         step.meta_mut().limit_point = Some(point);
                     }
+                    // And the approach ITSELF, sign included. `limit_point` says
+                    // nothing about the infinities, and both share this rule
+                    // name — so without this the narration downstream can only
+                    // guess the direction, and it guessed `+∞` for both.
+                    step.meta_mut().limit_approach = Some(approach);
                     steps.push(step);
                 }
                 let mut warnings: Vec<DomainWarning> = result

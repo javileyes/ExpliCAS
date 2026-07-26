@@ -26,7 +26,7 @@ pub(crate) fn finalize_solution_set_output(
 ) -> EvalOutputWire {
     let result_str = format_output_solution_set(ctx, solution_set);
     let result_latex = solution_set_to_output_latex(ctx, solution_set);
-    let steps_count = shared.combined_steps_count();
+    let steps_count = shared.primary_steps_count();
     build_eval_output(
         build_nonexpr_result_payload(result_str, Some(result_latex)),
         steps_count,

@@ -103,6 +103,9 @@ fn generate_reverse_nested_fraction_substeps(
             else {
                 return Vec::new();
             };
+            if !factors_exactly(ctx, *before_den, common_den, *after_den) {
+                return Vec::new();
+            }
             let common_den_display = display_expr(ctx, common_den);
             let common_den_grouped_display = grouped_display_expr(ctx, common_den);
             let common_den_grouped_latex = grouped_latex_expr(ctx, common_den);
@@ -131,6 +134,9 @@ fn generate_reverse_nested_fraction_substeps(
             else {
                 return Vec::new();
             };
+            if !factors_exactly(ctx, *before_num, common_den, *after_num) {
+                return Vec::new();
+            }
             let common_den_display = display_expr(ctx, common_den);
             let common_den_grouped_display = grouped_display_expr(ctx, common_den);
             let common_den_grouped_latex = grouped_latex_expr(ctx, common_den);
@@ -151,6 +157,30 @@ fn generate_reverse_nested_fraction_substeps(
         super::nested_fraction_analysis::NestedFractionPattern::OneOverSumWithUnitFraction
         | super::nested_fraction_analysis::NestedFractionPattern::General => Vec::new(),
     }
+}
+
+/// `whole ≡ factor · rest`, decided EXACTLY. Twin of the gate in
+/// `focused_rule_substeps.rs`: this module is a clone of that narrator, and
+/// without the same guard the false `A = (1-x)²·A` claim simply reappears
+/// through the other route.
+fn factors_exactly(ctx: &Context, whole: ExprId, factor: ExprId, rest: ExprId) -> bool {
+    let mut scratch = ctx.clone();
+    let product = scratch.add(Expr::Mul(factor, rest));
+    let difference = scratch.add(Expr::Sub(whole, product));
+    let simplified = {
+        let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
+        std::mem::swap(&mut simplifier.context, &mut scratch);
+        let (rewritten, _steps, _stats) =
+            cas_engine::with_suppressed_depth_overflow_warnings(|| {
+                simplifier.simplify_with_stats(
+                    difference,
+                    cas_solver::runtime::SimplifyOptions::default(),
+                )
+            });
+        std::mem::swap(&mut simplifier.context, &mut scratch);
+        rewritten
+    };
+    matches!(scratch.get(simplified), Expr::Number(n) if num_traits::Zero::is_zero(n))
 }
 
 fn extract_single_fraction_denominator_from_add(ctx: &Context, expr: ExprId) -> Option<ExprId> {

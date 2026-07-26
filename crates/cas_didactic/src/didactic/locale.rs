@@ -75,6 +75,9 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
             "Integrate the remaining term",
         ),
         "partial_fractions.decompose" => ("Descomponer en fracciones parciales", "Decompose into partial fractions"),
+        "rootsum.split_rational_part" => ("Separar la parte de raíces racionales", "Split off the rational-root part"),
+        "rootsum.no_radicals" => ("Las raíces del denominador no son expresables por radicales: la primitiva se escribe como suma sobre las raíces del resolvente", "The denominator's roots are not expressible by radicals: the antiderivative is written as a sum over the resolvent's roots"),
+        "rootsum.read_the_sum" => ("Leer la suma: para cada raíz t del resolvente, el sumando es t·ln(x − w(t))", "Read the sum: for each root t of the resolvent, the summand is t·ln(x − w(t))"),
         "integral.integrate_simple_terms" => ("Integrar los términos simples", "Integrate the simple terms"),
         "usub.identify_u_du" => ("Identificar u y du", "Identify u and du"),
         "usub.adjust_constant_factor" => ("Ajustar el factor constante", "Adjust the constant factor"),
@@ -87,6 +90,8 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "usub.identify_affine_denominator" => ("Identificar el denominador afín", "Identify the affine denominator"),
         "integral.use_linearity" => ("Usar linealidad de la integral", "Use linearity of the integral"),
         "integral.integrate_each_term" => ("Integrar cada término", "Integrate each term"),
+        "vector.integrate_each_component" => ("Integrar cada componente del vector", "Integrate each component of the vector"),
+        "vector.differentiate_each_component" => ("Derivar cada componente del vector", "Differentiate each component of the vector"),
         "integral.reduce_positive_quadratic_to_square" => ("Reducir el cuadrático positivo al cuadrado", "Reduce the positive quadratic to a square"),
         "integral.integrate_arctan_and_rational_parts" => ("Integrar la parte arctan y la parte racional", "Integrate the arctan part and the rational part"),
         "usub.rule_cos_to_sin" => ("Usar la regla de cos(u) -> sin(u)", "Use the rule cos(u) -> sin(u)"),
@@ -104,7 +109,12 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "usub.rule_power_to_power_plus_one" => ("Usar la regla de u'·u^p -> u^(p+1)/(p+1)", "Use the rule u'·u^p -> u^(p+1)/(p+1)"),
         "limit.direct_substitution_0_0" => ("La sustitución directa da la indeterminación 0/0", "Direct substitution gives the indeterminate form 0/0"),
         "limit.numerator_denominator_inf_over_inf" => ("Numerador y denominador → ∞: indeterminación ∞/∞", "Numerator and denominator → ∞: indeterminate form ∞/∞"),
+        // At x→−∞ an odd-degree numerator tends to −∞, so the twin above states
+        // the wrong thing there. The form is still called ∞/∞; what is not true
+        // is that both sides tend to +∞.
+        "limit.numerator_denominator_inf_over_inf_negative" => ("Numerador y denominador → ±∞ (x→−∞): indeterminación ∞/∞", "Numerator and denominator → ±∞ (x→−∞): indeterminate form ∞/∞"),
         "limit.base_to_1_exponent_to_inf_1_pow_inf" => ("La base tiende a 1 y el exponente a ∞: indeterminación 1^∞", "The base tends to 1 and the exponent to ∞: indeterminate form 1^∞"),
+        "limit.base_to_1_exponent_to_inf_1_pow_inf_negative" => ("La base tiende a 1 y el exponente a −∞: indeterminación 1^∞", "The base tends to 1 and the exponent to −∞: indeterminate form 1^∞"),
         "limit.notable_sin_u_over_u" => ("Aplicar el límite notable: lím(u→0) sin(u)/u = 1", "Apply the standard limit: lim(u→0) sin(u)/u = 1"),
         "limit.notable_one_minus_cos_over_u2" => ("Aplicar el límite notable: lím(u→0) (1 − cos(u))/u² = 1/2", "Apply the standard limit: lim(u→0) (1 − cos(u))/u² = 1/2"),
         "limit.notable_a_pow_u_minus_1_over_u" => ("Aplicar el límite notable: lím(u→0) (aᵘ − 1)/u = ln(a)", "Apply the standard limit: lim(u→0) (aᵘ − 1)/u = ln(a)"),
@@ -155,7 +165,7 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "rationalize.difference_of_squares" => ("Diferencia de cuadrados", "Difference of squares"),
         "rationalize.group_denominator_terms" => ("Agrupar términos del denominador", "Group the terms of the denominator"),
         "rationalize.denominator_radical_product" => ("Denominador con producto de radical", "Denominator with a radical factor"),
-        "rationalize.multiply_by_root_over_root" => ("Multiplicar por \\sqrt{n}/\\sqrt{n}", "Multiply by \\sqrt{n}/\\sqrt{n}"),
+        "rationalize.multiply_by_root_over_root" => ("Multiplicar por √n/√n", "Multiply by √n/√n"),
         "rationalize.multiply_by_cube_conjugate" => ("Multiplicar por el conjugado cúbico", "Multiply by the cubic conjugate"),
         "rationalize.sum_of_cubes_denominator" => ("Aplicar suma de cubos en el denominador", "Apply the sum of cubes in the denominator"),
         "rationalize.cube_exact_quotient_identity" => ("Usar (u^3 - 1) / (u - 1) = u^2 + u + 1", "Use (u^3 - 1) / (u - 1) = u^2 + u + 1"),
@@ -272,13 +282,98 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
 /// English for a STATIC Spanish sub-step description (no embedded values). Unkeyed sub-steps whose
 /// title is a fixed Spanish string are translated here at the wire boundary (the same pivot-through-
 /// Spanish approach as rule names); dynamic titles use the keyed path. Unmapped strings pass through.
-pub(crate) fn description_en(es: &str) -> &str {
-    match es {
+/// Prefix rules for the substep titles built with `format!` as
+/// "<phrase> <math>". A lookup table cannot reach them — the math varies per
+/// call — but the PHRASE is what carries the language, and the math is
+/// language-neutral by construction. Longest prefix first.
+const DESCRIPTION_EN_PREFIXES: &[(&str, &str)] = &[
+    (
+        "Usar que una función impar cumple ",
+        "Use that an odd function satisfies ",
+    ),
+    (
+        "Usar que una función par cumple ",
+        "Use that an even function satisfies ",
+    ),
+    ("Usar la diferencia de cuadrados: ", "Use the difference of squares: "),
+    (
+        "La política segura no decide este límite. Para investigarlo, calcula los límites laterales en ",
+        "The safe policy does not decide this limit. To investigate it, compute the one-sided limits at ",
+    ),
+    ("Multiplicar por ", "Multiply by "),
+    (
+        "Calcular el cateto restante del triángulo asociado a ",
+        "Compute the remaining leg of the triangle associated with ",
+    ),
+    (
+        "Calcular la hipotenusa del triángulo asociado a ",
+        "Compute the hypotenuse of the triangle associated with ",
+    ),
+    ("Ahora se cancela el factor ", "Now the factor cancels: "),
+    ("Usar la regla de ", "Use the rule "),
+    ("Usar que ", "Use that "),
+    ("Sacar factor común ", "Factor out "),
+    ("Aquí u = ", "Here u = "),
+    ("Usar ", "Use "),
+    ("Calcular ", "Compute "),
+];
+
+/// `, con u = x` and friends: the tail of a "phrase + math" title.
+const DESCRIPTION_EN_SUFFIXES: &[(&str, &str)] = &[(", con u = ", ", with u = ")];
+
+pub(crate) fn description_en(es: &str) -> std::borrow::Cow<'_, str> {
+    if let Some(exact) = description_en_exact(es) {
+        return std::borrow::Cow::Borrowed(exact);
+    }
+    for (es_prefix, en_prefix) in DESCRIPTION_EN_PREFIXES {
+        if let Some(tail) = es.strip_prefix(es_prefix) {
+            let mut rendered = format!("{en_prefix}{tail}");
+            for (es_suffix, en_suffix) in DESCRIPTION_EN_SUFFIXES {
+                if let Some(idx) = rendered.find(es_suffix) {
+                    rendered = format!(
+                        "{}{en_suffix}{}",
+                        &rendered[..idx],
+                        &rendered[idx + es_suffix.len()..]
+                    );
+                }
+            }
+            return std::borrow::Cow::Owned(rendered);
+        }
+    }
+    std::borrow::Cow::Borrowed(es)
+}
+
+fn description_en_exact(es: &str) -> Option<&str> {
+    let translated = match es {
         "Descomponer en fracciones parciales" => "Decompose into partial fractions",
         "Integrar los términos simples" => "Integrate the simple terms",
         "Identificar u y du" => "Identify u and du",
         "Ajustar el factor constante" => "Adjust the constant factor",
         "Hallar la antiderivada" => "Find the antiderivative",
+        "Usar asin(sin(u)) = u en el rango principal" => "Use asin(sin(u)) = u on the principal range",
+        "Usar la regla de asinh con derivada interna" => "Use the asinh rule with inner derivative",
+        "Usar la regla de cosh con derivada interna" => "Use the cosh rule with inner derivative",
+        "Usar la regla de la exponencial" => "Use the exponential rule",
+        "Usar que una potencia impar conserva el signo negativo" => "Use that an odd power keeps the negative sign",
+        "Usar que una potencia par elimina el signo" => "Use that an even power removes the sign",
+        "Aquí arcsin(x) y arccos(x) suman pi/2" => "Here arcsin(x) and arccos(x) add up to pi/2",
+        "Cancelar el factor común del numerador y del denominador" => "Cancel the common factor of numerator and denominator",
+        "Detectar base cero con exponente variable" => "Detect a zero base with a variable exponent",
+        "Detectar un polo dentro del intervalo de integración" => "Detect a pole inside the integration interval",
+        "El exponente exterior cancela el ln del exponente interior" => "The outer exponent cancels the ln of the inner exponent",
+        "Factorizar el denominador" => "Factor the denominator",
+        "Identificar la base del cuadrado" => "Identify the base of the square",
+        "Integrar una constante" => "Integrate a constant",
+        "La raíz de un cuadrado da un valor absoluto" => "The root of a square yields an absolute value",
+        "Leer el coseno desde ese triángulo" => "Read the cosine off that triangle",
+        "Leer el seno desde ese triángulo" => "Read the sine off that triangle",
+        "Leer la tangente desde ese triángulo" => "Read the tangent off that triangle",
+        "Reconocer el patrón sin(u) / cos(u) = tan(u)" => "Recognize the pattern sin(u) / cos(u) = tan(u)",
+        "Reescribir el cociente como producto exponencial" => "Rewrite the quotient as an exponential product",
+        "Reescribir el radicando como un cuadrado perfecto" => "Rewrite the radicand as a perfect square",
+        "Registrar dominio del logaritmo" => "Record the logarithm's domain",
+        "Simplificar las potencias" => "Simplify the powers",
+        "Sustituir dentro de arcsin" => "Substitute inside arcsin",
         "Evaluar la antiderivada en los límites" => "Evaluate the antiderivative at the bounds",
         "Identificar los productos que genera la distributiva" => "Identify the products produced by the distributive law",
         "Escribir los productos con los signos originales" => "Write the products with their original signs",
@@ -435,8 +530,9 @@ pub(crate) fn description_en(es: &str) -> &str {
         "Aplicar la recurrencia F(n) = F(n-1) + F(n-2)" => {
             "Apply the Fibonacci recurrence F(n) = F(n-1) + F(n-2)"
         }
-        other => other,
-    }
+        _ => return None,
+    };
+    Some(translated)
 }
 
 #[cfg(test)]

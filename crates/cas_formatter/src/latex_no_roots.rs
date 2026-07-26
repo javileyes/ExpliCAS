@@ -121,7 +121,11 @@ impl<'a> LatexNoRoots<'a> {
                             .iter()
                             .map(|&arg| self.expr_to_latex(arg, false))
                             .collect();
-                        format!("\\text{{{}}}({})", name, args_str.join(", "))
+                        format!(
+                            "\\text{{{}}}({})",
+                            crate::escape::latex_text_name(name),
+                            args_str.join(", ")
+                        )
                     }
                 }
             }

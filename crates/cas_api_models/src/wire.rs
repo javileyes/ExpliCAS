@@ -167,6 +167,11 @@ pub struct EvalWireReplyParts<'a> {
     pub result: &'a str,
     pub result_latex: Option<&'a str>,
     pub steps_count: usize,
+    /// Counted alongside `steps_count` for the human-facing summary line only:
+    /// solve/dsolve narration lives in `solve_steps`, and under the strict
+    /// `steps_count == steps.len()` contract those rows would otherwise print
+    /// no step summary at all.
+    pub solve_steps_count: usize,
     pub steps_mode: &'a str,
 }
 
@@ -227,6 +232,7 @@ pub fn build_eval_wire_reply(parts: EvalWireReplyParts<'_>) -> WireReply {
         result,
         result_latex,
         steps_count,
+        solve_steps_count,
         steps_mode,
     } = parts;
     let mut messages = Vec::new();
@@ -273,11 +279,15 @@ pub fn build_eval_wire_reply(parts: EvalWireReplyParts<'_>) -> WireReply {
     };
     messages.push(WireMsg::new(WireKind::Output, result_text));
 
-    if steps_mode == "on" && steps_count > 0 {
+    // `steps_count` is now strictly `steps.len()`, so a solve whose narration
+    // lives in `solve_steps` would lose this line entirely: count both channels
+    // for the human-facing summary.
+    let narration_count = steps_count + solve_steps_count;
+    if steps_mode == "on" && narration_count > 0 {
         let steps_text = if let Some(strategy) = strategy {
-            format!("{steps_count} step(s) via {strategy}")
+            format!("{narration_count} step(s) via {strategy}")
         } else {
-            format!("{steps_count} simplification step(s)")
+            format!("{narration_count} simplification step(s)")
         };
         messages.push(WireMsg::new(WireKind::Steps, steps_text));
     }
@@ -329,6 +339,7 @@ mod tests {
             result: "42",
             result_latex: Some("42"),
             steps_count: 3,
+            solve_steps_count: 0,
             steps_mode: "on",
         });
 
@@ -355,6 +366,7 @@ mod tests {
             result: "ok",
             result_latex: None,
             steps_count: 10,
+            solve_steps_count: 0,
             steps_mode: "off",
         });
         assert_eq!(reply.messages.len(), 1);
@@ -373,11 +385,34 @@ mod tests {
             result: "ok",
             result_latex: None,
             steps_count: 2,
+            solve_steps_count: 0,
             steps_mode: "on",
         });
         assert_eq!(reply.messages.len(), 2);
         assert_eq!(reply.messages[1].kind, WireKind::Steps);
         assert_eq!(reply.messages[1].text, "2 simplification step(s)");
+    }
+
+    /// Under the strict `steps_count == steps.len()` contract a solve narrates
+    /// through `solve_steps`, so the summary line must count BOTH channels or
+    /// those rows would silently print no step summary at all.
+    #[test]
+    fn build_eval_wire_reply_counts_solve_steps_in_the_summary() {
+        let reply = build_eval_wire_reply(EvalWireReplyParts {
+            warnings: &[],
+            assumptions_used: &[],
+            required_display: &[],
+            blocked_hints: &[],
+            strategy: None,
+            result: "{ 1/6·pi + k·2·pi : k ∈ ℤ }",
+            result_latex: None,
+            steps_count: 0,
+            solve_steps_count: 4,
+            steps_mode: "on",
+        });
+        assert_eq!(reply.messages.len(), 2);
+        assert_eq!(reply.messages[1].kind, WireKind::Steps);
+        assert_eq!(reply.messages[1].text, "4 simplification step(s)");
     }
 
     #[test]

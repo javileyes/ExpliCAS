@@ -144,11 +144,83 @@ pub(super) fn render_step_wire_latex(
     }
     let rule_latex = derive_rule_latex_from_global(step, &before_latex, &after_latex, is_first)
         .unwrap_or_else(|| render_normalized_rule_latex(context, step, is_first));
+    // A rule line whose two sides are IDENTICAL asserts nothing and reads as a
+    // bug (`x → x`, `0 → 0`). The web paints `rule_latex` directly under the
+    // rule name, so the student reads it as the identity the rule teaches. When
+    // the derived span degenerates, fall back to the two global states, which
+    // do differ.
+    let rule_latex = if rule_latex_sides_are_identical(&rule_latex) {
+        format!(
+            "{{\\color{{red}}{{{}}}}} \\rightarrow {{\\color{{green}}{{{}}}}}",
+            strip_colour_wrappers(&before_latex),
+            strip_colour_wrappers(&after_latex)
+        )
+    } else {
+        rule_latex
+    };
     RenderedStepWireLatex {
         before_latex,
         after_latex,
         rule_latex,
     }
+}
+
+/// `true` when a `A \rightarrow B` rule line has A and B textually equal.
+fn rule_latex_sides_are_identical(rule_latex: &str) -> bool {
+    let Some((lhs, rhs)) = rule_latex.split_once("\\rightarrow") else {
+        return false;
+    };
+    let (Some((_, _, red)), Some((_, _, green))) = (
+        single_colour_span(lhs, "red"),
+        single_colour_span(rhs, "green"),
+    ) else {
+        return false;
+    };
+    normalized_latex(&red) == normalized_latex(&green)
+}
+
+fn single_colour_span(latex: &str, colour: &str) -> Option<(usize, usize, String)> {
+    let needle = format!("{{\\color{{{colour}}}{{");
+    let start = latex.find(&needle)?;
+    let inner_start = start + needle.len();
+    let bytes = latex.as_bytes();
+    let mut depth = 1usize;
+    let mut idx = inner_start;
+    while idx < bytes.len() && depth > 0 {
+        match bytes[idx] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            _ => {}
+        }
+        idx += 1;
+    }
+    if depth != 0 {
+        return None;
+    }
+    // `idx` sits just past the INNER closing brace; the wrapper's own `}`
+    // follows it, so the whole span ends one byte further. Getting this wrong
+    // leaves an orphan `}` and MathJax reports "Extra close brace" — which is a
+    // hard error that kills the rendering of the whole expression.
+    Some((start, idx + 1, latex[inner_start..idx - 1].to_string()))
+}
+
+fn strip_colour_wrappers(latex: &str) -> String {
+    let mut current = latex.to_string();
+    while let Some((start, end, inner)) =
+        single_colour_span(&current, "red").or_else(|| single_colour_span(&current, "green"))
+    {
+        current = format!("{}{}{}", &current[..start], inner, &current[end..]);
+    }
+    current
+}
+
+fn normalized_latex(latex: &str) -> String {
+    latex
+        .replace("\\left", "")
+        .replace("\\right", "")
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect()
 }
 
 /// Extract the single brace-balanced `\color{<color>}{…}` span of a rendered

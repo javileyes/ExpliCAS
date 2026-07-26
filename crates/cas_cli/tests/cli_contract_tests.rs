@@ -2587,8 +2587,12 @@ fn test_eval_limit_imaginary_point_real_domain_residual() {
             result.starts_with("limit("),
             "{probe} debe declinar a residual con punto imaginario, got: {result}"
         );
+        // El aviso viaja en el idioma pedido (C5.3: los warnings pasaron a ir
+        // por catálogo bidireccional). Este pin fijaba el TEXTO INGLÉS corriendo
+        // en modo español, o sea el defecto; ahora fija el motivo en el idioma
+        // correcto, que es un contrato más fuerte.
         assert!(
-            warnings.contains("imaginary unit"),
+            warnings.contains("unidad imaginaria"),
             "{probe} debe llevar el motivo del punto imaginario, got: {warnings}"
         );
         assert!(

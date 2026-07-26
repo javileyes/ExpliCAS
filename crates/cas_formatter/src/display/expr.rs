@@ -843,8 +843,34 @@ pub(super) fn precedence(ctx: &Context, id: ExprId) -> i32 {
 }
 
 pub(super) fn is_add_sub_after_internal_hold(ctx: &Context, id: ExprId) -> bool {
-    let id = unwrap_internal_hold_for_display(ctx, id);
+    let id = peel_unit_factors_for_display(ctx, id);
     matches!(ctx.get(id), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+/// See through `__hold` AND unit factors before judging additivity.
+///
+/// The Mul renderer elides `1 · X`, so what PRINTS for `Mul(1, b + x)` is
+/// `b + x` — additive — while the node is a Mul. Every caller of the
+/// additivity check is deciding parentheses around what will be PRINTED, so
+/// the check must look at the effective content. Judging the node let
+/// `Sub(c + x, Mul(1, b + x))` print `c + x - b + x`: an expression worth
+/// `c − b + 2x` standing in for one worth `c − b`.
+fn peel_unit_factors_for_display(ctx: &Context, id: ExprId) -> ExprId {
+    let mut current = unwrap_internal_hold_for_display(ctx, id);
+    loop {
+        let Expr::Mul(l, r) = ctx.get(current) else {
+            return current;
+        };
+        let is_unit =
+            |side: ExprId| matches!(ctx.get(side), Expr::Number(n) if num_traits::One::is_one(n));
+        current = if is_unit(*l) {
+            unwrap_internal_hold_for_display(ctx, *r)
+        } else if is_unit(*r) {
+            unwrap_internal_hold_for_display(ctx, *l)
+        } else {
+            return current;
+        };
+    }
 }
 
 fn unwrap_internal_hold_for_display(ctx: &Context, id: ExprId) -> ExprId {
@@ -1912,5 +1938,36 @@ fn relational_builtin_op_plain(name: &str) -> Option<&'static str> {
         "GreaterEqual" => Some(">="),
         "NotEqual" => Some("!="),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod unit_factor_paren_tests {
+    use cas_ast::{Context, Expr};
+
+    /// The display twin of `test_latex_sub_with_unit_mul_add_rhs`: the plain
+    /// Mul renderer elides `1 · X` too, and the subtrahend used to print
+    /// `c + x - b + x` for a numerator worth `c − b` — the 2x error the audit
+    /// measured on the common-denominator narration.
+    #[test]
+    fn sub_with_unit_mul_add_rhs_keeps_parentheses() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let x = ctx.var("x");
+        let cx = ctx.add(Expr::Add(c, x));
+        let bx = ctx.add(Expr::Add(b, x));
+        let one = ctx.num(1);
+        let lifted_left = ctx.add_raw(Expr::Mul(one, cx));
+        let lifted_right = ctx.add_raw(Expr::Mul(one, bx));
+        let numerator = ctx.add_raw(Expr::Sub(lifted_left, lifted_right));
+        let shown = format!(
+            "{}",
+            crate::DisplayExpr {
+                context: &ctx,
+                id: numerator,
+            }
+        );
+        assert_eq!(shown, "c + x - (b + x)");
     }
 }

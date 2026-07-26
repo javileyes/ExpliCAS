@@ -1,5 +1,13 @@
+#[path = "substep/claim.rs"]
+pub mod claim;
+#[path = "substep/matching.rs"]
+pub mod matching;
 #[path = "substep/methods.rs"]
 mod methods;
+#[path = "substep/schema.rs"]
+pub mod schema;
+
+pub use claim::Claim;
 
 /// A synthetic sub-step that explains a hidden operation
 #[derive(Debug, Clone)]

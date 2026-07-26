@@ -34,6 +34,20 @@ pub struct StepMeta {
     /// Used by didactic narration to soundly identify an indeterminate `0/0` form at the point
     /// (a `u^k` denominator only vanishes at `0`, so the narration must know the point is `0`).
     pub limit_point: Option<ExprId>,
+    /// The FULL approach of a limit step, sign included.
+    ///
+    /// `limit_point` only exists for `Approach::Finite`, and both infinities
+    /// share one rule name (`"Evaluar límite en infinito"`), so the didactic
+    /// layer was reading the direction off a substring and could not tell `+∞`
+    /// from `−∞`. That is not a cosmetic gap: at `−∞` it narrated `(1 + 1/x)^x`
+    /// with the theorem for `x→+∞`, and called a numerator that tends to `−∞`
+    /// a numerator that tends to `∞`.
+    ///
+    /// A sub-step that asserts `after = lim_{var→approach} before` cannot be
+    /// CHECKED without this — the verifier has to ask the oracle about the same
+    /// approach the narration is talking about. Carrying it as data is what
+    /// makes the claim expressible at all.
+    pub limit_approach: Option<cas_math::limit_types::Approach>,
 }
 
 #[derive(Debug, Clone)]

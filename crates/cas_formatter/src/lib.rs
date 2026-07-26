@@ -34,7 +34,7 @@ pub use display_hint_builder::{build_display_context_with_result, DisplayStepLik
 pub use display_transforms::{
     DisplayTransform, DisplayTransformRegistry, ScopeTag, ScopedRenderer,
 };
-pub use escape::{html_escape, latex_escape};
+pub use escape::{html_escape, latex_escape, latex_text_name};
 pub use latex::{LaTeXExpr, LaTeXExprStyled, LaTeXExprWithHints};
 pub use latex_clean::clean_latex_identities;
 pub use latex_core::PathHighlightedLatexRenderer;

@@ -16180,3 +16180,581 @@ fn definite_rational_atanh_domain_gate_is_strict() {
         "integrate(1 / (1 - x^2 - x), x, 2, 3)"
     );
 }
+
+/// Returns the `after_latex` of the "evaluate the antiderivative at the bounds"
+/// substep, i.e. the line where the student reads `F(b) - F(a)`.
+fn definite_bounds_substep_after_latex(input: &str) -> String {
+    let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let substep = steps
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .find(|substep| substep["title"] == "Evaluar la antiderivada en los límites")
+        .unwrap_or_else(|| panic!("no bounds-evaluation substep for {input}"));
+    substep["after_latex"]
+        .as_str()
+        .unwrap_or_else(|| panic!("bounds substep without after_latex for {input}"))
+        .to_string()
+}
+
+/// `F(b) - F(a)` is an EXPRESSION, not two strings glued with a minus sign.
+///
+/// The regression this pins: the substep used to be built with
+/// `format!("{} - {}", upper, lower)`, so when `F(a)` had two or more terms the
+/// minus only reached the first one and the line published a FALSE identity —
+/// `integrate(cos(t)^2, t, pi/6, pi/3)` displayed a value of `pi/4` while the
+/// step itself answered `pi/12`. Building the `Sub` node lets the renderer place
+/// the parentheses it already knows how to place (see
+/// `cas_formatter::latex::test_latex_sub_with_add_rhs`).
+#[test]
+fn integrate_contract_definite_bounds_substep_subtracts_all_of_f_of_a() {
+    // Finite bounds, multi-term F(a): the whole subtrahend must be grouped.
+    assert_eq!(
+        definite_bounds_substep_after_latex("integrate(cos(t)^2, t, pi/6, pi/3)"),
+        "\\frac{\\sin(\\frac{2}{3}\\cdot \\pi)}{4} + \\frac{\\frac{\\pi}{3}}{2} \
+         - (\\frac{\\sin(\\frac{2}{6}\\cdot \\pi)}{4} + \\frac{\\frac{\\pi}{6}}{2})"
+    );
+
+    // Single-term F(a) needs no grouping: the fix must not add noise.
+    let single_term = definite_bounds_substep_after_latex("integrate(2*x, x, 1, 3)");
+    assert!(
+        !single_term.contains("- ("),
+        "a one-term F(a) should not be parenthesized, got {single_term}"
+    );
+
+    // Improper bound: `lim` has no node to subtract from, so the operand is
+    // delimited by hand — otherwise the limit appears to apply to the first
+    // summand only (and each summand diverges on its own).
+    let improper = definite_bounds_substep_after_latex("integrate(1/(x^4-1), x, 2, oo)");
+    assert!(
+        improper.starts_with("\\lim_{x \\to \\infty} \\left("),
+        "the limit operand must be delimited, got {improper}"
+    );
+    assert!(
+        improper.contains("\\right) - \\left("),
+        "the subtrahend must be delimited when the limit branch is taken, got {improper}"
+    );
+}
+
+/// A substep must not announce a manoeuvre it does not perform, and the thing
+/// being decomposed is the RATIONAL FUNCTION, not its denominator.
+///
+/// Three regressions pinned at once (audit rows 031/032/033):
+///  - over a denominator irreducible in Q (`x^3 - 2`), "factor the denominator"
+///    returned the denominator itself and "decompose" returned the integrand;
+///  - the decompose substep used the factored DENOMINATOR as its `before`, so
+///    on `x^5 - 1` it asserted that a polynomial equals a sum of fractions;
+///  - `∫dx/x` announced a partial-fraction decomposition of `1/x` into `1/x`.
+#[test]
+fn integrate_contract_partial_fraction_substeps_never_claim_a_manoeuvre_they_skip() {
+    let titles = |input: &str| -> Vec<(String, String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["before"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    // Irreducible in Q: no factorization claim, no identity "decomposition".
+    let irreducible = titles("integrate(1/(x^3-2), x)");
+    assert!(
+        !irreducible
+            .iter()
+            .any(|(t, _, _)| t.contains("Factorizar") || t.contains("Descomponer")),
+        "x^3 - 2 is irreducible in Q; neither claim may be published: {irreducible:?}"
+    );
+
+    // Real decomposition: the `before` is the integrand, not the denominator.
+    let quintic = titles("integrate(1/(x^5-1), x)");
+    let decompose = quintic
+        .iter()
+        .find(|(t, _, _)| t.contains("Descomponer"))
+        .expect("x^5 - 1 does decompose");
+    assert_eq!(decompose.1, "1 / (x^5 - 1)");
+
+    // Already decomposed: only the honest table statement survives.
+    let simple = titles("integrate(1/x, x)");
+    assert!(
+        !simple.iter().any(|(t, _, _)| t.contains("Descomponer")),
+        "1/x is already decomposed: {simple:?}"
+    );
+    assert!(
+        simple
+            .iter()
+            .any(|(_, b, a)| b == "1 / x" && a == "ln(|x|)"),
+        "the table statement must survive: {simple:?}"
+    );
+
+    // A genuine decomposition is untouched.
+    let genuine = titles("integrate(1/(x^2+x), x)");
+    assert!(
+        genuine
+            .iter()
+            .any(|(t, b, a)| t.contains("Descomponer") && b == "1 / (x^2 + x)" && a != b),
+        "a real decomposition must still narrate: {genuine:?}"
+    );
+}
+
+/// Row `k` of the Hessian differentiates `∂f/∂x_k`, not `f` — which is what the
+/// substep's own title says. Using `f` as the `before` made the line a false
+/// statement (from `y·x²` "comes" `[2y, 2x]`) and hid the gradient component,
+/// the one intermediate that makes the jump followable. The jacobian arm next
+/// door was already correct.
+#[test]
+fn hessian_row_substeps_start_from_the_first_derivative() {
+    let (wire, _) = cli_eval_json_with_stderr_args("hessian(x^2*y, [x,y])", &["--steps", "on"]);
+    let subs: Vec<(String, String, String)> = wire["steps"]
+        .as_array()
+        .expect("steps with --steps on")
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .map(|s| {
+            (
+                s["title"].as_str().unwrap_or_default().to_string(),
+                s["before"].as_str().unwrap_or_default().to_string(),
+                s["after"].as_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(subs.len(), 2, "one substep per row: {subs:?}");
+    // ∂f/∂x = 2xy and ∂f/∂y = x², NOT f = y·x² twice.
+    assert_eq!(subs[0].1, "2·x·y");
+    assert_eq!(subs[1].1, "x^2");
+    // And both sides fold: the machinery's `x^(2 - 1 - 1)` never reaches the student.
+    for (title, before, after) in &subs {
+        assert!(
+            !before.contains("^(") && !after.contains("^("),
+            "raw exponent arithmetic leaked into «{title}»: {before} -> {after}"
+        );
+    }
+    assert_eq!(subs[0].2, "[2·y, 2·x]");
+    assert_eq!(subs[1].2, "[2·x, 0]");
+}
+
+/// The reverse-nested-fraction narrator may only claim `A = c·B` when that
+/// identity actually holds. It used to fire on pattern match alone and publish
+/// `A = (1-x)²·A` inside `diff(arctan((1+x)/(1-x)), x)`.
+#[test]
+fn nested_fraction_common_factor_substep_requires_the_identity_to_hold() {
+    let (wire, _) =
+        cli_eval_json_with_stderr_args("diff(arctan((1+x)/(1-x)), x)", &["--steps", "on"]);
+    let titles: Vec<String> = wire["steps"]
+        .as_array()
+        .expect("steps with --steps on")
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .filter_map(|s| s["title"].as_str().map(str::to_string))
+        .collect();
+    assert!(
+        !titles.iter().any(|t| t.contains("sacando factor común")),
+        "the identity does not hold here, so the substep must decline: {titles:?}"
+    );
+    // The rest of the trace is untouched.
+    assert!(
+        titles.iter().any(|t| t.contains("Invertir la fracción")),
+        "the genuine manoeuvres must survive: {titles:?}"
+    );
+}
+
+/// `equiv` answers a bare `true`/`false` with no steps to qualify it, so a
+/// `false` that is only false IN THE REAL DOMAIN reads as "this identity is
+/// wrong". `equiv(e^(i*pi), -1)` printed `false` with no warning at all: the
+/// student reads that Euler's identity does not hold. (With
+/// `--value-domain complex` the same call answers `true`.)
+#[test]
+fn equiv_false_over_the_reals_says_so_when_the_argument_is_complex() {
+    for input in [
+        "equiv(e^(i*pi), -1)",
+        "equiv(i^2, -1)",
+        "equiv(sin(i), i*sinh(1))",
+    ] {
+        let (wire, _) = cli_eval_json_with_stderr(input);
+        assert_eq!(wire["result"], "false", "{input}");
+        let warnings = wire["warnings"]
+            .as_array()
+            .expect("warnings array")
+            .iter()
+            .filter_map(|w| w["rule"].as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            warnings.contains(&"Imaginary Usage Warning"),
+            "{input} answered false over the reals without saying why: {warnings:?}"
+        );
+    }
+
+    // A real-domain equivalence must not gain noise.
+    for input in ["equiv(x+x, 2*x)", "equiv(ln(x*y), ln(x)+ln(y))"] {
+        let (wire, _) = cli_eval_json_with_stderr(input);
+        assert_eq!(wire["result"], "true", "{input}");
+        assert!(
+            wire["warnings"].as_array().expect("warnings").is_empty(),
+            "{input} should carry no imaginary warning: {:?}",
+            wire["warnings"]
+        );
+    }
+}
+
+/// Linearity over a sum integrand, verified term by term.
+///
+/// The audit's second witness: `integrate(2*x/sqrt(4+x^4)+1, x)` published one
+/// magic step while the same integrand WITHOUT the `+1` narrated fine — the
+/// chain's only additive decomposition sat behind a gate demanding the whole
+/// integrand be a polynomial.
+#[test]
+fn integrate_contract_additive_integrand_narrates_linearity_then_each_term() {
+    let subs = |input: &str| -> Vec<(String, String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["before"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    let witness = subs("integrate(2*x/sqrt(4+x^4)+1, x)");
+    assert!(
+        witness.iter().any(|(t, _, _)| t.contains("linealidad")),
+        "the witness must open with linearity: {witness:?}"
+    );
+    assert!(
+        witness.iter().any(|(t, _, _)| t.contains("asinh")),
+        "and each term keeps its own method: {witness:?}"
+    );
+
+    // A sum must never be labelled with a single term's method.
+    for input in ["integrate(ln(x)+x, x)", "integrate(x*e^x+sin(2*x), x)"] {
+        let s = subs(input);
+        assert_eq!(
+            s.first().map(|(t, _, _)| t.as_str()),
+            Some("Usar linealidad de la integral"),
+            "{input} must open with linearity, not with one term's method: {s:?}"
+        );
+    }
+
+    // The polynomial arm keeps ownership (its pins fix a 2-substep narration).
+    let poly = subs("integrate(x^2+3*x+1, x)");
+    assert_eq!(
+        poly.len(),
+        2,
+        "polynomial arm must still own this: {poly:?}"
+    );
+
+    // A PRODUCT integrand is not linearity and must be untouched.
+    let product = subs("integrate(e^x*sin(x), x)");
+    assert!(
+        !product.iter().any(|(t, _, _)| t.contains("linealidad")),
+        "a product is not a sum: {product:?}"
+    );
+}
+
+/// A vector `integrate`/`diff` narrates component by component. The engine
+/// already worked that way and said so in its rule description, but the didactic
+/// chain did not recognise the `Expr::Matrix` shape and returned empty.
+#[test]
+fn integrate_contract_vector_calculus_narrates_each_component() {
+    let subs = |input: &str| -> Vec<(String, String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["before"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    for (input, header) in [
+        (
+            "integrate([cos(x), e^x], x)",
+            "Integrar cada componente del vector",
+        ),
+        (
+            "diff([x^2, sin(x)], x)",
+            "Derivar cada componente del vector",
+        ),
+        // Definite: the split rides the bounds along.
+        (
+            "integrate([cos(t), sin(t)], t, 0, pi)",
+            "Integrar cada componente del vector",
+        ),
+    ] {
+        let s = subs(input);
+        assert_eq!(
+            s.first().map(|(t, _, _)| t.as_str()),
+            Some(header),
+            "{input} must open with the component split: {s:?}"
+        );
+        // The header SHOWS the split (pending per-component operations); a
+        // header that merely restates the parent is pruned by policy.
+        assert_ne!(s[0].1, s[0].2, "{input} header restates its parent: {s:?}");
+        // At least one component narrates. NOT "every component": `∫e^x dx = e^x`
+        // is a fixed point and has nothing to narrate — demanding a substep per
+        // component is what would push a narrator into publishing `e^x -> e^x`.
+        assert!(
+            s.len() >= 2,
+            "{input} must narrate at least one component after the split: {s:?}"
+        );
+    }
+
+    // Both components non-trivial: one substep each on top of the header.
+    let both = subs("diff([x^2, sin(x)], x)");
+    assert!(
+        both.len() >= 3,
+        "both components of this one do narrate: {both:?}"
+    );
+
+    // And the fixed point publishes NOTHING rather than an identity substep.
+    let fixed_point = subs("integrate(e^x, x)");
+    assert!(
+        fixed_point.is_empty(),
+        "∫e^x dx is a fixed point; «use substitution: e^x -> e^x» teaches nothing: {fixed_point:?}"
+    );
+}
+
+/// The FTC wrapper narrated the SHELL and never the method: "find the
+/// antiderivative" states WHAT was obtained and never HOW. The rest of the chain
+/// already knows how to narrate the indefinite integral, so it gets handed a
+/// synthetic 2-arg step and its narration is spliced in between.
+#[test]
+fn integrate_contract_definite_integral_shows_how_the_antiderivative_was_found() {
+    let (wire, _) =
+        cli_eval_json_with_stderr_args("integrate(1/(x^4-1), x, 2, oo)", &["--steps", "on"]);
+    let titles: Vec<String> = wire["steps"]
+        .as_array()
+        .expect("steps with --steps on")
+        .iter()
+        .filter_map(|step| step["substeps"].as_array())
+        .flatten()
+        .filter_map(|s| s["title"].as_str().map(str::to_string))
+        .collect();
+    let find = titles
+        .iter()
+        .position(|t| t.contains("Hallar la antiderivada"));
+    let method = titles.iter().position(|t| t.contains("Descomponer"));
+    let evaluate = titles.iter().position(|t| t.contains("los límites"));
+    assert!(
+        matches!((find, method, evaluate), (Some(f), Some(m), Some(e)) if f < m && m < e),
+        "the method must sit BETWEEN finding and evaluating: {titles:?}"
+    );
+}
+
+/// The visible rule name must describe the manoeuvre THIS step performed.
+///
+/// `Distribute Division Into Sum` covers two different rewrites and the static
+/// table could only name one: on `taylor(sin(x), x, 0, 5)` step 3 factors the
+/// common coefficient 6 out of `(6x^5 - 120x^3)/720` — it distributes nothing —
+/// while the name read "Repartir el denominador entre los sumandos". The rule
+/// already says which one it did in its own description.
+#[test]
+fn visible_rule_name_distinguishes_the_two_distribute_division_manoeuvres() {
+    for (lang, expected, forbidden) in [
+        (
+            "es",
+            "Sacar el factor común del numerador",
+            "Repartir el denominador",
+        ),
+        (
+            "en",
+            "Factor the common coefficient out of the numerator",
+            "Split the denominator",
+        ),
+    ] {
+        let (wire, _) = cli_eval_json_with_stderr_args(
+            "taylor(sin(x), x, 0, 5)",
+            &["--steps", "on", "--lang", lang],
+        );
+        let rules: Vec<String> = wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|s| s["rule"].as_str().map(str::to_string))
+            .collect();
+        assert!(rules.iter().any(|r| r == expected), "[{lang}] {rules:?}");
+        assert!(
+            !rules.iter().any(|r| r.contains(forbidden)),
+            "[{lang}] the step distributes nothing: {rules:?}"
+        );
+    }
+}
+
+/// The RootSum frontier narrated from the RESULT itself — no engine signature
+/// touched. `integrate(1/(x^5-x-1), x)` answered with a correct RootSum and
+/// published ZERO substeps: not even the method's name, let alone why no closed
+/// form in radicals exists. These are the rows the corpus advertises as the
+/// differentiator against sympy.
+#[test]
+fn integrate_contract_root_sum_names_its_method_and_its_resolvent() {
+    let subs = |input: &str| -> Vec<(String, String)> {
+        let (wire, _) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        wire["steps"]
+            .as_array()
+            .expect("steps with --steps on")
+            .iter()
+            .filter_map(|step| step["substeps"].as_array())
+            .flatten()
+            .map(|s| {
+                (
+                    s["title"].as_str().unwrap_or_default().to_string(),
+                    s["after"].as_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect()
+    };
+
+    let bare = subs("integrate(1/(x^5-x-1), x)");
+    assert!(
+        bare.iter()
+            .any(|(t, _)| t.contains("no son expresables por radicales")),
+        "the method must be named: {bare:?}"
+    );
+    assert!(
+        bare.iter().any(|(_, a)| a.starts_with("R(t) = ")),
+        "and the concrete resolvent published: {bare:?}"
+    );
+
+    // With an elementary part, the split comes first.
+    let split = subs("integrate(1/(x^7-1), x)");
+    assert_eq!(
+        split.first().map(|(t, _)| t.as_str()),
+        Some("Separar la parte de raíces racionales"),
+        "{split:?}"
+    );
+}
+
+/// A step's red/green is an ASSERTION: "replace this piece with that piece and
+/// you get the next state". When the span lands on the wrong subtree the
+/// assertion is FALSE, and the audit found it published as an identity under a
+/// rule name. The witness the user reported: `taylor(sin(x), x, 0, 5)` step 3
+/// highlighted `x → x` — the one summand that does NOT change — while the
+/// fraction that actually reduced went unmarked.
+#[test]
+fn highlight_spans_are_verified_before_being_published() {
+    let (wire, _) = cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let steps = wire["steps"].as_array().expect("steps with --steps on");
+    for step in steps {
+        let rule_latex = step["rule_latex"].as_str().unwrap_or_default();
+        // A rule line whose two sides are identical asserts nothing.
+        if let Some((lhs, rhs)) = rule_latex.split_once("\\rightarrow") {
+            assert_ne!(
+                lhs.replace("{\\color{red}{", "")
+                    .replace(['{', '}', ' '], ""),
+                rhs.replace("{\\color{green}{", "")
+                    .replace(['{', '}', ' '], ""),
+                "a rule line must not assert `A → A`: {rule_latex}"
+            );
+        }
+    }
+    // The witness step now names the fraction it reduces, not the untouched `x`.
+    let witness = steps
+        .iter()
+        .find(|s| s["before"].as_str().unwrap_or_default().contains("720"))
+        .expect("the step that reduces /720 must exist");
+    let rule_latex = witness["rule_latex"].as_str().unwrap_or_default();
+    assert!(
+        rule_latex.contains("720") && rule_latex.contains("120"),
+        "the rule line must show the fraction it reduces: {rule_latex}"
+    );
+}
+
+/// The truthfulness predicate is UNIFORM in the number of spans: collapse each
+/// contiguous run of coloured spans into a hole and require the untouched
+/// remainder to be identical on both sides. That lifts the multi-span exception
+/// C1.3 had to declare, and it subsumes the one-to-one substitution check.
+#[test]
+fn highlight_guard_accepts_many_to_one_spans_and_still_rejects_the_witness() {
+    // Many-to-one: two adjacent terms become one. TRUE, must publish.
+    let (wire, _) = cli_eval_json_with_stderr_args(
+        "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)",
+        &["--steps", "on"],
+    );
+    let steps = wire["steps"].as_array().expect("steps");
+    let many_to_one = steps.iter().any(|s| {
+        let b = s["before_latex"].as_str().unwrap_or_default();
+        let a = s["after_latex"].as_str().unwrap_or_default();
+        b.matches("\\color{red}").count() > a.matches("\\color{green}").count()
+            && a.contains("\\color{green}")
+    });
+    assert!(
+        many_to_one,
+        "a many-to-one span is a truthful claim and must survive the guard"
+    );
+
+    // And the witness never publishes the FALSE span. (C1.3 made it decline to
+    // the whole state; C2.1 recovers a TRUE partial span from the structural
+    // diff. What must hold in both is the same: the untouched `x` is never what
+    // the step claims it changed.)
+    let (witness, _) =
+        cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let reduce_step = witness["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["before"].as_str().unwrap_or_default().contains("720"))
+        .expect("the /720 step");
+    let before_latex = reduce_step["before_latex"].as_str().unwrap_or_default();
+    assert!(
+        !before_latex.contains("{\\color{red}{x}}"),
+        "the bare `x` does not change and must never be the span: {before_latex}"
+    );
+}
+
+/// When the recorded focus lies (PATH DRIFT), the span is recomputed from the
+/// two states themselves: the minimal structural diff. That is true by
+/// construction — everything outside it is identical on both sides — so the
+/// guard passes and the step keeps its PRECISION instead of falling back to
+/// colouring everything.
+///
+/// This closes the user's reported witness end to end: the rule name (C2.4),
+/// the honest decline (C1.3) and now the precise span.
+#[test]
+fn declined_spans_recover_precision_from_the_structural_diff() {
+    let (wire, _) = cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let step = wire["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["before"].as_str().unwrap_or_default().contains("720"))
+        .expect("the /720 step");
+    let before = step["before_latex"].as_str().unwrap_or_default();
+    let after = step["after_latex"].as_str().unwrap_or_default();
+    // PARTIAL span (the fraction), not the whole state, and not the `x`.
+    assert!(
+        before.starts_with("x + {\\color{red}{"),
+        "the untouched `x` must stay outside the span: {before}"
+    );
+    assert!(
+        before.contains("720") && after.contains("120"),
+        "the span must be the fraction that reduces: {before} / {after}"
+    );
+}

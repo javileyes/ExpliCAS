@@ -16,9 +16,94 @@ use crate::eval_output_public_conditions::{
     public_condition_wires, public_required_condition_displays,
 };
 
+/// Warning messages, both directions.
+///
+/// The warning layer never went through the i18n catalogue that `rule` and
+/// `solve_steps.description` use: complex/limit warnings were hard-coded in
+/// English and reached the Spanish wire untranslated, while the ODE and
+/// multivariable-limit ones were hard-coded in Spanish and reached the English
+/// one. Measured over the corpus: 16 English messages under `--lang es` and 9
+/// distinct Spanish ones under `--lang en`.
+///
+/// Entries are `(es, en)`; the lookup matches EITHER side, so a message keeps
+/// working whichever language its emitter hard-codes.
+const WARNING_MESSAGES: &[(&str, &str)] = &[
+    (
+        "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex",
+        "To use complex arithmetic (i² = -1), run: semantics set value complex",
+    ),
+    (
+        "Los puntos límite que contienen la unidad imaginaria no están soportados en el dominio de valores reales",
+        "Limit points containing the imaginary unit are not supported in the real value domain",
+    ),
+    (
+        "Solución general: C es una constante arbitraria",
+        "General solution: C is an arbitrary constant",
+    ),
+    (
+        "Solución general: C1 y C2 son constantes arbitrarias",
+        "General solution: C1 and C2 are arbitrary constants",
+    ),
+    (
+        "Solución general del sistema: C1 y C2 son constantes arbitrarias",
+        "General solution of the system: C1 and C2 are arbitrary constants",
+    ),
+    (
+        "Solución implícita: se emite φ(x,y) = C porque la EDO es exacta (φ es el potencial del campo (M, N))",
+        "Implicit solution: φ(x,y) = C is emitted because the ODE is exact (φ is the potential of the field (M, N))",
+    ),
+    (
+        "El doble signo ± de e^C se absorbe en C (C ≠ 0); y = 0 es solución singular (descartada al dividir por g(y))",
+        "The ± sign of e^C is absorbed into C (C ≠ 0); y = 0 is a singular solution (dropped when dividing by g(y))",
+    ),
+    (
+        "y = 0 es solución singular (descartada al dividir por y^n)",
+        "y = 0 is a singular solution (dropped when dividing by y^n)",
+    ),
+    (
+        "La EDO de 1er orden no casa ningún método clásico (separable/lineal/exacta/factor integrante simple/Bernoulli/homogénea); Riccati y formas sin método clásico son residuales honestos permanentes",
+        "The 1st-order ODE matches no classical method (separable/linear/exact/simple integrating factor/Bernoulli/homogeneous); Riccati and method-less forms are permanent honest residuals",
+    ),
+];
+
+/// Prefixes for the warnings built with `format!`, same mechanism the substep
+/// titles use: the phrase carries the language, the math does not.
+const WARNING_PREFIXES: &[(&str, &str)] = &[
+    (
+        "el límite no existe: por ",
+        "the limit does not exist: along ",
+    ),
+    ("0 ≤ |f| ≤ ", "0 ≤ |f| ≤ "),
+];
+
+fn localize_warning_message(
+    message: &str,
+    language: cas_solver_core::eval_option_axes::Language,
+) -> String {
+    let english = matches!(language, cas_solver_core::eval_option_axes::Language::En);
+    for (es, en) in WARNING_MESSAGES {
+        if message == *es || message == *en {
+            return if english {
+                (*en).to_string()
+            } else {
+                (*es).to_string()
+            };
+        }
+    }
+    if english {
+        for (es_prefix, en_prefix) in WARNING_PREFIXES {
+            if let Some(tail) = message.strip_prefix(es_prefix) {
+                return format!("{en_prefix}{tail}");
+            }
+        }
+    }
+    message.to_string()
+}
+
 pub(crate) fn collect_output_warnings(
     domain_warnings: &[crate::DomainWarning],
     assumptions_used: &[AssumptionDto],
+    language: cas_solver_core::eval_option_axes::Language,
 ) -> Vec<WarningWire> {
     let assumed_display: HashSet<&str> = assumptions_used
         .iter()
@@ -29,7 +114,7 @@ pub(crate) fn collect_output_warnings(
         .filter(|w| !assumed_display.contains(w.message.as_str()))
         .map(|w| WarningWire {
             rule: w.rule_name.clone(),
-            assumption: w.message.clone(),
+            assumption: localize_warning_message(&w.message, language),
         })
         .collect()
 }

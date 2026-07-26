@@ -26,3 +26,47 @@ pub fn latex_variable_name(s: &str) -> String {
         s.to_string()
     }
 }
+
+/// Escape a FUNCTION NAME for use inside `\text{…}`.
+///
+/// Unknown/engine-internal functions are rendered as `\text{<name>}(args)`, and
+/// several of them carry an underscore (`root_sum`, the RootSum closure of the
+/// rational-integration frontier). Raw, that underscore is a HARD MathJax error
+/// —`'_' allowed only in math mode`— which does not degrade the name, it kills
+/// the rendering of the entire expression: `integrate(1/(x^5-x-1), x)` published
+/// a broken row on the web. Verified against MathJax 3 itself, the renderer the
+/// web loads.
+pub fn latex_text_name(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\unicode{x5C}"),
+            '^' => out.push_str("\\unicode{x5E}"),
+            '~' => out.push_str("\\unicode{x7E}"),
+            '{' => out.push_str("\\{"),
+            '}' => out.push_str("\\}"),
+            '$' => out.push_str("\\$"),
+            '&' => out.push_str("\\&"),
+            '#' => out.push_str("\\#"),
+            '%' => out.push_str("\\%"),
+            '_' => out.push_str("\\_"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::latex_text_name;
+
+    #[test]
+    fn latex_text_name_escapes_the_underscore_of_root_sum() {
+        assert_eq!(latex_text_name("root_sum"), "root\\_sum");
+    }
+
+    #[test]
+    fn latex_text_name_leaves_ordinary_names_alone() {
+        assert_eq!(latex_text_name("cbrt"), "cbrt");
+    }
+}

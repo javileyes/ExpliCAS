@@ -262,8 +262,9 @@ fn build_run_config<'a>(
 
 /// Evaluate one expression against the FULL wire — the same rich JSON the
 /// CLI's `eval --format json` emits (input_latex, result_latex, steps,
-/// solve_steps, warnings, required_display, stats, timings): what the web UI
-/// needs to render LaTeX and narrated steps. Mirrors the CLI's
+/// solve_steps, warnings, required_display, stats, timings, plus the three
+/// narration counters steps_count / solve_steps_count / substeps_count): what
+/// the web UI needs to render LaTeX and narrated steps. Mirrors the CLI's
 /// `eval_command_config` defaults; localization follows `lang` ("es"/"en").
 #[wasm_bindgen]
 pub fn eval_full_wire(expr: &str, opts_json: &str) -> String {

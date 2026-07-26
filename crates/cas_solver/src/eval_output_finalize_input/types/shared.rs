@@ -35,11 +35,24 @@ pub(crate) struct EvalOutputFinalizeShared<'a> {
 }
 
 impl EvalOutputFinalizeShared<'_> {
+    /// `steps_count` counts the `steps` array and nothing else. The solver and
+    /// dsolve narration lives in `solve_steps`, and the didactic detail lives in
+    /// `substeps`: each channel publishes its own count so no consumer has to
+    /// guess which one a number refers to.
     pub(crate) fn primary_steps_count(&self) -> usize {
         self.steps.len()
     }
 
-    pub(crate) fn combined_steps_count(&self) -> usize {
-        self.steps.len() + self.solve_steps.len()
+    pub(crate) fn solve_steps_count(&self) -> usize {
+        self.solve_steps.len()
+    }
+
+    /// Substeps across BOTH channels — the narration that no counter used to see.
+    pub(crate) fn substeps_count(&self) -> usize {
+        self.steps
+            .iter()
+            .map(|step| step.substeps.len())
+            .chain(self.solve_steps.iter().map(|step| step.substeps.len()))
+            .sum()
     }
 }

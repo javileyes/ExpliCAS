@@ -1,5 +1,7 @@
 use super::super::super::SubStep;
-use crate::didactic::nested_fraction_analysis::extract_combined_fraction_str;
+use crate::didactic::nested_fraction_analysis::{
+    extract_combined_fraction_plain, extract_combined_fraction_str,
+};
 use cas_ast::{Context, Expr, ExprId};
 
 pub(super) fn generate_one_over_sum_substeps(
@@ -13,6 +15,7 @@ pub(super) fn generate_one_over_sum_substeps(
 
     if let Expr::Div(_, den) = ctx.get(before_expr) {
         let den_str = nested_fraction_latex(ctx, hints, *den);
+        let intermediate_plain = extract_combined_fraction_plain(ctx, *den);
         let intermediate_str = extract_combined_fraction_str(ctx, *den);
 
         sub_steps.push(
@@ -20,7 +23,7 @@ pub(super) fn generate_one_over_sum_substeps(
                 "polynomial.common_denominator_within_denominator",
                 vec![],
                 display_expr(ctx, *den),
-                intermediate_str.clone(),
+                intermediate_plain.clone(),
             )
             .with_before_latex(den_str.clone())
             .with_after_latex(intermediate_str.clone()),
@@ -31,7 +34,7 @@ pub(super) fn generate_one_over_sum_substeps(
                 SubStep::keyed(
                     "polynomial.invert_denominator_fraction",
                     vec![],
-                    full_intermediate.clone(),
+                    format!("1/({intermediate_plain})"),
                     display_expr(ctx, after_expr),
                 )
                 .with_before_latex(full_intermediate)

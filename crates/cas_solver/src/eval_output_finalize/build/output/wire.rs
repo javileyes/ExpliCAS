@@ -17,6 +17,7 @@ pub(super) fn build_eval_output_wire(
         result: &payload.result,
         result_latex: payload.result_latex.as_deref(),
         steps_count,
+        solve_steps_count: shared.solve_steps_count(),
         steps_mode: shared.steps_mode,
     })
 }

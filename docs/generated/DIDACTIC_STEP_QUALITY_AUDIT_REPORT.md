@@ -282,8 +282,8 @@ Steps:
 1. `Llevar a denominador común`
    - before: `a/d + b/d + 1`
    - after: `b/d + (a + d)/d`
-   - before_latex: `{\color{red}{1 + \frac{a}{d}}} + \frac{b}{d}`
-   - after_latex: `\frac{b}{d} + {\color{green}{\frac{a + d}{d}}}`
+   - before_latex: `{\color{red}{1 + \frac{a}{d} + \frac{b}{d}}}`
+   - after_latex: `{\color{green}{\frac{b}{d} + \frac{a + d}{d}}}`
    - substeps: none
 2. `Sumar fracciones`
    - before: `b/d + (a + d)/d`

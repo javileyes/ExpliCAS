@@ -96,8 +96,11 @@ where
     } else {
         Vec::new()
     };
-    let warnings =
-        collect_output_warnings(&prepared.output_view.domain_warnings, &assumptions_used);
+    let warnings = collect_output_warnings(
+        &prepared.output_view.domain_warnings,
+        &assumptions_used,
+        language,
+    );
     let required_conditions_raw = prepared.output_view.required_conditions.as_slice();
     let result_display = result_display_for_alias_context(ctx, &prepared.output_view.result);
     let required_conditions = collect_output_required_conditions(

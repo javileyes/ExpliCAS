@@ -210,6 +210,7 @@ dependencies = [
  "cas_parser",
  "cas_session",
  "cas_solver",
+ "cas_solver_core",
  "clap",
  "criterion 0.7.0",
  "dirs",

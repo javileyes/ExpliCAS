@@ -56,3 +56,64 @@ impl SubStep {
         self
     }
 }
+
+impl SubStep {
+    /// Build a KEYED sub-step whose asserted relation is CHECKED before it is
+    /// published. Returns `None` when the claim is refuted — the sub-step is
+    /// simply not emitted, and the refusal is counted.
+    ///
+    /// `Undecided` publishes: the simplifier failing to fold a surd is not
+    /// evidence of a lie, and treating it as one would delete correct narration
+    /// (measured: an assume-equality prototype refuted 80 of 214 sub-steps,
+    /// ~51 of them legitimate).
+    /// Unkeyed twin of [`SubStep::checked`], for the emitters whose title is
+    /// built dynamically (the integration table rules pick their phrasing from
+    /// the matched function).
+    #[allow(clippy::too_many_arguments)]
+    pub fn checked_new(
+        context: &cas_ast::Context,
+        claim: super::claim::Claim,
+        before: cas_ast::ExprId,
+        after: cas_ast::ExprId,
+        description: impl Into<String>,
+        before_display: impl Into<String>,
+        after_display: impl Into<String>,
+    ) -> Option<Self> {
+        match super::claim::verify_claim(context, &claim, before, after) {
+            super::claim::ClaimVerdict::Refuted => None,
+            _ => Some(Self::new(description, before_display, after_display)),
+        }
+    }
+
+    /// Build a sub-step whose two sides are a SCHEMA. The relation is declared
+    /// and adjudicated by the census in [`super::schema`]; publishing is not
+    /// gated on it, because a schema the census classifies as an exception is a
+    /// DECLARED gap with its own owner, not a lie this constructor gets to
+    /// delete. What it does buy: an emitter can no longer state a schema that
+    /// nothing has ever looked at, and the verdict is available to the caller.
+    pub fn checked_schema(
+        lhs: &'static str,
+        rhs: &'static str,
+        description: impl Into<String>,
+    ) -> (Self, super::claim::ClaimVerdict) {
+        let verdict = super::claim::verify_schematic_identity(lhs, rhs);
+        (Self::new(description, lhs, rhs), verdict)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn checked(
+        context: &cas_ast::Context,
+        claim: super::claim::Claim,
+        before: cas_ast::ExprId,
+        after: cas_ast::ExprId,
+        key: &'static str,
+        args: Vec<String>,
+        before_display: impl Into<String>,
+        after_display: impl Into<String>,
+    ) -> Option<Self> {
+        match super::claim::verify_claim(context, &claim, before, after) {
+            super::claim::ClaimVerdict::Refuted => None,
+            _ => Some(Self::keyed(key, args, before_display, after_display)),
+        }
+    }
+}
