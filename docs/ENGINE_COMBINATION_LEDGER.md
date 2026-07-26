@@ -22007,3 +22007,17 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Cuando una referencia grabada deja de ser fiable, recalcular vence a reparar**: el path drift se resolvió no arreglando el path sino dejando de necesitarlo. El diff de los dos estados es la fuente de verdad que siempre estuvo disponible.
   - **Un guard que sabe decir «no» permite intentar cosas**: la recuperación por contenido se puede probar sin riesgo porque el guard la valida antes de publicar. La verificación no solo evita mentiras: habilita heurísticas que sin ella no se podrían arriesgar.
+
+## 2026-07-25 - DIAGNÓSTICO/RECHAZO (plan · C2.3): alinear el renderizador con paths con el plano NO cierra la divergencia de orden — son TRES órdenes, no dos, y el parche destapa pasos vacíos
+
+- area: `cas_formatter/src/latex_core.rs` (`format_additive_path`) — parche tentativo **revertido**.
+- status: `rejected`. La hipótesis del plan (RC-6, «basta con ordenar `collect_signed_add_terms_path` con `cmp_term_for_display` llevándose el `ExprPath`») queda **falsada por medida**.
+- capture:
+  - **El parche es correcto en su intención y no basta**: el renderizador con paths emitía los sumandos en orden del AST mientras el plano los ordena con `cmp_term_for_display`. Ordenarlos igual es seguro para el color (el resaltado se decide por PATH, no por posición) y lo implementé así.
+  - **Medida 1 — hay un TERCER orden.** El detector de texto-vs-LaTeX sube **192 → 233**: acercar el LaTeX-con-paths al LaTeX plano lo ALEJA del renderizador de TEXTO, que usa su propio criterio. La sonda de la auditoría ya lo había dicho («tres órdenes para el mismo nodo») y yo lo leí como dos. La clase no se cierra alineando dos de tres; exige una política de orden ÚNICA para los tres renderizadores, que es un frente propio.
+  - **Medida 2 — el parche destapa pasos vacíos**, y esto es lo más informativo: `red == green` reaparece en 2 filas (140, 175) con líneas como `expand(1 + e^{πi}) → expand(1 + e^{πi})`. Esos pasos («Quitar paréntesis tras el signo menos») narran ÚNICAMENTE una reordenación; con el renderizador ordenado su contenido se vuelve invisible y quedan como no-ops en pantalla. O sea que el orden no era solo cosmético: hay pasos cuya única razón de existir es un reorden que el display ya no muestra. Su dueño es el prune de no-ops (que opera sobre TEXTO), no el renderizador.
+- observed: revertido; corpus de vuelta a D3b 192, D1 0, D2 7. Sin cambios en el árbol.
+- decision: **rechazar el parche y conservar la hipótesis reformulada**. Lo que hace falta no es «ordenar el renderizador con paths» sino: (a) una política de orden única compartida por los tres renderizadores, y (b) decidir qué hacer con los pasos cuyo contenido ES el reorden — probablemente podarlos, lo que exige que el prune vea el mismo orden que el display. Los dos son ciclos propios y (b) depende de (a).
+- retained learning:
+  - **Antes de alinear dos superficies, contar cuántas hay**: la auditoría decía «tres órdenes» y el plan lo cifró como una divergencia entre dos. Alinear un par movió el problema en vez de cerrarlo, y el contador lo dijo en la primera medida.
+  - **Un parche de display que hace desaparecer contenido está señalando un paso vacío, no un fallo del parche**: si al normalizar el orden un paso queda `A → A`, ese paso narraba el orden. Es un hallazgo del ciclo aunque el ciclo se rechace.
