@@ -624,6 +624,28 @@ mod tests {
         assert_eq!(latex.to_latex(), "a - (b + c)");
     }
 
+    /// The unit-elision twin of the case above. The Mul renderer prints
+    /// `Mul(1, b + c)` as `b + c`, so the subtrahend parenthesization must
+    /// judge the EFFECTIVE content: without the peel this printed
+    /// `a - b + c` — a different number.
+    #[test]
+    fn test_latex_sub_with_unit_mul_add_rhs() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let b_plus_c = ctx.add(Expr::Add(b, c));
+        let one = ctx.num(1);
+        let unit_mul = ctx.add_raw(Expr::Mul(one, b_plus_c));
+        let expr = ctx.add_raw(Expr::Sub(a, unit_mul));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "a - (b + c)");
+    }
+
     #[test]
     fn test_latex_sub_with_sub_rhs() {
         // A - (B - C) must show parentheses, not A - B - C

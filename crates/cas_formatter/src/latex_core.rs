@@ -149,8 +149,30 @@ fn unwrap_internal_hold_for_latex(ctx: &Context, id: ExprId) -> ExprId {
 }
 
 fn is_add_sub_after_internal_hold(ctx: &Context, id: ExprId) -> bool {
-    let id = unwrap_internal_hold_for_latex(ctx, id);
+    let id = peel_unit_factors_for_latex(ctx, id);
     matches!(ctx.get(id), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+/// See through `__hold` AND unit factors before judging additivity: the Mul
+/// renderer elides `1 \cdot X`, so parenthesization must look at what will
+/// PRINT, not at the node. Twin of the display-side peel; both exist because
+/// `Sub(c + x, Mul(1, b + x))` printed `c + x - b + x` on BOTH surfaces.
+fn peel_unit_factors_for_latex(ctx: &Context, id: ExprId) -> ExprId {
+    let mut current = unwrap_internal_hold_for_latex(ctx, id);
+    loop {
+        let Expr::Mul(l, r) = ctx.get(current) else {
+            return current;
+        };
+        let is_unit =
+            |side: ExprId| matches!(ctx.get(side), Expr::Number(n) if num_traits::One::is_one(n));
+        current = if is_unit(*l) {
+            unwrap_internal_hold_for_latex(ctx, *r)
+        } else if is_unit(*r) {
+            unwrap_internal_hold_for_latex(ctx, *l)
+        } else {
+            return current;
+        };
+    }
 }
 
 /// Core trait for LaTeX rendering
