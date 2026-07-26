@@ -40,6 +40,23 @@ pub enum Claim {
     EqualityUpToConstant { var: String },
     /// `before ≡ after` as expressions.
     Equality,
+    /// `after == op(before)` — the sub-step APPLIES a function to its left side.
+    /// `1 − x² ⇒ sqrt(1 − x²)` (the missing leg of the reference triangle) and
+    /// `x ⇒ ln(x)` (change of base) are FALSE as equalities and true as this.
+    /// Declaring it is what keeps a chain checker from reading them as broken
+    /// links, and what keeps a blanket-equality sweep from deleting them.
+    Applied { op: cas_ast::BuiltinFn },
+    /// `after == before|_{var:=upper} − before|_{var:=lower}` — the `before` is
+    /// an antiderivative F and the `after` is `F(upper) − F(lower)`. The bounds
+    /// travel as DATA: a sub-step that evaluates at bounds it does not carry
+    /// cannot render them, which is how `∫|2x−1|dx ⇒ 5/2` got published.
+    DefiniteEval {
+        var: String,
+        lower: ExprId,
+        upper: ExprId,
+    },
+    /// `after == before|_{var:=point}`.
+    EvalAt { var: String, point: ExprId },
     /// The sub-step does not assert a relation between two sides: it names a
     /// manoeuvre, identifies a substitution, states a formula. An explicit
     /// abstention, not a gap.
@@ -103,15 +120,32 @@ pub fn verify_claim(
         Claim::Statement => ClaimVerdict::Verified,
         Claim::Equality => {
             let mut scratch = context.clone();
-            let difference = scratch.add(Expr::Sub(before, after));
-            let simplified = simplify_in(&mut scratch, difference);
-            if is_zero(&scratch, simplified) {
+            decide_equality(&mut scratch, before, after)
+        }
+        Claim::Applied { op } => {
+            let mut scratch = context.clone();
+            let applied = scratch.call_builtin(*op, vec![before]);
+            // Hash-consing makes the structural case exact and free: the emitter
+            // that built `after` by applying `op` proves its own claim without a
+            // simplifier pass. The ladder only runs when the after arrived in
+            // some other shape.
+            if applied == after {
                 ClaimVerdict::Verified
-            } else if is_constant(&scratch, simplified) {
-                ClaimVerdict::Refuted
             } else {
-                ClaimVerdict::Undecided
+                decide_equality(&mut scratch, applied, after)
             }
+        }
+        Claim::EvalAt { var, point } => {
+            let mut scratch = context.clone();
+            let substituted = substitute_var(&mut scratch, before, var, *point);
+            decide_equality(&mut scratch, substituted, after)
+        }
+        Claim::DefiniteEval { var, lower, upper } => {
+            let mut scratch = context.clone();
+            let at_upper = substitute_var(&mut scratch, before, var, *upper);
+            let at_lower = substitute_var(&mut scratch, before, var, *lower);
+            let expected = scratch.add(Expr::Sub(at_upper, at_lower));
+            decide_equality(&mut scratch, expected, after)
         }
         Claim::EqualityUpToConstant { .. } => {
             let mut scratch = context.clone();
@@ -126,6 +160,34 @@ pub fn verify_claim(
         Claim::Antiderivative { var } => verify_by_differentiation(context, after, before, var),
         Claim::Derivative { var } => verify_by_differentiation(context, before, after, var),
     }
+}
+
+/// `a ≡ b`, decided by folding the difference.
+///
+/// REFUTED demands a POSITIVE disproof — a residual that is a non-zero NUMBER —
+/// never the mere absence of a proof. The simplifier grinding to a halt on a surd
+/// it cannot fold is not evidence of a lie, and treating it as one would delete
+/// correct narration.
+fn decide_equality(scratch: &mut Context, a: ExprId, b: ExprId) -> ClaimVerdict {
+    if a == b {
+        return ClaimVerdict::Verified;
+    }
+    let difference = scratch.add(Expr::Sub(a, b));
+    let simplified = simplify_in(scratch, difference);
+    if is_zero(scratch, simplified) {
+        ClaimVerdict::Verified
+    } else if is_constant(scratch, simplified) {
+        ClaimVerdict::Refuted
+    } else {
+        ClaimVerdict::Undecided
+    }
+}
+
+/// `expr|_{var := value}`. Hash-consing makes `scratch.var(var)` the very node
+/// the expression holds, so the replacement reaches every occurrence.
+fn substitute_var(scratch: &mut Context, expr: ExprId, var: &str, value: ExprId) -> ExprId {
+    let var_expr = scratch.var(var);
+    cas_ast::substitute_expr_by_id(scratch, expr, var_expr, value)
 }
 
 /// `d(source)/dvar == target`, decided exactly.
@@ -217,6 +279,129 @@ mod tests {
                 after
             ),
             ClaimVerdict::Verified
+        );
+    }
+
+    /// The rescue the design promised: `1 − x² ⇒ sqrt(1 − x²)` is a LIE as an
+    /// equality and the truth as an application. Both verdicts in one test, so
+    /// the arm cannot quietly become an alias of `Equality`.
+    #[test]
+    fn applied_verifies_what_equality_refutes() {
+        let (mut context, radicand) = ctx_with("1 - x^2");
+        let root = cas_parser::parse("sqrt(1 - x^2)", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::Applied {
+                    op: cas_ast::BuiltinFn::Sqrt
+                },
+                radicand,
+                root
+            ),
+            ClaimVerdict::Verified
+        );
+        assert_ne!(
+            verify_claim(&context, &Claim::Equality, radicand, root),
+            ClaimVerdict::Verified,
+            "the pair is not an equality; only the declared relation makes it true"
+        );
+    }
+
+    #[test]
+    fn applied_refutes_the_wrong_function() {
+        let (mut context, radicand) = ctx_with("1 - x^2");
+        let root = cas_parser::parse("sqrt(1 - x^2)", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::Applied {
+                    op: cas_ast::BuiltinFn::Ln
+                },
+                radicand,
+                root
+            ),
+            ClaimVerdict::Undecided,
+            "a mismatched function must never verify"
+        );
+    }
+
+    /// The limit narration's last line: substitute the point into the cancelled
+    /// form and land on the ENGINE's answer. That is a genuine cross-check —
+    /// the two sides come from different places.
+    #[test]
+    fn eval_at_verifies_the_substituted_point() {
+        let (mut context, cancelled) = ctx_with("x + 1");
+        let point = cas_parser::parse("1", &mut context).expect("parse");
+        let value = cas_parser::parse("2", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::EvalAt {
+                    var: "x".into(),
+                    point
+                },
+                cancelled,
+                value
+            ),
+            ClaimVerdict::Verified
+        );
+    }
+
+    #[test]
+    fn eval_at_refutes_a_wrong_value() {
+        let (mut context, cancelled) = ctx_with("x + 1");
+        let point = cas_parser::parse("1", &mut context).expect("parse");
+        let wrong = cas_parser::parse("3", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::EvalAt {
+                    var: "x".into(),
+                    point
+                },
+                cancelled,
+                wrong
+            ),
+            ClaimVerdict::Refuted
+        );
+    }
+
+    /// `F(b) − F(a)`, with the bounds carried as data. The wrong-bound case is
+    /// the one the audit found published: an integral worth one thing quoting
+    /// the value of another.
+    #[test]
+    fn definite_eval_checks_the_bounds_it_carries() {
+        let (mut context, antiderivative) = ctx_with("x^3/3");
+        let lower = cas_parser::parse("0", &mut context).expect("parse");
+        let upper = cas_parser::parse("1", &mut context).expect("parse");
+        let value = cas_parser::parse("1/3", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::DefiniteEval {
+                    var: "x".into(),
+                    lower,
+                    upper
+                },
+                antiderivative,
+                value
+            ),
+            ClaimVerdict::Verified
+        );
+        let other = cas_parser::parse("2", &mut context).expect("parse");
+        assert_eq!(
+            verify_claim(
+                &context,
+                &Claim::DefiniteEval {
+                    var: "x".into(),
+                    lower,
+                    upper: other
+                },
+                antiderivative,
+                value
+            ),
+            ClaimVerdict::Refuted,
+            "evaluating at the wrong bound must not pass"
         );
     }
 

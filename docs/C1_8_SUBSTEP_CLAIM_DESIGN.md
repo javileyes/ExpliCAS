@@ -357,3 +357,68 @@ puntos de emisión, y `substep_unchecked_emitters` no debe contar los 56 como
 deuda pendiente sino como **fuera de alcance por medida**. Lo que queda de valor:
 `Applied` (5, rescata un P0), `DefiniteEval` (2), `EvalAt` (2) y las familias de
 límites/vectorial/dominio que siguen aplazadas con su razón.
+
+---
+
+## ADENDA 2026-07-26 (b) — `Applied`, `DefiniteEval` y `EvalAt` migradas: el subconjunto queda AGOTADO
+
+Con los 56 de `Equality` fuera por medida (adenda anterior), el §6 dejaba tres
+familias vivas. Están migradas. Lo que la migración corrigió del inventario:
+
+| Familia | §6 decía | Medido | Sitios reales |
+|---|---|---|---|
+| `Applied` | 5 (10874, 11027, 11105, 11127, 11133) | **4** | 11027 y 11105 son `Sqrt` (catetos del triángulo de referencia); 11127 y 11133 son `Ln` (cambio de base). **10874 NO es `after = op(before)`**: es `sin(arcsin(u)) ⇒ u`, identidad esquemática con metavariable libre — pertenece a `NamedIdentity`, no aquí. |
+| `DefiniteEval` | 2 (14500, 14794) | **1 + 1 de otra cosa** | 14794 (`integral.evaluate_antiderivative_at_bounds`) sí es `F ⇒ F(b) − F(a)`. 14500 (`abs_linear`) **no es esa relación**: es el P0 de los límites ausentes, y se arregla con render. |
+| `EvalAt` | 2 (21104, 21249) | **2** | Cierre de factoriza-cancela y cierre de la iteración de L'Hôpital. |
+
+### Los tres brazos no valen lo mismo (medido, no estimado)
+
+**`Applied` y `DefiniteEval` tienen poder de refutación CERO por construcción**
+en sus sitios vivos: el emisor fabrica el `after` aplicando la misma operación
+que el verificador rehace, así que el hash-consing prueba la afirmación sin
+tocar el simplificador. No es un defecto del brazo — es que ahí no había nada
+que cazar. Lo que compran:
+
+- `Applied`: la **declaración**. `1 − x² ⇒ sqrt(1 − x²)` es falso como igualdad;
+  sin declarar la relación, el invariante de cadena de C1.9 lo leerá como
+  eslabón roto y cualquier barrido de igualdad lo borrará como narración
+  incorrecta. Es exactamente el rescate que el §1 prometía, y el §6 tenía razón
+  al meterlo — pero por el motivo estructural, no por el de detección.
+- `DefiniteEval`: los **límites como dato**. El tipo los exige, y no llevarlos
+  es la causa exacta del P0 de 14500.
+
+**`EvalAt` es el único cuyos dos lados vienen de productores distintos** (la
+forma reconstruida en la capa didáctica contra el oráculo del motor), y por
+tanto el único que puede discrepar. Sobre 1267 expresiones no discrepó ni una
+vez; que tiene dientes se prueba con un test que le pasa un valor falso y
+comprueba que la cadena entera declina
+(`factor_cancel_declines_when_the_substitution_misses_the_engine_value`).
+
+### El P0 de 14500 se cierra con RENDER
+
+`∫ |2·x − 1| dx ⇒ 5/2` equiparaba una integral **indefinida** a un número. Ahora
+publica la suma que su propio título describe (`1/4 + 9/4 ⇒ 5/2`), verificable
+por aritmética racional pura, con el signo de la orientación incorporado
+(`∫_2^0` da `−(1/4 + 9/4) ⇒ −5/2`). Dos lecciones de render que salieron de ahí
+y que valen para toda la rama (b) del §5:
+
+1. **El árbol no conserva el orden de una suma.** `|G(r) − G(a)| + |G(b) − G(r)|`
+   se renderiza con los operandos de `Add` reordenados. Si el orden de los
+   sumandos es parte del mensaje, hay que emitir valores, no estructura.
+2. **Una resta con sustraendo negativo es una divergencia plano↔LaTeX**:
+   `2 − −1/4` en texto contra `2 + \frac{1}{4}` en LaTeX. Plegarla a suma cuando
+   el sustraendo es negativo la mata en origen.
+
+### Estado del subconjunto
+
+**Agotado.** Emisores declarados acumulados: **24**. Sigue sin migrar, con su
+motivo explícito:
+
+- la pareja **inversa** del cambio de base (`ln(x) ⇒ x`), que afirma
+  `before == op(after)` y no tiene brazo — no se ensancha `Applied` para que
+  trague (lección de `hessian.row`);
+- la rama de **extremo infinito** de `DefiniteEval`, cuyo `after` es notación de
+  límite sin nodo detrás: `Unchecked(LimitValue)`, no una relación afirmada
+  sobre una cadena;
+- las familias que el §1 ya aplazaba: `Limit`, `SchematicIdentity` /
+  `NamedIdentity`, `VectorOp`, `DomainVerdict`.
