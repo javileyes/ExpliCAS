@@ -22,10 +22,7 @@ pub(super) fn build_denesting_delta_substep(
         description: "Calcular Δ = a² - c²d".to_string(),
         before_expr: format!("({})^2 - ({})^2 · {}", a_str, c_str, d_str),
         after_expr: format_rational_display(delta),
-        before_latex: Some(format!(
-            "({})^2 - ({})^2 \\cdot {}",
-            a_tex, c_tex, d_tex
-        )),
+        before_latex: Some(format!("({})^2 - ({})^2 \\cdot {}", a_tex, c_tex, d_tex)),
         after_latex: Some(format_rational_latex(delta)),
         desc_key: None,
         desc_args: Vec::new(),

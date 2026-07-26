@@ -170,9 +170,13 @@ fn factors_exactly(ctx: &Context, whole: ExprId, factor: ExprId, rest: ExprId) -
     let simplified = {
         let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
         std::mem::swap(&mut simplifier.context, &mut scratch);
-        let (rewritten, _steps, _stats) = cas_engine::with_suppressed_depth_overflow_warnings(|| {
-            simplifier.simplify_with_stats(difference, cas_solver::runtime::SimplifyOptions::default())
-        });
+        let (rewritten, _steps, _stats) =
+            cas_engine::with_suppressed_depth_overflow_warnings(|| {
+                simplifier.simplify_with_stats(
+                    difference,
+                    cas_solver::runtime::SimplifyOptions::default(),
+                )
+            });
         std::mem::swap(&mut simplifier.context, &mut scratch);
         rewritten
     };

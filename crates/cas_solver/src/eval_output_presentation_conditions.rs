@@ -69,7 +69,10 @@ const WARNING_MESSAGES: &[(&str, &str)] = &[
 /// Prefixes for the warnings built with `format!`, same mechanism the substep
 /// titles use: the phrase carries the language, the math does not.
 const WARNING_PREFIXES: &[(&str, &str)] = &[
-    ("el límite no existe: por ", "the limit does not exist: along "),
+    (
+        "el límite no existe: por ",
+        "the limit does not exist: along ",
+    ),
     ("0 ≤ |f| ≤ ", "0 ≤ |f| ≤ "),
 ];
 
@@ -80,7 +83,11 @@ fn localize_warning_message(
     let english = matches!(language, cas_solver_core::eval_option_axes::Language::En);
     for (es, en) in WARNING_MESSAGES {
         if message == *es || message == *en {
-            return if english { (*en).to_string() } else { (*es).to_string() };
+            return if english {
+                (*en).to_string()
+            } else {
+                (*es).to_string()
+            };
         }
     }
     if english {

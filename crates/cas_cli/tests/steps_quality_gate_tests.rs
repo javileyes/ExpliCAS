@@ -195,13 +195,40 @@ fn braces_balanced(latex: &str) -> bool {
 /// the accented letters. Deliberately small and unambiguous: the point is a
 /// counter that cannot cry wolf, not a translator.
 const SPANISH_MARKERS: &[&str] = &[
-    "de", "del", "la", "el", "los", "las", "una", "por", "con", "para", "entre", "cada", "sobre",
-    "según", "usar", "sacar", "aplicar", "calcular", "reescribir", "agrupar", "cancelar",
-    "simplificar", "derivar", "integrar", "resolver", "evaluar", "sustituir",
+    "de",
+    "del",
+    "la",
+    "el",
+    "los",
+    "las",
+    "una",
+    "por",
+    "con",
+    "para",
+    "entre",
+    "cada",
+    "sobre",
+    "según",
+    "usar",
+    "sacar",
+    "aplicar",
+    "calcular",
+    "reescribir",
+    "agrupar",
+    "cancelar",
+    "simplificar",
+    "derivar",
+    "integrar",
+    "resolver",
+    "evaluar",
+    "sustituir",
 ];
 
 fn looks_spanish(text: &str) -> bool {
-    if text.chars().any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'ñ' | '¿' | '¡')) {
+    if text
+        .chars()
+        .any(|c| matches!(c, 'á' | 'é' | 'í' | 'ó' | 'ú' | 'ñ' | '¿' | '¡'))
+    {
         return true;
     }
     text.split(|c: char| !c.is_alphabetic())
@@ -257,7 +284,10 @@ fn sweep_language_residue(inputs: &[String], residue: &mut LanguageResidue) {
         for step in &wire.steps {
             if looks_spanish(&step.rule) {
                 residue.rules += 1;
-                *residue.offenders.entry(format!("rule: {}", step.rule)).or_insert(0) += 1;
+                *residue
+                    .offenders
+                    .entry(format!("rule: {}", step.rule))
+                    .or_insert(0) += 1;
             }
             for sub in &step.substeps {
                 if looks_spanish(&sub.title) {
@@ -404,7 +434,10 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
         }
     };
     for step in &wire.steps {
-        check(&format!("steps[{}].rule_latex", step.index), &step.rule_latex);
+        check(
+            &format!("steps[{}].rule_latex", step.index),
+            &step.rule_latex,
+        );
         check(
             &format!("steps[{}].before_latex", step.index),
             &step.before_latex,
@@ -415,16 +448,28 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
         );
         for (j, sub) in step.substeps.iter().enumerate() {
             if let Some(latex) = &sub.before_latex {
-                check(&format!("steps[{}].substeps[{j}].before_latex", step.index), latex);
+                check(
+                    &format!("steps[{}].substeps[{j}].before_latex", step.index),
+                    latex,
+                );
             }
             if let Some(latex) = &sub.after_latex {
-                check(&format!("steps[{}].substeps[{j}].after_latex", step.index), latex);
+                check(
+                    &format!("steps[{}].substeps[{j}].after_latex", step.index),
+                    latex,
+                );
             }
         }
     }
     for step in &wire.solve_steps {
-        check(&format!("solve_steps[{}].lhs_latex", step.index), &step.lhs_latex);
-        check(&format!("solve_steps[{}].rhs_latex", step.index), &step.rhs_latex);
+        check(
+            &format!("solve_steps[{}].lhs_latex", step.index),
+            &step.lhs_latex,
+        );
+        check(
+            &format!("solve_steps[{}].rhs_latex", step.index),
+            &step.rhs_latex,
+        );
     }
     report.measure("D9_unbalanced_braces", unbalanced);
     report.measure("D10_text_mode_unescaped", text_mode_specials);
@@ -562,7 +607,10 @@ fn steps_quality_language_residue_over_guardrail_corpora() {
     let corpora: Vec<(&str, Vec<String>)> = vec![
         ("web_examples", load_web_examples()),
         ("identity_pairs_diff", load_identity_pairs_as_diff_calls()),
-        ("derive_sources_integrate", load_derive_sources_as_integrate_calls()),
+        (
+            "derive_sources_integrate",
+            load_derive_sources_as_integrate_calls(),
+        ),
     ];
 
     let mut total = LanguageResidue::default();
@@ -602,7 +650,10 @@ fn steps_quality_language_residue_over_guardrail_corpora() {
         println!("  {hits:5}x  {text}");
     }
 
-    println!("es_residue_in_en_rules hits={} rows={}", total.rules, total.rows_touched);
+    println!(
+        "es_residue_in_en_rules hits={} rows={}",
+        total.rules, total.rows_touched
+    );
     println!(
         "es_residue_in_en_substeps hits={} rows={}",
         total.substep_titles, total.rows_touched
@@ -615,7 +666,10 @@ fn steps_quality_language_residue_over_guardrail_corpora() {
         "es_residue_in_en_warnings hits={} rows={}",
         total.warnings, total.rows_touched
     );
-    println!("language_rows_swept hits={} rows={}", total.rows_swept, total.rows_swept);
+    println!(
+        "language_rows_swept hits={} rows={}",
+        total.rows_swept, total.rows_swept
+    );
 
     assert_eq!(
         total.rules, EN_RULE_RESIDUE_CEILING,
@@ -796,7 +850,9 @@ fn check_claim(claim: Claim, before: &str, after: &str, _var: &str, tally: &mut 
     } else {
         // NOT proof of a lie: the simplifier may simply fail to reach zero.
         // Recorded with its witness so every entry is adjudicated by hand.
-        tally.refuted.push(format!("{claim:?}: {before}  ⟹  {after}"));
+        tally
+            .refuted
+            .push(format!("{claim:?}: {before}  ⟹  {after}"));
     }
 }
 
@@ -814,7 +870,10 @@ const CLAIM_REFUTED_CEILING: usize = 2;
 fn substep_claim_shadow_run_over_guardrail_corpora() {
     let corpora: Vec<(&str, Vec<String>)> = vec![
         ("web_examples", load_web_examples()),
-        ("derive_sources_integrate", load_derive_sources_as_integrate_calls()),
+        (
+            "derive_sources_integrate",
+            load_derive_sources_as_integrate_calls(),
+        ),
     ];
     let mut tally = ClaimTally::default();
     let mut declared = 0usize;
@@ -847,8 +906,14 @@ fn substep_claim_shadow_run_over_guardrail_corpora() {
 
     println!("substep_claim_declared hits={declared} rows={declared}");
     println!("substep_claim_abstained hits={abstained} rows={abstained}");
-    println!("substep_claim_verified hits={} rows={}", tally.verified, tally.verified);
-    println!("substep_claim_trivial hits={} rows={}", tally.trivial, tally.trivial);
+    println!(
+        "substep_claim_verified hits={} rows={}",
+        tally.verified, tally.verified
+    );
+    println!(
+        "substep_claim_trivial hits={} rows={}",
+        tally.trivial, tally.trivial
+    );
     println!(
         "substep_claim_undecided hits={} rows={}",
         tally.undecided, tally.undecided

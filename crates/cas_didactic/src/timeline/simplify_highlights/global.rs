@@ -330,7 +330,8 @@ pub(super) fn render_global_transition_latex(
     // The recorded focus lied. Recompute it from the two states before falling
     // back to colouring everything: the structural diff yields a span that is
     // true by construction, so most declines recover their precision.
-    if let Some(recovered) = content_focus_transition(context, snapshots, display_hints, style_prefs)
+    if let Some(recovered) =
+        content_focus_transition(context, snapshots, display_hints, style_prefs)
     {
         return recovered;
     }

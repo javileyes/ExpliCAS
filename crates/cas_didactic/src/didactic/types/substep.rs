@@ -28,4 +28,3 @@ pub struct SubStep {
     /// Positional arguments (already-rendered, language-neutral, e.g. math) for `desc_key`.
     pub desc_args: Vec<String>,
 }
-

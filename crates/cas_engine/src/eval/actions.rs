@@ -513,13 +513,11 @@ impl Engine {
         // Warning"); this path just never populated its warning slot.
         let mut warnings = Vec::new();
         if options.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
-            && (cas_math::numeric_eval::expr_contains_imaginary(
-                &self.simplifier.context,
-                resolved,
-            ) || cas_math::numeric_eval::expr_contains_imaginary(
-                &self.simplifier.context,
-                resolved_other,
-            ))
+            && (cas_math::numeric_eval::expr_contains_imaginary(&self.simplifier.context, resolved)
+                || cas_math::numeric_eval::expr_contains_imaginary(
+                    &self.simplifier.context,
+                    resolved_other,
+                ))
         {
             warnings.push(DomainWarning {
                 message: "To use complex arithmetic (i² = -1), run: semantics set value complex"

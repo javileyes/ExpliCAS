@@ -16292,7 +16292,9 @@ fn integrate_contract_partial_fraction_substeps_never_claim_a_manoeuvre_they_ski
         "1/x is already decomposed: {simple:?}"
     );
     assert!(
-        simple.iter().any(|(_, b, a)| b == "1 / x" && a == "ln(|x|)"),
+        simple
+            .iter()
+            .any(|(_, b, a)| b == "1 / x" && a == "ln(|x|)"),
         "the table statement must survive: {simple:?}"
     );
 
@@ -16348,10 +16350,8 @@ fn hessian_row_substeps_start_from_the_first_derivative() {
 /// `A = (1-x)²·A` inside `diff(arctan((1+x)/(1-x)), x)`.
 #[test]
 fn nested_fraction_common_factor_substep_requires_the_identity_to_hold() {
-    let (wire, _) = cli_eval_json_with_stderr_args(
-        "diff(arctan((1+x)/(1-x)), x)",
-        &["--steps", "on"],
-    );
+    let (wire, _) =
+        cli_eval_json_with_stderr_args("diff(arctan((1+x)/(1-x)), x)", &["--steps", "on"]);
     let titles: Vec<String> = wire["steps"]
         .as_array()
         .expect("steps with --steps on")
@@ -16457,7 +16457,11 @@ fn integrate_contract_additive_integrand_narrates_linearity_then_each_term() {
 
     // The polynomial arm keeps ownership (its pins fix a 2-substep narration).
     let poly = subs("integrate(x^2+3*x+1, x)");
-    assert_eq!(poly.len(), 2, "polynomial arm must still own this: {poly:?}");
+    assert_eq!(
+        poly.len(),
+        2,
+        "polynomial arm must still own this: {poly:?}"
+    );
 
     // A PRODUCT integrand is not linearity and must be untouched.
     let product = subs("integrate(e^x*sin(x), x)");
@@ -16491,8 +16495,14 @@ fn integrate_contract_vector_calculus_narrates_each_component() {
     };
 
     for (input, header) in [
-        ("integrate([cos(x), e^x], x)", "Integrar cada componente del vector"),
-        ("diff([x^2, sin(x)], x)", "Derivar cada componente del vector"),
+        (
+            "integrate([cos(x), e^x], x)",
+            "Integrar cada componente del vector",
+        ),
+        (
+            "diff([x^2, sin(x)], x)",
+            "Derivar cada componente del vector",
+        ),
         // Definite: the split rides the bounds along.
         (
             "integrate([cos(t), sin(t)], t, 0, pi)",
@@ -16548,7 +16558,9 @@ fn integrate_contract_definite_integral_shows_how_the_antiderivative_was_found()
         .flatten()
         .filter_map(|s| s["title"].as_str().map(str::to_string))
         .collect();
-    let find = titles.iter().position(|t| t.contains("Hallar la antiderivada"));
+    let find = titles
+        .iter()
+        .position(|t| t.contains("Hallar la antiderivada"));
     let method = titles.iter().position(|t| t.contains("Descomponer"));
     let evaluate = titles.iter().position(|t| t.contains("los límites"));
     assert!(
@@ -16567,7 +16579,11 @@ fn integrate_contract_definite_integral_shows_how_the_antiderivative_was_found()
 #[test]
 fn visible_rule_name_distinguishes_the_two_distribute_division_manoeuvres() {
     for (lang, expected, forbidden) in [
-        ("es", "Sacar el factor común del numerador", "Repartir el denominador"),
+        (
+            "es",
+            "Sacar el factor común del numerador",
+            "Repartir el denominador",
+        ),
         (
             "en",
             "Factor the common coefficient out of the numerator",
@@ -16618,7 +16634,8 @@ fn integrate_contract_root_sum_names_its_method_and_its_resolvent() {
 
     let bare = subs("integrate(1/(x^5-x-1), x)");
     assert!(
-        bare.iter().any(|(t, _)| t.contains("no son expresables por radicales")),
+        bare.iter()
+            .any(|(t, _)| t.contains("no son expresables por radicales")),
         "the method must be named: {bare:?}"
     );
     assert!(
@@ -16643,16 +16660,17 @@ fn integrate_contract_root_sum_names_its_method_and_its_resolvent() {
 /// fraction that actually reduced went unmarked.
 #[test]
 fn highlight_spans_are_verified_before_being_published() {
-    let (wire, _) =
-        cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let (wire, _) = cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
     let steps = wire["steps"].as_array().expect("steps with --steps on");
     for step in steps {
         let rule_latex = step["rule_latex"].as_str().unwrap_or_default();
         // A rule line whose two sides are identical asserts nothing.
         if let Some((lhs, rhs)) = rule_latex.split_once("\\rightarrow") {
             assert_ne!(
-                lhs.replace("{\\color{red}{", "").replace(['{', '}', ' '], ""),
-                rhs.replace("{\\color{green}{", "").replace(['{', '}', ' '], ""),
+                lhs.replace("{\\color{red}{", "")
+                    .replace(['{', '}', ' '], ""),
+                rhs.replace("{\\color{green}{", "")
+                    .replace(['{', '}', ' '], ""),
                 "a rule line must not assert `A → A`: {rule_latex}"
             );
         }

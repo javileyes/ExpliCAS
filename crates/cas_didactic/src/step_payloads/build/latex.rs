@@ -206,8 +206,8 @@ fn single_colour_span(latex: &str, colour: &str) -> Option<(usize, usize, String
 
 fn strip_colour_wrappers(latex: &str) -> String {
     let mut current = latex.to_string();
-    while let Some((start, end, inner)) = single_colour_span(&current, "red")
-        .or_else(|| single_colour_span(&current, "green"))
+    while let Some((start, end, inner)) =
+        single_colour_span(&current, "red").or_else(|| single_colour_span(&current, "green"))
     {
         current = format!("{}{}{}", &current[..start], inner, &current[end..]);
     }
