@@ -13364,6 +13364,34 @@ fn generate_additive_integration_substeps(
     substeps
 }
 
+/// A table-rule integration sub-step ASSERTS that `after` is an antiderivative
+/// of the integrand — the single most repeated shape in this file. Declared and
+/// checked (C1.8): a refuted pair is not published, an undecided one is (a surd
+/// the simplifier cannot fold is not evidence of a lie).
+fn checked_antiderivative_substep(
+    ctx: &Context,
+    title: &str,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Option<SubStep> {
+    SubStep::checked_new(
+        ctx,
+        crate::didactic::substep::Claim::Antiderivative {
+            var: var_name.to_string(),
+        },
+        integrand,
+        after,
+        title,
+        display_expr(ctx, integrand),
+        display_expr(ctx, after),
+    )
+    .map(|step| {
+        step.with_before_latex(latex_expr(ctx, integrand))
+            .with_after_latex(latex_expr(ctx, after))
+    })
+}
+
 fn generate_basic_polynomial_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     if step.rule_name != "Symbolic Integration" {
         return Vec::new();
@@ -13564,12 +13592,10 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
         "Usar integración por partes"
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.extend(generate_polynomial_affine_log_by_parts_substeps(
         ctx, args[0], after, var_name,
     ));
@@ -15312,12 +15338,10 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         _ => return Vec::new(),
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
 
     if nontrivial_affine_argument(ctx, arg, var_name) {
         substeps.push(
@@ -15572,10 +15596,11 @@ fn generate_linear_elementary_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    let mut substeps = vec![
-        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-            .with_before_latex(latex_expr(ctx, args[0]))
-            .with_after_latex(latex_expr(ctx, after)),
+    let mut substeps: Vec<SubStep> =
+        checked_antiderivative_substep(ctx, title, args[0], after, var_name)
+            .into_iter()
+            .collect();
+    substeps.extend([
         SubStep::keyed(
             "usub.identify_affine_argument",
             vec![],
@@ -15584,7 +15609,7 @@ fn generate_linear_elementary_table_integration_substeps(
         )
         .with_before_latex(latex_expr(ctx, arg))
         .with_after_latex(latex_expr(ctx, after)),
-    ];
+    ]);
 
     if !slope.is_one() {
         substeps.push(
@@ -16019,12 +16044,10 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
         TrigLogTableKind::Cosecant => "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
 
     match table_match.trace {
         TrigLogTableTrace::AffineArgument => {
@@ -17068,12 +17091,10 @@ fn generate_hyperbolic_log_table_integration_substeps(ctx: &Context, step: &Step
         HyperbolicLogTableKind::CoshOverSinh => "Usar la regla de cosh(u)/sinh(u) -> ln|sinh(u)|",
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -17455,12 +17476,10 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
         }
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -17917,12 +17936,10 @@ fn generate_polynomial_derivative_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -18358,12 +18375,10 @@ fn generate_log_power_product_table_integration_substeps(
         "Usar la regla de u'·log_b(u)^n por partes"
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -18793,10 +18808,11 @@ fn generate_nested_inverse_polynomial_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    vec![
-        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-            .with_before_latex(latex_expr(ctx, args[0]))
-            .with_after_latex(latex_expr(ctx, after)),
+    let mut substeps: Vec<SubStep> =
+        checked_antiderivative_substep(ctx, title, args[0], after, var_name)
+            .into_iter()
+            .collect();
+    substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
             vec![],
@@ -18805,7 +18821,8 @@ fn generate_nested_inverse_polynomial_table_integration_substeps(
         )
         .with_before_latex(latex_expr(ctx, table_match.arg))
         .with_after_latex(table_match.derivative_latex),
-    ]
+    );
+    substeps
 }
 
 fn nested_inverse_polynomial_result(
@@ -19333,12 +19350,10 @@ fn generate_trig_quotient_table_integration_substeps(ctx: &Context, step: &Step)
         TrigQuotientTableKind::CosecantSquare => "Usar la regla de 1/sin(u)^2 -> -cot(u)",
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",
@@ -19612,12 +19627,10 @@ fn generate_reciprocal_trig_derivative_product_integration_substeps(
         }
     };
 
-    let mut substeps =
-        vec![
-            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-                .with_before_latex(latex_expr(ctx, args[0]))
-                .with_after_latex(latex_expr(ctx, after)),
-        ];
+    let mut substeps = Vec::new();
+    if let Some(step) = checked_antiderivative_substep(ctx, title, args[0], after, var_name) {
+        substeps.push(step);
+    }
     substeps.push(
         SubStep::keyed(
             "usub.identify_u_du",

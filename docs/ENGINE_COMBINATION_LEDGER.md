@@ -22067,3 +22067,18 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Un enum de relaciones se descubre migrando, no diseñando**: `hessian.row` pedía «cada celda es la derivada de esto respecto de SU variable», que es un vector de relaciones y no una. El diseño no lo tenía; la migración lo encontró. Se resuelve declarando `Statement` hasta que exista el brazo, no ensanchando `Derivative` para que trague.
   - **Migrar a un constructor que puede devolver `None` cambia la forma de la cadena que lo llama**: si el llamante no sabe declinar, el guard es decorativo. Presupuestar ese `filter_map` en cada familia.
+
+## 2026-07-26 - VERACIDAD (plan · C1.8, migración tanda 3): la familia `Antiderivative` entera — 11 emisores de tabla declaran y verifican con UN helper
+
+- area: `cas_didactic/src/didactic/types/substep/methods.rs` (`SubStep::checked_new`, gemelo sin clave para los emisores de título dinámico) + `focused_rule_substeps.rs` (`checked_antiderivative_substep` y 11 sitios migrados).
+- status: `retained`. Tercera tanda de migración de C1.8; con esto la familia que el diseño llamaba «la cosecha más limpia del fichero» queda cubierta.
+- capture:
+  - **La familia era literalmente un patrón repetido**: `SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))` + los dos `with_*_latex`, idéntico en 9 sitios y con dos variantes de una línea de diferencia. Un helper y una sustitución textual cubrieron los 9; los 2 restantes pedían reordenar su `vec![]` porque el sub-paso verificado puede no existir.
+  - **Los emisores de tabla tienen título DINÁMICO** (la regla elige su frase según la función que casó: arcsin, arctan, asinh…), así que `checked` —que exige clave i18n— no servía. De ahí `checked_new`: el mismo verificador, sin clave. Es la 2ª forma que la migración pide y que el diseño no tenía.
+  - Lo que ahora se comprueba: cada regla de tabla afirma «`after` es una primitiva de `args[0]`», y se decide derivando el `after`. Once afirmaciones que antes se publicaban por confianza.
+- observed: workspace failed:0, clippy 0, gate de divergencia verde, 0 errores de MathJax sobre 1746 campos. **Corpus: 0 filas cambian, 0 `result`** — ninguna de las 11 se refuta, el contador sigue en cero. Huella: **0 deltas** tras re-ejecutar.
+- **Falso positivo de huella, anotado porque cuesta tiempo**: la primera corrida del scorecard dio `calculus_integrate_command_matrix_smoke` 313 → 312 con 1 fallo. Re-ejecutando el script a mano: 313/313, y el scorecard repetido: 0 deltas. Era una carrera con la recompilación que el `make` dispara — esa suite es un script Python que invoca el binario release, así que si la build aún no ha terminado mide un binario a medias. **Ante un delta de huella en una suite de script, re-ejecutar antes de diagnosticar.**
+- decision: retener. Emisores declarados acumulados: 16 (FTC find_antiderivative, cierre de linealidad, use_linearity, gradient.component, hessian.row + 11 de tabla). Quedan `Equality` sobre los 3 helpers de nodo (~56, con los 39 pares triviales excluidos), `Applied` 5, `DefiniteEval` 2, `EvalAt` 2.
+- retained learning:
+  - **Una familia que es un patrón textual se migra con un helper y una sustitución, no sitio a sitio**: 9 de 11 salieron de una pasada. Merece la pena mirar la FORMA antes de empezar a editar; el inventario daba líneas, y las líneas escondían que era el mismo código once veces.
+  - **Un constructor verificador necesita tantas variantes como formas de título haya** (con clave y sin clave). Descubrirlo migrando es normal; lo que no vale es forzar el emisor a inventarse una clave para poder verificarse.

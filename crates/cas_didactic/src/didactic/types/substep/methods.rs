@@ -66,6 +66,25 @@ impl SubStep {
     /// evidence of a lie, and treating it as one would delete correct narration
     /// (measured: an assume-equality prototype refuted 80 of 214 sub-steps,
     /// ~51 of them legitimate).
+    /// Unkeyed twin of [`SubStep::checked`], for the emitters whose title is
+    /// built dynamically (the integration table rules pick their phrasing from
+    /// the matched function).
+    #[allow(clippy::too_many_arguments)]
+    pub fn checked_new(
+        context: &cas_ast::Context,
+        claim: super::claim::Claim,
+        before: cas_ast::ExprId,
+        after: cas_ast::ExprId,
+        description: impl Into<String>,
+        before_display: impl Into<String>,
+        after_display: impl Into<String>,
+    ) -> Option<Self> {
+        match super::claim::verify_claim(context, &claim, before, after) {
+            super::claim::ClaimVerdict::Refuted => None,
+            _ => Some(Self::new(description, before_display, after_display)),
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn checked(
         context: &cas_ast::Context,
