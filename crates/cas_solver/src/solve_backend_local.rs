@@ -7153,7 +7153,7 @@ fn try_solve_trig_weak_boundary_inequality(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     // Same shape-preservation gate as the periodic handler, plus the
     // angle-sum expansion (`sin(x+π/3) → sin·cos + cos·sin`) which would
     // destroy the shifted-argument match before the range check runs.
@@ -7179,7 +7179,7 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
     eq: &Equation,
     var: &str,
     simplifier: &mut Simplifier,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::{BuiltinFn, RelOp};
     use cas_solver_core::isolation_utils::contains_var;
     use num_rational::BigRational;
@@ -7328,18 +7328,18 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
     match op {
         RelOp::Geq => {
             if r == one {
-                boundary_equation(simplifier, 1) // t ≥ 1 ⇔ t = 1
+                boundary_equation(simplifier, 1).map(|set| (set, Vec::new())) // t ≥ 1 ⇔ t = 1
             } else if r > one {
-                Some(SolutionSet::Empty)
+                Some((SolutionSet::Empty, Vec::new()))
             } else {
-                Some(SolutionSet::AllReals) // r ≤ −1: always true
+                Some((SolutionSet::AllReals, Vec::new())) // r ≤ −1: always true
             }
         }
         RelOp::Gt => {
             if r >= one {
-                Some(SolutionSet::Empty) // t > 1 (or more) is unattainable
+                Some((SolutionSet::Empty, Vec::new())) // t > 1 (or more) is unattainable
             } else if r < -&one {
-                Some(SolutionSet::AllReals)
+                Some((SolutionSet::AllReals, Vec::new()))
             } else {
                 // r = −1: the complement ℝ ∖ {touch points} — the table with
                 // r = −1 yields exactly the punctured line (len == period,
@@ -7349,18 +7349,18 @@ fn try_solve_trig_weak_boundary_inequality_ungated(
         }
         RelOp::Leq => {
             if r == -&one {
-                boundary_equation(simplifier, -1) // t ≤ −1 ⇔ t = −1
+                boundary_equation(simplifier, -1).map(|set| (set, Vec::new())) // t ≤ −1 ⇔ t = −1
             } else if r < -&one {
-                Some(SolutionSet::Empty)
+                Some((SolutionSet::Empty, Vec::new()))
             } else {
-                Some(SolutionSet::AllReals) // r ≥ 1: always true
+                Some((SolutionSet::AllReals, Vec::new())) // r ≥ 1: always true
             }
         }
         RelOp::Lt => {
             if r <= -&one {
-                Some(SolutionSet::Empty)
+                Some((SolutionSet::Empty, Vec::new()))
             } else if r > one {
-                Some(SolutionSet::AllReals)
+                Some((SolutionSet::AllReals, Vec::new()))
             } else {
                 // r = 1: complement — punctured line via the table
                 // (sin u < 1 → (π/2, 5π/2); cos u < 1 → (0, 2π)).
@@ -7384,7 +7384,7 @@ fn try_emit_trig_interior_interval_union(
     r: &num_rational::BigRational,
     op: &cas_ast::RelOp,
     var: &str,
-) -> Option<SolutionSet> {
+) -> Option<(SolutionSet, Vec<crate::SolveStep>)> {
     use cas_ast::{BoundType, BuiltinFn, Interval, RelOp};
 
     // Affine gate (design §5.1): `bounded_trig` only checked contains_var, so
@@ -7517,10 +7517,56 @@ fn try_emit_trig_interior_interval_union(
         return None;
     }
 
-    Some(SolutionSet::PeriodicIntervalUnion {
-        windows: vec![window],
-        period,
-    })
+    // The three facts the student needs are already computed here: the
+    // one-period inversion, the base window where the relation holds, and the
+    // translation by the period. They were being thrown away — the inequality
+    // returned a correct interval union and narrated NOTHING, while its `=`
+    // twin narrated fine (audit: 12 of 16 inequality rows mute vs 2 of 19
+    // equation rows).
+    let mut steps = Vec::new();
+    let x_var = simplifier.context.var(var);
+    steps.push(crate::SolveStep::new(
+        "Invert the trig function on one period".to_string(),
+        Equation {
+            lhs: simplifier.context.var("u"),
+            rhs: inv,
+            op: cas_ast::RelOp::Eq,
+        },
+        crate::ImportanceLevel::Medium,
+    ));
+    steps.push(crate::SolveStep::new(
+        "Base window where the relation holds".to_string(),
+        Equation {
+            lhs: x_var,
+            rhs: window.min,
+            op: match window.min_type {
+                BoundType::Closed => cas_ast::RelOp::Geq,
+                _ => cas_ast::RelOp::Gt,
+            },
+        },
+        crate::ImportanceLevel::Medium,
+    ));
+    steps.push(crate::SolveStep::new(
+        "Translate the window by the period (k any integer)".to_string(),
+        Equation {
+            lhs: x_var,
+            rhs: {
+                let k_var = simplifier.context.var("k");
+                let k_t = simplifier.context.add(Expr::Mul(k_var, period));
+                simplifier.context.add(Expr::Add(window.min, k_t))
+            },
+            op: cas_ast::RelOp::Eq,
+        },
+        crate::ImportanceLevel::Medium,
+    ));
+
+    Some((
+        SolutionSet::PeriodicIntervalUnion {
+            windows: vec![window],
+            period,
+        },
+        steps,
+    ))
 }
 
 /// PIU P3b: `A / trig(g) ⋚ c` (Div or `trig^(−1)` shapes, either side).
@@ -10996,8 +11042,8 @@ fn solve_local_core_inner(
     // `cos(2x) ≥ −2 → ℝ`. |c/A| < 1 declines honestly (needs the periodic
     // interval-union representation). Scout cycle-3 backlog #3: the bare form
     // worked; the coefficient/argument wrappers fell to the mutated-echo residual.
-    if let Some(set) = try_solve_trig_weak_boundary_inequality(eq, var, simplifier) {
-        return Ok((set, Vec::new()));
+    if let Some((set, steps)) = try_solve_trig_weak_boundary_inequality(eq, var, simplifier) {
+        return Ok((set, steps));
     }
     if equation_is_nonzero_const_over_polynomial(simplifier, eq)
         || equation_has_identically_zero_denominator(simplifier, eq)

@@ -873,7 +873,8 @@ fn substep_claim_shadow_run_over_guardrail_corpora() {
 // Solve narration inventory (C4.1)
 // ---------------------------------------------------------------------------
 
-/// Rows that return a REAL answer and narrate NOTHING — neither `steps` nor
+/// Rows that return a REAL answer and narrate NOTHING (C4.2 removed the three
+/// periodic-trig inequalities: their narration existed and was being discarded). — neither `steps` nor
 /// `solve_steps`. Anchored BY EXPRESSION (the csv reorders and the dedup
 /// renumbers), and the lane fails BOTH ways: a new mute row is a regression,
 /// and a row that stops being mute must leave this list in the same commit.
@@ -889,10 +890,7 @@ const KNOWN_MUTE_SOLVE_ROWS: &[&str] = &[
     "solve(abs(x-2)>1,x)",
     "solve(abs(x-1)<abs(x+2),x)",
     "solve(ln(x)^2-3*ln(x)+2<0,x)",
-    "solve(2*sin(3*x)-1>0, x)",
     "solve(abs(x-a)<2, x)",
-    "solve(sin(x)>1/2, x)",
-    "solve(tan(x)>1, x)",
     "dsolve(diff(y,x) = x^2 + y^2, y, x)",
 ];
 

@@ -22021,3 +22021,17 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Antes de alinear dos superficies, contar cuántas hay**: la auditoría decía «tres órdenes» y el plan lo cifró como una divergencia entre dos. Alinear un par movió el problema en vez de cerrarlo, y el contador lo dijo en la primera medida.
   - **Un parche de display que hace desaparecer contenido está señalando un paso vacío, no un fallo del parche**: si al normalizar el orden un paso queda `A → A`, ese paso narraba el orden. Es un hallazgo del ciclo aunque el ciclo se rechace.
+
+## 2026-07-25 - CAPACIDAD NARRATIVA (plan · C4.2): la inecuación trigonométrica periódica narra — la narración EXISTÍA y se tiraba en el `.map(|(set,_)| set)`
+
+- area: `cas_solver/src/solve_backend_local.rs` — `try_emit_trig_interior_interval_union` pasa a devolver `(SolutionSet, Vec<SolveStep>)` y emite sus tres pasos; el tipo se propaga por `try_solve_trig_weak_boundary_inequality_ungated` y su envoltorio hasta `solve_local_core_inner`, que **ya tenía el canal** y lo rellenaba con `Vec::new()`. `eval_output_presentation_solve_steps/localization.rs`: 3 plantillas es/en. `cas_cli/tests/steps_quality_gate_tests.rs`: las 3 filas salen del inventario.
+- status: `retained`. Ciclo C4.2 del plan — la «rebanada barata» de E5, donde la maquinaria ya existía.
+- capture:
+  - **Los tres datos didácticos estaban calculados y se descartaban**: el productor del intervalo periódico ya computa la inversión en un periodo (`arcsin(r)`), la ventana base de la tabla analítica y el mapeo afín inverso con su periodo. Devolvía solo el conjunto.
+  - **El canal existía al final de la cadena**: `solve_local_core_inner` retorna `Ok((set, Vec::new()))`. Enhebrar fueron 4 firmas y un puñado de retornos escalares envueltos — no un canal nuevo. Es la diferencia con la mitad (b) de C1.7, que sí exige el cambio en cascada de 39 call-sites.
+  - Narración publicada: `sin(x) > 1/2` → «Invertir la función trigonométrica en un periodo: u = π/6» → «Ventana base donde se cumple la relación: x > π/6» → «Trasladar la ventana por el periodo: x = 2πk + π/6». Correcta también con argumento afín (`2·sin(3x)−1>0` da ventana en π/18 y periodo 2π/3) y con `tan` (periodo π).
+- observed: workspace failed:0, clippy 0, 0 errores de MathJax sobre 1746 campos. **`solve_mute_rows` 15 → 12; inecuaciones mudas 12/16 → 9/16**; `solve_steps_total` 128 → 137. Huella: 4 deltas, los 4 del carril y todos intencionados.
+- decision: retener. **El inventario de dos niveles de C4.1 hizo su trabajo el primer día**: al arreglar las 3 filas, el chequeo STALE exigió sacarlas de `KNOWN_MUTE_SOLVE_ROWS` en este mismo commit, que es exactamente lo que impide el trueque silencioso.
+- retained learning:
+  - **Antes de declarar «no hay canal», seguir la cadena hasta arriba**: aquí el canal estaba en el último nivel y lo único que faltaba era propagar el tipo por tres funciones intermedias. La distinción que importa no es «¿hay canal?» sino «¿cuántas firmas hay entre el dato y el canal?» — 4 es un ciclo M, 39 es un frente.
+  - **Un `.map(|(set, _)| set)` con doc-comment que dice «discard the narration» es un inventario de deuda ya localizado**: su propio autor documentó el descarte. `grep` de ese patrón sobre los solvers es un detector de coste cero para el resto de E5.
