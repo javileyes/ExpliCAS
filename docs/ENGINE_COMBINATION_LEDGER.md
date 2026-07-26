@@ -21975,3 +21975,19 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Un guard de veracidad tiene que saber qué afirmaciones NO sabe expresar**: la sustitución uno-a-uno no cubre «N piezas se combinan en una», y aplicarla igual convierte el guard en un borrador de narración correcta. La excepción se DECLARA con su contador, no se descubre cuando caen los pines.
   - **Declinar un span puede MEJORAR la línea de regla**: al perder el span global, `rule_latex` cae al par local, que en las familias con path drift es exactamente el correcto. El fallback honesto no siempre es el peor de los dos.
+
+## 2026-07-25 - VERACIDAD (plan · C2.2): el predicado del guard se vuelve UNIFORME en el número de spans — el contrato se queda sin excepciones
+
+- area: `cas_didactic/src/timeline/simplify_highlights/global.rs` — `span_transition_is_truthful` se reescribe sobre `context_with_holes`: colapsar cada RACHA contigua de spans coloreados en un hueco y exigir que el resto —la parte que el paso afirma NO haber tocado— sea **idéntico** en ambos lados.
+- status: `retained`. Ciclo C2.2 del plan, que levanta la excepción declarada en C1.3.
+- capture:
+  - **El invariante correcto no era la sustitución, era el CONTEXTO.** C1.3 comprobaba «sustituye rojo por verde y reproduce el after», que solo se puede escribir cuando hay tantos rojos como verdes — y por eso hubo que declarar la excepción multi-span cuando dos pines cayeron. El predicado de contexto es uniforme en N→M y **subsume** al anterior: si la parte no tocada coincide y los spans están donde ocurre el cambio, la afirmación se cumple por construcción.
+  - Los dos casos que lo definen, medidos:
+    - `1 + 1/(1+1/(1+1/x)) − (3x+2)/(2x+1)` paso 4: dos rojos adyacentes, un verde. Contextos `[H] − (2+3x)/(1+2x)` a ambos lados ⇒ **cierto**, «estas dos piezas se volvieron esa una». Publica.
+    - `taylor(sin(x),x,0,5)` paso 3: un rojo, un verde. Contextos `[H] + (6x⁵−120x³)/720` vs `[H] + (x⁵−20x³)/120` ⇒ **difieren**, el paso cambió algo que no marcó. Declina.
+  - El colapso de rachas es lo que hace que dos spans separados solo por pegamento aditivo (`+`, `−`, `\cdot`) cuenten como UNA maniobra, que es lo que son.
+- observed: workspace failed:0, clippy 0, 0 errores de MathJax sobre 1728 campos. **Huella: 0 deltas** — el predicado nuevo acepta exactamente lo mismo que el anterior más los multi-span, sin mover nada más. Los 486 pines de `semantics_cli_contract_tests` verdes, incluidos los dos que forzaron la excepción.
+- decision: retener. El guard ya no tiene excepciones declaradas.
+- retained learning:
+  - **Cuando un invariante necesita una excepción, suele ser que el invariante está mal formulado**: la excepción multi-span de C1.3 no era una limitación del dominio sino de la FORMA de la comprobación. Reformulado sobre el contexto invariante, el caso «excepcional» pasa a ser el caso general.
+  - **Una afirmación de cambio se verifica por lo que NO cambia**: comprobar el complemento (el resto idéntico) es más simple y más general que comprobar la transformación.

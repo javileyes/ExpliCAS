@@ -16668,3 +16668,42 @@ fn highlight_spans_are_verified_before_being_published() {
         "the rule line must show the fraction it reduces: {rule_latex}"
     );
 }
+
+/// The truthfulness predicate is UNIFORM in the number of spans: collapse each
+/// contiguous run of coloured spans into a hole and require the untouched
+/// remainder to be identical on both sides. That lifts the multi-span exception
+/// C1.3 had to declare, and it subsumes the one-to-one substitution check.
+#[test]
+fn highlight_guard_accepts_many_to_one_spans_and_still_rejects_the_witness() {
+    // Many-to-one: two adjacent terms become one. TRUE, must publish.
+    let (wire, _) = cli_eval_json_with_stderr_args(
+        "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)",
+        &["--steps", "on"],
+    );
+    let steps = wire["steps"].as_array().expect("steps");
+    let many_to_one = steps.iter().any(|s| {
+        let b = s["before_latex"].as_str().unwrap_or_default();
+        let a = s["after_latex"].as_str().unwrap_or_default();
+        b.matches("\\color{red}").count() > a.matches("\\color{green}").count()
+            && a.contains("\\color{green}")
+    });
+    assert!(
+        many_to_one,
+        "a many-to-one span is a truthful claim and must survive the guard"
+    );
+
+    // And the witness still declines: its untouched remainder changed.
+    let (witness, _) =
+        cli_eval_json_with_stderr_args("taylor(sin(x), x, 0, 5)", &["--steps", "on"]);
+    let reduce_step = witness["steps"]
+        .as_array()
+        .expect("steps")
+        .iter()
+        .find(|s| s["before"].as_str().unwrap_or_default().contains("720"))
+        .expect("the /720 step");
+    let before_latex = reduce_step["before_latex"].as_str().unwrap_or_default();
+    assert!(
+        before_latex.starts_with("{\\color{red}{") && before_latex.ends_with("}}"),
+        "the declined step colours the WHOLE state, not a wrong piece: {before_latex}"
+    );
+}

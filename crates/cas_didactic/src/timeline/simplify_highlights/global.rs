@@ -96,33 +96,66 @@ fn normalized(latex: &str) -> String {
 }
 
 /// `true` when the published pair keeps its promise.
+///
+/// The invariant is UNIFORM in the number of spans, which is what let the
+/// multi-span exception of C1.3 be lifted: collapse each contiguous RUN of
+/// coloured spans into a single hole and require the rest — the part the step
+/// claims it did not touch — to be **identical** on both sides.
+///
+///   before: `[H] + [H] - (2+3x)/(1+2x)`   (two adjacent red spans)
+///   after:  `[H] - (2+3x)/(1+2x)`         (one green span)
+///                → same context, same number of holes: TRUE, "these two
+///                  pieces became that one".
+///
+///   before: `[H] + (6x⁵-120x³)/720`
+///   after:  `[H] + (x⁵-20x³)/120`
+///                → the context DIFFERS, so the step changed something it did
+///                  not mark: FALSE. This is the audit's witness.
+///
+/// It also subsumes the one-to-one substitution check it replaces: if the
+/// untouched part matches and the spans are where the change is, the assertion
+/// holds by construction.
+fn context_with_holes(latex: &str, colour: &str) -> Option<String> {
+    let spans = colour_spans(latex, colour);
+    if spans.is_empty() {
+        return None;
+    }
+    // Merge spans separated only by additive/multiplicative glue: they are one
+    // manoeuvre, not several.
+    let glue_only = |gap: &str| {
+        gap.chars()
+            .all(|c| c.is_whitespace() || matches!(c, '+' | '-'))
+            || gap.trim() == "\\cdot"
+            || gap.trim().is_empty()
+    };
+    let mut rebuilt = String::with_capacity(latex.len());
+    let mut last_end = 0usize;
+    let mut previous_end: Option<usize> = None;
+    for (start, end, _) in &spans {
+        let merges = previous_end.is_some_and(|pe| glue_only(&latex[pe..*start]));
+        if merges {
+            // absorb the glue into the same hole
+        } else {
+            rebuilt.push_str(&latex[last_end..*start]);
+            rebuilt.push('\u{1}');
+        }
+        last_end = *end;
+        previous_end = Some(*end);
+    }
+    rebuilt.push_str(&latex[last_end..]);
+    Some(rebuilt)
+}
+
 fn span_transition_is_truthful(before: &str, after: &str) -> bool {
-    let reds = colour_spans(before, "red");
-    let greens = colour_spans(after, "green");
-    // No partial span: the whole state is coloured (or nothing is). Nothing to
-    // check — the pair says "this state became that state", which is the
-    // before/after itself.
-    if reds.is_empty() || greens.is_empty() {
+    let (Some(before_context), Some(after_context)) = (
+        context_with_holes(before, "red"),
+        context_with_holes(after, "green"),
+    ) else {
+        // No partial span on one of the sides: the pair simply says "this state
+        // became that state", which is the before/after itself.
         return true;
-    }
-    // MULTI-SPAN EXCEPTION, declared (plan §7.1, lifted in C2.2). When the two
-    // sides carry a different number of spans the assertion is "these N pieces
-    // became that one" — a truthful claim that substitution cannot express, and
-    // declining it would erase correct narration (two pins fix exactly this
-    // shape: `semantics_cli_contract_tests` steps 4 and 9). The guard covers
-    // the one-to-one case, which is where the audit's false identities live.
-    if reds.len() != greens.len() {
-        return true;
-    }
-    let mut rebuilt = String::with_capacity(before.len());
-    let mut last = 0usize;
-    for ((start, end, _), (_, _, green_inner)) in reds.iter().zip(greens.iter()) {
-        rebuilt.push_str(&before[last..*start]);
-        rebuilt.push_str(green_inner);
-        last = *end;
-    }
-    rebuilt.push_str(&before[last..]);
-    normalized(&strip_colours(&rebuilt)) == normalized(&strip_colours(after))
+    };
+    normalized(&strip_colours(&before_context)) == normalized(&strip_colours(&after_context))
 }
 
 /// Whole-state fallback for a declined span: still true, just less precise.
