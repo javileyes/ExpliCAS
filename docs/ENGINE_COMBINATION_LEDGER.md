@@ -22082,3 +22082,19 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Una familia que es un patrón textual se migra con un helper y una sustitución, no sitio a sitio**: 9 de 11 salieron de una pasada. Merece la pena mirar la FORMA antes de empezar a editar; el inventario daba líneas, y las líneas escondían que era el mismo código once veces.
   - **Un constructor verificador necesita tantas variantes como formas de título haya** (con clave y sin clave). Descubrirlo migrando es normal; lo que no vale es forzar el emisor a inventarse una clave para poder verificarse.
+
+## 2026-07-26 - DIAGNÓSTICO/RECHAZO (plan · C1.8, familia `Equality`): los 56 emisores de los helpers de nodo NO se migran — 0 refutaciones en 860 expresiones, y el que miente es el TÍTULO
+
+- area: sonda temporal en `concrete_expr_substep` / `temp_ctx_substep` (eliminada); adenda en `docs/C1_8_SUBSTEP_CLAIM_DESIGN.md`.
+- status: `rejected` con medida. Era el bloque MÁS GRANDE del subconjunto que el diseño mandaba activar (56 de ~113 puntos de emisión).
+- capture:
+  - **Medir antes de migrar cambió la decisión.** Sonda dentro de los tres helpers de nodo: verificar `Claim::Equality` sobre cada par (saltando ExprId idénticos, triviales por hash-consing) y contar refutaciones. Barrido de **860 expresiones** — las 210 del corpus MÁS 400 de `identity_pairs.csv` y 250 de `derive_pairs.csv`, siguiendo la regla de C5.1 de no medir solo sobre la vitrina.
+  - **0 refutaciones. Ni una.** En ninguno de los tres helpers.
+  - **Y era predecible**: los pares que llegan ahí son reescrituras PRODUCIDAS POR EL MOTOR, que preserva equivalencia por construcción — lo garantizan sus propias suites metamórficas y el fuzz de equivalencia. Verificar en la capa de display una igualdad que el motor ya garantiza es trabajo duplicado en tiempo de render, y costaría un simplify por sub-paso. El diseño ya lo intuía para los 39 pares triviales; la medida extiende la conclusión **a los 56**.
+  - **El defecto real de esta familia sigue ahí y es OTRO**: lo que miente es el **TÍTULO**, no el par («Usar tan(u)·cot(u) = 1» emitido incondicionalmente; «Usar tan(u) = (1−cos 2u)/sin 2u» emitido en la rama que no reconoció ninguna variante). `Claim::Equality` no puede verlo por construcción: comprueba los dos lados, no la frase. Necesita `NamedIdentity{lhs, rhs}` con matcher, que el diseño ya aplaza como el segundo ciclo más grande de la campaña.
+- observed: árbol sin cambios de motor tras retirar la sonda; corpus 0 filas distintas.
+- decision: **no migrar**. El subconjunto a activar de C1.8 baja de ~113 a **~57**, y los 56 dejan de contar como deuda: son **fuera de alcance por medida**, no pendientes. Quedan con valor `Applied` (5, rescata un P0), `DefiniteEval` (2), `EvalAt` (2).
+- retained learning:
+  - **Un verificador vale por lo que caza, no por lo que cubre**: 56 emisores «cubiertos» con 0 hallazgos son coste de render y una métrica de cobertura que engorda sin comprar nada. La pregunta antes de migrar una familia no es «¿se puede verificar?» sino «¿cuántas mentiras caza?».
+  - **Cuando la capa de abajo ya garantiza el invariante, re-verificarlo arriba es duplicación**: el motor preserva equivalencia y lo prueba con sus propias suites; la capa didáctica no tiene que volver a demostrarlo. Verificar donde el dato NACE, no donde se muestra.
+  - **La sonda temporal es más barata que la migración y decide igual**: dos helpers, un `eprintln`, 860 expresiones, y el bloque más grande del ciclo queda resuelto sin escribir la migración.

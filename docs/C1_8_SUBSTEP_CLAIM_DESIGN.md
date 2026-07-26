@@ -316,3 +316,44 @@ Y la propiedad que hace que la cuarentena **no sea una excusa**: **cuarentenado 
 - No toca `cas_solver_core::step_types::SubStep` (29 sitios de solve/derive): segunda instalación, ya anotada en el plan §579-581.
 - No cierra el **invariante de vector** (`substep[i].after ≡ substep[i+1].before`, último `after ≡ step.after`), que es lo único que caza la cadena 7616→7622 —cada par es cierto y el destino es falso—. Eso es C1.9, y **depende de que `Scope` exista**, que es por lo que `Scope` entra hoy aunque su verificador sea trivial.
 - No verifica el **TÍTULO**. En los 39 pares triviales, la `Equality` la garantiza el motor y quien miente es «Usar tan(u)·cot(u) = 1» emitido **incondicionalmente** (8087) o «Usar tan(u) = (1−cos 2u)/sin 2u» emitido **en la rama que no reconoció ninguna variante** (7474). Esa clase entera necesita `NamedIdentity{lhs, rhs}` con matcher. **C1.8 la deja abierta, y `substep_claim_trivial = 39` es el número que impide olvidarlo.**
+
+---
+
+## ADENDA 2026-07-26 — la familia `Equality` sobre los helpers de nodo NO se migra (medido)
+
+El §6 asignaba **56 puntos de emisión** de `Equality` sobre los tres helpers de
+nodo (`concrete_expr_substep`, `temp_ctx_substep`, `mixed_ctx_substep`),
+excluyendo los 39 pares triviales, y era el bloque más grande del subconjunto a
+activar. **Se midió antes de migrar y el resultado lo cancela.**
+
+**Método.** Sonda temporal dentro de los tres helpers: verificar `Claim::Equality`
+sobre cada par (saltando los ExprId idénticos, que son triviales por
+hash-consing) y contar refutaciones. Barrido sobre **860 expresiones**: las 210
+de `web/examples.csv` más 400 de `identity_pairs.csv` como `diff(...)` y 250 de
+`derive_pairs.csv` como `integrate(...)` — es decir, siguiendo la regla de C5.1
+de no medir solo sobre la vitrina.
+
+**Resultado: 0 refutaciones.** Ni una en 860 expresiones, en ninguno de los tres
+helpers.
+
+**Por qué, y por qué era predecible:** los pares que llegan a estos helpers son
+reescrituras PRODUCIDAS POR EL MOTOR, y el motor preserva equivalencia por
+construcción (es lo que garantizan sus propias suites metamórficas y el fuzz de
+equivalencia). Verificar en la capa de display una igualdad que el motor ya
+garantiza es trabajo duplicado en tiempo de render. El diseño ya lo intuía para
+los 39 triviales («`Equality` es cierta porque la produjo el motor: verificarla
+no caza nada»); la medida extiende esa conclusión **a los 56**.
+
+**Y el defecto real de esta familia sigue ahí, pero es otro:** lo que miente en
+estos sub-pasos es el **TÍTULO**, no el par. «Usar tan(u)·cot(u) = 1» emitido
+incondicionalmente, «Usar tan(u) = (1−cos 2u)/sin 2u» emitido en la rama que no
+reconoció ninguna variante. `Claim::Equality` no puede ver eso por construcción:
+comprueba los dos lados, no la frase. Esa clase necesita `NamedIdentity{lhs, rhs}`
+con matcher de plantillas, que el propio §1 ya aplaza como el segundo ciclo más
+grande de la campaña.
+
+**Consecuencia para el plan:** el subconjunto a activar baja de ~113 a **~57**
+puntos de emisión, y `substep_unchecked_emitters` no debe contar los 56 como
+deuda pendiente sino como **fuera de alcance por medida**. Lo que queda de valor:
+`Applied` (5, rescata un P0), `DefiniteEval` (2), `EvalAt` (2) y las familias de
+límites/vectorial/dominio que siguen aplazadas con su razón.
