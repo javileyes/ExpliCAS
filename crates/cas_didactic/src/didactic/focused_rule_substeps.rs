@@ -13276,12 +13276,20 @@ fn generate_additive_integration_substeps(
 
     let linearity_display = integral_sum_display(ctx, terms.as_slice(), &var_name);
     let linearity_latex = integral_sum_latex(ctx, terms.as_slice(), &var_name);
-    let mut substeps = vec![SubStep::keyed(
+    // Linearity is a STATEMENT (it reshapes the problem, it does not assert an
+    // identity between two expressions), so it declares that explicitly rather
+    // than pretending to be an equality the checker would reject.
+    let mut substeps = vec![SubStep::checked(
+        ctx,
+        crate::didactic::substep::Claim::Statement,
+        integrand,
+        integrand,
         "integral.use_linearity",
         vec![],
         display_expr(ctx, integrand),
         linearity_display.clone(),
     )
+    .expect("Statement never refutes")
     .with_before_latex(latex_expr(ctx, integrand))
     .with_after_latex(linearity_latex.clone())];
 
@@ -13303,16 +13311,25 @@ fn generate_additive_integration_substeps(
         ));
     }
 
-    substeps.push(
-        SubStep::keyed(
-            "integral.integrate_each_term",
-            vec![],
-            linearity_display,
-            display_expr(ctx, result),
-        )
-        .with_before_latex(linearity_latex)
-        .with_after_latex(latex_expr(ctx, result)),
-    );
+    // The closing line DOES assert something checkable: the assembled result is
+    // an antiderivative of the original integrand.
+    if let Some(step) = SubStep::checked(
+        ctx,
+        crate::didactic::substep::Claim::Antiderivative {
+            var: var_name.clone(),
+        },
+        integrand,
+        result,
+        "integral.integrate_each_term",
+        vec![],
+        linearity_display,
+        display_expr(ctx, result),
+    ) {
+        substeps.push(
+            step.with_before_latex(linearity_latex)
+                .with_after_latex(latex_expr(ctx, result)),
+        );
+    }
     substeps
 }
 
@@ -14759,14 +14776,28 @@ fn generate_definite_integral_substeps(ctx: &Context, step: &Step, depth: usize)
         }
     };
 
-    let mut substeps = vec![SubStep::keyed(
+    // C1.8: this sub-step ASSERTS that `after` is an antiderivative of `before`.
+    // Declared and checked (differentiate the after, compare to the before)
+    // instead of trusted. A refuted claim is not published; an undecided one is
+    // (a surd the simplifier cannot fold is not evidence of a lie).
+    let mut substeps = Vec::new();
+    if let Some(step) = SubStep::checked(
+        &scratch,
+        crate::didactic::substep::Claim::Antiderivative {
+            var: var_name.clone(),
+        },
+        integrand,
+        antiderivative,
         "integral.find_antiderivative",
         vec![],
         display_expr(ctx, integrand),
         display_expr(&scratch, antiderivative),
-    )
-    .with_before_latex(latex_expr(ctx, integrand))
-    .with_after_latex(latex_expr(&scratch, antiderivative))];
+    ) {
+        substeps.push(
+            step.with_before_latex(latex_expr(ctx, integrand))
+                .with_after_latex(latex_expr(&scratch, antiderivative)),
+        );
+    }
 
     // "Find the antiderivative" states WHAT was obtained and never HOW: on
     // `∫dx/(x^5-x-1)` a 200-character `root_sum` appears out of nowhere. The

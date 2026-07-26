@@ -1,5 +1,9 @@
+#[path = "substep/claim.rs"]
+pub mod claim;
 #[path = "substep/methods.rs"]
 mod methods;
+
+pub use claim::Claim;
 
 /// A synthetic sub-step that explains a hidden operation
 #[derive(Debug, Clone)]
@@ -24,3 +28,4 @@ pub struct SubStep {
     /// Positional arguments (already-rendered, language-neutral, e.g. math) for `desc_key`.
     pub desc_args: Vec<String>,
 }
+

@@ -22035,3 +22035,18 @@ Active entries: 706 (newest first)
 - retained learning:
   - **Antes de declarar «no hay canal», seguir la cadena hasta arriba**: aquí el canal estaba en el último nivel y lo único que faltaba era propagar el tipo por tres funciones intermedias. La distinción que importa no es «¿hay canal?» sino «¿cuántas firmas hay entre el dato y el canal?» — 4 es un ciclo M, 39 es un frente.
   - **Un `.map(|(set, _)| set)` con doc-comment que dice «discard the narration» es un inventario de deuda ya localizado**: su propio autor documentó el descarte. `grep` de ese patrón sobre los solvers es un detector de coste cero para el resto de E5.
+
+## 2026-07-26 - VERACIDAD (plan · C1.8, PRIMERA TANDA): `SubStep::checked` — el emisor DECLARA la relación que afirma y el constructor la verifica antes de publicar
+
+- area: `cas_didactic/src/didactic/types/substep/claim.rs` (NUEVO: enum `Claim`, `ClaimVerdict`, `verify_claim`) + `substep/methods.rs` (`SubStep::checked`) + 3 emisores migrados en `focused_rule_substeps.rs`.
+- status: `retained`. **Primera tanda de C1.8, declarada como tal**: el diseño (`docs/C1_8_SUBSTEP_CLAIM_DESIGN.md`) cifra el ciclo completo en ~700 LOC y ~113 puntos de emisión migrados sobre 422 inventariados. Esto entrega el mecanismo y tres emisores; el resto sigue sin declarar y NO se cuenta como cubierto.
+- capture:
+  - **El enum es el punto, y lo dice un número**: un prototipo que asumía `Equality` para todo refutó 80 de 214 sub-pasos, y **~51 de esas refutaciones eran relaciones legítimas de no-igualdad**. Verificar la relación equivocada borra más narración correcta de la que salva. Por eso «esto es la antiderivada de aquello» se comprueba DERIVANDO, no comparando.
+  - `Undecided` **publica**: que el simplificador no logre plegar un surd no es prueba de mentira. Solo un residual constante NO nulo refuta una antiderivada — el resto es indecidible y se muestra.
+  - **`verify_claim` trabaja sobre un clon de scratch**, así que migrar un emisor es una edición local y no una cascada de firmas. El coste (un clon de `Context` por sub-paso VERIFICADO) lo pagan solo los migrados; `Statement` no verifica nada.
+  - **Quité el tally que había añadido**: nadie lo leía y clippy lo dijo. Landear infraestructura muerta es exactamente lo que esta campaña critica; el residual ya lo mide el shadow run de C1.8-paso-0 desde el wire.
+- observed: workspace failed:0, clippy 0. **Corpus: 0 filas cambian, 0 `result`** — ningún claim declarado se refuta hoy, que es el «nacer en cero» que el diseño pedía. Huella: 0 deltas. 4 tests unitarios nuevos, uno de ellos con el testigo real del audit (`∫−2·sin(x)dx` publicado como `2x·sin(x)+(2−x²)cos(x)` NO verifica).
+- decision: retener. Pendiente de C1.8: migrar los ~110 emisores restantes por familias (`Antiderivative` 27, `Derivative` 6, `Equality` sobre los 3 helpers de nodo 56, `EqualityUpToConstant` 2, `Applied` 5, `DefiniteEval` 2, `EvalAt` 2) y anclar `substep_unchecked_emitters` a 422 − migrados.
+- retained learning:
+  - **Un verificador uniforme sobre narración heterogénea borra lo correcto con lo falso**: el tipado por relación no es elegancia, es lo que evita que el guard destruya el 24 % de los sub-pasos correctos.
+  - **Si el contador que añades no lo lee nadie, no es un contador: es deuda.** Clippy lo caza; hacerle caso en el mismo ciclo evita la infraestructura-zombi que este audit encontró en otros sitios.
