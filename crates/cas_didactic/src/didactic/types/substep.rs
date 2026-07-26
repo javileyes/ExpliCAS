@@ -1,9 +1,11 @@
 #[path = "substep/claim.rs"]
 pub mod claim;
-#[path = "substep/schema.rs"]
-pub mod schema;
+#[path = "substep/matching.rs"]
+pub mod matching;
 #[path = "substep/methods.rs"]
 mod methods;
+#[path = "substep/schema.rs"]
+pub mod schema;
 
 pub use claim::Claim;
 

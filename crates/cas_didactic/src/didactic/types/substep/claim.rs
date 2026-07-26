@@ -246,7 +246,7 @@ pub fn verify_schematic_identity(lhs: &'static str, rhs: &'static str) -> ClaimV
 /// never the mere absence of a proof. The simplifier grinding to a halt on a surd
 /// it cannot fold is not evidence of a lie, and treating it as one would delete
 /// correct narration.
-fn decide_equality(scratch: &mut Context, a: ExprId, b: ExprId) -> ClaimVerdict {
+pub(crate) fn decide_equality(scratch: &mut Context, a: ExprId, b: ExprId) -> ClaimVerdict {
     if a == b {
         return ClaimVerdict::Verified;
     }

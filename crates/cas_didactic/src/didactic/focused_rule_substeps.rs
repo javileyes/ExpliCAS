@@ -7457,25 +7457,24 @@ fn generate_half_angle_tangent_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
         let after = step.after_local().unwrap_or(step.after);
         let variant = half_angle_tangent_variant(ctx, before)
             .or_else(|| half_angle_tangent_variant(ctx, after));
+        // C1.8: the audit's second named lie lived in the `None` branch —
+        // «Usar tan(u) = …» from the arm that recognized NO variant. Every
+        // branch now publishes only if the pair instantiates the template it
+        // cites, σ shared across both sides.
         return match variant {
-            Some(HalfAngleTangentVariant::OneMinusCosOverSin) => vec![concrete_expr_substep(
-                ctx,
-                "Usar (1 - cos(2u)) / sin(2u) = tan(u)",
-                before,
-                after,
-            )],
-            Some(HalfAngleTangentVariant::SinOverOnePlusCos) => vec![concrete_expr_substep(
-                ctx,
-                "Usar sin(2u) / (1 + cos(2u)) = tan(u)",
-                before,
-                after,
-            )],
-            None => vec![concrete_expr_substep(
-                ctx,
-                "Usar tan(u) = (1 - cos(2u)) / sin(2u)",
-                before,
-                after,
-            )],
+            Some(HalfAngleTangentVariant::OneMinusCosOverSin) => {
+                named_identity_substep(ctx, "(1 - cos(2u)) / sin(2u)", "tan(u)", before, after)
+                    .into_iter()
+                    .collect()
+            }
+            Some(HalfAngleTangentVariant::SinOverOnePlusCos) => {
+                named_identity_substep(ctx, "sin(2u) / (1 + cos(2u))", "tan(u)", before, after)
+                    .into_iter()
+                    .collect()
+            }
+            None => named_identity_substep(ctx, "tan(u)", "(1 - cos(2u)) / sin(2u)", before, after)
+                .into_iter()
+                .collect(),
         };
     }
     Vec::new()
@@ -8117,12 +8116,12 @@ fn generate_reciprocal_trig_identity_substeps(ctx: &Context, step: &Step) -> Vec
 fn generate_reciprocal_product_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    vec![concrete_expr_substep(
-        ctx,
-        "Usar tan(u) · cot(u) = 1",
-        before,
-        after,
-    )]
+    // C1.8: the audit's first named lie — this title used to publish over ANY
+    // pair. Now the pair must be tan(σu)·cot(σu) ⇒ 1 for some σ, or nothing
+    // is published.
+    named_identity_substep(ctx, "tan(u) · cot(u)", "1", before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_reciprocal_pythagorean_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -8710,6 +8709,46 @@ fn formula_substep(
 /// string heuristic can tell them apart. The pair is declared as a claim and
 /// adjudicated by the census in `substep::schema`, which proves every provable
 /// template ONCE in a test instead of once per emission.
+/// Emit a «Usar LHS = RHS» sub-step over a CONCRETE pair, publishing ONLY if
+/// the pair is an instance of the template (C1.8, instance↔template matcher).
+///
+/// This is the constructor that kills the audit's named lies by construction:
+/// «Usar tan(u)·cot(u) = 1» emitted unconditionally, and the half-angle branch
+/// that recognized no variant yet still cited the identity. The template's own
+/// truth is the census's job; whether it APPLIES to this pair is decided here,
+/// and a pair that instantiates nothing publishes nothing.
+///
+/// Migration policy: emitter by emitter, each with a decline test — the
+/// matcher is incomplete by design, and a blanket sweep would delete correct
+/// narration wherever a true application outruns the matcher's coverage
+/// (measured precedent: the assume-equality prototype deleted 51 legitimate
+/// sub-steps).
+fn named_identity_substep(
+    ctx: &Context,
+    lhs: &'static str,
+    rhs: &'static str,
+    before: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    // The template itself must be adjudicated by the census (debug-asserts on
+    // a pair nothing has measured).
+    let _ = crate::didactic::substep::claim::verify_schematic_identity(lhs, rhs);
+    let template = crate::didactic::substep::matching::parse_template(lhs, rhs)?;
+    // «Usar L = R» names an IDENTITY, which has no direction: the pair may
+    // apply it left-to-right (contraction) or right-to-left (expansion), and
+    // the half-angle emitter genuinely produces both. Either orientation is a
+    // valid application; neither is a licence for a non-instance.
+    crate::didactic::substep::matching::match_instance(&template, ctx, before, after).or_else(
+        || crate::didactic::substep::matching::match_instance(&template, ctx, after, before),
+    )?;
+    Some(concrete_expr_substep(
+        ctx,
+        format!("Usar {lhs} = {rhs}"),
+        before,
+        after,
+    ))
+}
+
 fn schema_substep(
     description: impl Into<String>,
     lhs: &'static str,
@@ -24962,5 +25001,119 @@ mod limit_notable_tests {
         assert!(substep_titles("x*sin(x)", "0").is_empty());
         // (2^x − 1)/x → ln(3) would be a fabricated base; the result must be ln of the base.
         assert!(substep_titles("(2^x-1)/x", "ln(3)").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod named_identity_matcher_tests {
+    use super::{
+        generate_half_angle_tangent_substeps, generate_reciprocal_product_identity_substeps,
+    };
+    use crate::runtime::Step;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    fn run<F>(generator: F, rule: &str, before_src: &str, after_src: &str) -> Vec<super::SubStep>
+    where
+        F: Fn(&Context, &Step) -> Vec<super::SubStep>,
+    {
+        let mut ctx = Context::new();
+        let before = parse(before_src, &mut ctx).expect("parse before");
+        let after = parse(after_src, &mut ctx).expect("parse after");
+        let step = Step::new_compact("desc", rule, before, after);
+        generator(&ctx, &step)
+    }
+
+    /// The TRUE application publishes, byte-identical to what it always said.
+    #[test]
+    fn tan_cot_still_narrates_its_genuine_instances() {
+        let subs = run(
+            generate_reciprocal_product_identity_substeps,
+            "Reciprocal Product Identity",
+            "tan(x^2) * cot(x^2)",
+            "1",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar tan(u) · cot(u) = 1");
+    }
+
+    /// The audit's first named lie: the same title used to publish over ANY
+    /// pair this generator received. A pair that instantiates nothing now
+    /// publishes nothing.
+    #[test]
+    fn tan_cot_declines_a_pair_that_is_no_instance() {
+        let subs = run(
+            generate_reciprocal_product_identity_substeps,
+            "Reciprocal Product Identity",
+            "sin(x) + 1",
+            "1",
+        );
+        assert!(
+            subs.is_empty(),
+            "a non-instance pair must not be narrated as tan·cot = 1: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// The second named lie lived in the `None` branch. Its GENUINE case is
+    /// the pair whose doubling already folded away (`u = x/2` makes `2u` read
+    /// `x`): no variant recognizer fires, yet the pair truly instantiates the
+    /// identity — the directed matcher rebuilds σ(rhs) in the instance context
+    /// and lets the engine's own equality own the comparison.
+    #[test]
+    fn half_angle_none_branch_narrates_a_genuine_tan_pair() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "tan(x/2)",
+            "(1 - cos(x)) / sin(x)",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar tan(u) = (1 - cos(2u)) / sin(2u)");
+    }
+
+    /// A pair with the doubling EXPLICIT is a recognized variant — and the
+    /// orientation-agnostic matcher accepts it in the expansion direction too
+    /// (the variant was detected on `after`, so the pair applies the identity
+    /// right-to-left).
+    #[test]
+    fn half_angle_variant_accepts_the_expansion_direction() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "tan(x/2)",
+            "(1 - cos(2*(x/2))) / sin(2*(x/2))",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar (1 - cos(2u)) / sin(2u) = tan(u)");
+    }
+
+    /// …and the unrecognized-variant pair the audit saw declines.
+    #[test]
+    fn half_angle_none_branch_declines_what_it_did_not_recognize() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "(1 - cos(x)) / (1 + cos(x))",
+            "tan(x/2)^2",
+        );
+        assert!(
+            subs.is_empty(),
+            "the branch that recognized no variant must not cite the identity: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// The recognized variants keep narrating exactly as before.
+    #[test]
+    fn half_angle_recognized_variants_still_narrate() {
+        let subs = run(
+            generate_half_angle_tangent_substeps,
+            "Half-Angle Tangent Identity",
+            "(1 - cos(2*x)) / sin(2*x)",
+            "tan(x)",
+        );
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar (1 - cos(2u)) / sin(2u) = tan(u)");
     }
 }

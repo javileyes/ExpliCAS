@@ -558,3 +558,62 @@ emisores ya declaran qué plantilla afirman. Las 65 instancias de
 - **Un numerador aritméticamente falso** en la narración de denominador común
   (`c + x - b + x` donde va `(c+x) − (b+x)`: error de 2x), con formateador y
   `Context::add` ya exonerados por prueba directa. Chip task_cbce7fb9.
+
+---
+
+## ADENDA 2026-07-26 (e) — el matcher instancia↔plantilla: dirigido por σ, con la igualdad del MOTOR como comparador
+
+La otra mitad de `SchematicIdentity` — la que caza los P0 nombrados por la
+auditoría — existe: `substep/matching.rs`, y sus primeros dos emisores
+migrados son exactamente los dos mentirosos nombrados.
+
+### Semántica, y las dos lecciones que la moldearon
+
+**Match estructural con metavariables** sobre dos contextos (la plantilla parsea
+en su scratch, donde TODA variable es metavariable por construcción): ligadura
+consistente (σ compartida entre los dos lados), cadenas aditivas y
+multiplicativas como MULTICONJUNTOS vía las vistas n-arias con backtracking
+acotado (≤8 términos), todo lo demás rígido.
+
+**Lección 1 — el modo dirigido es esencial, no un extra.** Con `u = x/2`, la
+instancia genuina de `(1 − cos(2u))/sin(2u)` se lee `(1 − cos(x))/sin(x)`: el
+doblado se CANONICALIZÓ al construirse la instancia, y ningún match estructural
+puede verlo. El modo dirigido toma σ del lado que ancla estructuralmente
+(`tan(u)` contra `tan(x/2)`), INSTANCIA el otro lado en el contexto de la
+instancia, y deja la comparación a la igualdad del propio motor
+(`decide_equality`, solo `Verified` casa — la misma escalera y el mismo
+presupuesto que los demás verificadores).
+
+**Lección 2 — «Usar L = R» no tiene dirección.** El emisor de ángulo mitad
+produce el par en las dos orientaciones (contracción Y expansión: la variante
+se detecta en `before` o en `after`), así que el constructor acepta la
+instancia en cualquiera de las dos. Ninguna es licencia para un no-instancia.
+
+### `named_identity_substep`: la clase muere por construcción
+
+- «Usar tan(u)·cot(u) = 1» ya no puede publicarse sobre un par que no sea
+  `tan(σu)·cot(σu) ⇒ 1`: la rama incondicional DECLINA.
+- La rama `None` del ángulo mitad ya no cita la identidad sobre el par que
+  explícitamente no reconoció — y su caso GENUINO (el doblado ya plegado, que
+  ningún reconocedor de variantes ve) ahora sí narra, vía el modo dirigido.
+- Las 4 plantillas nuevas entraron al censo ADJUDICADAS (las cuatro pliegan a
+  0 → `Proven`).
+
+### Política de migración, y por qué solo dos emisores
+
+El matcher es INCOMPLETO por diseño (backtracking acotado, sin absorción de
+signos). Un no-match solo es evidencia donde los tests pinean la cobertura del
+shape — por eso la migración es emisor a emisor, cada uno con su test de
+declinación, y no un barrido: el precedente medido es el prototipo
+assume-equality que borró 51 sub-pasos legítimos. Los ~30 títulos «Usar L = R»
+restantes sobre pares de nodos esperan una pasada de MEDICIÓN en sombra
+(volcado de (plantilla, par) sobre el corpus + matcher offline) antes de
+migrar ninguno.
+
+### Hallazgo colateral, verificado contra HEAD
+
+Los dos pasos migrados llegan MUDOS al wire (`(1-cos(2x))/sin(2x)` publica el
+STEP sin sub-pasos) — TAMBIÉN en el binario de HEAD sin estos cambios: el mudo
+es de cableado del dispatcher, preexistente, y es la misma clase que el
+inventario de solve mudo. Chip task_104e701b. Los tests de emisor pinean el
+comportamiento al nivel del generador mientras tanto.
