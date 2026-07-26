@@ -12029,18 +12029,18 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
         .map(|&cell| simplify_expr_in_context(&mut cell_ctx, cell))
         .collect();
     (0..rows)
-        .map(|i| {
+        .filter_map(|i| {
             let row_display = (0..cols)
                 .map(|j| display_expr(&cell_ctx, folded_cells[i * cols + j]))
                 .collect::<Vec<_>>()
                 .join(", ");
             if is_jacobian {
-                SubStep::keyed(
+                Some(SubStep::keyed(
                     "jacobian.row",
                     vec![(i + 1).to_string()],
                     row_sources[i].clone(),
                     format!("[{row_display}]"),
-                )
+                ))
             } else {
                 // Row i of the Hessian differentiates ∂f/∂x_i, NOT f — which is
                 // what the title already says. Using `target` made the line a
@@ -12048,19 +12048,42 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
                 // one intermediate that makes the jump followable: the gradient
                 // component. The jacobian arm next door already does this right.
                 let first_derivative = hessian_row_first_derivative(ctx, target, &var_names[i]);
-                let (before_display, before_latex) = match first_derivative {
+                let (before_display, before_latex) = match &first_derivative {
                     Some((scratch, dfdx)) => {
-                        (display_expr(&scratch, dfdx), Some(latex_expr(&scratch, dfdx)))
+                        (display_expr(scratch, *dfdx), Some(latex_expr(scratch, *dfdx)))
                     }
                     None => (display_expr(ctx, target), None),
                 };
-                let sub = SubStep::keyed(
-                    "hessian.row",
-                    vec![(i + 1).to_string(), row_sources[i].clone()],
-                    before_display,
-                    format!("[{row_display}]"),
-                );
-                match before_latex {
+                // C1.8: the row asserts that its cells are the derivatives of
+                // the FIRST derivative. Verifiable only when that first
+                // derivative could be rebuilt; otherwise it is a Statement, and
+                // saying so is better than asserting a relation we cannot check.
+                let claim = match (&first_derivative, cols) {
+                    (Some(_), 1) => crate::didactic::substep::Claim::Derivative {
+                        var: var_names[0].clone(),
+                    },
+                    _ => crate::didactic::substep::Claim::Statement,
+                };
+                let sub = match first_derivative.as_ref() {
+                    Some((scratch, dfdx)) => SubStep::checked(
+                        scratch,
+                        claim,
+                        *dfdx,
+                        cells[i * cols],
+                        "hessian.row",
+                        vec![(i + 1).to_string(), row_sources[i].clone()],
+                        before_display,
+                        format!("[{row_display}]"),
+                    ),
+                    None => Some(SubStep::keyed(
+                        "hessian.row",
+                        vec![(i + 1).to_string(), row_sources[i].clone()],
+                        before_display,
+                        format!("[{row_display}]"),
+                    )),
+                };
+                let sub = sub?;
+                Some(match before_latex {
                     Some(latex) => sub.with_before_latex(latex).with_after_latex(format!(
                         "[{}]",
                         (0..cols)
@@ -12069,7 +12092,7 @@ fn generate_vector_jacobian_hessian_substeps(ctx: &Context, step: &Step) -> Vec<
                             .join(", ")
                     )),
                     None => sub,
-                }
+                })
             }
         })
         .collect()
@@ -12346,12 +12369,20 @@ fn generate_vector_gradient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
                 return None;
             };
             let var_name = ctx.sym_name(*sym).to_string();
-            Some(SubStep::keyed(
+            // C1.8: the component ASSERTS `c == ∂field/∂var`. Declared and
+            // checked by differentiating the field.
+            SubStep::checked(
+                ctx,
+                crate::didactic::substep::Claim::Derivative {
+                    var: var_name.clone(),
+                },
+                field,
+                c,
                 "gradient.component",
                 vec![var_name],
                 field_display.clone(),
                 display_expr(ctx, c),
-            ))
+            )
         })
         .collect()
 }

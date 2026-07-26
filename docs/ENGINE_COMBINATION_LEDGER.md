@@ -22053,3 +22053,17 @@ Active entries: 706 (newest first)
   - **Si el contador que añades no lo lee nadie, no es un contador: es deuda.** Clippy lo caza; hacerle caso en el mismo ciclo evita la infraestructura-zombi que este audit encontró en otros sitios.
   - **Todo verificador que llame al simplificador necesita presupuesto de reloj DESDE EL PRIMER DÍA**: sin él, la primera expresión difícil convierte una comprobación en un cuelgue. Y el presupuesto no degrada la garantía: `Undecided` ya era una respuesta legítima del diseño, así que agotar el tiempo cae en un veredicto que ya existía.
   - **El gate de divergencia pagó su coste otra vez**: cazó una regresión de RENDIMIENTO que ninguna aserción de contenido habría visto, en un ciclo cuyo diff no tocaba ningún resultado.
+
+## 2026-07-26 - VERACIDAD (plan · C1.8, migración tanda 2): la familia `Derivative` declara y verifica — gradiente y hessiano dejan de afirmar sin prueba
+
+- area: `cas_didactic/src/didactic/focused_rule_substeps.rs` — `gradient.component` y `hessian.row` pasan a `SubStep::checked` con `Claim::Derivative`; el brazo jacobiano se convierte a `Option` para que la cadena pueda declinar un sub-paso refutado.
+- status: `retained`. Segunda tanda de migración de C1.8.
+- capture:
+  - **`gradient.component` era el caso que el diseño marcaba como entrable hoy**: afirma `c == ∂field/∂var` con la variable ya disponible en el propio emisor. Ahora se comprueba derivando el campo.
+  - **`hessian.row` obligó a una decisión honesta**: la fila afirma que sus celdas son las derivadas de ∂f/∂xᵢ, pero eso solo es verificable con la relación uno-a-uno (una columna). Con varias columnas el sub-paso afirma un VECTOR de derivadas, que el enum todavía no sabe expresar — así que declara `Statement` en vez de fingir una relación que no puede comprobar. Declarar la abstención es parte del contrato, no una fuga.
+  - **La cadena tuvo que aprender a declinar**: `filter_map` en vez de `map`, porque un emisor verificado puede no producir nada. Es el cambio estructural que hace posible que el guard tenga efecto — sin él, `checked` solo podría avisar.
+- observed: workspace failed:0, clippy 0, 0 errores de MathJax sobre 1746 campos. **Corpus: 0 filas cambian, 0 `result`** — ningún claim de esta tanda se refuta, así que el contador sigue naciendo en cero. Huella: 0 deltas. Gate de divergencia verde (el presupuesto de reloj del ciclo anterior sostiene la carga de verificación nueva).
+- decision: retener. Emisores declarados hasta ahora: FTC `find_antiderivative`, cierre de linealidad, `use_linearity` (Statement), `gradient.component`, `hessian.row`. Quedan las familias grandes del diseño (`Antiderivative` de tabla ~27, `Equality` sobre los 3 helpers de nodo ~56, `Applied` 5, `DefiniteEval` 2, `EvalAt` 2).
+- retained learning:
+  - **Un enum de relaciones se descubre migrando, no diseñando**: `hessian.row` pedía «cada celda es la derivada de esto respecto de SU variable», que es un vector de relaciones y no una. El diseño no lo tenía; la migración lo encontró. Se resuelve declarando `Statement` hasta que exista el brazo, no ensanchando `Derivative` para que trague.
+  - **Migrar a un constructor que puede devolver `None` cambia la forma de la cadena que lo llama**: si el llamante no sabe declinar, el guard es decorativo. Presupuestar ese `filter_map` en cada familia.
