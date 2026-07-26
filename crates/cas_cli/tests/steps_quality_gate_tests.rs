@@ -1024,3 +1024,65 @@ fn solve_mute_inventory_should_be_empty() {
         KNOWN_MUTE_SOLVE_ROWS
     );
 }
+
+// ---------------------------------------------------------------------------
+// Plain holes carry PLAIN text (raw-LaTeX-in-plain-hole regression)
+// ---------------------------------------------------------------------------
+
+/// The audit measured 43 sub-steps publishing raw LaTeX in the PLAIN text
+/// holes (`\sqrt{y} - 1` reaching the CLI reader), across three families:
+/// binomial rationalization, nested fractions, and radical-product
+/// rationalization — the emitters rendered ONE string per side and reused it
+/// for both surfaces, or worse, filled only the plain hole and let the JSON
+/// fallback hide it on the web. These inputs pin each family's repro; the
+/// assertion is CLASS-wide: a backslash followed by a letter in a plain hole
+/// is a LaTeX command reaching the wrong surface, whatever the emitter.
+#[test]
+fn substep_plain_holes_carry_no_latex_commands() {
+    let repros = [
+        // binomial conjugate (the chip's repro)
+        "sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)",
+        // nested fractions: one_over + invert
+        "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)",
+        // nested fractions: fraction_over (divide-is-multiply)
+        "derive(a/(b + c/d), a*d/(b*d+c))",
+        // radical product (the emitter that also left latex holes EMPTY)
+        "diff(sqrt(16*x),x)",
+    ];
+    fn has_latex_command(text: &str) -> bool {
+        let bytes = text.as_bytes();
+        bytes
+            .windows(2)
+            .any(|w| w[0] == b'\\' && w[1].is_ascii_alphabetic())
+    }
+    let mut violations = Vec::new();
+    let mut inspected = 0usize;
+    for input in repros {
+        let Some(wire) = eval_wire_in(input, Language::Es) else {
+            panic!("repro input failed to evaluate: {input}");
+        };
+        for step in &wire.steps {
+            for sub in &step.substeps {
+                inspected += 1;
+                for (hole, text) in [
+                    ("title", &sub.title),
+                    ("before", &sub.before),
+                    ("after", &sub.after),
+                ] {
+                    if has_latex_command(text) {
+                        violations.push(format!("[{input}] {hole}: {text}"));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        inspected > 0,
+        "the repros no longer produce sub-steps; the pin is measuring nothing"
+    );
+    assert!(
+        violations.is_empty(),
+        "{} plain holes carry LaTeX commands: {violations:#?}",
+        violations.len()
+    );
+}

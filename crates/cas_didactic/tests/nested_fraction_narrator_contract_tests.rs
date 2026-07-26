@@ -165,12 +165,29 @@ fn substep_has_parentheses_around_complex_denominator() {
     if let Some(step) = nested {
         if !step.sub_steps.is_empty() {
             let first_substep = &step.sub_steps[0];
-            // Should be LaTeX format with \frac (no need for parentheses in \frac{}{})
-            let has_latex_frac = first_substep.after_expr.contains("\\frac");
+            // Each surface carries its OWN rendering. This pin used to demand
+            // `\frac` in `after_expr` — the PLAIN hole — which was the raw-
+            // LaTeX-in-plain-hole bug written down as a contract: the CLI
+            // reader saw `\frac{x + 1 + x}{x + 1}`. The plain hole now holds a
+            // plain fraction with the denominator parenthesized, and the LaTeX
+            // hole holds the `\frac`.
             assert!(
-                has_latex_frac,
-                "Complex denominator should use LaTeX \\frac format: {}",
+                !first_substep.after_expr.contains('\\'),
+                "the plain hole must not carry LaTeX commands: {}",
                 first_substep.after_expr
+            );
+            assert!(
+                first_substep.after_expr.contains(")/("),
+                "the plain fraction keeps its denominator parenthesized: {}",
+                first_substep.after_expr
+            );
+            let latex = first_substep
+                .after_latex
+                .as_deref()
+                .expect("the LaTeX surface must be populated");
+            assert!(
+                latex.contains("\\frac"),
+                "the LaTeX hole is where \\frac belongs: {latex}"
             );
         }
     }

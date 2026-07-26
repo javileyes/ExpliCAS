@@ -165,7 +165,7 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "rationalize.difference_of_squares" => ("Diferencia de cuadrados", "Difference of squares"),
         "rationalize.group_denominator_terms" => ("Agrupar términos del denominador", "Group the terms of the denominator"),
         "rationalize.denominator_radical_product" => ("Denominador con producto de radical", "Denominator with a radical factor"),
-        "rationalize.multiply_by_root_over_root" => ("Multiplicar por \\sqrt{n}/\\sqrt{n}", "Multiply by \\sqrt{n}/\\sqrt{n}"),
+        "rationalize.multiply_by_root_over_root" => ("Multiplicar por √n/√n", "Multiply by √n/√n"),
         "rationalize.multiply_by_cube_conjugate" => ("Multiplicar por el conjugado cúbico", "Multiply by the cubic conjugate"),
         "rationalize.sum_of_cubes_denominator" => ("Aplicar suma de cubos en el denominador", "Apply the sum of cubes in the denominator"),
         "rationalize.cube_exact_quotient_identity" => ("Usar (u^3 - 1) / (u - 1) = u^2 + u + 1", "Use (u^3 - 1) / (u - 1) = u^2 + u + 1"),
