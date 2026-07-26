@@ -1,10 +1,19 @@
 # Dependency security audit against the RustSec advisory database.
 #
 # Runs when the dependency tree changes and on a weekly schedule, so new
-# advisories against ALREADY-COMMITTED dependencies still surface (on
-# scheduled runs the action opens an issue for each new advisory).
-# Vulnerabilities fail the job; unmaintained/unsound warnings are informational
-# — the policy is written down in SECURITY.md.
+# advisories against ALREADY-COMMITTED dependencies still surface. A failed
+# scheduled run notifies the repo owner. Vulnerabilities fail the job;
+# unmaintained/unsound warnings are informational — the policy is written
+# down in SECURITY.md.
+#
+# The audit binary is installed PREBUILT (taiki-e/install-action), not
+# compiled from source: the first run of the source-compiling
+# rustsec/audit-check action failed because the checkout's
+# rust-toolchain.toml pins 1.91.1 and an UNLOCKED transitive dependency of
+# cargo-audit had already moved past it (kstring@2.0.4 → rustc 1.96). A
+# prebuilt binary is immune to that whole class, and `cargo-audit audit`
+# (the binary invoked directly, not as a cargo subcommand) never touches the
+# pinned toolchain at all.
 name: Security audit
 
 on:
@@ -25,13 +34,11 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo-audit audit
