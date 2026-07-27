@@ -20,6 +20,12 @@ pub fn latex_escape(s: &str) -> String {
 /// subscript rendering. The bare session-ref shorthand parses as a variable
 /// literally named `#N`, which reaches every renderer through this path.
 pub fn latex_variable_name(s: &str) -> String {
+    // Spelled Greek names render as real Greek (`alpha` → `\alpha`), so the
+    // α-typed and alpha-typed spellings of the SAME symbol both display as
+    // the letter. Exact whole-name match only (`beta1` stays as-is).
+    if let Some(cmd) = cas_ast::greek_name_latex(s) {
+        return cmd.to_string();
+    }
     if s.contains('#') {
         s.replace('#', "\\#")
     } else {

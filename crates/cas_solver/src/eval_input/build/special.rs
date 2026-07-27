@@ -3,6 +3,21 @@ use cas_api_models::EvalSpecialCommand;
 
 use super::super::{EvalNonSolveAction, PreparedEvalRequest};
 
+/// Canonicalize a Greek-glyph var/func token to its spelled name (`λ` →
+/// `lambda`). The EXPRESSION side of every command goes through cas_parser,
+/// which does this aliasing at the identifier level — but var/func names
+/// travel the command wire as RAW strings and are later looked up by name.
+/// Without this, `solve(λ^2-4=0, λ)` interns `lambda` from the equation and
+/// then searches for a variable literally named 'λ'.
+fn canonical_var_token(name: String) -> String {
+    let canonical = cas_ast::canonical_greek_token(&name);
+    if canonical == name {
+        name
+    } else {
+        canonical.to_string()
+    }
+}
+
 pub(super) fn build_special_command_request(
     raw_input: &str,
     ctx: &mut cas_ast::Context,
@@ -17,7 +32,7 @@ pub(super) fn build_special_command_request(
                 raw_input: raw_input.to_string(),
                 parsed,
                 original_equation,
-                var,
+                var: canonical_var_token(var),
                 auto_store,
             })
         }
@@ -70,7 +85,7 @@ pub(super) fn build_special_command_request(
                 raw_input: raw_input.to_string(),
                 parsed,
                 action: EvalNonSolveAction::Limit {
-                    var,
+                    var: canonical_var_token(var),
                     approach: map_limit_approach(ctx, approach)?,
                 },
                 auto_store,
@@ -88,13 +103,16 @@ pub(super) fn build_special_command_request(
             let (parsed, _original_equation) =
                 parse_solve_input_for_eval_request(ctx, &equation)
                     .map_err(|e| format!("Parse error in dsolve equation: {e}"))?;
+            // Conditions match their head against what the user TYPED (θ(0)=3
+            // has head θ), so split with the raw func; the action then gets
+            // the canonical name, matching the parsed equation's symbols.
             let conditions = parse_dsolve_conditions(ctx, &conditions, &func)?;
             Ok(PreparedEvalRequest::Eval {
                 raw_input: raw_input.to_string(),
                 parsed,
                 action: EvalNonSolveAction::Dsolve {
-                    func,
-                    var,
+                    func: canonical_var_token(func),
+                    var: canonical_var_token(var),
                     conditions,
                 },
                 auto_store,
@@ -142,8 +160,8 @@ pub(super) fn build_special_command_request(
                 parsed,
                 action: EvalNonSolveAction::DsolveSystem {
                     second_equation,
-                    funcs,
-                    var,
+                    funcs: funcs.into_iter().map(canonical_var_token).collect(),
+                    var: canonical_var_token(var),
                     conditions: parsed_conditions,
                 },
                 auto_store,

@@ -4,6 +4,7 @@ pub mod eq; // __eq__ equation wrapper utilities (canonical implementation)
 pub mod error; // Error types for AST operations
 pub mod expr_path; // Path-based occurrence identification (V2.9.16)
 pub mod expression;
+pub mod greek; // Greek-letter input aliases (α ≡ alpha) + LaTeX name mapping
 pub mod hold; // __hold barrier utilities (canonical implementation)
 pub mod ordering; // Canonical ordering utilities
 pub mod span; // Canonical source span for error reporting
@@ -15,6 +16,7 @@ pub mod visitor;
 pub mod visitors; // Common concrete visitors (depth, variables)
 
 pub use builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
+pub use greek::{canonical_greek_token, greek_glyph_name, greek_name_latex};
 
 pub use domain::{
     BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,

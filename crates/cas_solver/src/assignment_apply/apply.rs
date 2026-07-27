@@ -61,10 +61,15 @@ fn parse_assignment_target<C: AssignmentApplyContext>(
         return Err(AssignmentError::EmptyName);
     }
 
+    // Greek glyph targets canonicalize to their spelled names BEFORE
+    // validation (`θ := 5` binds `theta`, matching what the body parser
+    // interns; `π :=` hits exactly whatever `pi :=` hits). Error messages
+    // keep showing what the user typed.
     let Some(open_idx) = target.find('(') else {
-        validate_identifier(context, target, target)?;
+        let canonical = cas_ast::canonical_greek_token(target);
+        validate_identifier(context, canonical, target)?;
         return Ok(AssignmentTarget::Variable {
-            name: target.to_string(),
+            name: canonical.to_string(),
         });
     };
 
@@ -75,16 +80,18 @@ fn parse_assignment_target<C: AssignmentApplyContext>(
         )));
     }
 
-    let name = target[..open_idx].trim();
-    validate_identifier(context, name, name)?;
+    let raw_name = target[..open_idx].trim();
+    let name = cas_ast::canonical_greek_token(raw_name);
+    validate_identifier(context, name, raw_name)?;
 
     let inner = &target[open_idx + 1..target.len() - 1];
     let mut params = Vec::new();
     let mut seen = std::collections::HashSet::new();
     if !inner.trim().is_empty() {
         for param in inner.split(',') {
-            let param = param.trim();
-            validate_identifier(context, param, param)?;
+            let raw_param = param.trim();
+            let param = cas_ast::canonical_greek_token(raw_param);
+            validate_identifier(context, param, raw_param)?;
             if !seen.insert(param.to_string()) {
                 return Err(AssignmentError::Parse(format!(
                     "duplicate parameter '{}' in function assignment",

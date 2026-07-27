@@ -336,6 +336,17 @@ fn parse_identifier(input: &str) -> IResult<&str, &str> {
     // Check first char is valid start (letter or underscore)
     let mut chars = input.chars();
     let first = chars.next();
+
+    // A Greek glyph is a COMPLETE single-char identifier (α, never αβ or α2
+    // as one name): it aliases its spelled name in parse_identifier_atom, so
+    // it must not absorb continuation chars the way ASCII identifiers do.
+    if let Some(c) = first {
+        if cas_ast::greek_glyph_name(c).is_some() {
+            let len = c.len_utf8();
+            return Ok((&input[len..], &input[..len]));
+        }
+    }
+
     if !matches!(first, Some(c) if c.is_ascii_alphabetic() || c == '_') {
         return Err(nom::Err::Error(nom::error::Error::new(
             input,
@@ -371,6 +382,17 @@ fn parse_parens(input: &str) -> IResult<&str, ParseNode> {
 // Parse identifiers as either variable, constant, or function call.
 fn parse_identifier_atom(input: &str) -> IResult<&str, ParseNode> {
     let (after_name, name) = parse_identifier(input)?;
+
+    // Greek glyph → canonical spelled name (α ≡ alpha; π and φ then reach
+    // the existing constant arms below). ONE internal symbol per letter, so
+    // both spellings are the same variable everywhere.
+    let name = {
+        let mut it = name.chars();
+        match (it.next(), it.next()) {
+            (Some(c), None) => cas_ast::greek_glyph_name(c).unwrap_or(name),
+            _ => name,
+        }
+    };
 
     // Detect ambiguous notation: sin²(u) — should be sin(u)^2
     // If identifier is followed by superscript digits and then '(', emit error.
@@ -564,6 +586,8 @@ fn parse_atom(input: &str) -> IResult<&str, ParseNode> {
         }
         '0'..='9' | '.' => parse_number(input),
         'A'..='Z' | 'a'..='z' | '_' => parse_identifier_atom(input),
+        // Greek glyphs are single-char identifier aliases (α ≡ alpha).
+        c if cas_ast::greek_glyph_name(c).is_some() => parse_identifier_atom(input),
         '[' => parse_matrix(input),
         '(' => parse_parens(input),
         '|' => parse_abs(input),
@@ -689,8 +713,8 @@ fn parse_implicit_mul_chain(input: &str, acc: ParseNode) -> IResult<&str, ParseN
     let first_char = input.chars().next();
 
     match first_char {
-        // Variable or function start: 2x, 2sin(x), 2pi
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {
+        // Variable or function start: 2x, 2sin(x), 2pi, 2π
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || cas_ast::greek_glyph_name(c).is_some() => {
             // Only if the current accumulator could allow implicit mul
             // (basically, if last token was a number, power, or factored expression)
             if can_implicit_mul(&acc) {
@@ -1470,6 +1494,73 @@ mod tests {
         } else {
             panic!("Expected SessionRef(5)");
         }
+    }
+
+    #[test]
+    fn test_greek_glyph_is_same_symbol_as_spelled_name() {
+        // α is an input ALIAS of alpha: one canonical symbol, same ExprId.
+        let mut ctx = Context::new();
+        let glyph = parse("α", &mut ctx).unwrap();
+        let spelled = parse("alpha", &mut ctx).unwrap();
+        assert_eq!(glyph, spelled, "α and alpha must intern to the same symbol");
+        if let Expr::Variable(sym) = ctx.get(glyph) {
+            assert_eq!(ctx.sym_name(*sym), "alpha");
+        } else {
+            panic!("Expected Variable");
+        }
+    }
+
+    #[test]
+    fn test_greek_constant_glyphs_reach_constant_arms() {
+        // π and φ go through the same constant arms as pi/phi.
+        let mut ctx = Context::new();
+        let pi = parse("π", &mut ctx).unwrap();
+        assert!(matches!(ctx.get(pi), Expr::Constant(Constant::Pi)));
+        let phi = parse("φ", &mut ctx).unwrap();
+        assert!(matches!(ctx.get(phi), Expr::Constant(Constant::Phi)));
+    }
+
+    #[test]
+    fn test_greek_glyph_expression_and_implicit_mul() {
+        // Greek symbols compose like any identifier: θ^2 parses as Pow of the
+        // canonical theta symbol, and 2π implicit-multiplies the constant.
+        let mut ctx = Context::new();
+        let pow = parse("θ^2", &mut ctx).unwrap();
+        if let Expr::Pow(base, _) = ctx.get(pow) {
+            if let Expr::Variable(sym) = ctx.get(*base) {
+                assert_eq!(ctx.sym_name(*sym), "theta");
+            } else {
+                panic!("Expected Variable base");
+            }
+        } else {
+            panic!("Expected Pow");
+        }
+
+        let mul = parse("2π", &mut ctx).unwrap();
+        if let Expr::Mul(_, rhs) = ctx.get(mul) {
+            assert!(matches!(ctx.get(*rhs), Expr::Constant(Constant::Pi)));
+        } else {
+            panic!("Expected implicit Mul for 2π");
+        }
+    }
+
+    #[test]
+    fn test_greek_lookalike_and_alias_policy() {
+        let mut ctx = Context::new();
+        // MICRO SIGN (U+00B5, keyboard µ) folds into mu.
+        let micro = parse("µ", &mut ctx).unwrap();
+        let mu = parse("mu", &mut ctx).unwrap();
+        assert_eq!(micro, mu);
+        // Uppercase distinct glyphs map to capitalized names (Δ → Delta).
+        let delta = parse("Δ", &mut ctx).unwrap();
+        if let Expr::Variable(sym) = ctx.get(delta) {
+            assert_eq!(ctx.sym_name(*sym), "Delta");
+        } else {
+            panic!("Expected Variable");
+        }
+        // Lowercase omicron stays REJECTED (visually identical to Latin o —
+        // silently accepting a lookalike-but-different symbol is the trap).
+        assert!(parse("ο + 1", &mut ctx).is_err());
     }
 
     #[test]

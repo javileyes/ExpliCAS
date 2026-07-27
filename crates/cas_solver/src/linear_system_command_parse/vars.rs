@@ -10,7 +10,10 @@ pub(super) fn parse_linear_system_vars(
                 name: (*var).to_string(),
             });
         }
-        vars.push((*var).to_string());
+        // Greek glyphs canonicalize to their spelled names (`λ` → `lambda`)
+        // so the unknown matches the symbol the equation parser interned —
+        // otherwise λ reads as a parameter and the system declines (det = 0).
+        vars.push(cas_ast::canonical_greek_token(var).to_string());
     }
     Ok(vars)
 }
