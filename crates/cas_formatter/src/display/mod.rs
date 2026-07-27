@@ -67,6 +67,16 @@ pub(crate) fn mul_symbol() -> &'static str {
     }
 }
 
+/// The `×` between mantissa and `10^e` in scientific decimals: calculator
+/// glyph in pretty mode, re-parseable `*` in ASCII mode.
+pub(crate) fn sci_times_symbol() -> &'static str {
+    if PRETTY_OUTPUT.load(Ordering::SeqCst) {
+        "×"
+    } else {
+        "*"
+    }
+}
+
 // ============================================================================
 // Unicode Pretty Output Helpers
 // ============================================================================

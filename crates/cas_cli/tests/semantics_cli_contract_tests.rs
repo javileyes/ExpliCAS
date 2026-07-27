@@ -10790,10 +10790,11 @@ fn complex_mode_approximates_closed_complex_values() {
 
     // WYSIWYG payload contract (T5-ciclo1): the decimal node wraps the
     // ROUNDED 12-significant-digit rational. Large magnitudes round too —
-    // no raw f64 quantization junk in the display.
+    // no raw f64 quantization junk — and wear calculator scientific
+    // notation (the ×10^19 reading IS the stored rounded rational).
     let (output, _code) = run_cli(&["eval", "approx(10^20/7)", "--format", "json"]);
     let wire = parse_wire(&output);
-    assert_eq!(wire["result"], "14285714285700000000");
+    assert_eq!(wire["result"], "1.42857142857×10^19");
 
     // Sticky fold-through (T5-ciclo2): arithmetic sees through decimal(q)
     // exactly and the result keeps the decimal display preference. The

@@ -565,10 +565,25 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             Expr::Function(fn_id, args) => {
                 let name = self.context.sym_name(*fn_id);
                 // `decimal(n)`: the approx(...) result wrapper — the one place
-                // an exact rational is presented as a decimal string.
+                // an exact rational is presented as a decimal string. Out-of-
+                // range magnitudes wear calculator scientific notation
+                // (`1.26765060023×10^30` pretty, `…*10^30` ASCII).
                 if name == "decimal" && args.len() == 1 {
                     if let Expr::Number(n) = self.context.get(args[0]) {
-                        return write!(f, "{}", crate::decimal::format_rational_decimal(n, 12));
+                        return match crate::decimal::rational_decimal_rendering(n, 12) {
+                            crate::decimal::DecimalRendering::Fixed(s) => write!(f, "{s}"),
+                            crate::decimal::DecimalRendering::Scientific { mantissa, exponent } => {
+                                write!(
+                                    f,
+                                    "{}",
+                                    crate::decimal::sci_with_times(
+                                        &mantissa,
+                                        exponent,
+                                        super::sci_times_symbol(),
+                                    )
+                                )
+                            }
+                        };
                     }
                 }
                 // ONLY internal __hold barrier is transparent for display
@@ -833,6 +848,19 @@ pub(super) fn precedence(ctx: &Context, id: ExprId) -> i32 {
         Expr::Mul(_, _) | Expr::Div(_, _) => 2,
         Expr::Pow(_, _) => 3,
         Expr::Neg(_) | Expr::Hold(_) => 4, // Unary wrappers
+        // A `decimal(n)` that renders scientifically prints `m×10^e` — a
+        // product/power under the hood, so parents must parenthesize it like
+        // a Mul (Pow bases, Div denominators). Fixed decimals stay atomic.
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && ctx.sym_name(*fn_id) == "decimal"
+                && matches!(
+                    ctx.get(args[0]),
+                    Expr::Number(n) if crate::decimal::renders_scientific(n, 12)
+                ) =>
+        {
+            2
+        }
         Expr::Function(_, _)
         | Expr::Variable(_)
         | Expr::Number(_)

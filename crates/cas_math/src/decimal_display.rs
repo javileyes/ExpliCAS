@@ -104,6 +104,25 @@ pub fn decimal_display_string(value: &BigRational) -> String {
     }
     let scaled = &num * (&pow / &den);
     let digits = scaled.to_string();
+    // Out-of-range magnitudes wear calculator scientific notation, in
+    // lockstep with `cas_formatter::decimal` (fixed iff e in [-4, 12)):
+    // didactic text shows `1.26765060023*10^30`, never a 12-digit mantissa
+    // padded with 19 zeros.
+    let e = digits.len() as i64 - 1 - i64::from(k);
+    if e >= DECIMAL_DISPLAY_SIG_DIGITS as i64 || e < -4 {
+        let trimmed = digits.trim_end_matches('0');
+        let sign = if negative { "-" } else { "" };
+        let mantissa = if trimmed.len() > 1 {
+            format!("{sign}{}.{}", &trimmed[..1], &trimmed[1..])
+        } else {
+            format!("{sign}{trimmed}")
+        };
+        return if e < 0 {
+            format!("{mantissa}*10^({e})")
+        } else {
+            format!("{mantissa}*10^{e}")
+        };
+    }
     let mut out = String::new();
     if negative {
         out.push('-');
@@ -146,6 +165,25 @@ mod tests {
         assert_eq!(decimal_display_string(&rat(1, 2)), "0.5");
         assert_eq!(decimal_display_string(&rat(3, 1)), "3");
         assert_eq!(decimal_display_string(&rat(0, 1)), "0");
+    }
+
+    #[test]
+    fn out_of_range_magnitudes_render_scientific() {
+        use num_bigint::BigInt;
+        // 2^100 rounded payload: 126765060023 · 10^19.
+        let big =
+            BigRational::from_integer(BigInt::from(126765060023u64) * BigInt::from(10u32).pow(19));
+        assert_eq!(decimal_display_string(&big), "1.26765060023*10^30");
+        // 1/2^100 rounded payload: 788860905221 / 10^42.
+        let tiny = BigRational::new(788860905221u64.into(), BigInt::from(10u32).pow(42));
+        assert_eq!(decimal_display_string(&tiny), "7.88860905221*10^(-31)");
+        assert_eq!(decimal_display_string(&rat(-1, 100_000)), "-1*10^(-5)");
+        // Boundary magnitudes stay fixed: e = 11 and e = -4.
+        assert_eq!(
+            decimal_display_string(&rat(999_999_999_999, 1)),
+            "999999999999"
+        );
+        assert_eq!(decimal_display_string(&rat(1, 10_000)), "0.0001");
     }
 
     #[test]

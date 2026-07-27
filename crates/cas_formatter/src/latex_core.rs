@@ -240,9 +240,16 @@ pub trait LaTeXRenderer {
             Expr::Function(fn_id, args) => {
                 let name = self.context().sym_name(*fn_id);
                 // `decimal(n)`: approx(...) result — decimal presentation.
+                // Out-of-range magnitudes wear calculator scientific
+                // notation: `1.26765060023 \times 10^{30}`.
                 if name == "decimal" && args.len() == 1 {
                     if let Expr::Number(n) = self.context().get(args[0]) {
-                        return crate::decimal::format_rational_decimal(n, 12);
+                        return match crate::decimal::rational_decimal_rendering(n, 12) {
+                            crate::decimal::DecimalRendering::Fixed(s) => s,
+                            crate::decimal::DecimalRendering::Scientific { mantissa, exponent } => {
+                                format!("{mantissa} \\times 10^{{{exponent}}}")
+                            }
+                        };
                     }
                 }
                 // `root_sum(R, t, summand)`: the universal rational-integration
@@ -1069,6 +1076,19 @@ pub trait LaTeXRenderer {
             // to a bare `p/q`; parenthesize so the plain-text form stays `(p/q)^e`, never `p/q^e` (which
             // re-parses as `p/(q^e)`).
             Expr::Number(n) if !n.is_integer() => {
+                format!("({})", self.expr_to_latex(id, false))
+            }
+            // A scientific-notation decimal renders `m \times 10^{e}` — as a
+            // power base it needs parentheses, like the fraction literal:
+            // `(1.26 \times 10^{30})^{2}`, never `1.26 \times 10^{30^{2}}`.
+            Expr::Function(fn_id, args)
+                if args.len() == 1
+                    && self.context().sym_name(*fn_id) == "decimal"
+                    && matches!(
+                        self.context().get(args[0]),
+                        Expr::Number(n) if crate::decimal::renders_scientific(n, 12)
+                    ) =>
+            {
                 format!("({})", self.expr_to_latex(id, false))
             }
             _ => self.expr_to_latex(id, false),
