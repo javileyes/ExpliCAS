@@ -75,6 +75,28 @@ pub type Bindings = BTreeMap<String, ExprId>;
 /// backtracking: the guard that keeps the multiset search bounded.
 const MAX_CHAIN_TERMS: usize = 8;
 
+/// The STRUCTURAL-ONLY mode: both sides must bind under one σ, no directed
+/// fallback. Emitters with SEVERAL equivalent templates need it as a first
+/// pass — the directed mode decides by the ENGINE's equality, so it happily
+/// verifies `2·cos(u)²−1` against the `1 − 2·sin(u)²` template (they are equal
+/// by Pythagoras), and the published title then names a form the reader is
+/// not looking at. Structural-first keeps the cited formula the one on screen;
+/// the directed pass stays available for instances whose shape folded away.
+pub fn match_instance_structural(
+    template: &ParsedTemplate,
+    ictx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<Bindings> {
+    let mut bindings = Bindings::new();
+    if match_expr(&template.ctx, template.lhs, ictx, before, &mut bindings).is_some()
+        && match_expr(&template.ctx, template.rhs, ictx, after, &mut bindings).is_some()
+    {
+        return Some(bindings);
+    }
+    None
+}
+
 /// Decide whether `(before, after)` is ONE instance of the template pair under
 /// a single shared σ. Returns the bindings as the positive witness.
 pub fn match_instance(
@@ -84,10 +106,7 @@ pub fn match_instance(
     after: ExprId,
 ) -> Option<Bindings> {
     // Fast path: both sides match structurally under one σ.
-    let mut bindings = Bindings::new();
-    if match_expr(&template.ctx, template.lhs, ictx, before, &mut bindings).is_some()
-        && match_expr(&template.ctx, template.rhs, ictx, after, &mut bindings).is_some()
-    {
+    if let Some(bindings) = match_instance_structural(template, ictx, before, after) {
         return Some(bindings);
     }
     // DIRECTED fallback, and it is load-bearing, not a convenience: with
@@ -389,11 +408,61 @@ fn backtrack(
     }
     let (t_term, t_sign) = t_terms[order[depth]];
     for i in 0..i_terms.len() {
-        if used[i] || i_terms[i].1 != t_sign {
+        if used[i] {
+            continue;
+        }
+        let (i_term, i_sign) = i_terms[i];
+        // Literal constant terms compare by SIGNED VALUE: the engine
+        // canonicalizes `X − 1` into `X + (−1)`, so the template's `(1, Neg)`
+        // must accept the instance's `(−1, Pos)`. Measured miss: the wire's
+        // `2·cos(x)² − 1` failed the structural pass of its OWN template and
+        // fell to the directed mode, which picked the Pythagoras-equivalent
+        // sine form — a true title about a shape the reader was not seeing.
+        let literal_verdict = match (tctx.get(t_term), ictx.get(i_term)) {
+            (Expr::Number(a), Expr::Number(b)) => {
+                let a_signed = if t_sign == Sign::Neg {
+                    -a.clone()
+                } else {
+                    a.clone()
+                };
+                let b_signed = if i_sign == Sign::Neg {
+                    -b.clone()
+                } else {
+                    b.clone()
+                };
+                Some(a_signed == b_signed)
+            }
+            _ => None,
+        };
+        if let Some(matches_value) = literal_verdict {
+            if !matches_value {
+                continue;
+            }
+            used[i] = true;
+            let mut trial = bindings.clone();
+            if backtrack(
+                tctx,
+                t_terms,
+                order,
+                depth + 1,
+                ictx,
+                i_terms,
+                used,
+                &mut trial,
+            )
+            .is_some()
+            {
+                *bindings = trial;
+                return Some(());
+            }
+            used[i] = false;
+            continue;
+        }
+        if i_sign != t_sign {
             continue;
         }
         let mut trial = bindings.clone();
-        if match_expr(tctx, t_term, ictx, i_terms[i].0, &mut trial).is_some() {
+        if match_expr(tctx, t_term, ictx, i_term, &mut trial).is_some() {
             used[i] = true;
             if backtrack(
                 tctx,

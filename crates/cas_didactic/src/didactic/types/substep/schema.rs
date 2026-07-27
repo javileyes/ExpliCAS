@@ -94,6 +94,31 @@ pub const SCHEMATIC_IDENTITIES: &[Schema] = &[
         rhs: "(1 - cos(2u)) / sin(2u)",
         status: Proven,
     },
+    // Contracciones de ángulo doble de los emisores «Double Angle
+    // Contraction» y «Cos 2x Additive Contraction», migrados al matcher tras
+    // la sombra ampliada (2026-07-27): uno citaba 2·sin·cos = sin(2u) para
+    // TODOS sus pares (el par coseno incluido) y el otro elegía plantilla por
+    // un sniff de substring sobre el display.
+    Schema {
+        lhs: "2·sin(u)·cos(u)",
+        rhs: "sin(2u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cos(u)^2 - sin(u)^2",
+        rhs: "cos(2u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "2·cos(u)^2 - 1",
+        rhs: "cos(2u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 - 2·sin(u)^2",
+        rhs: "cos(2u)",
+        status: Proven,
+    },
     // Cocientes/recíprocos definicionales del emisor «Trig Quotient», migrado
     // al matcher tras la pasada de sombra (2026-07-27): el emisor citaba
     // sin/cos = tan para TODOS los pares de la regla, cot/sec/csc incluidos —

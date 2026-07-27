@@ -65,6 +65,27 @@ fn load_corpus() -> Vec<String> {
             }
         }
     }
+    // The derive corpus's SOURCE column: the first sweep missed every rule
+    // that only fires on these shapes (Reciprocal Trig Identity produced ZERO
+    // pairs from web+identity while the derive audit exercises it constantly)
+    // — a corpus blind spot is a rule the shadow silently reports as
+    // unmigratable.
+    let derive = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../cas_solver/tests/derive_pairs.csv"
+    ));
+    for line in derive.lines().skip(1) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(expr) = trimmed.split(',').nth(2) {
+            let expr = expr.trim();
+            if !expr.is_empty() {
+                exprs.push(expr.to_string());
+            }
+        }
+    }
     exprs
 }
 

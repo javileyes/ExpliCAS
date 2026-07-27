@@ -185,7 +185,11 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
     // emitters migrate to `named_identity_substep`, never wholesale.
     (matches!(
         step.rule_name.as_str(),
-        "Reciprocal Product Identity" | "Half-Angle Tangent Identity" | "Trig Quotient"
+        "Reciprocal Product Identity"
+            | "Half-Angle Tangent Identity"
+            | "Trig Quotient"
+            | "Double Angle Contraction"
+            | "Cos 2x Additive Contraction"
     ) && normalized_substep.starts_with("usar "))
         || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
@@ -225,8 +229,6 @@ pub(crate) fn is_single_formula_template_rule(rule_name: &str) -> bool {
             | "expand_log"
             | "Log Contraction"
             | "Double Angle Expansion"
-            | "Double Angle Contraction"
-            | "Cos 2x Additive Contraction"
             | "Combine powers with same base (n-ary)"
     )
 }

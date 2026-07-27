@@ -1532,6 +1532,11 @@ fn verified_identity_narrations_reach_the_wire() {
         // silencer was the only thing keeping the wrong title off the wire.
         ("cos(x)/sin(x)", "Usar cos(u) / sin(u) = cot(u)"),
         ("1/cos(x)", "Usar 1 / cos(u) = sec(u)"),
+        // Double-angle contractions migrated after the EXTENDED shadow pass
+        // (2026-07-27): the old emitters cited the sine identity over cosine
+        // pairs (blanket title) or picked the template by substring-sniffing.
+        ("2*sin(x)*cos(x)", "Usar 2·sin(u)·cos(u) = sin(2u)"),
+        ("1 - 2*sin(x)^2", "Usar 1 - 2·sin(u)^2 = cos(2u)"),
     ];
     for (input, expected_fragment) in cases {
         let wire = eval_wire_in(input, Language::Es)

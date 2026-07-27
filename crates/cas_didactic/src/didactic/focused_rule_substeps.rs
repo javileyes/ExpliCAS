@@ -6717,21 +6717,21 @@ fn is_integer_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
     )
 }
 
+/// Migrated to the instance↔template matcher after the extended shadow pass
+/// (2026-07-27): the old emitter cited «2·sin(u)·cos(u) = sin(2u)» for EVERY
+/// contraction — including `cos(u)² − sin(u)² ⟹ cos(2u)`, the cosine pair
+/// wearing the sine title. Each pair now narrates its own census-adjudicated
+/// template or stays silent.
 fn generate_double_angle_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    if step.rule_name == "Double Angle Contraction"
-        || step.description.contains("double-angle")
-        || step.description.contains("Double Angle")
-    {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Reconocer el patrón 2 · sin(u) · cos(u) = sin(2u)",
-            before,
-            after,
-        )];
-    }
-    Vec::new()
+    const DOUBLE_ANGLE_TEMPLATES: [(&str, &str); 2] = [
+        ("2·sin(u)·cos(u)", "sin(2u)"),
+        ("cos(u)^2 - sin(u)^2", "cos(2u)"),
+    ];
+    named_identity_from_table(ctx, &DOUBLE_ANGLE_TEMPLATES, before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_half_angle_square_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -7830,30 +7830,20 @@ fn mixed_ctx_substep(
     .with_after_latex(latex_expr(after_ctx, after))
 }
 
+/// Migrated to the instance↔template matcher after the extended shadow pass
+/// (2026-07-27): the old emitter picked its template by SUBSTRING-sniffing the
+/// display (`contains("sin(")`), so a mixed pair took the sine branch
+/// regardless and the SCALED pair `4·cos(u)² − 2 ⟹ 2·cos(2u)` was cited as
+/// «2·cos²−1 = cos(2u)» — not an instance. Scaled pairs now decline honestly
+/// (measured residual: matcher coefficient-peeling, named in the shadow pass).
 fn generate_cos_2x_additive_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let before_display = human_expr(ctx, before);
-
-    if before_display.contains("sin(") {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Reconocer el patrón 1 - 2 · sin(u)^2 = cos(2u)",
-            before,
-            after,
-        )];
-    }
-
-    if before_display.contains("cos(") {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Reconocer el patrón 2 · cos(u)^2 - 1 = cos(2u)",
-            before,
-            after,
-        )];
-    }
-
-    Vec::new()
+    const COS_2X_TEMPLATES: [(&str, &str); 2] =
+        [("1 - 2·sin(u)^2", "cos(2u)"), ("2·cos(u)^2 - 1", "cos(2u)")];
+    named_identity_from_table(ctx, &COS_2X_TEMPLATES, before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_sec_csc_squared_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -8219,12 +8209,9 @@ fn generate_trig_quotient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         ("1 / cos(u)", "sec(u)"),
         ("1 / sin(u)", "csc(u)"),
     ];
-    for (lhs, rhs) in QUOTIENT_TEMPLATES {
-        if let Some(substep) = named_identity_substep(ctx, lhs, rhs, before, after) {
-            return vec![substep];
-        }
-    }
-    Vec::new()
+    named_identity_from_table(ctx, &QUOTIENT_TEMPLATES, before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_hyperbolic_quotient_substeps(_ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -8792,6 +8779,48 @@ fn formula_substep(
 /// narration wherever a true application outruns the matcher's coverage
 /// (measured precedent: the assume-equality prototype deleted 51 legitimate
 /// sub-steps).
+/// Structural-FIRST selection over a table of equivalent templates: pass 1
+/// accepts only structural instances (the cited formula is the one on
+/// screen), pass 2 falls back to the directed mode (for instances whose shape
+/// folded away). Without the split, the directed mode picks whichever
+/// equivalent template comes first — measured: `2·cos(u)²−1` narrated as
+/// «1 − 2·sin(u)² = cos(2u)», true by Pythagoras and useless to the reader.
+fn named_identity_from_table(
+    ctx: &Context,
+    templates: &[(&'static str, &'static str)],
+    before: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    for (lhs, rhs) in templates {
+        let _ = crate::didactic::substep::claim::verify_schematic_identity(lhs, rhs);
+        let Some(template) = crate::didactic::substep::matching::parse_template(lhs, rhs) else {
+            continue;
+        };
+        let structural = crate::didactic::substep::matching::match_instance_structural(
+            &template, ctx, before, after,
+        )
+        .or_else(|| {
+            crate::didactic::substep::matching::match_instance_structural(
+                &template, ctx, after, before,
+            )
+        });
+        if structural.is_some() {
+            return Some(concrete_expr_substep(
+                ctx,
+                format!("Usar {lhs} = {rhs}"),
+                before,
+                after,
+            ));
+        }
+    }
+    for (lhs, rhs) in templates {
+        if let Some(substep) = named_identity_substep(ctx, lhs, rhs, before, after) {
+            return Some(substep);
+        }
+    }
+    None
+}
+
 fn named_identity_substep(
     ctx: &Context,
     lhs: &'static str,
@@ -25195,6 +25224,7 @@ mod limit_notable_tests {
 #[cfg(test)]
 mod named_identity_matcher_tests {
     use super::{
+        generate_cos_2x_additive_contraction_substeps, generate_double_angle_contraction_substeps,
         generate_half_angle_tangent_substeps, generate_reciprocal_product_identity_substeps,
         generate_trig_quotient_substeps,
     };
@@ -25348,6 +25378,73 @@ mod named_identity_matcher_tests {
         assert!(
             subs.is_empty(),
             "a non-instance pair must not cite any quotient identity: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// The extended shadow pass caught the double-angle emitter citing the
+    /// SINE identity over the cosine pair. Each pair now narrates its own.
+    #[test]
+    fn double_angle_contraction_narrates_each_pair_with_its_own_identity() {
+        for (before, after, expected) in [
+            (
+                "2*sin(x)*cos(x)",
+                "sin(2*x)",
+                "Usar 2·sin(u)·cos(u) = sin(2u)",
+            ),
+            (
+                "cos(x)^2 - sin(x)^2",
+                "cos(2*x)",
+                "Usar cos(u)^2 - sin(u)^2 = cos(2u)",
+            ),
+        ] {
+            let subs = run(
+                generate_double_angle_contraction_substeps,
+                "Double Angle Contraction",
+                before,
+                after,
+            );
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(subs[0].description, expected);
+        }
+    }
+
+    /// The old Cos-2x emitter picked its template by substring-sniffing the
+    /// display, so the SCALED pair `4·cos²−2 ⟹ 2·cos(2x)` was cited as
+    /// «2·cos²−1 = cos(2u)» — not an instance. It now declines honestly; the
+    /// genuine unscaled pairs narrate their own identity.
+    #[test]
+    fn cos_2x_additive_contraction_narrates_instances_and_declines_the_scaled_pair() {
+        for (before, after, expected) in [
+            (
+                "2*cos(x)^2 - 1",
+                "cos(2*x)",
+                "Usar 2·cos(u)^2 - 1 = cos(2u)",
+            ),
+            (
+                "1 - 2*sin(x)^2",
+                "cos(2*x)",
+                "Usar 1 - 2·sin(u)^2 = cos(2u)",
+            ),
+        ] {
+            let subs = run(
+                generate_cos_2x_additive_contraction_substeps,
+                "Cos 2x Additive Contraction",
+                before,
+                after,
+            );
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(subs[0].description, expected);
+        }
+        let subs = run(
+            generate_cos_2x_additive_contraction_substeps,
+            "Cos 2x Additive Contraction",
+            "4*cos(x)^2 - 2",
+            "2*cos(2*x)",
+        );
+        assert!(
+            subs.is_empty(),
+            "the scaled pair is not an instance and must decline: {:?}",
             subs.iter().map(|s| &s.description).collect::<Vec<_>>()
         );
     }
