@@ -75,6 +75,13 @@ pub(crate) use step_visibility::{
     clone_steps_matching_visibility, infer_original_expr_for_steps,
     should_absorb_preparatory_step_at, step_matches_visibility, StepVisibility,
 };
+/// The claim verifier is the CONTRACT of the veracity campaign ("published ⇒
+/// verified"), so the gates that audit the wire must decide with the SAME
+/// standard the emitters publish under — refutation only on positive disproof.
+/// The first shadow run duplicated a weaker standard (any non-zero residual
+/// refuted) and produced two false refutations; exporting the real one is what
+/// keeps the generative tier (C1.9) from re-learning that lesson.
+pub use substep::claim as substep_claim;
 pub use substep::SubStep;
 pub(crate) use visible_rule_names::{
     rule_name_es_to_en, visible_rule_name_for_step, visible_step_description,

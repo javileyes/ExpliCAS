@@ -935,6 +935,422 @@ fn substep_claim_shadow_run_over_guardrail_corpora() {
 }
 
 // ---------------------------------------------------------------------------
+// C1.9 — the GENERATIVE tier of the substep-claim invariant.
+//
+// Every other tier of this lane measures over a LIST someone chose, and that
+// is exactly the failure mode that produced the 2026-07-25 audit: the previous
+// quality campaign closed against its own corpus and two rows picked at random
+// by the user both failed. This tier generates its inputs deterministically,
+// so the corpus stops being anyone's choice.
+//
+// What it asserts is the C1.8 invariant on the WIRE: no published sub-step in
+// a family whose relation is unambiguous may be REFUTABLE by the campaign's
+// own verifier. It runs on the published plain strings — the surface the
+// student reads — which is what lets it catch the class node-level checking
+// cannot: a formatter whose elision makes the printed pair lie while the nodes
+// were right (the 2x-numerator bug was exactly that).
+//
+// Three deliberate strengthenings over the shadow run above:
+//   1. The VARIABLE is known, not inferred: the generator built the input.
+//   2. The verifier is `cas_didactic`'s own `verify_claim` — refutation only
+//      on positive disproof (non-zero CONSTANT residual), the same standard
+//      the emitters publish under. The shadow run's any-non-zero-residual
+//      standard produced two false refutations; this tier does not inherit it.
+//   3. Titles are mapped to claims PER VERB: a title is only eligible for the
+//      family its verb narrates. Measured reason: «Ajustar el factor
+//      constante» publishes two DIFFERENT pair shapes depending on the
+//      emitter, so a context-free title table would misdeclare it. Titles not
+//      in the table abstain and are counted.
+//
+// What it does NOT prove (plan §7.5): pedagogy. A generator also only produces
+// the shapes it was taught — this is a much larger sample, not a proof.
+// ---------------------------------------------------------------------------
+
+/// xorshift64* with a FIXED seed: the corpus must be byte-identical on every
+/// machine and every run, so a failure's witness (the printed input) is its
+/// exact reproduction.
+struct GenRng(u64);
+
+impl GenRng {
+    fn next(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GenVerb {
+    Diff,
+    Integrate,
+    DefiniteIntegrate,
+}
+
+struct GeneratedInput {
+    text: String,
+    verb: GenVerb,
+    var: &'static str,
+    bounds: Option<(String, String)>,
+}
+
+/// A random elementary expression for DIFFERENTIATION: every node the
+/// derivative table covers, so the sweep exercises product/quotient/chain
+/// narrations, not just polynomials.
+fn gen_diff_expr(rng: &mut GenRng, var: &str, depth: u32) -> String {
+    if depth == 0 {
+        return match rng.below(3) {
+            0 => (1 + rng.below(5)).to_string(),
+            _ => var.to_string(),
+        };
+    }
+    match rng.below(12) {
+        0 => format!("sin({})", gen_diff_expr(rng, var, depth - 1)),
+        1 => format!("cos({})", gen_diff_expr(rng, var, depth - 1)),
+        2 => format!("tan({})", gen_diff_expr(rng, var, depth - 1)),
+        3 => format!("exp({})", gen_diff_expr(rng, var, depth - 1)),
+        4 => format!("ln({})", gen_diff_expr(rng, var, depth - 1)),
+        5 => format!("sqrt({})", gen_diff_expr(rng, var, depth - 1)),
+        6 => format!(
+            "({} + {})",
+            gen_diff_expr(rng, var, depth - 1),
+            gen_diff_expr(rng, var, depth - 1)
+        ),
+        7 => format!(
+            "({} - {})",
+            gen_diff_expr(rng, var, depth - 1),
+            gen_diff_expr(rng, var, depth - 1)
+        ),
+        8 => format!(
+            "({} * {})",
+            gen_diff_expr(rng, var, depth - 1),
+            gen_diff_expr(rng, var, depth - 1)
+        ),
+        9 => format!(
+            "({} / {})",
+            gen_diff_expr(rng, var, depth - 1),
+            gen_diff_expr(rng, var, depth - 1)
+        ),
+        10 => format!("{var}^{}", 2 + rng.below(4)),
+        _ => gen_diff_expr(rng, var, depth - 1),
+    }
+}
+
+/// An integrand the engine's TABLE narrations recognize. Random trees almost
+/// always integrate to an honest residual with no sub-steps, and a sweep whose
+/// emitters never fire passes green by vacuity — the `min_expected` lesson.
+/// So integrands are biased toward the table families (power, affine trig/exp,
+/// u'/u, by parts, arctan) and combined with sums for the linearity narration.
+fn gen_integrable_atom(rng: &mut GenRng, var: &str) -> String {
+    let a = 1 + rng.below(4);
+    let b = rng.below(5);
+    let n = 1 + rng.below(4);
+    match rng.below(12) {
+        0 => format!("{var}^{n}"),
+        1 => format!("{a}*{var}^{n}"),
+        2 => format!("sin({a}*{var} + {b})"),
+        3 => format!("cos({a}*{var} + {b})"),
+        4 => format!("e^({a}*{var})"),
+        5 => format!("1/{var}"),
+        6 => format!("{var}*e^{var}"),
+        7 => format!("{var}*sin({var})"),
+        8 => format!("{var}^2*sin({var})"),
+        9 => format!("1/({var}^2 + {a})"),
+        10 => format!("{a}*{var}/({var}^2 + {b})"),
+        _ => format!("{a}"),
+    }
+}
+
+fn gen_integrand(rng: &mut GenRng, var: &str) -> String {
+    match rng.below(4) {
+        0 => format!(
+            "{} + {}",
+            gen_integrable_atom(rng, var),
+            gen_integrable_atom(rng, var)
+        ),
+        1 => format!(
+            "{} - {}",
+            gen_integrable_atom(rng, var),
+            gen_integrable_atom(rng, var)
+        ),
+        _ => gen_integrable_atom(rng, var),
+    }
+}
+
+fn generate_corpus(count: usize) -> Vec<GeneratedInput> {
+    let mut rng = GenRng(0x00C1_9C1A_11FE_2026);
+    let mut corpus = Vec::with_capacity(count);
+    while corpus.len() < count {
+        // A second variable name catches the class the shadow run could not:
+        // a narration that is true for the wrong variable (`cos(t) ⟹ sin(t)`
+        // differentiated with respect to x).
+        let var: &'static str = if rng.below(6) == 0 { "t" } else { "x" };
+        let input = match rng.below(10) {
+            0..=4 => {
+                // Depth 3 only on a slice: nested tan/quotient trees make the
+                // simplifier grind and the sweep's cost is a per-cycle tax.
+                // Measured at depth 3 for all: 0.45 CPU-s per expression.
+                let depth = if rng.below(4) == 0 { 3 } else { 2 };
+                let f = gen_diff_expr(&mut rng, var, depth);
+                GeneratedInput {
+                    text: format!("diff({f}, {var})"),
+                    verb: GenVerb::Diff,
+                    var,
+                    bounds: None,
+                }
+            }
+            5..=7 => {
+                let g = gen_integrand(&mut rng, var);
+                GeneratedInput {
+                    text: format!("integrate({g}, {var})"),
+                    verb: GenVerb::Integrate,
+                    var,
+                    bounds: None,
+                }
+            }
+            _ => {
+                let g = gen_integrable_atom(&mut rng, var);
+                let lo = rng.below(3).to_string();
+                let hi = (rng.below(3) + 3).to_string();
+                let text = format!("integrate({g}, {var}, {lo}, {hi})");
+                GeneratedInput {
+                    text,
+                    verb: GenVerb::DefiniteIntegrate,
+                    var,
+                    bounds: Some((lo, hi)),
+                }
+            }
+        };
+        corpus.push(input);
+    }
+    corpus
+}
+
+/// The relation a generated sub-step's title declares, DISAMBIGUATED BY VERB.
+/// Only titles verified by probing enter; everything else abstains and is
+/// counted. The table's correctness is itself adjudicated by this tier: a
+/// wrong row shows up as a refutation witness, and refutation demands a
+/// positive disproof.
+fn generated_claim(
+    ctx: &mut cas_ast::Context,
+    input: &GeneratedInput,
+    title: &str,
+) -> Option<cas_didactic::didactic::substep_claim::Claim> {
+    use cas_didactic::didactic::substep_claim::Claim;
+    let var = input.var.to_string();
+    match input.verb {
+        GenVerb::Diff => {
+            let is_derivative_pair = title.starts_with("Derivar respecto de")
+                || matches!(
+                    title,
+                    "Derivar el primer factor"
+                        | "Derivar el segundo factor"
+                        | "Derivar el numerador"
+                        | "Derivar el denominador"
+                        | "Usar regla del producto"
+                        | "Usar regla del cociente"
+                        | "Usar regla de la cadena"
+                        | "Usar regla exponencial"
+                )
+                || (title.starts_with("Usar regla de ") && title.contains("(u)"));
+            is_derivative_pair.then_some(Claim::Derivative { var })
+        }
+        GenVerb::Integrate | GenVerb::DefiniteIntegrate => {
+            if title == "Evaluar la antiderivada en los límites" {
+                let (lo, hi) = input.bounds.as_ref()?;
+                let lower = parse_in(ctx, lo)?;
+                let upper = parse_in(ctx, hi)?;
+                return Some(Claim::DefiniteEval { var, lower, upper });
+            }
+            let is_antiderivative_pair = matches!(
+                title,
+                "Hallar la antiderivada"
+                    | "Usar sustitución"
+                    | "Usar regla de potencia para integrales"
+                    | "Integrar los términos simples"
+                    | "Usar integración por partes"
+            ) || (title.starts_with("Usar la regla de ")
+                && (title.contains("->") || title.contains("→") || title.contains("con derivada")));
+            is_antiderivative_pair.then_some(Claim::Antiderivative { var })
+        }
+    }
+}
+
+/// ≥ 5000 is the plan's F1 criterion: the one veracity number that does not
+/// depend on which corpus a person chose.
+const GENERATED_SWEEP_SIZE: usize = 5000;
+
+/// Exercise floors, anchored at ~85 % of the first full run (measured:
+/// declared 4986, emitted 14507 over 5000 expressions): a generator that stops
+/// firing the emitters would otherwise pass green by vacuity, which is the
+/// silent way this tier rots.
+const GENERATED_DECLARED_FLOOR: usize = 4200;
+const GENERATED_EMITTED_FLOOR: usize = 12000;
+
+#[test]
+#[ignore]
+fn generated_substep_claim_invariant() {
+    use cas_didactic::didactic::substep_claim::{verify_claim, ClaimVerdict};
+
+    let corpus = generate_corpus(GENERATED_SWEEP_SIZE);
+    // Fixed worker count, NOT num_cpus: the partition must be identical on
+    // every machine so the tallies (and any witness ordering) are too.
+    let workers = 12usize;
+    let chunk = corpus.len().div_ceil(workers);
+
+    struct Tally {
+        evaluated: usize,
+        emitted: usize,
+        declared: usize,
+        abstained: usize,
+        verified: usize,
+        undecided: usize,
+        undecided_witnesses: Vec<String>,
+        failures: Vec<String>,
+    }
+
+    let tallies: Vec<Tally> = thread::scope(|scope| {
+        let handles: Vec<_> = corpus
+            .chunks(chunk)
+            .map(|slice| {
+                scope.spawn(move || {
+                    let mut tally = Tally {
+                        evaluated: 0,
+                        emitted: 0,
+                        declared: 0,
+                        abstained: 0,
+                        verified: 0,
+                        undecided: 0,
+                        undecided_witnesses: Vec::new(),
+                        failures: Vec::new(),
+                    };
+                    for input in slice {
+                        let Some(wire) = eval_wire_in(&input.text, Language::Es) else {
+                            continue;
+                        };
+                        tally.evaluated += 1;
+                        for step in &wire.steps {
+                            for sub in &step.substeps {
+                                tally.emitted += 1;
+                                let mut ctx = cas_ast::Context::new();
+                                let Some(claim) = generated_claim(&mut ctx, input, &sub.title)
+                                else {
+                                    tally.abstained += 1;
+                                    continue;
+                                };
+                                let (Some(before), Some(after)) = (
+                                    parse_in(&mut ctx, &sub.before),
+                                    parse_in(&mut ctx, &sub.after),
+                                ) else {
+                                    // A plain hole the parser cannot read back is
+                                    // not evidence of a lie — but it is counted.
+                                    tally.undecided += 1;
+                                    tally.undecided_witnesses.push(format!(
+                                        "(parse) {}: «{}» {} ⟹ {}",
+                                        input.text, sub.title, sub.before, sub.after
+                                    ));
+                                    continue;
+                                };
+                                tally.declared += 1;
+                                match verify_claim(&ctx, &claim, before, after) {
+                                    ClaimVerdict::Verified => tally.verified += 1,
+                                    ClaimVerdict::Undecided => {
+                                        tally.undecided += 1;
+                                        tally.undecided_witnesses.push(format!(
+                                            "(claim) {}: «{}» {} ⟹ {}",
+                                            input.text, sub.title, sub.before, sub.after
+                                        ));
+                                    }
+                                    ClaimVerdict::Refuted => tally.failures.push(format!(
+                                        "{}: «{}» {} ⟹ {}",
+                                        input.text, sub.title, sub.before, sub.after
+                                    )),
+                                }
+                            }
+                        }
+                    }
+                    tally
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+
+    let mut evaluated = 0;
+    let mut emitted = 0;
+    let mut declared = 0;
+    let mut abstained = 0;
+    let mut verified = 0;
+    let mut undecided = 0;
+    let mut undecided_witnesses: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+    for tally in tallies {
+        evaluated += tally.evaluated;
+        emitted += tally.emitted;
+        declared += tally.declared;
+        abstained += tally.abstained;
+        verified += tally.verified;
+        undecided += tally.undecided;
+        undecided_witnesses.extend(tally.undecided_witnesses);
+        failures.extend(tally.failures);
+    }
+
+    let total = corpus.len();
+    // Only the two LOAD-STABLE facts are `hits=/rows=` counters the scorecard
+    // parses: the corpus size (pure integer arithmetic) and the hard zero.
+    // Everything eval-derived trembles under load — the claim verifier runs on
+    // a WALL-CLOCK budget (measured: 50 vs 53 undecided on the same commit,
+    // idle vs scorecard load), and even eval_ok/emitted drift by ±10 because
+    // the engine's standard budget has a time component. Publishing those as
+    // counters would flag spurious huella deltas on every future cycle; they
+    // live on the diagnostic lines below, and the exercise contract is the
+    // in-test FLOOR assertions, whose margin (~15 %) dwarfs the noise band.
+    // The hard counter is load-immune in the safe direction: budget exhaustion
+    // can only hide a refutation as Undecided, never fabricate one.
+    println!("generated_expressions hits={total} rows={total}");
+    println!(
+        "generated_substep_checked_failures hits={} rows={}",
+        failures.len(),
+        failures.len()
+    );
+    println!(
+        "  generated_sweep_diagnostics eval_ok={evaluated} emitted={emitted} \
+         declared={declared} abstained={abstained} verified={verified} undecided={undecided}"
+    );
+    // A handful of abstention witnesses so a SPIKE in undecided names its
+    // family without a re-run. Steady state (adjudicated BY HAND on the first
+    // full run: 50 of 4986, every one a TRUE pair): the simplifier failing to
+    // fold surd/nested-trig differences to zero (√x products, tan expansions,
+    // sin(cos(t))), and `d|x|/dx ⟹ sign(x)`, which the exact differentiator
+    // declines. None is evidence of a lie; that is what Undecided means.
+    for witness in undecided_witnesses.iter().take(8) {
+        println!("  GENERATED-UNDECIDED {witness}");
+    }
+    for witness in failures.iter().take(25) {
+        println!("  GENERATED-REFUTED {witness}");
+    }
+
+    assert!(
+        declared >= GENERATED_DECLARED_FLOOR && emitted >= GENERATED_EMITTED_FLOOR,
+        "the generative sweep stopped exercising the emitters \
+         (declared {declared} < {GENERATED_DECLARED_FLOOR} or emitted {emitted} < \
+         {GENERATED_EMITTED_FLOOR}): a vacuous sweep passes green and rots silently"
+    );
+    assert!(
+        failures.is_empty(),
+        "{} generated sub-steps publish a REFUTABLE claim (each witness above \
+         is its exact reproduction):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Solve narration inventory (C4.1)
 // ---------------------------------------------------------------------------
 
