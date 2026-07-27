@@ -1166,6 +1166,32 @@
             }
         }
 
+        /* Tablets and narrow desktop windows (721–1140px): one row cannot
+           hold four mode selects (4 × 168px min alone is ~672px) PLUS the
+           input and its action buttons — the input was pushed clean off
+           screen on a 768px iPad. Fold the bar into two rows (selects on
+           top, input + actions below) and let the header actions wrap. */
+        @media (min-width: 721px) and (max-width: 1140px) {
+            .header-buttons {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+                row-gap: 8px;
+            }
+
+            .input-wrapper {
+                flex-wrap: wrap;
+            }
+
+            .mode-control {
+                flex: 1 1 23%;
+                min-width: 0;
+            }
+
+            .input-field {
+                flex: 1 1 320px;
+            }
+        }
+
         /* Every MathJax container inside a card or panel pans horizontally
            on its own, so a long formula never forces the PAGE to scroll
            sideways and a phone can flick through it with one finger. */
@@ -1735,9 +1761,14 @@
             flex: 1;
         }
 
-        /* Switch-to-system-keyboard tab: phones only. */
+        /* Switch-to-system-keyboard tab: touch devices only (phones AND
+           tablets — the JS stamps body.kb-touch from the pointer media). */
         .kb-tab-sys {
             display: none;
+        }
+
+        body.kb-touch .kb-tab-sys {
+            display: block;
         }
 
         .kb-row {
@@ -1785,6 +1816,30 @@
             font-size: 0.6em;
         }
 
+        /* Functional-group tints, in the app's own hue language: operators
+           blue, variables green (like the Variables panel), constants amber,
+           functions violet (like the ƒ() menu). Digits stay neutral; action
+           keys keep their alt/accent styling. */
+        .kb-key.kb-g-op {
+            background: rgba(59, 130, 246, 0.16);
+            border-color: rgba(59, 130, 246, 0.35);
+        }
+
+        .kb-key.kb-g-var {
+            background: rgba(16, 185, 129, 0.14);
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+
+        .kb-key.kb-g-const {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.4);
+        }
+
+        .kb-key.kb-g-fn {
+            background: rgba(139, 92, 246, 0.16);
+            border-color: rgba(139, 92, 246, 0.38);
+        }
+
         .kb-key-alt {
             background: var(--kb-key-alt-bg);
         }
@@ -1827,10 +1882,6 @@
 
             .kb-key {
                 height: 48px;
-            }
-
-            .kb-tab-sys {
-                display: block;
             }
         }
 
@@ -1913,6 +1964,33 @@
         [data-theme="light"] .examples-panel.fnmenu .examples-back-btn,
         [data-theme="light"] .fn-insert-btn {
             color: #6d28d9;
+        }
+
+        /* Keypad functional-group tints on light: pale fills of the same
+           hues. The pressed rule is restated LAST so it outranks these. */
+        [data-theme="light"] .kb-key.kb-g-op {
+            background: #e9f1fe;
+            border-color: #bcd3f8;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-var {
+            background: #e6f7f0;
+            border-color: #b5e3cf;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-const {
+            background: #fdf4e0;
+            border-color: #eed5a4;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-fn {
+            background: #f1ebfd;
+            border-color: #d7c9f4;
+        }
+
+        [data-theme="light"] .kb-key.kb-pressed {
+            background: var(--kb-key-active-bg);
+            border-color: var(--accent);
         }
     </style>
 </head>
@@ -4095,7 +4173,16 @@
 
         const KB_DESKTOP_STORAGE_KEY = 'expliCAS_kb_desktop_open';
         const KB_MOBILE_MODE_STORAGE_KEY = 'expliCAS_kb_mobile_mode';
-        const kbMedia = window.matchMedia('(max-width: 720px)');
+        // Two axes, two behaviors:
+        // - SMALL (narrow phones OR short landscape phones): keypad also
+        //   CLOSES after evaluating so the result is visible on the little
+        //   screen. Tablets are not small in either orientation.
+        // - TOUCH (small OR primary input is touch — tablets in any
+        //   orientation): keypad opens on tapping the input and the OS
+        //   keyboard is suppressed. Touch-screen laptops report a fine
+        //   primary pointer, so they stay on desktop behavior (⌨️ toggle).
+        const kbMediaSmall = window.matchMedia('(max-width: 720px), (max-height: 520px)');
+        const kbMediaTouch = window.matchMedia('(hover: none) and (pointer: coarse)');
         const kbPanel = document.getElementById('kb-panel');
         const kbInputBar = document.querySelector('.input-bar');
         let kbLayer = 'num';
@@ -4107,33 +4194,38 @@
             if (localStorage.getItem(KB_MOBILE_MODE_STORAGE_KEY) === 'system') kbMobileMode = 'system';
         } catch (e) { }
 
-        function isKbMobile() {
-            return kbMedia.matches;
+        function isKbSmall() {
+            return kbMediaSmall.matches;
+        }
+
+        function isKbTouch() {
+            return kbMediaSmall.matches || kbMediaTouch.matches;
         }
 
         // Key model — l: label (defaults to i), i: plain insert, f: function
         // name (wraps the selection or leaves the caret inside the parens),
         // tpl/h: template with selectable holes (same machinery as the ƒ()
-        // menu), a: action, c: extra classes, t: title i18n key.
+        // menu), a: action, g: functional group for the color coding
+        // (op/var/const/fn), c: extra classes, t: title i18n key.
         const KB_NUM_ROWS = [
-            [{ i: '7' }, { i: '8' }, { i: '9' }, { l: '÷', i: '/' }, { i: '(' }, { i: ')' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
-            [{ i: '4' }, { i: '5' }, { i: '6' }, { l: '×', i: '*' }, { i: 'x' }, { i: 'y' }, { i: 'z' }],
-            [{ i: '1' }, { i: '2' }, { i: '3' }, { l: '−', i: '-' }, { l: 'π', i: 'π', title: 'pi' }, { i: 'e' }, { l: 'φ', i: 'φ', title: 'phi' }],
-            [{ i: '0' }, { i: '.' }, { i: '=' }, { i: '+' }, { i: '^' }, { l: '√', f: 'sqrt' }, { i: ',' }],
-            [{ l: 'sin', f: 'sin', c: 'kb-key-sm' }, { l: 'cos', f: 'cos', c: 'kb-key-sm' }, { l: 'tan', f: 'tan', c: 'kb-key-sm' }, { l: 'ln', f: 'ln', c: 'kb-key-sm' }, { l: '◀', a: 'left', c: 'kb-key-alt', t: 'kb.left.title' }, { l: '▶', a: 'right', c: 'kb-key-alt', t: 'kb.right.title' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
+            [{ i: '7' }, { i: '8' }, { i: '9' }, { l: '÷', i: '/', g: 'op' }, { i: '(', g: 'op' }, { i: ')', g: 'op' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
+            [{ i: '4' }, { i: '5' }, { i: '6' }, { l: '×', i: '*', g: 'op' }, { i: 'x', g: 'var' }, { i: 'y', g: 'var' }, { i: 'z', g: 'var' }],
+            [{ i: '1' }, { i: '2' }, { i: '3' }, { l: '−', i: '-', g: 'op' }, { l: 'π', i: 'π', title: 'pi', g: 'const' }, { i: 'e', g: 'const' }, { l: 'φ', i: 'φ', title: 'phi', g: 'const' }],
+            [{ i: '0' }, { i: '.' }, { i: '=', g: 'op' }, { i: '+', g: 'op' }, { i: '^', g: 'op' }, { l: '√', f: 'sqrt', g: 'fn' }, { i: ',', g: 'op' }],
+            [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'fn' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'fn' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'fn' }, { l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: '◀', a: 'left', c: 'kb-key-alt', t: 'kb.left.title' }, { l: '▶', a: 'right', c: 'kb-key-alt', t: 'kb.right.title' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
         ];
 
         const KB_FN_ROWS = [
-            [{ l: 'sin', f: 'sin', c: 'kb-key-sm' }, { l: 'cos', f: 'cos', c: 'kb-key-sm' }, { l: 'tan', f: 'tan', c: 'kb-key-sm' }, { l: 'arcsin', f: 'arcsin', c: 'kb-key-xs' }, { l: 'arccos', f: 'arccos', c: 'kb-key-xs' }, { l: 'arctan', f: 'arctan', c: 'kb-key-xs' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
-            [{ l: 'ln', f: 'ln', c: 'kb-key-sm' }, { l: 'log10', f: 'log10', c: 'kb-key-xs' }, { l: 'log2', f: 'log2', c: 'kb-key-xs' }, { l: 'eˣ', f: 'exp', c: 'kb-key-sm' }, { l: '√', f: 'sqrt' }, { l: 'ⁿ√', tpl: 'root(expr, n)', h: ['expr', 'n'] }, { l: '|x|', f: 'abs', c: 'kb-key-sm' }],
-            [{ l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'] }, { l: 'solve', tpl: 'solve(eq, x)', h: ['eq', 'x'], c: 'kb-key-xs' }, { l: 'lim', tpl: 'limit(expr, x, a)', h: ['expr', 'x'], c: 'kb-key-sm' }, { l: 'Σ', tpl: 'sum(expr, k, a, b)', h: ['expr', 'k'] }, { l: 'taylor', tpl: 'taylor(expr, x, a, n)', h: ['expr', 'x'], c: 'kb-key-xs' }, { i: ',' }],
-            [{ l: 'simplify', f: 'simplify', c: 'kb-key-xs' }, { l: 'factor', f: 'factor', c: 'kb-key-xs' }, { l: 'expand', f: 'expand', c: 'kb-key-xs' }, { l: 'dsolve', tpl: 'dsolve(diff(y,x) = f, y, x)', h: ['f'], c: 'kb-key-xs' }, { l: 'equiv', tpl: 'equiv(expr1, expr2)', h: ['expr1', 'expr2'], c: 'kb-key-xs' }, { l: '≈', f: 'approx' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
+            [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'fn' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'fn' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'fn' }, { l: 'arcsin', f: 'arcsin', c: 'kb-key-xs', g: 'fn' }, { l: 'arccos', f: 'arccos', c: 'kb-key-xs', g: 'fn' }, { l: 'arctan', f: 'arctan', c: 'kb-key-xs', g: 'fn' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
+            [{ l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: 'log10', f: 'log10', c: 'kb-key-xs', g: 'fn' }, { l: 'log2', f: 'log2', c: 'kb-key-xs', g: 'fn' }, { l: 'eˣ', f: 'exp', c: 'kb-key-sm', g: 'fn' }, { l: '√', f: 'sqrt', g: 'fn' }, { l: 'ⁿ√', tpl: 'root(expr, n)', h: ['expr', 'n'], g: 'fn' }, { l: '|x|', f: 'abs', c: 'kb-key-sm', g: 'fn' }],
+            [{ l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'fn' }, { l: 'solve', tpl: 'solve(eq, x)', h: ['eq', 'x'], c: 'kb-key-xs', g: 'fn' }, { l: 'lim', tpl: 'limit(expr, x, a)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn' }, { l: 'Σ', tpl: 'sum(expr, k, a, b)', h: ['expr', 'k'], g: 'fn' }, { l: 'taylor', tpl: 'taylor(expr, x, a, n)', h: ['expr', 'x'], c: 'kb-key-xs', g: 'fn' }, { i: ',', g: 'op' }],
+            [{ l: 'simplify', f: 'simplify', c: 'kb-key-xs', g: 'fn' }, { l: 'factor', f: 'factor', c: 'kb-key-xs', g: 'fn' }, { l: 'expand', f: 'expand', c: 'kb-key-xs', g: 'fn' }, { l: 'dsolve', tpl: 'dsolve(diff(y,x) = f, y, x)', h: ['f'], c: 'kb-key-xs', g: 'fn' }, { l: 'equiv', tpl: 'equiv(expr1, expr2)', h: ['expr1', 'expr2'], c: 'kb-key-xs', g: 'fn' }, { l: '≈', f: 'approx', g: 'fn' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
         ];
 
         const KB_ABC_ROWS = [
             ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
             ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
-            [{ l: '⇧', a: 'shift', c: 'kb-key-alt kb-key-shift', t: 'kb.shift.title' }, 'z', 'x', 'c', 'v', 'b', 'n', 'm', { i: ',' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
+            [{ l: '⇧', a: 'shift', c: 'kb-key-alt kb-key-shift', t: 'kb.shift.title' }, 'z', 'x', 'c', 'v', 'b', 'n', 'm', { i: ',', g: 'op' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
         ];
 
         // Greek letters insert the GLYPH itself: the engine parses single
@@ -4153,7 +4245,9 @@
         function kbKeyButton(spec) {
             const idx = kbKeyReg.push(spec) - 1;
             const label = (spec.l != null) ? spec.l : spec.i;
-            const cls = 'kb-key' + (spec.c ? ' ' + spec.c : '');
+            const cls = 'kb-key'
+                + (spec.g ? ' kb-g-' + spec.g : '')
+                + (spec.c ? ' ' + spec.c : '');
             const title = spec.t ? t(spec.t) : (spec.title || '');
             const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
             return `<button type="button" class="${cls}" data-ki="${idx}"${titleAttr}>${escapeHtml(label)}</button>`;
@@ -4172,14 +4266,21 @@
                 const rows = KB_ABC_ROWS.map(row => row.map(k => {
                     if (typeof k === 'string') {
                         const ch = kbShift ? k.toUpperCase() : k;
-                        return { l: ch, i: ch };
+                        return { l: ch, i: ch, g: 'var' };
                     }
                     if (k.a === 'shift' && kbShift) return Object.assign({}, k, { c: k.c + ' active' });
                     return k;
                 }));
                 html = rows.map(row => `<div class="kb-row kb-cols-10">${row.map(kbKeyButton).join('')}</div>`).join('');
+                // Greek letters are variables, except π and φ — those are the
+                // engine constants, so they wear the constants color.
                 html += `<div class="kb-greek" title="${escapeHtml(t('kb.greek.title'))}">`
-                    + KB_GREEK.map(([glyph, name]) => kbKeyButton({ l: glyph, i: glyph, title: name })).join('')
+                    + KB_GREEK.map(([glyph, name]) => kbKeyButton({
+                        l: glyph,
+                        i: glyph,
+                        title: name,
+                        g: (name === 'pi' || name === 'phi') ? 'const' : 'var'
+                    })).join('')
                     + '</div>';
             }
             layers.innerHTML = html;
@@ -4242,7 +4343,9 @@
             if (spec.a === 'shift') { kbShift = !kbShift; kbRefresh(); return; }
             if (spec.a === 'enter') {
                 evaluateExpression();
-                if (isKbMobile()) kbClosePanel();
+                // Only small screens auto-close (the result needs the room);
+                // tablets keep the keypad up like a real calculator.
+                if (isKbSmall()) kbClosePanel();
                 return;
             }
             if (spec.tpl) {
@@ -4280,15 +4383,15 @@
         }
 
         function kbOpenAfterInsert() {
-            if (isKbMobile() && kbMobileMode === 'calc' && !kbInputBar.classList.contains('kb-open')) {
+            if (isKbTouch() && kbMobileMode === 'calc' && !kbInputBar.classList.contains('kb-open')) {
                 kbOpenPanel();
             }
         }
 
         function kbApplyInputMode() {
-            // The whole trick that keeps the phone's OS keyboard closed while
+            // The whole trick that keeps the device's OS keyboard closed while
             // the input stays genuinely focused (caret, selection, paste).
-            if (isKbMobile() && kbMobileMode === 'calc') {
+            if (isKbTouch() && kbMobileMode === 'calc') {
                 input.setAttribute('inputmode', 'none');
             } else {
                 input.removeAttribute('inputmode');
@@ -4370,14 +4473,14 @@
 
         document.getElementById('kb-hide-btn').addEventListener('click', () => {
             kbClosePanel();
-            if (!isKbMobile()) {
+            if (!isKbTouch()) {
                 kbDesktopOpen = false;
                 try { localStorage.setItem(KB_DESKTOP_STORAGE_KEY, '0'); } catch (e) { }
             }
         });
 
         document.getElementById('kb-toggle-btn').addEventListener('click', () => {
-            if (isKbMobile()) {
+            if (isKbTouch()) {
                 // One button, two keyboards: swap between keypad and system.
                 if (kbInputBar.classList.contains('kb-open')) kbSetMobileMode('system');
                 else kbSetMobileMode('calc');
@@ -4389,17 +4492,17 @@
             }
         });
 
-        // Tapping the input on a phone opens the keypad (programmatic focus,
-        // e.g. after evaluating, does NOT — results stay visible).
+        // Tapping the input on a touch device opens the keypad (programmatic
+        // focus, e.g. after evaluating, does NOT — results stay visible).
         input.addEventListener('click', () => {
-            if (isKbMobile() && kbMobileMode === 'calc' && !kbInputBar.classList.contains('kb-open')) {
+            if (isKbTouch() && kbMobileMode === 'calc' && !kbInputBar.classList.contains('kb-open')) {
                 kbOpenPanel();
             }
         });
 
-        // Tapping anywhere else on a phone closes it, like the OS keyboard.
+        // Tapping anywhere else on a touch device closes it, like the OS keyboard.
         document.addEventListener('pointerdown', (ev) => {
-            if (!isKbMobile()) return;
+            if (!isKbTouch()) return;
             if (!kbInputBar.classList.contains('kb-open')) return;
             // A key that re-renders the layers mid-press (⇧, one-shot unshift)
             // leaves a DETACHED node as the event target; closest() would then
@@ -4410,9 +4513,9 @@
             kbClosePanel();
         });
 
-        // Evaluar (the button) also reveals the results on a phone.
+        // Evaluar (the button) also reveals the results on a small screen.
         submitBtn.addEventListener('click', () => {
-            if (isKbMobile()) kbClosePanel();
+            if (isKbSmall()) kbClosePanel();
         });
 
         // The ⚙️ options fold changes the bar height while the keypad is open.
@@ -4421,8 +4524,9 @@
         });
 
         function kbSyncToViewport() {
+            document.body.classList.toggle('kb-touch', isKbTouch());
             kbApplyInputMode();
-            if (isKbMobile()) {
+            if (isKbTouch()) {
                 kbSyncPadding();
             } else if (kbDesktopOpen) {
                 kbOpenPanel();
@@ -4431,13 +4535,16 @@
             }
         }
 
-        if (kbMedia.addEventListener) kbMedia.addEventListener('change', kbSyncToViewport);
-        else if (kbMedia.addListener) kbMedia.addListener(kbSyncToViewport);
+        [kbMediaSmall, kbMediaTouch].forEach((m) => {
+            if (m.addEventListener) m.addEventListener('change', kbSyncToViewport);
+            else if (m.addListener) m.addListener(kbSyncToViewport);
+        });
         window.addEventListener('resize', kbSyncPadding);
 
-        // Init: suppress the OS keyboard on phones, restore the desktop panel.
+        // Init: suppress the OS keyboard on touch devices, restore the desktop panel.
+        document.body.classList.toggle('kb-touch', isKbTouch());
         kbApplyInputMode();
-        if (!isKbMobile() && kbDesktopOpen) kbOpenPanel();
+        if (!isKbTouch() && kbDesktopOpen) kbOpenPanel();
         else kbRefresh();
         window.__kbReady = true;
     </script>
