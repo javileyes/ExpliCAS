@@ -28,6 +28,66 @@ pub fn first_session_ref(ctx: &Context, root: ExprId) -> Option<EntryId> {
     None
 }
 
+/// Rewrite RELATIVE session references — `#-1` is the NEWEST stored cell,
+/// `#-2` the one before it, ... — into absolute `#N` references against the
+/// ids of the existing entries in insertion order (so deletions never leave
+/// `#-1` pointing at a hole). Inputs without `#-` come back borrowed and
+/// untouched. Out-of-range refs error with an honest count; a bare `#-`
+/// with no digits is left for the parser's own error.
+///
+/// This runs on the INPUT STRING before parsing, so everything downstream
+/// (resolver, cache, snapshot raw_text) keeps working on ordinary absolute
+/// references — a stored `#-1` would otherwise re-resolve to a DIFFERENT
+/// cell on replay.
+pub fn rewrite_relative_session_refs<'a>(
+    input: &'a str,
+    entry_ids_in_order: &[EntryId],
+) -> Result<std::borrow::Cow<'a, str>, String> {
+    if !input.contains("#-") {
+        return Ok(std::borrow::Cow::Borrowed(input));
+    }
+
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'#' && i + 1 < bytes.len() && bytes[i + 1] == b'-' {
+            let digits_start = i + 2;
+            let mut j = digits_start;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > digits_start {
+                let k: usize = input[digits_start..j]
+                    .parse()
+                    .map_err(|_| format!("referencia relativa inválida: {}", &input[i..j]))?;
+                if k == 0 {
+                    return Err(
+                        "referencia relativa inválida: #-0 (usa #-1 para la última celda)"
+                            .to_string(),
+                    );
+                }
+                let n = entry_ids_in_order.len();
+                if k > n {
+                    return Err(if n == 0 {
+                        format!("#-{k}: no hay celdas anteriores en la sesión")
+                    } else {
+                        format!("#-{k}: solo hay {n} celda(s) en la sesión")
+                    });
+                }
+                out.push('#');
+                out.push_str(&entry_ids_in_order[n - k].to_string());
+                i = j;
+                continue;
+            }
+        }
+        let ch = input[i..].chars().next().expect("char at byte boundary");
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    Ok(std::borrow::Cow::Owned(out))
+}
+
 /// Parse legacy session reference names like `#123`.
 pub fn parse_legacy_session_ref(name: &str) -> Option<EntryId> {
     if !name.starts_with('#') || name.len() <= 1 {
@@ -675,3 +735,48 @@ where
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod relative_ref_tests {
+    use super::rewrite_relative_session_refs;
+
+    #[test]
+    fn untouched_inputs_stay_borrowed() {
+        let out = rewrite_relative_session_refs("#3 + x - 1", &[1, 2, 3]).unwrap();
+        assert!(matches!(out, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(out, "#3 + x - 1");
+    }
+
+    #[test]
+    fn relative_refs_resolve_newest_first_respecting_gaps() {
+        // Ids with a deletion gap: #-1 must be the newest EXISTING entry.
+        let ids = [1, 2, 5, 7];
+        assert_eq!(
+            rewrite_relative_session_refs("#-1 * 3", &ids).unwrap(),
+            "#7 * 3"
+        );
+        assert_eq!(
+            rewrite_relative_session_refs("#-3 + #-1", &ids).unwrap(),
+            "#2 + #7"
+        );
+    }
+
+    #[test]
+    fn out_of_range_and_zero_error_honestly() {
+        assert!(rewrite_relative_session_refs("#-1", &[])
+            .unwrap_err()
+            .contains("no hay celdas"));
+        assert!(rewrite_relative_session_refs("#-3", &[1, 2])
+            .unwrap_err()
+            .contains("solo hay 2"));
+        assert!(rewrite_relative_session_refs("#-0", &[1])
+            .unwrap_err()
+            .contains("#-0"));
+    }
+
+    #[test]
+    fn bare_hash_minus_without_digits_is_left_for_the_parser() {
+        let out = rewrite_relative_session_refs("#- x", &[1]).unwrap();
+        assert_eq!(out, "#- x");
+    }
+}

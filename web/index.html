@@ -1761,16 +1761,6 @@
             flex: 1;
         }
 
-        /* Switch-to-system-keyboard tab: touch devices only (phones AND
-           tablets — the JS stamps body.kb-touch from the pointer media). */
-        .kb-tab-sys {
-            display: none;
-        }
-
-        body.kb-touch .kb-tab-sys {
-            display: block;
-        }
-
         .kb-row {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
@@ -2124,10 +2114,10 @@
                 <button type="button" class="kb-tab" data-kbtab="fn">f(x)</button>
                 <button type="button" class="kb-tab" data-kbtab="abc">αβγ</button>
                 <span class="kb-tabs-spacer"></span>
-                <button type="button" class="kb-tab" id="kb-fnmenu-btn"
-                    data-i18n-title="fnmenu.button.title" title="Insertar una función con sus argumentos ya colocados">ƒ()</button>
-                <button type="button" class="kb-tab kb-tab-sys" id="kb-sys-btn"
-                    data-i18n-title="kb.system.title" title="Cambiar al teclado del sistema">⌨️ abc</button>
+                <button type="button" class="kb-tab" id="kb-ref-btn"
+                    data-i18n-title="kb.ref.title" title="Referencia a una celda: escribe el número a continuación (p. ej. #3)">#</button>
+                <button type="button" class="kb-tab" id="kb-ant-btn"
+                    data-i18n-title="kb.ant.title" title="Resultado anterior: inserta #-1 (la última celda)">ANT</button>
                 <button type="button" class="kb-tab" id="kb-hide-btn"
                     data-i18n-title="kb.hide.title" title="Ocultar teclado">⌄</button>
             </div>
@@ -2386,7 +2376,8 @@
                         "fnmenu.group_card_count": "{0} funciones ›",
                         "kb.toggle.title": "Teclado de cálculo en pantalla",
                         "kb.toggle.aria_label": "Mostrar u ocultar el teclado de cálculo",
-                        "kb.system.title": "Cambiar al teclado del sistema",
+                        "kb.ref.title": "Referencia a una celda: escribe el número a continuación (p. ej. #3)",
+                        "kb.ant.title": "Resultado anterior: inserta #-1 (la última celda)",
                         "kb.hide.title": "Ocultar teclado",
                         "kb.backspace.title": "Borrar",
                         "kb.left.title": "Mover el cursor a la izquierda",
@@ -2485,7 +2476,8 @@
                         "fnmenu.group_card_count": "{0} functions ›",
                         "kb.toggle.title": "On-screen math keypad",
                         "kb.toggle.aria_label": "Show or hide the math keypad",
-                        "kb.system.title": "Switch to the system keyboard",
+                        "kb.ref.title": "Cell reference: type the number after it (e.g. #3)",
+                        "kb.ant.title": "Previous result: inserts #-1 (the newest cell)",
                         "kb.hide.title": "Hide keypad",
                         "kb.backspace.title": "Delete",
                         "kb.left.title": "Move cursor left",
@@ -4463,12 +4455,15 @@
             }
         });
 
-        document.getElementById('kb-fnmenu-btn').addEventListener('click', () => {
-            showFnMenuPanel();
+        // Cell-reference chips: `#` starts a reference (the user types the
+        // number), ANT inserts `#-1` — the engine resolves it to the newest
+        // stored cell. Both keep the caret in the input like any key.
+        document.getElementById('kb-ref-btn').addEventListener('click', () => {
+            kbInsertText('#');
         });
 
-        document.getElementById('kb-sys-btn').addEventListener('click', () => {
-            kbSetMobileMode('system');
+        document.getElementById('kb-ant-btn').addEventListener('click', () => {
+            kbInsertText('#-1');
         });
 
         document.getElementById('kb-hide-btn').addEventListener('click', () => {
@@ -4524,7 +4519,6 @@
         });
 
         function kbSyncToViewport() {
-            document.body.classList.toggle('kb-touch', isKbTouch());
             kbApplyInputMode();
             if (isKbTouch()) {
                 kbSyncPadding();
@@ -4542,7 +4536,6 @@
         window.addEventListener('resize', kbSyncPadding);
 
         // Init: suppress the OS keyboard on touch devices, restore the desktop panel.
-        document.body.classList.toggle('kb-touch', isKbTouch());
         kbApplyInputMode();
         if (!isKbTouch() && kbDesktopOpen) kbOpenPanel();
         else kbRefresh();

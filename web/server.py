@@ -801,7 +801,11 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
         def replace_ref(match):
             n = int(match.group(2))
-            idx = n - 1
+            # Negative = relative to the NEWEST visible cell (#-1 last,
+            # #-2 the one before, ...), mirroring the engine's own #-k
+            # support so both server and wasm modes agree with the UI
+            # numbering the user sees.
+            idx = (len(ref_map) + n) if n < 0 else (n - 1)
             if idx < 0:
                 invalid_refs.append(n)
                 return match.group(0)
@@ -822,7 +826,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             invalid_refs.append(n)
             return match.group(0)
 
-        expr = re.sub(r"([%#])(\d+)", replace_ref, expr)
+        expr = re.sub(r"([%#])(-?\d+)", replace_ref, expr)
 
         if invalid_refs:
             uniq = sorted(set(invalid_refs))

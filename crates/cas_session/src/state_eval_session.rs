@@ -40,6 +40,10 @@ impl EvalSession for SessionState {
             .is_some_and(|binding| binding.params.len() == arity)
     }
 
+    fn entry_ids_in_order(&self) -> Vec<u64> {
+        self.store.store.list().iter().map(|e| e.id).collect()
+    }
+
     fn try_direct_cached_eval(
         &mut self,
         ctx: &mut cas_ast::Context,

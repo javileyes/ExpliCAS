@@ -14,7 +14,14 @@ pub fn evaluate_eval_command_output<S>(
 where
     S: crate::SolverEvalSession,
 {
-    let (style_signals, req) = prepare::build_eval_request(engine, line)?;
+    // Relative session refs (`#-1` = última celda) become absolute `#N`
+    // before parsing — same normalization as the wire path (prepare.rs).
+    let line = cas_session_core::resolve::rewrite_relative_session_refs(
+        line,
+        &session.entry_ids_in_order(),
+    )
+    .map_err(EvalCommandError::Eval)?;
+    let (style_signals, req) = prepare::build_eval_request(engine, &line)?;
     let eval_view = execute::execute_eval_request(engine, session, req)?;
     Ok(output::build_eval_command_output(
         &mut engine.simplifier.context,

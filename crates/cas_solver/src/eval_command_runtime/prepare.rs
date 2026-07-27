@@ -149,9 +149,17 @@ where
     session.options_mut().time_budget_ms = config.time_budget_ms;
 
     let parse_start = Instant::now();
-    let style_signals = ParseStyleSignals::from_input_string(config.expr);
-    let req = crate::eval_input::build_prepared_eval_request_for_input(
+    // Relative session refs (`#-1` = última celda) normalize to absolute
+    // `#N` BEFORE parsing: everything downstream (resolver, cache, stored
+    // raw_text — which must replay identically later) then works on
+    // ordinary absolute references.
+    let expr_input = cas_session_core::resolve::rewrite_relative_session_refs(
         config.expr,
+        &session.entry_ids_in_order(),
+    )?;
+    let style_signals = ParseStyleSignals::from_input_string(&expr_input);
+    let req = crate::eval_input::build_prepared_eval_request_for_input(
+        &expr_input,
         &mut engine.simplifier.context,
         config.auto_store,
     )?;

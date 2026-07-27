@@ -49,6 +49,14 @@ pub trait EvalSession {
         false
     }
 
+    /// Ids of the stored entries in insertion order (oldest → newest), used
+    /// to resolve RELATIVE session refs (`#-1` = newest cell) at the input
+    /// boundary. Sessions without listable storage keep the default empty
+    /// list, which makes relative refs decline honestly.
+    fn entry_ids_in_order(&self) -> Vec<u64> {
+        Vec::new()
+    }
+
     /// Optional fast path for direct cached eval of a root `#N` reference.
     ///
     /// Default sessions return `None` and fall back to the regular
