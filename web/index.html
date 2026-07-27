@@ -1907,8 +1907,8 @@
             border: 1px solid var(--border);
             color: var(--text-secondary);
             border-radius: 8px;
-            padding: 6px 10px;
-            font-size: 0.9em;
+            padding: 7px 12px;
+            font-size: 1.05em;
             font-weight: 700;
             font-family: 'Fira Code', 'Consolas', monospace;
             cursor: pointer;
@@ -1921,7 +1921,7 @@
         /* The three main layer tabs keep a bit more presence than the
            reference/action chips. */
         .kb-tab-primary {
-            padding: 6px 12px;
+            padding: 7px 14px;
         }
 
         .kb-tab.active {
@@ -1970,13 +1970,13 @@
         }
 
         .kb-key-sm {
-            font-size: 0.84em;
+            font-size: 0.95em;
         }
 
         /* Longest labels (simplify, arcsin, taylor...): shrink further so
            they fit a 7-column phone grid without clipping. */
         .kb-key-xs {
-            font-size: 0.68em;
+            font-size: 0.76em;
         }
 
         /* Functional-group tints, in the app's own hue language: operators
@@ -2051,9 +2051,9 @@
                 height: 48px;
             }
 
-            /* Eight tab chips on one line on a phone: tight padding and gap
-               (budgeted for 360-375px); wrap stays only as the safety net
-               for very narrow screens (~320px). */
+            /* Six tab chips on one line on a phone (x≔/ƒ≔ moved to the
+               input bar): room enough to keep them meaty; wrap stays only
+               as the safety net for very narrow screens (~320px). */
             .kb-tabs {
                 flex-wrap: wrap;
                 /* row-gap 6px if it ever wraps, column-gap 4px on the line */
@@ -2061,11 +2061,11 @@
             }
 
             .kb-tab {
-                padding: 6px 5px;
+                padding: 7px 8px;
             }
 
             .kb-tab-primary {
-                padding: 6px 9px;
+                padding: 7px 12px;
             }
         }
 
