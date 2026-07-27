@@ -2092,17 +2092,71 @@ fn pow_rat_nonneg(base: &BigRational, k: i64) -> BigRational {
     acc
 }
 
+/// `(radicand, n)` for the `n`-th-root spellings this module prices by
+/// enclosure: `sqrt(u)` / `u^(1/2)` (n = 2), `cbrt(u)` (n = 3), and
+/// `u^(1/q)` for small integer `q`.
+fn as_root_like(ctx: &Context, expr: ExprId) -> Option<(ExprId, u32)> {
+    if let Some(radicand) = as_sqrt_like(ctx, expr) {
+        return Some((radicand, 2));
+    }
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Cbrt) && args.len() == 1 =>
+        {
+            Some((args[0], 3))
+        }
+        Expr::Pow(base, exp) => {
+            let e = crate::numeric_eval::as_rational_const(ctx, *exp)?;
+            if *e.numer() != 1.into() {
+                return None;
+            }
+            let q = e.denom().to_u32()?;
+            ((2..=6).contains(&q)).then_some((*base, q))
+        }
+        _ => None,
+    }
+}
+
+/// Rational enclosure of the real `n`-th root of `q ≥ 0` at six decimal
+/// digits: `lo ≤ ⁿ√q ≤ hi` via floor integer roots of the scaled radicand
+/// (`ⁿ√(a/d) = ⁿ√(a·dⁿ⁻¹)/d`) — exact BigInt arithmetic, never an f64.
+fn nth_root_enclosure(q: &BigRational, n: u32) -> Option<(BigRational, BigRational)> {
+    if q.is_negative() || n < 2 {
+        return None;
+    }
+    let scale = BigInt::from(10u32).pow(6);
+    let inner = q.numer()
+        * num_traits::pow(q.denom().clone(), (n - 1) as usize)
+        * num_traits::pow(scale.clone(), n as usize);
+    let root = inner.nth_root(n);
+    let denom = q.denom() * &scale;
+    Some((
+        BigRational::new(root.clone(), denom.clone()),
+        BigRational::new(root + 1, denom),
+    ))
+}
+
 /// PROVABLE rational lower/upper bounds for a CONSTANT expression built from rationals, `e`, `π`,
-/// and their sums, differences, products, positive-integer powers, and division by a positive
-/// rational. The constant bounds `2.718 < e < 2.719` and `3.141 < π < 3.142` are exact mathematical
-/// facts and interval arithmetic preserves enclosure, so a comparison decided by these bounds is
+/// `n`-th roots of nonnegative constants, and their sums, differences, products, positive-integer
+/// powers, and division by an interval excluding zero. The constant bounds `2.718 < e < 2.719` and
+/// `3.141 < π < 3.142` are exact mathematical facts, root enclosures come from exact integer
+/// roots, and interval arithmetic preserves enclosure, so a comparison decided by these bounds is
 /// EXACT (never an f64 estimate). `None` for any shape outside this grammar (a free variable, a
-/// negative-base power, division by a non-positive value, …).
+/// negative-base power, a negative radicand, division by an interval containing zero, …).
 fn rational_bounds(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
     use crate::numeric_eval::as_rational_const;
     let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
     if let Some(v) = as_rational_const(ctx, expr) {
         return Some((v.clone(), v));
+    }
+    if let Some((radicand, n)) = as_root_like(ctx, expr) {
+        let (lo, hi) = rational_bounds(ctx, radicand)?;
+        if lo.is_negative() {
+            return None; // conservative: only real roots of provably-nonnegative radicands
+        }
+        let (root_lo, _) = nth_root_enclosure(&lo, n)?;
+        let (_, root_hi) = nth_root_enclosure(&hi, n)?;
+        return Some((root_lo, root_hi));
     }
     match ctx.get(expr) {
         Expr::Constant(Constant::E) => Some((r(2718, 1000), r(2719, 1000))),
@@ -3113,6 +3167,41 @@ mod tests {
         // A radicand that is provably NEGATIVE (`e − π < 0`) is not a real surd → decline (keep).
         let mixed = parse("sqrt(e - pi)", &mut ctx).expect("sqrt(e-pi)");
         assert_eq!(provable_sign_vs_zero_const_radicand(&ctx, mixed), None);
+    }
+
+    #[test]
+    fn provable_const_bounds_price_root_enclosures() {
+        use std::cmp::Ordering;
+        let mut ctx = Context::new();
+        let one = BigRational::from_integer(1.into());
+        // sqrt(2) > 1 and sqrt(2)/e < 1: the root enclosure composes with the
+        // e/π interval bounds inside quotients (the exponential-base gates).
+        let root = parse("sqrt(2)", &mut ctx).expect("sqrt(2)");
+        assert_eq!(
+            provable_const_minus_rational_sign(&ctx, root, &one),
+            Some(Ordering::Greater)
+        );
+        let ratio = parse("sqrt(2)/e", &mut ctx).expect("sqrt(2)/e");
+        assert_eq!(
+            provable_const_minus_rational_sign(&ctx, ratio, &one),
+            Some(Ordering::Less)
+        );
+        // cbrt(9) = 2.0800… > 2, via the generic n-th-root enclosure.
+        let cbrt = parse("cbrt(9)", &mut ctx).expect("cbrt(9)");
+        assert_eq!(
+            provable_const_minus_rational_sign(&ctx, cbrt, &BigRational::from_integer(2.into())),
+            Some(Ordering::Greater)
+        );
+        // 5^(1/4) = 1.4953… < 3/2: a tight margin, but far above the
+        // six-digit enclosure width.
+        let fourth = parse("5^(1/4)", &mut ctx).expect("5^(1/4)");
+        assert_eq!(
+            provable_const_minus_rational_sign(&ctx, fourth, &BigRational::new(3.into(), 2.into())),
+            Some(Ordering::Less)
+        );
+        // A provably negative radicand is not a real root: bounds decline.
+        let neg = parse("sqrt(2 - pi)", &mut ctx).expect("sqrt(2-pi)");
+        assert_eq!(provable_const_minus_rational_sign(&ctx, neg, &one), None);
     }
 
     #[test]

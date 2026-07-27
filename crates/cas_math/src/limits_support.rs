@@ -2310,7 +2310,13 @@ fn apply_finite_general_exp_zero_quotient_rule(
     };
 
     let (scale, base, exponent) = scaled_general_power_zero_offset(ctx, num)?;
-    if !base.is_positive() || base.is_one() {
+    // The natural base stays with apply_finite_exp_zero_quotient_rule (which
+    // gives the cleaner 1 instead of ln(e)); any other base — rational or
+    // provable-constant like π — must be provably positive and != 1.
+    if matches!(ctx.get(base), Expr::Constant(Constant::E)) {
+        return None;
+    }
+    if constant_base_vs_one(ctx, base)? == std::cmp::Ordering::Equal {
         return None;
     }
     let exponent_poly = Polynomial::from_expr(ctx, exponent, &var_name).ok()?;
@@ -2326,8 +2332,7 @@ fn apply_finite_general_exp_zero_quotient_rule(
     if ratio.is_zero() {
         return Some(ctx.num(0));
     }
-    let base_expr = ctx.add(Expr::Number(base));
-    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base_expr]);
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
     if ratio.is_one() {
         return Some(ln_base);
     }
@@ -2359,9 +2364,12 @@ fn apply_finite_general_exp_ratio_rule(
         return None;
     };
     // (rational coefficient, base) of the first-order term scale*slope*ln(base).
-    let first_order = |ctx: &mut Context, side: ExprId| -> Option<(BigRational, BigRational)> {
+    // The base may be rational OR a provable-positive constant != 1 (π, e,
+    // e/π, sqrt(2), …): `a^g - 1 ~ g ln a` needs nothing more than `a > 0`,
+    // and `a != 1` keeps both first-order coefficients nonzero.
+    let first_order = |ctx: &mut Context, side: ExprId| -> Option<(BigRational, ExprId)> {
         let (scale, base, exponent) = scaled_general_power_zero_offset(ctx, side)?;
-        if !base.is_positive() || base.is_one() {
+        if constant_base_vs_one(ctx, base)? == std::cmp::Ordering::Equal {
             return None;
         }
         let exp_poly = Polynomial::from_expr(ctx, exponent, &var_name).ok()?;
@@ -2380,13 +2388,11 @@ fn apply_finite_general_exp_ratio_rule(
     // result = (num_coeff / den_coeff) * ln(num_base) / ln(den_base).
     let rational = &num_coeff / &den_coeff;
     // Equal bases: ln(a)/ln(a) = 1, so the limit is the bare rational ratio.
-    if num_base == den_base {
+    if structurally_equal_expr(ctx, num_base, den_base) {
         return Some(ctx.add(Expr::Number(rational)));
     }
-    let num_base_expr = ctx.add(Expr::Number(num_base));
-    let num_log = ctx.call_builtin(BuiltinFn::Ln, vec![num_base_expr]);
-    let den_base_expr = ctx.add(Expr::Number(den_base));
-    let den_log = ctx.call_builtin(BuiltinFn::Ln, vec![den_base_expr]);
+    let num_log = ctx.call_builtin(BuiltinFn::Ln, vec![num_base]);
+    let den_log = ctx.call_builtin(BuiltinFn::Ln, vec![den_base]);
     let log_ratio = ctx.add(Expr::Div(num_log, den_log));
     if rational.is_one() {
         Some(log_ratio)
@@ -2396,30 +2402,37 @@ fn apply_finite_general_exp_ratio_rule(
     }
 }
 
-/// Recognize `scale * (a^(g) - 1)` with `a` a numeric base; returns
-/// `(scale, a, g)`. Handles the Sub and Add(-1) offset forms, a numeric
-/// scale factor, and a negation.
+/// Recognize `scale * (a^(g) - 1)` with `a` ANY power base (callers gate the
+/// base — rational, or provable-constant like `π`); returns `(scale, a, g)`.
+/// Handles the Sub and Add(-1) offset forms, a numeric scale factor, and a
+/// negation.
 fn scaled_general_power_zero_offset(
     ctx: &Context,
     expr: ExprId,
-) -> Option<(BigRational, BigRational, ExprId)> {
+) -> Option<(BigRational, ExprId, ExprId)> {
+    let power_parts = |ctx: &Context, e: ExprId| -> Option<(ExprId, ExprId)> {
+        match ctx.get(e) {
+            Expr::Pow(base, exponent) => Some((*base, *exponent)),
+            _ => None,
+        }
+    };
     match ctx.get(expr).clone() {
         Expr::Sub(lhs, rhs) if expr_is_one(ctx, rhs) => {
-            let (base, exponent) = numeric_base_power(ctx, lhs)?;
+            let (base, exponent) = power_parts(ctx, lhs)?;
             Some((rational_one(), base, exponent))
         }
         // 1 - a^g = -(a^g - 1).
         Expr::Sub(lhs, rhs) if expr_is_one(ctx, lhs) => {
-            let (base, exponent) = numeric_base_power(ctx, rhs)?;
+            let (base, exponent) = power_parts(ctx, rhs)?;
             Some((-rational_one(), base, exponent))
         }
         Expr::Add(lhs, rhs) => {
             if constant_rational_value(ctx, rhs).is_some_and(|v| v == -rational_one()) {
-                let (base, exponent) = numeric_base_power(ctx, lhs)?;
+                let (base, exponent) = power_parts(ctx, lhs)?;
                 return Some((rational_one(), base, exponent));
             }
             if constant_rational_value(ctx, lhs).is_some_and(|v| v == -rational_one()) {
-                let (base, exponent) = numeric_base_power(ctx, rhs)?;
+                let (base, exponent) = power_parts(ctx, rhs)?;
                 return Some((rational_one(), base, exponent));
             }
             None
@@ -7828,6 +7841,9 @@ fn linear_exp_tail_sign(
         Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
             linear_argument_tail_sign(ctx, exp, var, approach)
         }
+        Expr::Pow(_, _) => {
+            general_base_pow_tail_sign(ctx, expr, var, approach, linear_argument_tail_sign)
+        }
         _ => None,
     }
 }
@@ -7847,7 +7863,43 @@ fn polynomial_exp_tail_sign(
         Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
             polynomial_argument_tail_sign(ctx, exp, var, approach)
         }
+        Expr::Pow(_, _) => {
+            general_base_pow_tail_sign(ctx, expr, var, approach, polynomial_argument_tail_sign)
+        }
         _ => None,
+    }
+}
+
+/// Tail sign of a general constant-base exponential `b^u` (`b` var-free and
+/// provably positive with a provable position against 1): `b^u = e^(u·ln b)`,
+/// so it follows `u`'s tail for `b > 1` and flips it for `0 < b < 1`. Keeps
+/// the exp-tail contract — `Pos` means the atom diverges to `+inf`, `Neg`
+/// means it decays to `0⁺` — so every consumer of the e-only classifiers
+/// (dominance, log-of-exp, hierarchy) inherits provable bases like `π` or
+/// `sqrt(2)` unchanged. Declines when the base-vs-1 comparison is unprovable
+/// or the base is exactly 1.
+fn general_base_pow_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+    argument_tail: fn(&Context, ExprId, ExprId, InfSign) -> Option<InfSign>,
+) -> Option<InfSign> {
+    let Expr::Pow(base, exponent) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if depends_on(ctx, base, var) {
+        return None;
+    }
+    let base_vs_one = constant_base_vs_one(ctx, base)?;
+    let tail = argument_tail(ctx, exponent, var, approach)?;
+    match base_vs_one {
+        std::cmp::Ordering::Greater => Some(tail),
+        std::cmp::Ordering::Less => Some(match tail {
+            InfSign::Pos => InfSign::Neg,
+            InfSign::Neg => InfSign::Pos,
+        }),
+        std::cmp::Ordering::Equal => None,
     }
 }
 
@@ -9836,7 +9888,13 @@ fn polynomial_times_decaying_exponential_at_infinity(
     for (poly_cand, exp_cand) in [(lhs, rhs), (rhs, lhs)] {
         let is_polynomial =
             Polynomial::from_expr(ctx, poly_cand, &var_name).is_ok_and(|p| p.degree() >= 1);
-        if !is_polynomial || numeric_base_power(ctx, exp_cand).is_none() {
+        // The exponential factor: any Pow with a var-free base (rational or
+        // provable like π); the general-base rule below decides its decay.
+        let is_constant_base_pow = matches!(
+            ctx.get(exp_cand),
+            Expr::Pow(base, _) if !depends_on(ctx, *base, var)
+        );
+        if !is_polynomial || !is_constant_base_pow {
             continue;
         }
         // The exponential factor must DECAY (limit 0) so it dominates the poly.
@@ -13791,13 +13849,20 @@ mod tests {
         let x = parse_expr(&mut ctx, "x");
         let zero = parse_expr(&mut ctx, "0");
         let one = parse_expr(&mut ctx, "1");
-        for source in ["(2^x-1)/sin(x)", "(2^x-1)/x", "(exp(x)-1)/(2^x-1)"] {
+        for source in ["(2^x-1)/sin(x)", "(2^x-1)/x"] {
             let expr = parse_expr(&mut ctx, source);
             assert!(
                 apply_finite_general_exp_ratio_rule(&mut ctx, expr, x, zero).is_none(),
                 "exp ratio must decline: {source}"
             );
         }
+        // The natural base is a PROVABLE base like any other: exp(x)
+        // normalizes to e^x and the ratio resolves to ln(e)/ln(2) (folded
+        // to 1/ln(2) downstream) — the rational-only decline is history.
+        let expr = parse_expr(&mut ctx, "(exp(x)-1)/(2^x-1)");
+        let out = apply_finite_general_exp_ratio_rule(&mut ctx, expr, x, zero)
+            .expect("natural-base ratio resolves");
+        assert_eq!(display_expr(&ctx, out), "ln(e) / ln(2)");
         let expr = parse_expr(&mut ctx, "(3^x-1)/(2^x-1)");
         assert!(
             apply_finite_general_exp_ratio_rule(&mut ctx, expr, x, one).is_none(),
@@ -13845,6 +13910,45 @@ mod tests {
         assert!(
             apply_finite_general_exp_zero_quotient_rule(&mut ctx, exp_form, x, zero).is_none(),
             "natural base is left to the exp rule"
+        );
+    }
+
+    #[test]
+    fn finite_general_exp_rules_accept_provable_bases() {
+        // (a^g - 1)/h with a provable constant base: the first-order
+        // equivalent a^g - 1 ~ g·ln(a) needs only a provably positive
+        // base != 1 (π, sqrt(2)) — never a rational-only base.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        for (source, expected) in [
+            ("(pi^x - 1)/x", "ln(pi)"),
+            ("(pi^(2*x) - 1)/x", "2 * ln(pi)"),
+            ("(1 - pi^x)/x", "-ln(pi)"),
+            ("(sqrt(2)^x - 1)/x", "ln(sqrt(2))"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_finite(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("provable-base quotient must resolve: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+        // Ratio form: the natural base is allowed on a ratio side (ln(e)
+        // folds to 1 downstream), closing (π^x-1)/(e^x-1) -> ln(π).
+        let ratio = parse_expr(&mut ctx, "(pi^x - 1)/(e^x - 1)");
+        let out = apply_finite_general_exp_ratio_rule(&mut ctx, ratio, x, zero)
+            .expect("provable-base ratio");
+        assert_eq!(display_expr(&ctx, out), "ln(pi) / ln(e)");
+        // Same provable base on both sides: the logs cancel exactly.
+        let same = parse_expr(&mut ctx, "(pi^(2*x) - 1)/(pi^x - 1)");
+        let out = apply_finite_general_exp_ratio_rule(&mut ctx, same, x, zero)
+            .expect("same provable base ratio");
+        assert_eq!(display_expr(&ctx, out), "2");
+        // A disguised unit base declines: 2e/(e+e) = 1 unsimplified has no
+        // provable position against 1, so no ln coefficient is emitted.
+        let disguised = parse_expr(&mut ctx, "((2*e/(e+e))^x - 1)/x");
+        assert!(
+            apply_finite_general_exp_zero_quotient_rule(&mut ctx, disguised, x, zero).is_none(),
+            "unprovable base must decline"
         );
     }
 
@@ -17817,6 +17921,41 @@ mod tests {
         assert!(
             try_limit_rules_at_infinity(&mut ctx, unit, x, InfSign::Pos).is_none(),
             "unprovable base-vs-1 must decline"
+        );
+    }
+
+    #[test]
+    fn provable_constant_base_dominance_at_infinity() {
+        // The e-only exp-tail classifiers accept provable constant bases:
+        // π^x beats any polynomial, (e/π)^x and π^(-x) decay against any
+        // polynomial factor, and the root-enclosure arm proves sqrt(2) > 1
+        // (closing sqrt(2)^x growth and the sqrt(2)^x/e^x ratio).
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("x^5/pi^x", "0"),
+            ("pi^x/x^5", "infinity"),
+            ("x^4*(e/pi)^x", "0"),
+            ("x^3*pi^(-x)", "0"),
+            ("sqrt(2)^x", "infinity"),
+            ("sqrt(2)^x/e^x", "0"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve at +inf: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+        // At -infinity π^x decays, so the polynomial product still dies.
+        let product = parse_expr(&mut ctx, "x^5*pi^x");
+        let out = try_limit_rules_at_infinity(&mut ctx, product, x, InfSign::Neg)
+            .expect("x^5*pi^x at -inf");
+        assert_eq!(display_expr(&ctx, out), "0");
+        // A disguised unit base (2e/(e+e) = 1 unsimplified) stays residual:
+        // its bounds straddle 1, so no growth class is provable.
+        let disguised = parse_expr(&mut ctx, "x^5/(2*e/(e+e))^x");
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, disguised, x, InfSign::Pos).is_none(),
+            "unprovable base must keep the quotient residual"
         );
     }
 
