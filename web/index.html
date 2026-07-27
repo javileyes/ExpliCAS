@@ -1050,17 +1050,55 @@
             color: var(--text-primary);
         }
 
+        /* The input lives inside a relative wrapper so the ✕ clear button can
+           overlay its right edge (search-field pattern); the wrapper carries
+           the flex sizing the input used to have. */
+        .input-clear-wrap {
+            position: relative;
+            display: flex;
+            flex: 1;
+            min-width: 0;
+        }
+
         .input-field {
             flex: 1;
+            width: 100%;
+            min-width: 0;
             background: var(--input-bg);
             border: 2px solid var(--border);
             border-radius: 10px;
-            padding: 12px 20px;
+            padding: 12px 42px 12px 20px;
             color: var(--text-primary);
             font-family: 'Fira Code', 'Consolas', monospace;
             font-size: 1.1em;
             outline: none;
             transition: border-color 0.2s;
+        }
+
+        .input-clear-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.0em;
+            line-height: 1;
+            padding: 6px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: none;
+        }
+
+        .input-clear-btn:hover {
+            color: var(--text-primary);
+            background: rgba(233, 69, 96, 0.15);
+        }
+
+        /* Only shown while there is something to clear. */
+        .input-field:not(:placeholder-shown)+.input-clear-btn {
+            display: block;
         }
 
         .input-field:focus {
@@ -1202,7 +1240,7 @@
                 display: flex;
             }
 
-            .input-field {
+            .input-clear-wrap {
                 flex: 1 1 100%;
                 order: -1;
             }
@@ -1237,7 +1275,7 @@
                 min-width: 0;
             }
 
-            .input-field {
+            .input-clear-wrap {
                 flex: 1 1 320px;
             }
         }
@@ -1790,7 +1828,7 @@
             border: 1px solid var(--border);
             color: var(--text-secondary);
             border-radius: 8px;
-            padding: 7px 13px;
+            padding: 6px 10px;
             font-size: 0.9em;
             font-weight: 700;
             font-family: 'Fira Code', 'Consolas', monospace;
@@ -1799,6 +1837,12 @@
             -webkit-user-select: none;
             touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
+        }
+
+        /* The three main layer tabs keep a bit more presence than the
+           reference/action chips. */
+        .kb-tab-primary {
+            padding: 6px 12px;
         }
 
         .kb-tab.active {
@@ -1919,6 +1963,67 @@
             color: var(--accent);
         }
 
+        /* Declarations layers (x≔ / ƒ≔): one row per binding — the name chip
+           INSERTS, the trash deletes (same plumbing as the header panels). */
+        .kb-decl-list {
+            max-height: 264px;
+            overflow-y: auto;
+            margin-top: 6px;
+        }
+
+        .kb-decl-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .kb-decl-row .kb-key {
+            flex: 0 0 auto;
+            min-width: 64px;
+            max-width: 45%;
+            padding: 0 14px;
+            height: 40px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .kb-decl-preview {
+            flex: 1;
+            min-width: 0;
+            color: var(--text-secondary);
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85em;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .kb-decl-del {
+            flex-shrink: 0;
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            opacity: 0.7;
+            transition: all 0.2s;
+        }
+
+        .kb-decl-del:hover {
+            opacity: 1;
+            background: rgba(239, 68, 68, 0.15);
+        }
+
+        .kb-decl-empty {
+            color: var(--text-secondary);
+            font-style: italic;
+            padding: 16px 6px;
+        }
+
         @media (max-width: 720px) {
             .kb-toggle-btn {
                 height: 48px;
@@ -1926,6 +2031,27 @@
 
             .kb-key {
                 height: 48px;
+            }
+
+            /* Eight tab chips on one line on a phone: tight padding and gap
+               (budgeted for 360-375px); wrap stays only as the safety net
+               for very narrow screens (~320px). */
+            .kb-tabs {
+                flex-wrap: wrap;
+                /* row-gap 6px if it ever wraps, column-gap 4px on the line */
+                gap: 6px 4px;
+            }
+
+            .kb-tab {
+                padding: 6px 5px;
+            }
+
+            .kb-tab-primary {
+                padding: 6px 9px;
+            }
+
+            .kb-decl-row .kb-key {
+                height: 44px;
             }
         }
 
@@ -2177,8 +2303,13 @@
                     <option value="decimal">decimal</option>
                 </select>
             </label>
-            <input type="text" class="input-field" id="expression-input"
-                data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
+            <span class="input-clear-wrap">
+                <input type="text" class="input-field" id="expression-input"
+                    data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
+                <button type="button" class="input-clear-btn" id="input-clear-btn" tabindex="-1"
+                    data-i18n-aria="input.clear.aria_label" aria-label="Limpiar la expresión"
+                    data-i18n-title="input.clear.title" title="Limpiar la expresión">✕</button>
+            </span>
             <button type="button" class="kb-toggle-btn" id="kb-toggle-btn"
                 data-i18n-aria="kb.toggle.aria_label" aria-label="Mostrar u ocultar el teclado de cálculo"
                 data-i18n-title="kb.toggle.title" title="Teclado de cálculo en pantalla">
@@ -2202,9 +2333,13 @@
         <!-- On-screen math keypad: layers are rendered by kbRefresh() -->
         <div class="kb-panel" id="kb-panel">
             <div class="kb-tabs" id="kb-tabs">
-                <button type="button" class="kb-tab active" data-kbtab="num">123</button>
-                <button type="button" class="kb-tab" data-kbtab="fn">f(x)</button>
-                <button type="button" class="kb-tab" data-kbtab="abc">αβγ</button>
+                <button type="button" class="kb-tab kb-tab-primary active" data-kbtab="num">123</button>
+                <button type="button" class="kb-tab kb-tab-primary" data-kbtab="fn">f(x)</button>
+                <button type="button" class="kb-tab kb-tab-primary" data-kbtab="abc">αβγ</button>
+                <button type="button" class="kb-tab" data-kbtab="vars"
+                    data-i18n-title="kb.vars.title" title="Variables declaradas con := — tocar para insertar">x≔</button>
+                <button type="button" class="kb-tab" data-kbtab="fns"
+                    data-i18n-title="kb.fns.title" title="Funciones definidas con := — tocar para insertar">ƒ≔</button>
                 <span class="kb-tabs-spacer"></span>
                 <button type="button" class="kb-tab" id="kb-ref-btn"
                     data-i18n-title="kb.ref.title" title="Referencia a una celda: escribe el número a continuación (p. ej. #3)">#</button>
@@ -2415,6 +2550,12 @@
                         "input.numeric_display.label": "Números",
                         "input.expression.placeholder": "Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))",
                         "input.submit.label": "Evaluar",
+                        "input.clear.title": "Limpiar la expresión",
+                        "input.clear.aria_label": "Limpiar la expresión",
+                        "kb.vars.title": "Variables declaradas con := — tocar para insertar",
+                        "kb.vars.empty": "Aún no hay variables — prueba b3 := 5",
+                        "kb.fns.title": "Funciones definidas con := — tocar para insertar",
+                        "kb.fns.empty": "Aún no hay funciones — prueba g(x) := x^2",
                         "variables_panel.title": "📦 Variables asignadas",
                         "variables_panel.empty": "Aún no hay variables asignadas",
                         "functions_panel.title": "𝑓 Funciones definidas",
@@ -2521,6 +2662,12 @@
                         "input.numeric_display.label": "Numbers",
                         "input.expression.placeholder": "Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))",
                         "input.submit.label": "Evaluate",
+                        "input.clear.title": "Clear the expression",
+                        "input.clear.aria_label": "Clear the expression",
+                        "kb.vars.title": "Variables declared with := — tap to insert",
+                        "kb.vars.empty": "No variables yet — try a := 5",
+                        "kb.fns.title": "Functions defined with := — tap to insert",
+                        "kb.fns.empty": "No functions yet — try g(x) := x^2",
                         "variables_panel.title": "📦 Assigned Variables",
                         "variables_panel.empty": "No variables assigned yet",
                         "functions_panel.title": "𝑓 Defined Functions",
@@ -3393,6 +3540,9 @@
             } else {
                 badge.style.display = 'none';
             }
+            // Keep the keypad's x≔ layer live: every binding change funnels
+            // through this badge updater (assign, delete, import, clear).
+            kbRefreshIfDeclarations();
         }
 
         // Show variables panel overlay
@@ -3478,6 +3628,8 @@
             } else {
                 badge.style.display = 'none';
             }
+            // Mirror of updateVariablesBadge: keeps the ƒ≔ layer live.
+            kbRefreshIfDeclarations();
         }
 
         function showFunctionsPanel() {
@@ -4419,6 +4571,8 @@
                 html = KB_NUM_ROWS.map(row => `<div class="kb-row">${row.map(kbKeyButton).join('')}</div>`).join('');
             } else if (kbLayer === 'fn') {
                 html = KB_FN_ROWS.map(row => `<div class="kb-row">${row.map(kbKeyButton).join('')}</div>`).join('');
+            } else if (kbLayer === 'vars' || kbLayer === 'fns') {
+                html = kbRenderDeclarations(kbLayer === 'vars');
             } else {
                 const rows = KB_ABC_ROWS.map(row => row.map(k => {
                     if (typeof k === 'string') {
@@ -4450,6 +4604,51 @@
                 b.classList.toggle('active', b.dataset.kbtab === kbLayer);
             });
             kbSyncPadding();
+        }
+
+        // Declarations layers: one row per `:=` binding. The name chip is a
+        // regular kb-key (tap INSERTS: the bare name for a variable, the
+        // call template with the first parameter selected for a function);
+        // the trash reuses the SAME delete plumbing as the header panels.
+        function kbRenderDeclarations(isVars) {
+            const entries = isVars
+                ? Object.keys(sessionVariables).map(name => ({ name, preview: `= ${sessionVariables[name]}` }))
+                : Object.keys(sessionFunctions).map(name => {
+                    const fn = sessionFunctions[name] || {};
+                    const params = fn.params || [];
+                    return {
+                        name,
+                        params,
+                        preview: `${name}(${params.join(', ')}) := ${fn.display || ''}`
+                    };
+                });
+
+            if (entries.length === 0) {
+                return `<div class="kb-decl-empty">${escapeHtml(t(isVars ? 'kb.vars.empty' : 'kb.fns.empty'))}</div>`;
+            }
+
+            return `<div class="kb-decl-list">${entries.map(e => {
+                const spec = isVars
+                    ? { l: e.name, i: e.name, g: 'var', title: e.preview }
+                    : {
+                        l: `${e.name}(…)`,
+                        tpl: `${e.name}(${e.params.join(', ')})`,
+                        h: e.params.length ? [e.params[0]] : [],
+                        g: 'fn',
+                        title: e.preview
+                    };
+                return `<div class="kb-decl-row">
+                    ${kbKeyButton(spec)}
+                    <span class="kb-decl-preview">${escapeHtml(e.preview)}</span>
+                    <button type="button" class="kb-decl-del" data-kind="${isVars ? 'var' : 'fn'}" data-name="${escapeHtml(e.name)}" title="${escapeHtml(t(isVars ? 'card.delete_variable' : 'card.delete_function'))}">🗑️</button>
+                </div>`;
+            }).join('')}</div>`;
+        }
+
+        // Re-render an OPEN declarations layer when bindings change (assign,
+        // delete, import, clear) — hooked from the badge updaters.
+        function kbRefreshIfDeclarations() {
+            if (window.__kbReady && (kbLayer === 'vars' || kbLayer === 'fns')) kbRefresh();
         }
 
         // --- caret-preserving edit primitives ---------------------------
@@ -4610,6 +4809,15 @@
         });
 
         kbPanel.addEventListener('click', (ev) => {
+            const del = ev.target.closest('.kb-decl-del');
+            if (del) {
+                if (del.dataset.kind === 'var') deleteVariableCard(del.dataset.name);
+                else deleteFunctionCard(del.dataset.name);
+                // State mutates synchronously; the badge hook re-renders too,
+                // this is the belt-and-braces for the open layer.
+                kbRefresh();
+                return;
+            }
             const tab = ev.target.closest('.kb-tab[data-kbtab]');
             if (tab) {
                 kbLayer = tab.dataset.kbtab;
@@ -4679,6 +4887,15 @@
         // The ⚙️ options fold changes the bar height while the keypad is open.
         document.getElementById('options-toggle').addEventListener('click', () => {
             setTimeout(kbSyncPadding, 0);
+        });
+
+        // ✕ clears the input without surrendering focus (the CSS shows the
+        // button only while there is text to clear).
+        const kbClearBtn = document.getElementById('input-clear-btn');
+        kbClearBtn.addEventListener('pointerdown', (ev) => ev.preventDefault());
+        kbClearBtn.addEventListener('click', () => {
+            input.value = '';
+            input.focus();
         });
 
         function kbSyncToViewport() {
