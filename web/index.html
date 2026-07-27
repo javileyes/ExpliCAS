@@ -2637,6 +2637,7 @@
                         "kb.matrix.title": "Matriz 2×2: cada fila entre corchetes — [[a, b], [c, d]]",
                         "kb.assign.title": "Asignación: a := 5 guarda una variable; g(x) := x^2 define una función",
                         "kb.defint.title": "Integral definida entre a y b",
+                        "kb.factorial.title": "Factorial (postfijo): 5! = 120",
                         "kb.hide.title": "Ocultar teclado",
                         "header.fullscreen.title": "Pantalla completa",
                         "header.fullscreen.exit_title": "Salir de pantalla completa",
@@ -2749,6 +2750,7 @@
                         "kb.matrix.title": "2×2 matrix: each row in brackets — [[a, b], [c, d]]",
                         "kb.assign.title": "Assignment: a := 5 stores a variable; g(x) := x^2 defines a function",
                         "kb.defint.title": "Definite integral from a to b",
+                        "kb.factorial.title": "Factorial (postfix): 5! = 120",
                         "kb.hide.title": "Hide keypad",
                         "header.fullscreen.title": "Full screen",
                         "header.fullscreen.exit_title": "Exit full screen",
@@ -4562,7 +4564,7 @@
 
         const KB_FN_ROWS = [
             [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'trig' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'trig' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'trig' }, { l: 'arcsin', f: 'arcsin', c: 'kb-key-xs', g: 'trig' }, { l: 'arccos', f: 'arccos', c: 'kb-key-xs', g: 'trig' }, { l: 'arctan', f: 'arctan', c: 'kb-key-xs', g: 'trig' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
-            [{ l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: 'log10', f: 'log10', c: 'kb-key-xs', g: 'fn' }, { l: 'log2', f: 'log2', c: 'kb-key-xs', g: 'fn' }, { l: 'eˣ', f: 'exp', c: 'kb-key-sm', g: 'fn' }, { l: '√', f: 'sqrt', g: 'fn' }, { l: 'ⁿ√', tpl: 'root(expr, n)', h: ['expr', 'n'], g: 'fn' }, { l: '|x|', f: 'abs', c: 'kb-key-sm', g: 'fn' }],
+            [{ l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: 'log10', f: 'log10', c: 'kb-key-xs', g: 'fn' }, { l: 'log2', f: 'log2', c: 'kb-key-xs', g: 'fn' }, { l: 'eˣ', f: 'exp', c: 'kb-key-sm', g: 'fn' }, { l: '!', i: '!', g: 'fn', t: 'kb.factorial.title' }, { l: 'ⁿ√', tpl: 'root(expr, n)', h: ['expr', 'n'], g: 'fn' }, { l: '|x|', f: 'abs', c: 'kb-key-sm', g: 'fn' }],
             [{ l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'calc' }, { l: '∫ₐᵇ', tpl: 'integrate(expr, x, a, b)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc', t: 'kb.defint.title' }, { l: 'lim', tpl: 'limit(expr, x, a)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc' }, { l: 'Σ', tpl: 'sum(expr, k, a, b)', h: ['expr', 'k'], g: 'calc' }, { l: 'taylor', tpl: 'taylor(expr, x, a, n)', h: ['expr', 'x'], c: 'kb-key-xs', g: 'calc' }, { l: 'dsolve', tpl: 'dsolve(diff(y,x) = f, y, x)', h: ['f'], c: 'kb-key-xs', g: 'calc' }],
             [{ l: 'solve', tpl: 'solve(eq, x)', h: ['eq', 'x'], c: 'kb-key-xs', g: 'alg' }, { l: 'simplify', f: 'simplify', c: 'kb-key-xs', g: 'alg' }, { l: 'factor', f: 'factor', c: 'kb-key-xs', g: 'alg' }, { l: 'expand', f: 'expand', c: 'kb-key-xs', g: 'alg' }, { l: 'equiv', tpl: 'equiv(expr1, expr2)', h: ['expr1', 'expr2'], c: 'kb-key-xs', g: 'alg' }, { l: '≈', f: 'approx', g: 'alg' }, { i: ',', g: 'op' }],
             [{ l: 'u·v', tpl: 'dot(u, v)', h: ['u', 'v'], c: 'kb-key-sm', g: 'vec', title: 'dot(u, v)' }, { l: 'u×v', tpl: 'cross(u, v)', h: ['u', 'v'], c: 'kb-key-sm', g: 'vec', title: 'cross(u, v)' }, { l: '‖v‖', tpl: 'norm(v)', h: ['v'], c: 'kb-key-sm', g: 'vec', title: 'norm(v)' }, { l: 'det', tpl: 'det(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'det(M)' }, { l: 'A⁻¹', tpl: 'inverse(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'inverse(M)' }, { l: 'Aᵀ', tpl: 'transpose(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'transpose(M)' }, { l: 'A·B', tpl: 'matmul(A, B)', h: ['A', 'B'], c: 'kb-key-sm', g: 'vec', title: 'matmul(A, B)' }],
