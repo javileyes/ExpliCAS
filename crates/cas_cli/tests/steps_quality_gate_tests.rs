@@ -1543,3 +1543,55 @@ fn verified_identity_narrations_reach_the_wire() {
         );
     }
 }
+
+/// C1.6, pinned on the audit's P0 witness (fila 26): the repeated-by-parts
+/// CLOSER used to publish `∫−2·sin(x)dx ⟹ 2x·sin(x) + (2−x²)·cos(x)` — the
+/// whole answer quoted as the integral of the last remaining term. The honest
+/// shape is two sub-steps: the closer integrates ITS OWN integrand, and a
+/// separate recomposition assembles the alternating boundary pieces into the
+/// engine's answer, published only when the equality is PROVED (expand + fold
+/// to exact zero, through the `__hold` the engine wraps its answer in).
+#[test]
+fn by_parts_closer_integrates_its_own_integrand() {
+    let wire = eval_wire_in("integrate(x^2*sin(x), x)", Language::Es)
+        .expect("the by-parts witness must evaluate");
+    let substeps: Vec<_> = wire
+        .steps
+        .iter()
+        .flat_map(|step| step.substeps.iter())
+        .collect();
+
+    let remaining = substeps
+        .iter()
+        .find(|sub| sub.title == "Integrar el término restante")
+        .expect("the remaining-term closer must narrate");
+    assert_eq!(
+        remaining.before, "integrate(-sin(x)·2, x)",
+        "closer must state the LAST remaining integral"
+    );
+    assert!(
+        !remaining.after.contains("sin("),
+        "the closer quoting a sin-term means the whole-answer lie is back"
+    );
+    assert_eq!(
+        remaining.after, "2 * cos(x)",
+        "the closer's after is the integral of ITS OWN integrand — quoting the \
+         final answer here is the audit's P0"
+    );
+
+    let recomposition = substeps
+        .iter()
+        .find(|sub| sub.title == "Recomponer las piezas de por partes")
+        .expect("the recomposition must narrate for the witness");
+    // RAW wire strings: the in-memory wire keeps display_expr's ` * ` inside
+    // the pieces while the assembler joins them with the file's `·`; the CLI's
+    // JSON emitter normalizes both to `·` before anything reaches a reader.
+    assert_eq!(
+        recomposition.before, "x^2·-cos(x) - 2 * x·-sin(x) + 2 * cos(x)",
+        "the recomposition assembles u0·v0 − u1·v1 + F"
+    );
+    assert_eq!(
+        recomposition.after, "2 * x * sin(x) + (2 - x^2) * cos(x)",
+        "only the recomposition lands on the engine's final antiderivative"
+    );
+}

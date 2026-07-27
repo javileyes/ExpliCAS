@@ -74,6 +74,10 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
             "Integrar el término restante",
             "Integrate the remaining term",
         ),
+        "by_parts.recompose" => (
+            "Recomponer las piezas de por partes",
+            "Recombine the by-parts pieces",
+        ),
         "partial_fractions.decompose" => ("Descomponer en fracciones parciales", "Decompose into partial fractions"),
         "rootsum.split_rational_part" => ("Separar la parte de raíces racionales", "Split off the rational-root part"),
         "rootsum.no_radicals" => ("Las raíces del denominador no son expresables por radicales: la primitiva se escribe como suma sobre las raíces del resolvente", "The denominator's roots are not expressible by radicals: the antiderivative is written as a sum over the resolvent's roots"),

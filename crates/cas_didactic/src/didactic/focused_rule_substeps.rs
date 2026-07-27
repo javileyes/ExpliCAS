@@ -1197,6 +1197,55 @@ fn expr_is_zero_in_context(ctx: &mut Context, expr: ExprId) -> bool {
     matches!(ctx.get(simplified), Expr::Number(n) if n.is_zero())
 }
 
+/// Re-add a tree through `Context::add` so every node passes canonical
+/// construction. `expand_ops::expand` builds RAW Mul nodes (`mul2_raw`), and a
+/// fold over them can strand a true zero as `2·cos(x) − cos(x)·2` — the same
+/// term in two operand orders the like-term combiner then misses. Internal
+/// holds are dropped on the way: this is a PROOF tree, not a display tree.
+fn deep_readd_canonical(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let node = ctx.get(expr).clone();
+    match node {
+        Expr::Add(l, r) => {
+            let l = deep_readd_canonical(ctx, l);
+            let r = deep_readd_canonical(ctx, r);
+            ctx.add(Expr::Add(l, r))
+        }
+        Expr::Sub(l, r) => {
+            let l = deep_readd_canonical(ctx, l);
+            let r = deep_readd_canonical(ctx, r);
+            ctx.add(Expr::Sub(l, r))
+        }
+        Expr::Mul(l, r) => {
+            let l = deep_readd_canonical(ctx, l);
+            let r = deep_readd_canonical(ctx, r);
+            ctx.add(Expr::Mul(l, r))
+        }
+        Expr::Div(l, r) => {
+            let l = deep_readd_canonical(ctx, l);
+            let r = deep_readd_canonical(ctx, r);
+            ctx.add(Expr::Div(l, r))
+        }
+        Expr::Pow(l, r) => {
+            let l = deep_readd_canonical(ctx, l);
+            let r = deep_readd_canonical(ctx, r);
+            ctx.add(Expr::Pow(l, r))
+        }
+        Expr::Neg(e) => {
+            let e = deep_readd_canonical(ctx, e);
+            ctx.add(Expr::Neg(e))
+        }
+        Expr::Hold(e) => deep_readd_canonical(ctx, e),
+        Expr::Function(fn_id, args) => {
+            let args = args
+                .iter()
+                .map(|arg| deep_readd_canonical(ctx, *arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        _ => expr,
+    }
+}
+
 fn generate_fraction_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let local_after = step.after_local().unwrap_or(step.after);
@@ -14045,6 +14094,14 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
     let mut current_elem = elem_factor;
     let mut core_display = display_expr(&scratch, integrand);
     let mut core_latex = latex_expr(&scratch, integrand);
+    // One entry per by-parts application: the boundary piece `u_k·v_k` as
+    // (display, latex, node). The recomposition needs them because the chain's
+    // identity is `∫p·e = u0·v0 − u1·v1 + u2·v2 − … ± ∫(last core)` — each
+    // level's apply_formula narrates only its LOCAL identity, so without the
+    // accumulated pieces the closing sub-step cannot state anything about the
+    // engine's final answer without lying (which is exactly what it used to do:
+    // the audit's `∫−2·sin(x)dx ⟹ 2x·sin(x) + (2−x²)·cos(x)`).
+    let mut outer_terms: Vec<(String, String, ExprId)> = Vec::new();
 
     // The degree strictly decreases each iteration, so this terminates; the cap
     // is a defensive backstop matching the engine's maximum supported degree.
@@ -14053,18 +14110,121 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
             return Vec::new();
         };
         if poly.degree() == 0 {
-            // current_poly is a constant: integrate the remaining elementary term
-            // directly, closing into the engine's final antiderivative.
-            substeps.push(
-                SubStep::keyed(
-                    "by_parts.integrate_remaining",
-                    vec![],
-                    format!("integrate({}, {})", core_display, var_name),
-                    display_expr(&scratch, after),
+            // current_poly is a constant: the remaining elementary integral is
+            // `∫ current_elem · current_poly`. The closer integrates ITS OWN
+            // integrand — the claim is checked, so a wrong table answer
+            // declines instead of publishing — and a separate RECOMPOSITION
+            // sub-step assembles the boundary pieces into the engine's answer,
+            // gated on exact equality. On any decline the per-level narration
+            // above stays (it is true on its own); only the closers are
+            // withheld.
+            let remaining_node = scratch.add(Expr::Mul(current_elem, current_poly));
+            let Some(remaining_antiderivative) =
+                cas_math::symbolic_integration_support::integrate_symbolic_expr(
+                    &mut scratch,
+                    remaining_node,
+                    var_name,
                 )
-                .with_before_latex(format!("\\int {}\\,d{}", core_latex, var_name))
-                .with_after_latex(latex_expr(&scratch, after)),
+            else {
+                return substeps;
+            };
+            let remaining_antiderivative =
+                simplify_expr_in_context(&mut scratch, remaining_antiderivative);
+            let Some(closer) = SubStep::checked(
+                &scratch,
+                crate::didactic::substep::claim::Claim::Antiderivative {
+                    var: var_name.to_string(),
+                },
+                remaining_node,
+                remaining_antiderivative,
+                "by_parts.integrate_remaining",
+                vec![],
+                format!("integrate({}, {})", core_display, var_name),
+                display_expr(&scratch, remaining_antiderivative),
+            ) else {
+                return substeps;
+            };
+            substeps.push(
+                closer
+                    .with_before_latex(format!("\\int {}\\,d{}", core_latex, var_name))
+                    .with_after_latex(latex_expr(&scratch, remaining_antiderivative)),
             );
+
+            if outer_terms.is_empty() {
+                return substeps;
+            }
+            // `∫p·e = u0·v0 − u1·v1 + u2·v2 − … + (−1)^n·F`, n = applications.
+            let mut assembled_node = outer_terms[0].2;
+            let mut assembled_display = outer_terms[0].0.clone();
+            let mut assembled_latex = outer_terms[0].1.clone();
+            for (k, (term_display, term_latex, term_node)) in outer_terms.iter().enumerate().skip(1)
+            {
+                assembled_node = if k % 2 == 1 {
+                    scratch.add(Expr::Sub(assembled_node, *term_node))
+                } else {
+                    scratch.add(Expr::Add(assembled_node, *term_node))
+                };
+                let sign = if k % 2 == 1 { " - " } else { " + " };
+                assembled_display = format!("{assembled_display}{sign}{term_display}");
+                assembled_latex = format!("{assembled_latex}{sign}{term_latex}");
+            }
+            let last_negated = outer_terms.len() % 2 == 1;
+            assembled_node = if last_negated {
+                scratch.add(Expr::Sub(assembled_node, remaining_antiderivative))
+            } else {
+                scratch.add(Expr::Add(assembled_node, remaining_antiderivative))
+            };
+            let closing_sign = if last_negated { " - " } else { " + " };
+            let closing_display =
+                group_display_for_product(&display_expr(&scratch, remaining_antiderivative));
+            let closing_latex =
+                group_latex_for_product(&latex_expr(&scratch, remaining_antiderivative));
+            assembled_display = format!("{assembled_display}{closing_sign}{closing_display}");
+            assembled_latex = format!("{assembled_latex}{closing_sign}{closing_latex}");
+
+            // STRICTLY gated on a proved equality, like the C3.1 linearity
+            // narrator: this sub-step claims to reproduce the ENGINE's answer
+            // from the assembled pieces, and an unproved "A = B" about the
+            // final answer is not narration this closer is entitled to. The
+            // difference is EXPANDED before folding — the engine publishes its
+            // antiderivative factored (`(2 − x²)·cos(x)`), and the default
+            // fold does not distribute, so a plain `decide_equality` leaves
+            // true recompositions undecided. Exact ZERO is required, not just
+            // a constant: two antiderivatives may differ by a constant, but
+            // the displayed pair asserts equality, and a non-zero offset would
+            // make it a lie.
+            // The engine's `after` arrives `__hold`-wrapped, and a hold is
+            // frozen for every rewriter — expand and simplify both leave
+            // `Sub(x, hold(y))` intact, so the proof must run on the unwrapped
+            // node (same dance as the linearity narrator above).
+            let mut compare_after = after;
+            loop {
+                let unwrapped = cas_ast::hold::unwrap_internal_hold(&scratch, compare_after);
+                if unwrapped == compare_after {
+                    break;
+                }
+                compare_after = unwrapped;
+            }
+            let difference = scratch.add(Expr::Sub(assembled_node, compare_after));
+            let expanded = cas_math::expand_ops::expand(&mut scratch, difference);
+            let expanded = deep_readd_canonical(&mut scratch, expanded);
+            let residual = simplify_expr_in_context(&mut scratch, expanded);
+            let recomposition_proved = matches!(
+                scratch.get(residual),
+                Expr::Number(n) if num_traits::Zero::is_zero(n)
+            );
+            if recomposition_proved {
+                substeps.push(
+                    SubStep::keyed(
+                        "by_parts.recompose",
+                        vec![],
+                        assembled_display,
+                        display_expr(&scratch, after),
+                    )
+                    .with_before_latex(assembled_latex)
+                    .with_after_latex(latex_expr(&scratch, after)),
+                );
+            }
             return substeps;
         }
 
@@ -14107,6 +14267,14 @@ fn generate_repeated_polynomial_elementary_by_parts_substeps(
         // Remaining integral after this application: integral v * p_k'.
         let remaining_display = format!("{}·{}", v_factor, du_factor);
         let remaining_latex = format!("{}\\cdot {}", v_latex_factor, du_latex_factor);
+
+        // The boundary piece `u_k·v_k` this application leaves behind, for the
+        // closing recomposition.
+        outer_terms.push((
+            format!("{}·{}", u_factor, v_factor),
+            format!("{}\\cdot {}", u_latex_factor, v_latex_factor),
+            scratch.add(Expr::Mul(current_poly, v_expr)),
+        ));
 
         substeps.push(
             SubStep::keyed(

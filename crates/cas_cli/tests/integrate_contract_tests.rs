@@ -3078,8 +3078,12 @@ fn integrate_contract_quadratic_exp_by_parts_exposes_didactic_substep() {
         "expected repeated integration-by-parts substep, got {substeps:?}"
     );
     // x^2 e^x reduces in two by-parts applications, so the repeated narration
-    // unrolls two "Elegir u y dv"/"Aplicar la fórmula" blocks and closes with a
-    // single "Integrar el término restante" landing on the final antiderivative.
+    // unrolls two "Elegir u y dv"/"Aplicar la fórmula" blocks and closes with
+    // TWO honest sub-steps (C1.6; the audit's P0 witness published
+    // `∫−2·sin(x)dx ⟹ 2x·sin(x) + (2−x²)cos(x)` here): the remaining-term
+    // closer integrates ITS OWN integrand, and a separate recomposition
+    // assembles the boundary pieces into the engine's answer, gated on a
+    // PROVED equality.
     let count_title = |title: &str| {
         substeps
             .iter()
@@ -3100,13 +3104,27 @@ fn integrate_contract_quadratic_exp_by_parts_exposes_didactic_substep() {
         first_choice["after_latex"], "u = {x}^{2},\\; dv = {e}^{x}\\,dx",
         "got {substeps:?}"
     );
+    let remaining = substeps
+        .iter()
+        .find(|substep| substep["title"] == "Integrar el término restante")
+        .expect("remaining-term closer");
+    assert_eq!(
+        remaining["after_latex"], "2\\cdot {e}^{x}",
+        "the closer must integrate its OWN integrand (∫2·e^x = 2·e^x), never \
+         quote the whole answer, got {substeps:?}"
+    );
     let closer = substeps
         .last()
         .expect("repeated narration should not be empty");
-    assert_eq!(closer["title"], "Integrar el término restante");
+    assert_eq!(closer["title"], "Recomponer las piezas de por partes");
+    assert_eq!(
+        closer["before_latex"], "{x}^{2}\\cdot {e}^{x} - 2\\cdot x\\cdot {e}^{x} + 2\\cdot {e}^{x}",
+        "the recomposition assembles the alternating boundary pieces, got {substeps:?}"
+    );
     assert_eq!(
         closer["after_latex"], "e^{x}\\cdot ({x}^{2} + 2 - 2\\cdot x)",
-        "closer should land on the final antiderivative, got {substeps:?}"
+        "the recomposition (not the remaining-term closer) lands on the final \
+         antiderivative, got {substeps:?}"
     );
     assert_antiderivative_verifies(input);
 }
