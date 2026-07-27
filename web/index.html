@@ -135,6 +135,37 @@
             gap: 8px;
         }
 
+        /* Fullscreen toggle next to the logo: one button for both directions
+           (hidden by JS on browsers without the Fullscreen API — iPhone). */
+        .header-title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .fullscreen-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 8px;
+            font-size: 1.05em;
+            line-height: 1;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .fullscreen-btn:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .fullscreen-btn.active {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
         .header-btn {
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid var(--border);
@@ -1875,14 +1906,30 @@
             }
         }
 
-        /* Landscape phones: shorter keys so input + keypad still fit. */
+        /* Landscape phones: compact keys and tight gaps so input + keypad
+           (now SIX rows) still fit a ~375px-tall viewport; the mode selects
+           fold away only WHILE the keypad is open. */
         @media (max-height: 520px) {
             .kb-key {
-                height: 34px;
+                height: 30px;
             }
 
             .kb-greek .kb-key {
-                height: 32px;
+                height: 28px;
+            }
+
+            .kb-row,
+            .kb-greek {
+                gap: 4px;
+                margin-top: 4px;
+            }
+
+            .kb-panel {
+                margin-top: 6px;
+            }
+
+            .input-bar.kb-open .mode-control {
+                display: none;
             }
         }
 
@@ -1988,7 +2035,14 @@
 <body>
     <header>
         <div class="header-left">
-            <h1>🧮 ExpliCAS</h1>
+            <div class="header-title-row">
+                <h1>🧮 ExpliCAS</h1>
+                <button type="button" class="fullscreen-btn" id="fullscreen-btn"
+                    data-i18n-aria="header.fullscreen.aria_label" aria-label="Activar o desactivar pantalla completa"
+                    data-i18n-title="header.fullscreen.title" title="Pantalla completa">
+                    ⛶
+                </button>
+            </div>
             <p data-i18n="header.tagline">Simplificador matemático interactivo paso a paso</p>
         </div>
         <button type="button" class="menu-toggle" id="menu-toggle" onclick="toggleHeaderMenu()"
@@ -2378,7 +2432,13 @@
                         "kb.toggle.aria_label": "Mostrar u ocultar el teclado de cálculo",
                         "kb.ref.title": "Referencia a una celda: escribe el número a continuación (p. ej. #3)",
                         "kb.ant.title": "Resultado anterior: inserta #-1 (la última celda)",
+                        "kb.matrix.title": "Matriz 2×2: cada fila entre corchetes — [[a, b], [c, d]]",
+                        "kb.assign.title": "Asignación: a := 5 guarda una variable; g(x) := x^2 define una función",
+                        "kb.defint.title": "Integral definida entre a y b",
                         "kb.hide.title": "Ocultar teclado",
+                        "header.fullscreen.title": "Pantalla completa",
+                        "header.fullscreen.exit_title": "Salir de pantalla completa",
+                        "header.fullscreen.aria_label": "Activar o desactivar pantalla completa",
                         "kb.backspace.title": "Borrar",
                         "kb.left.title": "Mover el cursor a la izquierda",
                         "kb.right.title": "Mover el cursor a la derecha",
@@ -2478,7 +2538,13 @@
                         "kb.toggle.aria_label": "Show or hide the math keypad",
                         "kb.ref.title": "Cell reference: type the number after it (e.g. #3)",
                         "kb.ant.title": "Previous result: inserts #-1 (the newest cell)",
+                        "kb.matrix.title": "2×2 matrix: each row in brackets — [[a, b], [c, d]]",
+                        "kb.assign.title": "Assignment: a := 5 stores a variable; g(x) := x^2 defines a function",
+                        "kb.defint.title": "Definite integral from a to b",
                         "kb.hide.title": "Hide keypad",
+                        "header.fullscreen.title": "Full screen",
+                        "header.fullscreen.exit_title": "Exit full screen",
+                        "header.fullscreen.aria_label": "Toggle full screen",
                         "kb.backspace.title": "Delete",
                         "kb.left.title": "Move cursor left",
                         "kb.right.title": "Move cursor right",
@@ -4154,6 +4220,41 @@
         }
 
         // =====================
+        // Fullscreen toggle (header)
+        // =====================
+        // One button both ways, kept honest by fullscreenchange (Esc or the
+        // system UI also exit). Hidden where the API does not exist — iPhone
+        // Safari has no element Fullscreen API; Android/tablet/desktop do.
+        (function () {
+            const btn = document.getElementById('fullscreen-btn');
+            if (!btn) return;
+            const root = document.documentElement;
+            if (!(root.requestFullscreen || root.webkitRequestFullscreen)) {
+                btn.style.display = 'none';
+                return;
+            }
+            const isActive = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+            const swallow = (p) => { if (p && p.catch) p.catch(() => { }); };
+            btn.addEventListener('click', () => {
+                if (isActive()) {
+                    swallow((document.exitFullscreen || document.webkitExitFullscreen).call(document));
+                } else {
+                    swallow((root.requestFullscreen || root.webkitRequestFullscreen).call(root));
+                }
+            });
+            ['fullscreenchange', 'webkitfullscreenchange'].forEach((ev) => {
+                document.addEventListener(ev, () => {
+                    const on = isActive();
+                    btn.classList.toggle('active', on);
+                    // Swap the i18n KEY so later language switches keep the
+                    // right title for the current state.
+                    btn.dataset.i18nTitle = on ? 'header.fullscreen.exit_title' : 'header.fullscreen.title';
+                    btn.title = t(btn.dataset.i18nTitle);
+                });
+            });
+        })();
+
+        // =====================
         // On-screen math keypad
         // =====================
         // A bottom-sheet calculator keyboard living INSIDE the fixed input bar,
@@ -4204,6 +4305,7 @@
             [{ i: '4' }, { i: '5' }, { i: '6' }, { l: '×', i: '*', g: 'op' }, { i: 'x', g: 'var' }, { i: 'y', g: 'var' }, { i: 'z', g: 'var' }],
             [{ i: '1' }, { i: '2' }, { i: '3' }, { l: '−', i: '-', g: 'op' }, { l: 'π', i: 'π', title: 'pi', g: 'const' }, { i: 'e', g: 'const' }, { l: 'φ', i: 'φ', title: 'phi', g: 'const' }],
             [{ i: '0' }, { i: '.' }, { i: '=', g: 'op' }, { i: '+', g: 'op' }, { i: '^', g: 'op' }, { l: '√', f: 'sqrt', g: 'fn' }, { i: ',', g: 'op' }],
+            [{ i: '[', g: 'op' }, { i: ']', g: 'op' }, { l: '▦', tpl: '[[a, b], [c, d]]', h: ['a', 'b'], g: 'op', t: 'kb.matrix.title' }, { l: ':=', i: ':=', g: 'op', t: 'kb.assign.title' }, { l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'fn' }, { l: '∫ₐᵇ', tpl: 'integrate(expr, x, a, b)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn', t: 'kb.defint.title' }],
             [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'fn' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'fn' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'fn' }, { l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: '◀', a: 'left', c: 'kb-key-alt', t: 'kb.left.title' }, { l: '▶', a: 'right', c: 'kb-key-alt', t: 'kb.right.title' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
         ];
 
