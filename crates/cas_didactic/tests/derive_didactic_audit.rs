@@ -2270,8 +2270,13 @@ fn derive_didactic_tangent_quotient_contraction_uses_direct_identity_language() 
         })
         .expect("expected trig quotient step");
 
+    // Migrated to the instance↔template matcher (2026-07-27): the step now
+    // carries its census-adjudicated identity as a VERIFIED sub-step — the
+    // direct identity language this test always asked for, spoken instead of
+    // implied. (Pre-matcher the title was an unverified claim and silence was
+    // the sound answer.)
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sin(u) / cos(u) = tan(u)".to_string()]);
 }
 
 #[test]
@@ -2792,7 +2797,12 @@ fn derive_didactic_trig_quotient_explains_identities_then_tangent() {
         1,
         "expected the direct trig quotient contraction"
     );
-    assert!(step_substep_titles(trig_steps[0]).is_empty());
+    // Migrated to the instance↔template matcher (2026-07-27): the contraction
+    // now names its verified identity instead of narrating nothing.
+    assert_eq!(
+        step_substep_titles(trig_steps[0]),
+        vec!["Usar sin(u) / cos(u) = tan(u)".to_string()]
+    );
 }
 
 #[test]

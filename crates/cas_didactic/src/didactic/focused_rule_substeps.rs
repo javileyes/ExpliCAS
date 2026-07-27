@@ -8203,16 +8203,26 @@ fn generate_reciprocal_pythagorean_substeps(ctx: &Context, step: &Step) -> Vec<S
     }
 }
 
+/// Migrated to the instance↔template matcher after the shadow pass
+/// (2026-07-27) measured the rule: 7 corpus pairs, and the old emitter cited
+/// «sin(u) / cos(u) = tan(u)» for ALL of them — including `cos/sin ⟹ cot`,
+/// `1/cos ⟹ sec` and `1/sin ⟹ csc`, where that title is simply the wrong
+/// identity. Each candidate template is census-adjudicated and the sub-step
+/// publishes only for the pair that PROVABLY instantiates it; a pair that
+/// instantiates none stays silent (honest, and measured by the shadow pass).
 fn generate_trig_quotient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    if step.description.contains("tan") || step.rule_name == "Trig Quotient" {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Reconocer el patrón sin(u) / cos(u) = tan(u)",
-            before,
-            after,
-        )];
+    const QUOTIENT_TEMPLATES: [(&str, &str); 4] = [
+        ("sin(u) / cos(u)", "tan(u)"),
+        ("cos(u) / sin(u)", "cot(u)"),
+        ("1 / cos(u)", "sec(u)"),
+        ("1 / sin(u)", "csc(u)"),
+    ];
+    for (lhs, rhs) in QUOTIENT_TEMPLATES {
+        if let Some(substep) = named_identity_substep(ctx, lhs, rhs, before, after) {
+            return vec![substep];
+        }
     }
     Vec::new()
 }
@@ -25186,6 +25196,7 @@ mod limit_notable_tests {
 mod named_identity_matcher_tests {
     use super::{
         generate_half_angle_tangent_substeps, generate_reciprocal_product_identity_substeps,
+        generate_trig_quotient_substeps,
     };
     use crate::runtime::Step;
     use cas_ast::Context;
@@ -25293,6 +25304,52 @@ mod named_identity_matcher_tests {
         );
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].description, "Usar (1 - cos(2u)) / sin(2u) = tan(u)");
+    }
+
+    /// The shadow pass measured the old Trig Quotient emitter citing
+    /// «sin(u)/cos(u) = tan(u)» over EVERY pair of the rule — cot, sec and csc
+    /// included. Each pair now narrates ITS OWN census-adjudicated template.
+    #[test]
+    fn trig_quotient_narrates_each_definitional_pair() {
+        for (before, after, expected) in [
+            (
+                "sin(x^2) / cos(x^2)",
+                "tan(x^2)",
+                "Usar sin(u) / cos(u) = tan(u)",
+            ),
+            ("cos(x) / sin(x)", "cot(x)", "Usar cos(u) / sin(u) = cot(u)"),
+            ("1 / cos(2*x)", "sec(2*x)", "Usar 1 / cos(u) = sec(u)"),
+            ("1 / sin(x)", "csc(x)", "Usar 1 / sin(u) = csc(u)"),
+        ] {
+            let subs = run(
+                generate_trig_quotient_substeps,
+                "Trig Quotient",
+                before,
+                after,
+            );
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(
+                subs[0].description, expected,
+                "each pair narrates its OWN identity, never a neighbour's"
+            );
+        }
+    }
+
+    /// A pair that instantiates none of the quotient templates publishes
+    /// nothing — the honest silence the migration policy demands.
+    #[test]
+    fn trig_quotient_declines_a_pair_that_is_no_instance() {
+        let subs = run(
+            generate_trig_quotient_substeps,
+            "Trig Quotient",
+            "sin(x) + 1",
+            "tan(x)",
+        );
+        assert!(
+            subs.is_empty(),
+            "a non-instance pair must not cite any quotient identity: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
     }
 }
 

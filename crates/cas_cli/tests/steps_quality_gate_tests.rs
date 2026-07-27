@@ -1527,6 +1527,11 @@ fn verified_identity_narrations_reach_the_wire() {
             // identity; both state the same census-adjudicated template.
             "(1 - cos(2u)) / sin(2u)",
         ),
+        // Trig Quotient migrated after the shadow pass (2026-07-27): the old
+        // emitter cited sin/cos = tan over the cot/sec/csc pairs too, and the
+        // silencer was the only thing keeping the wrong title off the wire.
+        ("cos(x)/sin(x)", "Usar cos(u) / sin(u) = cot(u)"),
+        ("1/cos(x)", "Usar 1 / cos(u) = sec(u)"),
     ];
     for (input, expected_fragment) in cases {
         let wire = eval_wire_in(input, Language::Es)

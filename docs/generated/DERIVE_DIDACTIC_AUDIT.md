@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.05`
-- Total web substeps: `491`
+- Total web substeps: `494`
 
 ## Flag Summary
 
@@ -42,7 +42,7 @@ No audit flags emitted.
 | `simplify` | 90 | 0 | 0 | 83 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 49 | 0 | 0 | 27 |
+| `trig_contract` | 49 | 0 | 0 | 30 |
 | `trig_expand` | 87 | 0 | 0 | 63 |
 
 | id | family | web steps | web substeps | flags |
@@ -125,7 +125,7 @@ No audit flags emitted.
 | `contract_trig_angle_diff_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_angle_sum_cosine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_angle_sum_sine` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_cos_diff_sin_diff_quotient` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_cos_diff_sin_diff_quotient` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_cot_quotient` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_csc_squared` | `trig_contract` | 1 | 0 | none |
@@ -161,8 +161,8 @@ No audit flags emitted.
 | `contract_trig_sec_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_sin_diff_special` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_square_double_angle_sine_cosine_product` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_tan_quotient` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_tan_quotient_after_arg_simplify` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_tan_quotient` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_tan_quotient_after_arg_simplify` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_tan_quotient_with_additive_passthrough` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tan_quotient_with_cofactor` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tangent_angle_difference` | `trig_contract` | 1 | 0 | none |
@@ -3103,7 +3103,7 @@ Result: sin(x + y)
 - Target: `tan(2*x)`
 - Result: `tan(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3127,7 +3127,8 @@ Result: tan(2 * x)
 1. `Convertir un cociente trigonométrico en tangente`
    - before: `(cos(x) - cos(3 · x))/(sin(3 · x) - sin(x))`
    - after: `tan(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(u) / cos(u) = tan(u)`
 
 ## contract_trig_cot_quotient (trig_contract)
 
@@ -4218,7 +4219,7 @@ Result: sin(2 * x)^(2) / 4
 - Target: `tan(2*x)`
 - Result: `tan(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -4242,7 +4243,8 @@ Result: tan(2 * x)
 1. `Convertir un cociente trigonométrico en tangente`
    - before: `sin(2 · x)/cos(2 · x)`
    - after: `tan(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(u) / cos(u) = tan(u)`
 
 ## contract_trig_tan_quotient_after_arg_simplify (trig_contract)
 
@@ -4250,7 +4252,7 @@ Result: tan(2 * x)
 - Target: `tan(2*x)`
 - Result: `tan(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -4274,7 +4276,8 @@ Result: tan(2 * x)
 1. `Convertir un cociente trigonométrico en tangente`
    - before: `sin(2 · x)/cos(x + x)`
    - after: `tan(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(u) / cos(u) = tan(u)`
 
 ## contract_trig_tan_quotient_with_additive_passthrough (trig_contract)
 

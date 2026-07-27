@@ -94,6 +94,30 @@ pub const SCHEMATIC_IDENTITIES: &[Schema] = &[
         rhs: "(1 - cos(2u)) / sin(2u)",
         status: Proven,
     },
+    // Cocientes/recíprocos definicionales del emisor «Trig Quotient», migrado
+    // al matcher tras la pasada de sombra (2026-07-27): el emisor citaba
+    // sin/cos = tan para TODOS los pares de la regla, cot/sec/csc incluidos —
+    // un título-plantilla equivocado que solo el silenciador tapaba.
+    Schema {
+        lhs: "sin(u) / cos(u)",
+        rhs: "tan(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cos(u) / sin(u)",
+        rhs: "cot(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 / cos(u)",
+        rhs: "sec(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 / sin(u)",
+        rhs: "csc(u)",
+        status: Proven,
+    },
     Schema {
         lhs: "R·sin(u + φ)",
         rhs: "a·sin(u) + b·cos(u)",

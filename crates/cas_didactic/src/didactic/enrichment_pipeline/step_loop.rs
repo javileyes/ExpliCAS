@@ -185,7 +185,7 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
     // emitters migrate to `named_identity_substep`, never wholesale.
     (matches!(
         step.rule_name.as_str(),
-        "Reciprocal Product Identity" | "Half-Angle Tangent Identity"
+        "Reciprocal Product Identity" | "Half-Angle Tangent Identity" | "Trig Quotient"
     ) && normalized_substep.starts_with("usar "))
         || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
@@ -205,7 +205,9 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
                 || normalized_substep.starts_with("usar que una potencia impar")))
 }
 
-fn is_single_formula_template_rule(rule_name: &str) -> bool {
+/// The silenced-template list IS the matcher-migration queue (C1.8): crate
+/// visibility so the shadow pass can measure census coverage per rule.
+pub(crate) fn is_single_formula_template_rule(rule_name: &str) -> bool {
     matches!(
         rule_name,
         "Pythagorean Factor Form"
@@ -219,7 +221,6 @@ fn is_single_formula_template_rule(rule_name: &str) -> bool {
             | "Reciprocal Trig Identity"
             | "Reciprocal Pythagorean Identity"
             | "Half-Angle Square Identity"
-            | "Trig Quotient"
             | "Canonicalize Roots"
             | "expand_log"
             | "Log Contraction"

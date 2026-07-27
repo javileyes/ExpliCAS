@@ -3,6 +3,10 @@ mod rule_dispatch;
 mod setup;
 mod standalone;
 mod step_loop;
+// The silenced-template list doubles as the matcher-migration queue; only the
+// shadow-pass test reads it from outside this module.
+#[cfg(test)]
+pub(crate) use step_loop::is_single_formula_template_rule;
 
 use self::fraction_sums::{
     collect_primary_fraction_sums, extend_exponent_fraction_sum_substeps,
