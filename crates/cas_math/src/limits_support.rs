@@ -2664,14 +2664,18 @@ fn apply_finite_exp_combination_ratio_rule(
     };
     let (num_log, num_const) = exp_combination_first_derivative(ctx, num, &var_name)?;
     let (den_log, den_const) = exp_combination_first_derivative(ctx, den, &var_name)?;
-    // D'(0) must be nonzero for the ratio to be the limit. A combination of
-    // logs is exactly 0 only on cancellation; a clearly-nonzero float magnitude
-    // proves it is safe (a true zero evaluates to exactly 0).
-    if log_combination_float(&den_log, &den_const).abs() < 1e-9 {
+    // D'(0) must be PROVABLY nonzero for the first-order ratio to be the
+    // limit: a zero-valued denominator combination (2^x + 2^(-x) - 2 is
+    // quadratic at 0) would fabricate a division by zero. Exact decision —
+    // a float epsilon here both missed true zeros under large coefficients
+    // and declined true nonzeros.
+    if exact_log_combination_is_zero(&den_log, &den_const) != Some(false) {
         return None;
     }
     // N'(0) = 0 over a nonzero D'(0): the numerator vanishes faster, limit 0.
-    if log_combination_float(&num_log, &num_const).abs() < 1e-12 {
+    // EXACT zero only — a true-but-tiny N'(0) like ln(2) − 6931471805599453/
+    // 10^16 must build the expression, never fold to 0 (P0 otherwise).
+    if exact_log_combination_is_zero(&num_log, &num_const) == Some(true) {
         return Some(ctx.num(0));
     }
     let num_deriv = build_log_combination_expr(ctx, num_log, num_const);
@@ -2708,18 +2712,98 @@ fn exp_combination_first_derivative(
     Some((log_terms, const_deriv))
 }
 
-/// Numeric value of `const + sum coeff_i ln(base_i)`, for a nonzero check.
-fn log_combination_float(log_terms: &[(BigRational, BigRational)], constant: &BigRational) -> f64 {
-    use num_traits::ToPrimitive;
-    let mut total = constant.to_f64().unwrap_or(0.0);
-    for (coeff, base) in log_terms {
-        let c = coeff.to_f64().unwrap_or(0.0);
-        let b = base.to_f64().unwrap_or(1.0);
-        if b > 0.0 {
-            total += c * b.ln();
+/// Pairwise-coprime refinement (factor refinement) of a set of integers > 1:
+/// repeatedly split any non-coprime pair `a, b` into `gcd, a/gcd, b/gcd`
+/// until all elements are pairwise coprime. Needs NO primality testing, and
+/// terminates because each split strictly divides the product of elements.
+/// Every input factors completely over the result, and pairwise-coprime
+/// integers > 1 have Q-linearly independent logarithms (each element owns a
+/// prime the others lack) — the backbone of the exact zero decision below.
+fn coprime_refinement(values: &[BigInt]) -> Vec<BigInt> {
+    use num_integer::Integer;
+    let one = BigInt::one();
+    let mut set: Vec<BigInt> = values.iter().filter(|v| **v > one).cloned().collect();
+    loop {
+        set.sort();
+        set.dedup();
+        let mut split: Option<(usize, usize, BigInt)> = None;
+        'scan: for i in 0..set.len() {
+            for j in (i + 1)..set.len() {
+                let g = set[i].gcd(&set[j]);
+                if g > one {
+                    split = Some((i, j, g));
+                    break 'scan;
+                }
+            }
+        }
+        let Some((i, j, g)) = split else {
+            return set;
+        };
+        let a = &set[i] / &g;
+        let b = &set[j] / &g;
+        set.remove(j);
+        set.remove(i);
+        for piece in [g, a, b] {
+            if piece > one {
+                set.push(piece);
+            }
         }
     }
-    total
+}
+
+/// EXACT zero test for `constant + Σ cᵢ·ln(bᵢ)` with rational `cᵢ` and
+/// positive rational bases `bᵢ`: factor every base numerator/denominator
+/// over a pairwise-coprime refinement and read the sum as
+/// `constant + Σₘ dₘ·ln(m)`. The logs of pairwise-coprime integers > 1 are
+/// linearly independent over Q, and for `constant != 0` the sum can never
+/// vanish (it would make `e^q` rational for a rational `q != 0`, against
+/// Lindemann–Weierstrass) — so the sum is zero IFF `constant = 0` AND every
+/// `dₘ = 0`. Never a float: this gate EMITS (fold-to-0) and DECLINES
+/// (division by zero) on soundness paths. `None` only if a base fails to
+/// factor over the refined set (internal safety net) — callers must then
+/// treat zero-ness as unknown.
+fn exact_log_combination_is_zero(
+    log_terms: &[(BigRational, BigRational)],
+    constant: &BigRational,
+) -> Option<bool> {
+    let mut contributions: Vec<(BigRational, BigInt)> = Vec::new();
+    for (coeff, base) in log_terms {
+        if !base.is_positive() {
+            return None; // no real log — upstream gates exclude this
+        }
+        if coeff.is_zero() {
+            continue;
+        }
+        let numer = base.numer().clone();
+        let denom = base.denom().clone();
+        if !numer.is_one() {
+            contributions.push((coeff.clone(), numer));
+        }
+        if !denom.is_one() {
+            contributions.push((-coeff.clone(), denom));
+        }
+    }
+    let factors: Vec<BigInt> = contributions.iter().map(|(_, v)| v.clone()).collect();
+    let base_set = coprime_refinement(&factors);
+    // Per-element exponent coefficients: d_m = Σ cᵢ · (multiplicity of m in vᵢ).
+    let mut totals: Vec<BigRational> = vec![BigRational::zero(); base_set.len()];
+    for (coeff, value) in contributions {
+        let mut rest = value;
+        for (m, total) in base_set.iter().zip(totals.iter_mut()) {
+            let mut multiplicity = 0i64;
+            while (&rest % m).is_zero() {
+                rest /= m;
+                multiplicity += 1;
+            }
+            if multiplicity != 0 {
+                *total += &coeff * BigRational::from_integer(multiplicity.into());
+            }
+        }
+        if !rest.is_one() {
+            return None; // incomplete factorization — zero-ness unknown
+        }
+    }
+    Some(constant.is_zero() && totals.iter().all(|t| t.is_zero()))
 }
 
 /// Build the expression `const + sum coeff_i ln(base_i)`.
@@ -2803,6 +2887,11 @@ fn apply_finite_exp_linear_combination_quotient_rule(
         .unwrap_or_else(BigRational::zero);
     if den_slope.is_zero() {
         return None;
+    }
+    // N'(0) exactly 0 (e.g. 12^(2x) − 144^x): fold to a clean 0 instead of
+    // emitting a zero-valued log combination. Exact decision, never a float.
+    if exact_log_combination_is_zero(&log_terms, &const_deriv) == Some(true) {
+        return Some(ctx.num(0));
     }
 
     // result = (const_deriv + sum coeff_i ln(base_i)) / den_slope.
@@ -8761,7 +8850,11 @@ fn log_sum_limit_at_infinity(
         return Some(mk_infinity(ctx, InfSign::Neg));
     }
     // s == 0: the finite `Σ cᵢ·ln(lead_i) + (Σ dⱼ·sign(lead qⱼ))·π/2`.
-    let log_is_zero = log_combination_float(&leading_log_terms, &BigRational::zero()).abs() < 1e-12;
+    // Exact zero decision — dropping a true-but-tiny log part would emit a
+    // wrong finite value; on `None` (unfactorable) the expression is built,
+    // which is value-correct either way.
+    let log_is_zero =
+        exact_log_combination_is_zero(&leading_log_terms, &BigRational::zero()) == Some(true);
     let log_part = if log_is_zero {
         None
     } else {
@@ -13950,6 +14043,116 @@ mod tests {
             apply_finite_general_exp_zero_quotient_rule(&mut ctx, disguised, x, zero).is_none(),
             "unprovable base must decline"
         );
+    }
+
+    #[test]
+    fn exact_log_combination_zero_decision() {
+        // The exact kernel behind every zero gate on `K + Σ cᵢ·ln(bᵢ)`.
+        let r = |n: i64, d: i64| BigRational::new(n.into(), d.into());
+        let zero = BigRational::from_integer(0.into());
+        // ln(4) - 2·ln(2) = 0 and 3·ln(8) - 9·ln(2) = 0 (the latter is the
+        // float-error-prone shape once coefficients grow).
+        assert_eq!(
+            exact_log_combination_is_zero(&[(r(1, 1), r(4, 1)), (r(-2, 1), r(2, 1))], &zero),
+            Some(true)
+        );
+        assert_eq!(
+            exact_log_combination_is_zero(&[(r(3, 1), r(8, 1)), (r(-9, 1), r(2, 1))], &zero),
+            Some(true)
+        );
+        // 2·ln(12) - ln(144) = 0: composite bases, decided by gcd refinement
+        // alone (no primality anywhere).
+        assert_eq!(
+            exact_log_combination_is_zero(&[(r(2, 1), r(12, 1)), (r(-1, 1), r(144, 1))], &zero),
+            Some(true)
+        );
+        // ln(12) - ln(18) = ln(2/3) != 0.
+        assert_eq!(
+            exact_log_combination_is_zero(&[(r(1, 1), r(12, 1)), (r(-1, 1), r(18, 1))], &zero),
+            Some(false)
+        );
+        // ln(2) - 6931471805599453/10^16 ≈ -1.1e-17: NONZERO by Lindemann-
+        // Weierstrass, exactly what the old 1e-12 float gate got wrong.
+        let near_ln2 = BigRational::new(
+            6931471805599453i64.into(),
+            num_bigint::BigInt::from(10u64).pow(16),
+        );
+        assert_eq!(
+            exact_log_combination_is_zero(&[(r(1, 1), r(2, 1))], &(-near_ln2)),
+            Some(false)
+        );
+        // Degenerate combinations: no log terms — the constant decides.
+        assert_eq!(exact_log_combination_is_zero(&[], &zero), Some(true));
+        assert_eq!(exact_log_combination_is_zero(&[], &r(1, 1)), Some(false));
+        // Fractional bases split into numerator/denominator contributions:
+        // ln(2/3) + ln(3) - ln(2) = 0.
+        assert_eq!(
+            exact_log_combination_is_zero(
+                &[(r(1, 1), r(2, 3)), (r(1, 1), r(3, 1)), (r(-1, 1), r(2, 1))],
+                &zero
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn finite_exp_combination_zero_gates_are_exact() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let zero = parse_expr(&mut ctx, "0");
+        // THE adversarial case for the old float gate: N'(0) = ln(2) − c with
+        // c a 16-digit convergent of ln 2 — about −1.1e-17, but PROVABLY
+        // nonzero. Must emit the expression, never fold to 0.
+        let adversarial = parse_expr(
+            &mut ctx,
+            "(2^x - e^((6931471805599453/10000000000000000)*x))/(5^x - 7^x)",
+        );
+        let out = apply_finite_exp_combination_ratio_rule(&mut ctx, adversarial, x, zero)
+            .expect("tiny-but-nonzero numerator must resolve");
+        let shown = display_expr(&ctx, out);
+        assert_ne!(shown, "0", "float fold would fabricate 0");
+        assert!(shown.contains("ln(2)"), "kept the exact log part: {shown}");
+        // Exactly-zero numerators DO fold — including composite bases that
+        // need gcd refinement (4 = 2², 144 = 12²).
+        for source in ["(4^x - 2^(2*x))/(3^x - 1)", "(12^(2*x) - 144^x)/(3^x - 1)"] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = apply_finite_exp_combination_ratio_rule(&mut ctx, expr, x, zero)
+                .unwrap_or_else(|| panic!("exact-zero numerator must fold: {source}"));
+            assert_eq!(display_expr(&ctx, out), "0", "{source}");
+        }
+        // A zero-valued DENOMINATOR combination declines exactly (the ratio
+        // is second-order): no fabricated division by zero, and no wrong 0
+        // when the numerator is second-order too.
+        for source in [
+            "(3^x - 1)/(2^x + 2^(-x) - 2)",
+            "(2^x + 2^(-x) - 2)/(3^x + 3^(-x) - 2)",
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            assert!(
+                apply_finite_exp_combination_ratio_rule(&mut ctx, expr, x, zero).is_none(),
+                "zero-derivative denominator must decline: {source}"
+            );
+        }
+        // Classic nonzero ratio unchanged.
+        let classic = parse_expr(&mut ctx, "(2^x - 3^x)/(5^x - 7^x)");
+        let out = apply_finite_exp_combination_ratio_rule(&mut ctx, classic, x, zero)
+            .expect("classic ratio");
+        assert_eq!(display_expr(&ctx, out), "(ln(2) - ln(3)) / (ln(5) - ln(7))");
+        // The linear-combination sibling folds exact zeros to a clean 0…
+        let linear_zero = parse_expr(&mut ctx, "(12^(2*x) - 144^x)/x");
+        let out = try_limit_rules_at_finite(&mut ctx, linear_zero, x, zero)
+            .expect("zero combination over x");
+        assert_eq!(display_expr(&ctx, out), "0");
+        // …and keeps tiny-but-nonzero derivatives as expressions.
+        let linear_tiny = parse_expr(
+            &mut ctx,
+            "(2^x - e^((6931471805599453/10000000000000000)*x))/x",
+        );
+        let out = try_limit_rules_at_finite(&mut ctx, linear_tiny, x, zero)
+            .expect("tiny linear combination");
+        let shown = display_expr(&ctx, out);
+        assert_ne!(shown, "0");
+        assert!(shown.contains("ln(2)"), "{shown}");
     }
 
     #[test]
