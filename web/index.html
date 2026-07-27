@@ -1900,25 +1900,6 @@
             color: var(--accent);
         }
 
-        /* Greek letters: one horizontally pannable strip (inserts spelled
-           names — alpha, beta, ... — the only form the parser accepts). */
-        .kb-greek {
-            display: flex;
-            gap: 6px;
-            margin-top: 6px;
-            overflow-x: auto;
-            padding-bottom: 3px;
-            -webkit-overflow-scrolling: touch;
-            touch-action: pan-x;
-        }
-
-        .kb-greek .kb-key {
-            flex: 0 0 auto;
-            min-width: 46px;
-            height: 38px;
-            touch-action: pan-x;
-        }
-
         @media (max-width: 720px) {
             .kb-toggle-btn {
                 height: 48px;
@@ -1937,12 +1918,7 @@
                 height: 30px;
             }
 
-            .kb-greek .kb-key {
-                height: 28px;
-            }
-
-            .kb-row,
-            .kb-greek {
+            .kb-row {
                 gap: 4px;
                 margin-top: 4px;
             }
@@ -2486,7 +2462,7 @@
                         "kb.left.title": "Mover el cursor a la izquierda",
                         "kb.right.title": "Mover el cursor a la derecha",
                         "kb.shift.title": "Mayúsculas",
-                        "kb.greek.title": "Letras griegas — α equivale a alpha: son el mismo símbolo para el motor"
+                        "kb.euler.title": "Constante de Euler: e ≈ 2,71828 (E mayúscula es una variable normal)"
             },
             "en": {
                         "header.tagline": "Interactive Step-by-Step Math Simplifier",
@@ -2592,7 +2568,7 @@
                         "kb.left.title": "Move cursor left",
                         "kb.right.title": "Move cursor right",
                         "kb.shift.title": "Shift",
-                        "kb.greek.title": "Greek letters — α and alpha are the same symbol to the engine"
+                        "kb.euler.title": "Euler's constant: e ≈ 2.71828 (uppercase E is a plain variable)"
             }
         };
         let uiLang = 'es';
@@ -4371,12 +4347,17 @@
         // Greek glyphs as aliases of their spelled names (α ≡ alpha, and
         // π/φ are the constants), so the input shows real Greek and the
         // result renders it back via LaTeX. The tooltip shows the name.
+        // 23 lowercase + the 7 visually-distinct uppercase the engine also
+        // accepts (Γ→Gamma, ...) complete an exact 10×3 block — rendered as
+        // FIXED rows, no scrolling.
         const KB_GREEK = [
             ['α', 'alpha'], ['β', 'beta'], ['γ', 'gamma'], ['δ', 'delta'], ['ε', 'epsilon'],
             ['ζ', 'zeta'], ['η', 'eta'], ['θ', 'theta'], ['ι', 'iota'], ['κ', 'kappa'],
             ['λ', 'lambda'], ['μ', 'mu'], ['ν', 'nu'], ['ξ', 'xi'], ['π', 'pi'],
             ['ρ', 'rho'], ['σ', 'sigma'], ['τ', 'tau'], ['υ', 'upsilon'], ['φ', 'phi'],
-            ['χ', 'chi'], ['ψ', 'psi'], ['ω', 'omega']
+            ['χ', 'chi'], ['ψ', 'psi'], ['ω', 'omega'],
+            ['Γ', 'Gamma'], ['Δ', 'Delta'], ['Θ', 'Theta'], ['Λ', 'Lambda'],
+            ['Σ', 'Sigma'], ['Φ', 'Phi'], ['Ω', 'Omega']
         ];
 
         let kbKeyReg = [];
@@ -4405,22 +4386,27 @@
                 const rows = KB_ABC_ROWS.map(row => row.map(k => {
                     if (typeof k === 'string') {
                         const ch = kbShift ? k.toUpperCase() : k;
+                        // Lowercase e IS Euler's constant to the engine, so it
+                        // wears the constants color; shifted E is a plain
+                        // variable and goes back to green.
+                        if (ch === 'e') return { l: ch, i: ch, g: 'const', t: 'kb.euler.title' };
                         return { l: ch, i: ch, g: 'var' };
                     }
                     if (k.a === 'shift' && kbShift) return Object.assign({}, k, { c: k.c + ' active' });
                     return k;
                 }));
                 html = rows.map(row => `<div class="kb-row kb-cols-10">${row.map(kbKeyButton).join('')}</div>`).join('');
-                // Greek letters are variables, except π and φ — those are the
-                // engine constants, so they wear the constants color.
-                html += `<div class="kb-greek" title="${escapeHtml(t('kb.greek.title'))}">`
-                    + KB_GREEK.map(([glyph, name]) => kbKeyButton({
-                        l: glyph,
-                        i: glyph,
-                        title: name,
-                        g: (name === 'pi' || name === 'phi') ? 'const' : 'var'
-                    })).join('')
-                    + '</div>';
+                // Greek letters as FIXED 10-column rows (no scroll strip).
+                // All are variables except π and φ — the engine constants.
+                const greekKeys = KB_GREEK.map(([glyph, name]) => ({
+                    l: glyph,
+                    i: glyph,
+                    title: name,
+                    g: (name === 'pi' || name === 'phi') ? 'const' : 'var'
+                }));
+                for (let gi = 0; gi < greekKeys.length; gi += 10) {
+                    html += `<div class="kb-row kb-cols-10">${greekKeys.slice(gi, gi + 10).map(kbKeyButton).join('')}</div>`;
+                }
             }
             layers.innerHTML = html;
             document.querySelectorAll('#kb-tabs .kb-tab[data-kbtab]').forEach(b => {
@@ -4567,7 +4553,6 @@
             // Never steal focus (or the caret/selection) from the input.
             ev.preventDefault();
             if (btn.classList.contains('kb-tab')) return; // tabs act on click
-            if (btn.closest('.kb-greek')) return; // strip keys act on click so panning works
             const spec = kbKeyReg[btn.dataset.ki];
             if (!spec) return;
             btn.classList.add('kb-pressed');
@@ -4588,12 +4573,6 @@
         });
 
         kbPanel.addEventListener('click', (ev) => {
-            const greekKey = ev.target.closest('.kb-greek .kb-key');
-            if (greekKey) {
-                const spec = kbKeyReg[greekKey.dataset.ki];
-                if (spec) kbHandleKey(spec);
-                return;
-            }
             const tab = ev.target.closest('.kb-tab[data-kbtab]');
             if (tab) {
                 kbLayer = tab.dataset.kbtab;
