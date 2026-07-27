@@ -191,6 +191,12 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
             | "Double Angle Contraction"
             | "Cos 2x Additive Contraction"
             | "Reciprocal Trig Identity"
+            | "Expand Secant Squared"
+            | "Expand Cosecant Squared"
+            | "Recognize Secant Squared"
+            | "Recognize Cosecant Squared"
+            | "Reciprocal Pythagorean Identity"
+            | "Pythagorean Factor Form"
     ) && normalized_substep.starts_with("usar "))
         || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
@@ -215,15 +221,9 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
 pub(crate) fn is_single_formula_template_rule(rule_name: &str) -> bool {
     matches!(
         rule_name,
-        "Pythagorean Factor Form"
-            | "Evaluate Logarithms"
+        "Evaluate Logarithms"
             | "Factor Perfect Square in Logarithm"
             | "Split Log Exponents"
-            | "Expand Secant Squared"
-            | "Expand Cosecant Squared"
-            | "Recognize Secant Squared"
-            | "Recognize Cosecant Squared"
-            | "Reciprocal Pythagorean Identity"
             | "Half-Angle Square Identity"
             | "Canonicalize Roots"
             | "expand_log"

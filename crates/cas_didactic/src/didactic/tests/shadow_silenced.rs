@@ -21,7 +21,9 @@
 //! Run manually (`--ignored`): this measures, it does not gate.
 
 use crate::didactic::enrichment_pipeline::is_single_formula_template_rule;
-use crate::didactic::substep::matching::{match_rewrite, parse_template, ParsedTemplate};
+use crate::didactic::substep::matching::{
+    match_instance_structural, match_rewrite, parse_template, ParsedTemplate,
+};
 use crate::didactic::substep::schema::{SchemaStatus, SCHEMATIC_IDENTITIES};
 use cas_ast::Context;
 use cas_solver::runtime::{to_display_steps, Simplifier};
@@ -103,6 +105,12 @@ fn proven_templates() -> Vec<(&'static str, &'static str, ParsedTemplate)> {
 struct RuleTally {
     pairs: usize,
     covered: usize,
+    /// Whole-pair STRUCTURAL instantiations only — the pass the migrated
+    /// emitters trust first. `covered > covered_structural` flags pairs that
+    /// only the DIRECTED mode accepts, and the 2026-07-27 probe showed that
+    /// can be pure noise: sec²⟹1+tan² was "covered" via the factorial row
+    /// ((k+1)·k!/k! = k+1), an engine-equal but title-truth-useless match.
+    covered_structural: usize,
     uncovered_samples: Vec<String>,
 }
 
@@ -143,6 +151,12 @@ fn shadow_silenced_template_instance_rates() {
                 match_rewrite(template, ctx, before, after).is_some()
                     || match_rewrite(template, ctx, after, before).is_some()
             });
+            if templates.iter().any(|(_, _, template)| {
+                match_instance_structural(template, ctx, before, after).is_some()
+                    || match_instance_structural(template, ctx, after, before).is_some()
+            }) {
+                tally.covered_structural += 1;
+            }
             if covered {
                 tally.covered += 1;
             } else if tally.uncovered_samples.len() < 3 {
@@ -166,8 +180,8 @@ fn shadow_silenced_template_instance_rates() {
             100.0 * tally.covered as f64 / tally.pairs as f64
         };
         println!(
-            "SHADOW-RULE {rule}: pairs={} covered={} rate={rate:.0}%",
-            tally.pairs, tally.covered
+            "SHADOW-RULE {rule}: pairs={} covered={} structural={} rate={rate:.0}%",
+            tally.pairs, tally.covered, tally.covered_structural
         );
         for sample in &tally.uncovered_samples {
             println!("    UNCOVERED {sample}");
@@ -264,6 +278,12 @@ fn shadow_silenced_template_instance_rates_derive_route() {
                         match_rewrite(template, context, before, after).is_some()
                             || match_rewrite(template, context, after, before).is_some()
                     });
+                    if templates.iter().any(|(_, _, template)| {
+                        match_instance_structural(template, context, before, after).is_some()
+                            || match_instance_structural(template, context, after, before).is_some()
+                    }) {
+                        tally.covered_structural += 1;
+                    }
                     if covered {
                         tally.covered += 1;
                     } else if tally.uncovered_samples.len() < 3 {
@@ -289,8 +309,8 @@ fn shadow_silenced_template_instance_rates_derive_route() {
             100.0 * tally.covered as f64 / tally.pairs as f64
         };
         println!(
-            "SHADOW-DERIVE-RULE {rule}: pairs={} covered={} rate={rate:.0}%",
-            tally.pairs, tally.covered
+            "SHADOW-DERIVE-RULE {rule}: pairs={} covered={} structural={} rate={rate:.0}%",
+            tally.pairs, tally.covered, tally.covered_structural
         );
         for sample in &tally.uncovered_samples {
             println!("    UNCOVERED {sample}");

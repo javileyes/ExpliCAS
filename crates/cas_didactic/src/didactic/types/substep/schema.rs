@@ -99,6 +99,83 @@ pub const SCHEMATIC_IDENTITIES: &[Schema] = &[
     // la sombra ampliada (2026-07-27): uno citaba 2·sin·cos = sin(2u) para
     // TODOS sus pares (el par coseno incluido) y el otro elegía plantilla por
     // un sniff de substring sobre el display.
+    // Familia pitagórica sec²/csc² y factor-form, migrada al matcher
+    // (2026-07-27). El probe del ciclo cazó que su «cobertura 1/1» en la
+    // sombra era ESPURIA: el modo dirigido las casaba vía la plantilla de
+    // factoriales ((k+1)·k!/k! = k+1) — las filas VERDADERAS no existían.
+    // Cada orientación tiene su fila porque el lookup del censo es exacto
+    // (lhs, rhs) y el título del emisor cita la fila tal cual. Las 14
+    // pliegan a 0 — medido (CLI, metavariable libre).
+    Schema {
+        lhs: "sec(u)^2",
+        rhs: "1 + tan(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 + tan(u)^2",
+        rhs: "sec(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "csc(u)^2",
+        rhs: "1 + cot(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 + cot(u)^2",
+        rhs: "csc(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 - sin(u)^2",
+        rhs: "cos(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 - cos(u)^2",
+        rhs: "sin(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "sin(u)^2 - 1",
+        rhs: "-cos(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cos(u)^2 - 1",
+        rhs: "-sin(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "sec(u)^2 - tan(u)^2",
+        rhs: "1",
+        status: Proven,
+    },
+    Schema {
+        lhs: "csc(u)^2 - cot(u)^2",
+        rhs: "1",
+        status: Proven,
+    },
+    Schema {
+        lhs: "sec(u)^2 - 1",
+        rhs: "tan(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "csc(u)^2 - 1",
+        rhs: "cot(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 - sec(u)^2",
+        rhs: "-tan(u)^2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "1 - csc(u)^2",
+        rhs: "-cot(u)^2",
+        status: Proven,
+    },
     Schema {
         lhs: "2·sin(u)·cos(u)",
         rhs: "sin(2u)",

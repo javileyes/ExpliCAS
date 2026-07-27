@@ -2042,8 +2042,12 @@ fn derive_didactic_pythagorean_factor_form_to_cos_sq_uses_human_identity_step() 
         })
         .expect("expected pythagorean factor form step");
 
+    // Migrated to the instance↔template matcher (2026-07-27): the census rows
+    // this rule needed did not exist — the shadow's «covered» was a spurious
+    // DIRECTED match via the factorial row — and now the step names its
+    // verified identity instead of staying silent.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 - sin(u)^2 = cos(u)^2".to_string()]);
 }
 
 #[test]
@@ -2060,8 +2064,11 @@ fn derive_didactic_reverse_pythagorean_factor_form_uses_human_identity_step() {
         })
         .expect("expected reverse pythagorean factor form step");
 
+    // Migrated (2026-07-27): the EXPANSION direction the old prefix-routed
+    // emitter missed — the pair applies the censused row right-to-left and
+    // cites it.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 - cos(u)^2 = sin(u)^2".to_string()]);
 }
 
 #[test]
@@ -2078,8 +2085,10 @@ fn derive_didactic_sec_squared_contraction_uses_direct_identity_language() {
         })
         .expect("expected sec squared contraction step");
 
+    // Migrated (2026-07-27): rule-name-routed to its ONE identity, matcher
+    // gated — the recognition orientation is the title.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 + tan(u)^2 = sec(u)^2".to_string()]);
 }
 
 #[test]
@@ -2096,8 +2105,9 @@ fn derive_didactic_csc_squared_contraction_uses_direct_identity_language() {
         })
         .expect("expected scaled csc squared contraction step");
 
+    // Migrated (2026-07-27): mirror of the sec² contraction pin.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 + cot(u)^2 = csc(u)^2".to_string()]);
 }
 
 #[test]
@@ -2114,8 +2124,9 @@ fn derive_didactic_sec_squared_expansion_uses_direct_identity_language() {
         })
         .expect("expected sec squared expansion step");
 
+    // Migrated (2026-07-27): expansion orientation, censused and gated.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sec(u)^2 = 1 + tan(u)^2".to_string()]);
 }
 
 #[test]
@@ -2383,8 +2394,10 @@ fn derive_didactic_sec_tan_pythagorean_to_one_uses_direct_identity_language() {
         })
         .expect("expected reciprocal pythagorean step");
 
+    // Migrated (2026-07-27): the sec/tan Pythagorean row now exists in the
+    // census and the pair provably instantiates it.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sec(u)^2 - tan(u)^2 = 1".to_string()]);
 }
 
 #[test]
@@ -2401,8 +2414,9 @@ fn derive_didactic_csc_cot_pythagorean_to_one_uses_direct_identity_language() {
         })
         .expect("expected reciprocal pythagorean step");
 
+    // Migrated (2026-07-27): csc/cot twin of the sec/tan pin above.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar csc(u)^2 - cot(u)^2 = 1".to_string()]);
 }
 
 #[test]

@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.05`
-- Total web substeps: `500`
+- Total web substeps: `508`
 
 ## Flag Summary
 
@@ -39,11 +39,11 @@ No audit flags emitted.
 | `power_merge` | 10 | 0 | 0 | 2 |
 | `radical_power` | 6 | 0 | 0 | 12 |
 | `rationalize` | 9 | 0 | 0 | 25 |
-| `simplify` | 90 | 0 | 0 | 83 |
+| `simplify` | 90 | 0 | 0 | 87 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 49 | 0 | 0 | 33 |
-| `trig_expand` | 87 | 0 | 0 | 66 |
+| `trig_contract` | 49 | 0 | 0 | 35 |
+| `trig_expand` | 87 | 0 | 0 | 68 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
@@ -128,7 +128,7 @@ No audit flags emitted.
 | `contract_trig_cos_diff_sin_diff_quotient` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_cot_quotient` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_csc_squared` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_csc_squared` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_double_cos_from_one_minus_sin_sq` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_double_cos_from_two_cos_sq_minus_one` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_double_sin` | `trig_contract` | 1 | 0 | none |
@@ -158,7 +158,7 @@ No audit flags emitted.
 | `contract_trig_recursive_six_cosine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_recursive_six_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_sec_reciprocal` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_sec_squared` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_sec_squared` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_sin_diff_special` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_square_double_angle_sine_cosine_product` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_tan_quotient` | `trig_contract` | 1 | 1 | none |
@@ -172,7 +172,7 @@ No audit flags emitted.
 | `contract_trig_triple_angle_tangent` | `trig_contract` | 1 | 1 | none |
 | `cos_arcsin_complement_projection` | `simplify` | 1 | 2 | none |
 | `cos_arctan_right_triangle_projection` | `simplify` | 1 | 2 | none |
-| `csc_cot_pythagorean_to_one` | `simplify` | 1 | 0 | none |
+| `csc_cot_pythagorean_to_one` | `simplify` | 1 | 1 | none |
 | `expand_binomial` | `expand` | 1 | 0 | none |
 | `expand_common_factor_difference` | `expand` | 1 | 2 | none |
 | `expand_common_factor_difference_three_terms` | `expand` | 2 | 4 | none |
@@ -272,7 +272,7 @@ No audit flags emitted.
 | `expand_trig_cosine_twenty_second_power_reduction` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_cot_quotient` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_csc_reciprocal` | `trig_expand` | 1 | 1 | none |
-| `expand_trig_csc_squared` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_csc_squared` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_double_cos_as_one_minus_sin_sq` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_as_two_cos_sq_minus_one` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_inverse_arccos` | `trig_expand` | 1 | 2 | none |
@@ -318,7 +318,7 @@ No audit flags emitted.
 | `expand_trig_recursive_six_sine` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_scaled_half_angle_sine_square_to_shifted_cosine` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sec_reciprocal` | `trig_expand` | 1 | 1 | none |
-| `expand_trig_sec_squared` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_sec_squared` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_sin_cos_square_diff` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sin_cos_square_sum` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sine_cosine_square_product_reduction` | `simplify` | 1 | 1 | none |
@@ -473,8 +473,8 @@ No audit flags emitted.
 | `perfect_square_root_direct_power_to_abs` | `simplify` | 1 | 2 | none |
 | `perfect_square_root_to_abs` | `simplify` | 1 | 2 | none |
 | `perfect_square_root_to_abs_with_passthrough` | `simplify` | 1 | 2 | none |
-| `pythagorean_factor_form_from_sin_sq` | `simplify` | 1 | 0 | none |
-| `pythagorean_factor_form_to_cos_sq` | `simplify` | 1 | 0 | none |
+| `pythagorean_factor_form_from_sin_sq` | `simplify` | 1 | 1 | none |
+| `pythagorean_factor_form_to_cos_sq` | `simplify` | 1 | 1 | none |
 | `pythagorean_identity` | `simplify` | 1 | 0 | none |
 | `radical_notable_quotient` | `rationalize` | 1 | 0 | none |
 | `rationalize_cube_root_sum_denominator` | `rationalize` | 1 | 2 | none |
@@ -490,7 +490,7 @@ No audit flags emitted.
 | `reciprocal_trig_product_to_one_with_passthrough` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_sin_csc_product_to_one` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_special_value_sec_pi_fourth` | `simplify` | 1 | 0 | none |
-| `sec_tan_pythagorean_to_one` | `simplify` | 1 | 0 | none |
+| `sec_tan_pythagorean_to_one` | `simplify` | 1 | 1 | none |
 | `simplify_sqrt_arithmetic_difference` | `simplify` | 1 | 1 | none |
 | `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 1 | none |
 | `sin_arccos_complement_projection` | `simplify` | 1 | 2 | none |
@@ -3202,7 +3202,7 @@ Result: csc(x)
 - Target: `csc(x)^2`
 - Result: `csc(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3224,7 +3224,8 @@ Result: csc(x)^(2)
 1. `Reconocer cosecante cuadrada`
    - before: `cot(x)^2 + 1`
    - after: `csc(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 + cot(u)^2 = csc(u)^2`
 
 ## contract_trig_double_cos_from_one_minus_sin_sq (trig_contract)
 
@@ -4131,7 +4132,7 @@ Result: sec(x)
 - Target: `sec(x)^2`
 - Result: `sec(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -4153,7 +4154,8 @@ Result: sec(x)^(2)
 1. `Reconocer secante cuadrada`
    - before: `tan(x)^2 + 1`
    - after: `sec(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 + tan(u)^2 = sec(u)^2`
 
 ## contract_trig_sin_diff_special (trig_contract)
 
@@ -4577,7 +4579,7 @@ Result: 1 / sqrt(x^(2) + 1)
 - Target: `1`
 - Result: `1`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -4599,7 +4601,8 @@ Result: 1
 1. `Aplicar identidad pitagórica recíproca`
    - before: `csc(x)^2 - cot(x)^2`
    - after: `1`
-   - substeps: none
+   - substeps:
+     1. `Usar csc(u)^2 - cot(u)^2 = 1`
 
 ## expand_binomial (expand)
 
@@ -7898,7 +7901,7 @@ Result: 1 / sin(x)
 - Target: `1 + cot(x)^2`
 - Result: `cot(x)^2 + 1`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -7920,7 +7923,8 @@ Result: cot(x)^(2) + 1
 1. `Expandir cosecante cuadrada`
    - before: `csc(x)^2`
    - after: `cot(x)^2 + 1`
-   - substeps: none
+   - substeps:
+     1. `Usar csc(u)^2 = 1 + cot(u)^2`
 
 ## expand_trig_double_cos_as_one_minus_sin_sq (trig_expand)
 
@@ -9398,7 +9402,7 @@ Result: 1 / cos(x)
 - Target: `1 + tan(x)^2`
 - Result: `tan(x)^2 + 1`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -9420,7 +9424,8 @@ Result: tan(x)^(2) + 1
 1. `Expandir secante cuadrada`
    - before: `sec(x)^2`
    - after: `tan(x)^2 + 1`
-   - substeps: none
+   - substeps:
+     1. `Usar sec(u)^2 = 1 + tan(u)^2`
 
 ## expand_trig_sin_cos_square_diff (trig_expand)
 
@@ -14412,7 +14417,7 @@ Result: |a + b| + c
 - Target: `1-cos(x)^2`
 - Result: `1 - cos(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -14434,7 +14439,8 @@ Result: 1 - cos(x)^(2)
 1. `Aplicar identidad pitagórica`
    - before: `sin(x)^2`
    - after: `1 - cos(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 - cos(u)^2 = sin(u)^2`
 
 ## pythagorean_factor_form_to_cos_sq (simplify)
 
@@ -14442,7 +14448,7 @@ Result: 1 - cos(x)^(2)
 - Target: `cos(x)^2`
 - Result: `cos(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -14464,7 +14470,8 @@ Result: cos(x)^(2)
 1. `Aplicar identidad pitagórica`
    - before: `1 - sin(x)^2`
    - after: `cos(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 - sin(u)^2 = cos(u)^2`
 
 ## pythagorean_identity (simplify)
 
@@ -14999,7 +15006,7 @@ Result: sqrt(2)
 - Target: `1`
 - Result: `1`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -15021,7 +15028,8 @@ Result: 1
 1. `Aplicar identidad pitagórica recíproca`
    - before: `sec(x)^2 - tan(x)^2`
    - after: `1`
-   - substeps: none
+   - substeps:
+     1. `Usar sec(u)^2 - tan(u)^2 = 1`
 
 ## simplify_sqrt_arithmetic_difference (simplify)
 

@@ -7846,64 +7846,58 @@ fn generate_cos_2x_additive_contraction_substeps(ctx: &Context, step: &Step) -> 
         .collect()
 }
 
+/// Migrated to the instance↔template matcher (2026-07-27) after the shadow's
+/// «1/1 covered» for these four rules turned out SPURIOUS — the directed mode
+/// was matching them via the factorial template ((k+1)·k!/k! = k+1), whose
+/// engine-equal instantiation is title-truth-useless; the real census rows
+/// did not exist. Each rule states exactly ONE identity, so the RULE NAME is
+/// the router (no description-string fragility: the simplify route spells
+/// «1 + tan²(x) = sec²(x)» where derive spells «Recognize 1 + tan²(u) as
+/// sec²(u)») and the matcher gates the pair.
 fn generate_sec_csc_squared_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    match step.description.as_str() {
-        "Expand sec²(u) as 1 + tan(u)^2" => vec![concrete_expr_substep(
-            ctx,
-            "Usar sec²(u) = 1 + tan²(u)",
-            before,
-            after,
-        )],
-        "Expand csc²(u) as 1 + cot(u)^2" => vec![concrete_expr_substep(
-            ctx,
-            "Usar csc²(u) = 1 + cot²(u)",
-            before,
-            after,
-        )],
-        _ => Vec::new(),
-    }
+    let (lhs, rhs): (&'static str, &'static str) = match step.rule_name.as_str() {
+        "Expand Secant Squared" => ("sec(u)^2", "1 + tan(u)^2"),
+        "Expand Cosecant Squared" => ("csc(u)^2", "1 + cot(u)^2"),
+        _ => return Vec::new(),
+    };
+    named_identity_substep(ctx, lhs, rhs, before, after)
+        .into_iter()
+        .collect()
 }
 
+/// Mirror of the expansion emitter: recognition orientation, matcher-gated.
 fn generate_sec_csc_squared_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    match step.description.as_str() {
-        "Recognize 1 + tan²(u) as sec²(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar 1 + tan²(u) = sec²(u)",
-            before,
-            after,
-        )],
-        "Recognize 1 + cot²(u) as csc²(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar 1 + cot²(u) = csc²(u)",
-            before,
-            after,
-        )],
-        _ => Vec::new(),
-    }
+    let (lhs, rhs): (&'static str, &'static str) = match step.rule_name.as_str() {
+        "Recognize Secant Squared" => ("1 + tan(u)^2", "sec(u)^2"),
+        "Recognize Cosecant Squared" => ("1 + cot(u)^2", "csc(u)^2"),
+        _ => return Vec::new(),
+    };
+    named_identity_substep(ctx, lhs, rhs, before, after)
+        .into_iter()
+        .collect()
 }
 
+/// Migrated to the matcher (2026-07-27): the old emitter routed on the
+/// description PREFIX («1 - sin²…»), which missed the expansion and negated
+/// variants the derive route produces (`sin² ⟹ 1 - cos²`, `sin² - 1 ⟹
+/// -cos²`). The table carries every oriented form the rule applies;
+/// structural-first adjudication picks the row the reader sees.
 fn generate_pythagorean_factor_form_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    match step.description.as_str() {
-        desc if desc.starts_with("1 - sin²") => vec![concrete_expr_substep(
-            ctx,
-            "Usar 1 - sin²(u) = cos²(u)",
-            before,
-            after,
-        )],
-        desc if desc.starts_with("1 - cos²") => vec![concrete_expr_substep(
-            ctx,
-            "Usar 1 - cos²(u) = sin²(u)",
-            before,
-            after,
-        )],
-        _ => Vec::new(),
-    }
+    const FACTOR_FORM_TEMPLATES: [(&str, &str); 4] = [
+        ("1 - sin(u)^2", "cos(u)^2"),
+        ("1 - cos(u)^2", "sin(u)^2"),
+        ("sin(u)^2 - 1", "-cos(u)^2"),
+        ("cos(u)^2 - 1", "-sin(u)^2"),
+    ];
+    named_identity_from_table(ctx, &FACTOR_FORM_TEMPLATES, before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_pythagorean_chain_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -8155,24 +8149,27 @@ fn generate_reciprocal_product_identity_substeps(ctx: &Context, step: &Step) -> 
         .collect()
 }
 
+/// Migrated to the matcher (2026-07-27): the derive route maps TEN
+/// description arms onto this rule (sec²−tan²⟹1, sec²−1⟹tan², the negated
+/// 1−sec²⟹−tan² family, their csc twins and expansions) and the old emitter
+/// only spoke for two of them. One row per identity; the matcher tries both
+/// application orientations, so the expansion arms cite the same censused
+/// row they invert. The six are structurally disjoint — no directed-mode
+/// ambiguity between equivalents.
 fn generate_reciprocal_pythagorean_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    match step.description.as_str() {
-        "Recognize sec²(u) - tan²(u) = 1" => vec![concrete_expr_substep(
-            ctx,
-            "Usar sec²(u) - tan²(u) = 1",
-            before,
-            after,
-        )],
-        "Recognize csc²(u) - cot²(u) = 1" => vec![concrete_expr_substep(
-            ctx,
-            "Usar csc²(u) - cot²(u) = 1",
-            before,
-            after,
-        )],
-        _ => Vec::new(),
-    }
+    const RECIPROCAL_PYTHAGOREAN_TEMPLATES: [(&str, &str); 6] = [
+        ("sec(u)^2 - tan(u)^2", "1"),
+        ("csc(u)^2 - cot(u)^2", "1"),
+        ("sec(u)^2 - 1", "tan(u)^2"),
+        ("csc(u)^2 - 1", "cot(u)^2"),
+        ("1 - sec(u)^2", "-tan(u)^2"),
+        ("1 - csc(u)^2", "-cot(u)^2"),
+    ];
+    named_identity_from_table(ctx, &RECIPROCAL_PYTHAGOREAN_TEMPLATES, before, after)
+        .into_iter()
+        .collect()
 }
 
 /// Migrated to the instance↔template matcher after the shadow pass
@@ -25230,8 +25227,10 @@ mod limit_notable_tests {
 mod named_identity_matcher_tests {
     use super::{
         generate_cos_2x_additive_contraction_substeps, generate_double_angle_contraction_substeps,
-        generate_half_angle_tangent_substeps, generate_reciprocal_product_identity_substeps,
-        generate_reciprocal_trig_identity_substeps, generate_trig_quotient_substeps,
+        generate_half_angle_tangent_substeps, generate_pythagorean_factor_form_substeps,
+        generate_reciprocal_product_identity_substeps, generate_reciprocal_pythagorean_substeps,
+        generate_reciprocal_trig_identity_substeps, generate_sec_csc_squared_contraction_substeps,
+        generate_sec_csc_squared_expansion_substeps, generate_trig_quotient_substeps,
     };
     use crate::runtime::Step;
     use cas_ast::Context;
@@ -25413,6 +25412,131 @@ mod named_identity_matcher_tests {
         assert!(
             subs.is_empty(),
             "a described-but-non-instance pair must decline: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// The four sec²/csc² rules are RULE-NAME routed (one identity each), so
+    /// the narration is description-agnostic: the derive spelling and the
+    /// simplify spelling of the same application both narrate, and a
+    /// non-instance pair declines regardless of what the description claims.
+    #[test]
+    fn sec_csc_squared_emitters_narrate_by_rule_name_and_decline_non_instances() {
+        let run = |rule: &str, desc: &str, before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact(desc, rule, before, after);
+            if rule.starts_with("Expand") {
+                generate_sec_csc_squared_expansion_substeps(&ctx, &step)
+            } else {
+                generate_sec_csc_squared_contraction_substeps(&ctx, &step)
+            }
+        };
+        for (rule, desc, before, after, expected) in [
+            (
+                "Expand Secant Squared",
+                "Expand sec²(u) as 1 + tan(u)^2",
+                "sec(x)^2",
+                "1 + tan(x)^2",
+                "Usar sec(u)^2 = 1 + tan(u)^2",
+            ),
+            (
+                "Expand Cosecant Squared",
+                "Expand csc²(u) as 1 + cot(u)^2",
+                "csc(2*x)^2",
+                "1 + cot(2*x)^2",
+                "Usar csc(u)^2 = 1 + cot(u)^2",
+            ),
+            // The SIMPLIFY route spells the same application differently —
+            // the rule-name routing must not care.
+            (
+                "Recognize Secant Squared",
+                "1 + tan²(x) = sec²(x)",
+                "tan(x)^2 + 1",
+                "sec(x)^2",
+                "Usar 1 + tan(u)^2 = sec(u)^2",
+            ),
+            (
+                "Recognize Cosecant Squared",
+                "Recognize 1 + cot²(u) as csc²(u)",
+                "cot(x^2)^2 + 1",
+                "csc(x^2)^2",
+                "Usar 1 + cot(u)^2 = csc(u)^2",
+            ),
+        ] {
+            let subs = run(rule, desc, before, after);
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(subs[0].description, expected);
+        }
+        // A pair that is NOT an instance declines even under the right rule.
+        let subs = run(
+            "Recognize Secant Squared",
+            "Recognize 1 + tan²(u) as sec²(u)",
+            "tan(x)^2 + 2",
+            "sec(x)^2",
+        );
+        assert!(
+            subs.is_empty(),
+            "a non-instance must decline: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// Factor-form and reciprocal-Pythagorean tables: every oriented family
+    /// the derive route produces narrates its OWN censused identity — the
+    /// expansion and negated variants the old prefix-routed emitter missed
+    /// included — and non-instances decline.
+    #[test]
+    fn pythagorean_factor_and_reciprocal_tables_narrate_each_family() {
+        let run_pff = |before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact("any", "Pythagorean Factor Form", before, after);
+            generate_pythagorean_factor_form_substeps(&ctx, &step)
+        };
+        for (before, after, expected) in [
+            ("1 - sin(x)^2", "cos(x)^2", "Usar 1 - sin(u)^2 = cos(u)^2"),
+            // Expansion direction (the shadow's uncovered witness).
+            ("sin(x)^2", "1 - cos(x)^2", "Usar 1 - cos(u)^2 = sin(u)^2"),
+            // Negated variant.
+            ("sin(x)^2 - 1", "-cos(x)^2", "Usar sin(u)^2 - 1 = -cos(u)^2"),
+        ] {
+            let subs = run_pff(before, after);
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(subs[0].description, expected);
+        }
+        let subs = run_pff("1 - sin(x)^2", "cos(2*x)^2");
+        assert!(
+            subs.is_empty(),
+            "a non-instance must decline: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+
+        let run_rpi = |before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact("any", "Reciprocal Pythagorean Identity", before, after);
+            generate_reciprocal_pythagorean_substeps(&ctx, &step)
+        };
+        for (before, after, expected) in [
+            ("sec(x)^2 - tan(x)^2", "1", "Usar sec(u)^2 - tan(u)^2 = 1"),
+            ("csc(x)^2 - 1", "cot(x)^2", "Usar csc(u)^2 - 1 = cot(u)^2"),
+            // Expansion arm: same censused row, inverted application.
+            ("tan(x)^2", "sec(x)^2 - 1", "Usar sec(u)^2 - 1 = tan(u)^2"),
+            // Negated family.
+            ("1 - sec(x)^2", "-tan(x)^2", "Usar 1 - sec(u)^2 = -tan(u)^2"),
+        ] {
+            let subs = run_rpi(before, after);
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(subs[0].description, expected);
+        }
+        let subs = run_rpi("sec(x)^2 - tan(x)^2", "2");
+        assert!(
+            subs.is_empty(),
+            "a non-instance must decline: {:?}",
             subs.iter().map(|s| &s.description).collect::<Vec<_>>()
         );
     }
