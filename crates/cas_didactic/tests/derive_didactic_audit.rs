@@ -2137,8 +2137,12 @@ fn derive_didactic_secant_reciprocal_expansion_uses_direct_identity_language() {
         })
         .expect("expected secant reciprocal expansion step");
 
+    // Migrated to the instance↔template matcher (2026-07-27, derive-route
+    // shadow 6/6): the step now names its verified oriented identity — the
+    // direct identity language this test always asked for, spoken instead
+    // of implied.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sec(u) = 1 / cos(u)".to_string()]);
 }
 
 #[test]
@@ -2160,8 +2164,12 @@ fn derive_didactic_cosecant_reciprocal_expansion_uses_direct_identity_language()
         })
         .expect("expected cosecant reciprocal expansion step");
 
+    // Migrated to the instance↔template matcher (2026-07-27, derive-route
+    // shadow 6/6): the step now names its verified oriented identity — the
+    // direct identity language this test always asked for, spoken instead
+    // of implied.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar csc(u) = 1 / sin(u)".to_string()]);
 }
 
 #[test]
@@ -2183,8 +2191,12 @@ fn derive_didactic_cotangent_quotient_expansion_uses_direct_identity_language() 
         })
         .expect("expected cotangent quotient expansion step");
 
+    // Migrated to the instance↔template matcher (2026-07-27, derive-route
+    // shadow 6/6): the step now names its verified oriented identity — the
+    // direct identity language this test always asked for, spoken instead
+    // of implied.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar cot(u) = cos(u) / sin(u)".to_string()]);
 }
 
 #[test]
@@ -2206,8 +2218,12 @@ fn derive_didactic_reciprocal_cosine_contraction_uses_direct_identity_language()
         })
         .expect("expected reciprocal secant contraction step");
 
+    // Migrated to the instance↔template matcher (2026-07-27, derive-route
+    // shadow 6/6): the step now names its verified oriented identity — the
+    // direct identity language this test always asked for, spoken instead
+    // of implied.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 / cos(u) = sec(u)".to_string()]);
 }
 
 #[test]
@@ -2229,8 +2245,12 @@ fn derive_didactic_reciprocal_sine_contraction_uses_direct_identity_language() {
         })
         .expect("expected reciprocal cosecant contraction step");
 
+    // Migrated to the instance↔template matcher (2026-07-27, derive-route
+    // shadow 6/6): the step now names its verified oriented identity — the
+    // direct identity language this test always asked for, spoken instead
+    // of implied.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 / sin(u) = csc(u)".to_string()]);
 }
 
 #[test]
@@ -2252,8 +2272,12 @@ fn derive_didactic_cotangent_quotient_contraction_uses_direct_identity_language(
         })
         .expect("expected cotangent quotient contraction step");
 
+    // Migrated to the instance↔template matcher (2026-07-27, derive-route
+    // shadow 6/6): the step now names its verified oriented identity — the
+    // direct identity language this test always asked for, spoken instead
+    // of implied.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar cos(u) / sin(u) = cot(u)".to_string()]);
 }
 
 #[test]

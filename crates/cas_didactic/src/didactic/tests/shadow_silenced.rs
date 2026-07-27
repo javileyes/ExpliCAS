@@ -183,3 +183,118 @@ fn shadow_silenced_template_instance_rates() {
          instrument is no longer exercising the queue"
     );
 }
+
+/// The DERIVE route: `Reciprocal Trig Identity` and friends are produced by
+/// `derive_command`, never by the plain simplifier, so the simplify-route
+/// shadow reports them as unmigratable-by-absence. This tier evaluates
+/// `derive(source, target)` through the real eval pipeline and reads the RAW
+/// steps inside the step-payload collector — BEFORE the prune that deletes
+/// silenced sub-steps, and with the live Context the matcher needs.
+#[test]
+#[ignore]
+fn shadow_silenced_template_instance_rates_derive_route() {
+    use cas_api_models::{
+        EvalAssumeScope, EvalBranchMode, EvalBudgetPreset, EvalComplexMode, EvalConstFoldMode,
+        EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalNumericDisplay,
+        EvalStepsMode, EvalValueDomain,
+    };
+    use cas_session::eval::{evaluate_eval_command_pretty_with_session, EvalCommandConfig};
+    use std::cell::RefCell;
+
+    let derive_rows: Vec<(String, String)> = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../cas_solver/tests/derive_pairs.csv"
+    ))
+    .lines()
+    .skip(1)
+    .filter_map(|line| {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            return None;
+        }
+        let mut cols = trimmed.split(',');
+        let _id = cols.next()?;
+        let _family = cols.next()?;
+        let source = cols.next()?.trim().to_string();
+        let target = cols.next()?.trim().to_string();
+        (!source.is_empty() && !target.is_empty()).then_some((source, target))
+    })
+    .collect();
+
+    let templates = proven_templates();
+    let tallies: RefCell<BTreeMap<String, RuleTally>> = RefCell::new(BTreeMap::new());
+
+    for (source, target) in &derive_rows {
+        let expr = format!("derive({source}, {target})");
+        let config = EvalCommandConfig {
+            expr: &expr,
+            auto_store: false,
+            max_chars: 2000,
+            time_budget_ms: None,
+            steps_mode: EvalStepsMode::On,
+            budget_preset: EvalBudgetPreset::Standard,
+            strict: false,
+            domain: EvalDomainMode::Generic,
+            context_mode: EvalContextMode::Auto,
+            branch_mode: EvalBranchMode::Strict,
+            expand_policy: EvalExpandPolicy::Off,
+            complex_mode: EvalComplexMode::Auto,
+            const_fold: EvalConstFoldMode::Off,
+            value_domain: EvalValueDomain::Real,
+            complex_branch: EvalBranchMode::Principal,
+            inv_trig: EvalInvTrigPolicy::Strict,
+            assume_scope: EvalAssumeScope::Real,
+            numeric_display: EvalNumericDisplay::Exact,
+        };
+        let _json = evaluate_eval_command_pretty_with_session(
+            None,
+            config,
+            crate::Language::Es,
+            |steps, events, context, steps_mode| {
+                let mut tallies = tallies.borrow_mut();
+                for step in steps {
+                    if !is_single_formula_template_rule(step.rule_name.as_str()) {
+                        continue;
+                    }
+                    let before = step.before_local().unwrap_or(step.before);
+                    let after = step.after_local().unwrap_or(step.after);
+                    let tally = tallies.entry(step.rule_name.to_string()).or_default();
+                    tally.pairs += 1;
+                    let covered = templates.iter().any(|(_, _, template)| {
+                        match_rewrite(template, context, before, after).is_some()
+                            || match_rewrite(template, context, after, before).is_some()
+                    });
+                    if covered {
+                        tally.covered += 1;
+                    } else if tally.uncovered_samples.len() < 3 {
+                        tally.uncovered_samples.push(format!(
+                            "{} ⟹ {}",
+                            display(context, before),
+                            display(context, after)
+                        ));
+                    }
+                }
+                crate::collect_step_payloads_with_events(steps, events, context, steps_mode)
+            },
+        );
+    }
+
+    let tallies = tallies.into_inner();
+    let mut total_pairs = 0usize;
+    for (rule, tally) in &tallies {
+        total_pairs += tally.pairs;
+        let rate = if tally.pairs == 0 {
+            0.0
+        } else {
+            100.0 * tally.covered as f64 / tally.pairs as f64
+        };
+        println!(
+            "SHADOW-DERIVE-RULE {rule}: pairs={} covered={} rate={rate:.0}%",
+            tally.pairs, tally.covered
+        );
+        for sample in &tally.uncovered_samples {
+            println!("    UNCOVERED {sample}");
+        }
+    }
+    println!("SHADOW-DERIVE-TOTAL pairs={total_pairs}");
+}

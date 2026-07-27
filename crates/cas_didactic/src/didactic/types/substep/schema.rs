@@ -143,6 +143,25 @@ pub const SCHEMATIC_IDENTITIES: &[Schema] = &[
         rhs: "csc(u)",
         status: Proven,
     },
+    // Orientaciones de EXPANSIÓN del emisor «Reciprocal Trig Identity»,
+    // migrado tras la sombra de ruta-derive (2026-07-27, 6/6 pares cubiertos):
+    // el título direccional del gesto («Usar sec(u) = 1/cos(u)») exige la fila
+    // en su orientación, como en la familia de ángulo mitad.
+    Schema {
+        lhs: "sec(u)",
+        rhs: "1 / cos(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "csc(u)",
+        rhs: "1 / sin(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cot(u)",
+        rhs: "cos(u) / sin(u)",
+        status: Proven,
+    },
     Schema {
         lhs: "R·sin(u + φ)",
         rhs: "a·sin(u) + b·cos(u)",

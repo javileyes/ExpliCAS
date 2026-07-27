@@ -8118,48 +8118,30 @@ fn generate_trig_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> 
     Vec::new()
 }
 
+/// Migrated to the instance↔template matcher after the derive-route shadow
+/// (2026-07-27) measured the rule at 6/6 census-covered. The engine's own
+/// application description routes each pair to ITS oriented template — the
+/// directional title («Usar sec(u) = 1/cos(u)» for the expansion) is the
+/// gesture's phrasing, and the matcher now gates that the pair actually
+/// instantiates it; a described-but-non-instance pair declines.
 fn generate_reciprocal_trig_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    match step.description.as_str() {
-        "Expand sec(u) as 1 / cos(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar sec(u) = 1 / cos(u)",
-            before,
-            after,
-        )],
-        "Expand csc(u) as 1 / sin(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar csc(u) = 1 / sin(u)",
-            before,
-            after,
-        )],
-        "Expand cot(u) as cos(u) / sin(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar cot(u) = cos(u) / sin(u)",
-            before,
-            after,
-        )],
-        "Recognize 1 / cos(u) as sec(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar 1 / cos(u) = sec(u)",
-            before,
-            after,
-        )],
-        "Recognize 1 / sin(u) as csc(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar 1 / sin(u) = csc(u)",
-            before,
-            after,
-        )],
-        "Recognize cos(u) / sin(u) as cot(u)" => vec![concrete_expr_substep(
-            ctx,
-            "Usar cos(u) / sin(u) = cot(u)",
-            before,
-            after,
-        )],
-        _ => Vec::new(),
-    }
+    let template: Option<(&'static str, &'static str)> = match step.description.as_str() {
+        "Expand sec(u) as 1 / cos(u)" => Some(("sec(u)", "1 / cos(u)")),
+        "Expand csc(u) as 1 / sin(u)" => Some(("csc(u)", "1 / sin(u)")),
+        "Expand cot(u) as cos(u) / sin(u)" => Some(("cot(u)", "cos(u) / sin(u)")),
+        "Recognize 1 / cos(u) as sec(u)" => Some(("1 / cos(u)", "sec(u)")),
+        "Recognize 1 / sin(u) as csc(u)" => Some(("1 / sin(u)", "csc(u)")),
+        "Recognize cos(u) / sin(u) as cot(u)" => Some(("cos(u) / sin(u)", "cot(u)")),
+        _ => None,
+    };
+    let Some((lhs, rhs)) = template else {
+        return Vec::new();
+    };
+    named_identity_substep(ctx, lhs, rhs, before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_reciprocal_product_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -25249,7 +25231,7 @@ mod named_identity_matcher_tests {
     use super::{
         generate_cos_2x_additive_contraction_substeps, generate_double_angle_contraction_substeps,
         generate_half_angle_tangent_substeps, generate_reciprocal_product_identity_substeps,
-        generate_trig_quotient_substeps,
+        generate_reciprocal_trig_identity_substeps, generate_trig_quotient_substeps,
     };
     use crate::runtime::Step;
     use cas_ast::Context;
@@ -25386,6 +25368,53 @@ mod named_identity_matcher_tests {
                 "each pair narrates its OWN identity, never a neighbour's"
             );
         }
+    }
+
+    /// The derive-route shadow measured this rule 6/6 census-covered; the
+    /// engine's application description routes each pair to its ORIENTED
+    /// template, and the matcher gates the instance.
+    #[test]
+    fn reciprocal_trig_identity_narrates_each_described_pair() {
+        let run_desc = |desc: &str, before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact(desc, "Reciprocal Trig Identity", before, after);
+            generate_reciprocal_trig_identity_substeps(&ctx, &step)
+        };
+        for (desc, before, after, expected) in [
+            (
+                "Expand sec(u) as 1 / cos(u)",
+                "sec(x)",
+                "1/cos(x)",
+                "Usar sec(u) = 1 / cos(u)",
+            ),
+            (
+                "Recognize 1 / sin(u) as csc(u)",
+                "1/sin(2*x)",
+                "csc(2*x)",
+                "Usar 1 / sin(u) = csc(u)",
+            ),
+            (
+                "Expand cot(u) as cos(u) / sin(u)",
+                "cot(x^2)",
+                "cos(x^2)/sin(x^2)",
+                "Usar cot(u) = cos(u) / sin(u)",
+            ),
+        ] {
+            let subs = run_desc(desc, before, after);
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(subs[0].description, expected);
+        }
+        // Described but NOT an instance: the engine's description says sec
+        // expansion, the pair is something else — the matcher declines what
+        // the old emitter would have cited.
+        let subs = run_desc("Expand sec(u) as 1 / cos(u)", "sin(x) + 1", "1/cos(x)");
+        assert!(
+            subs.is_empty(),
+            "a described-but-non-instance pair must decline: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
     }
 
     /// A pair that instantiates none of the quotient templates publishes

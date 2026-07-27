@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.05`
-- Total web substeps: `494`
+- Total web substeps: `500`
 
 ## Flag Summary
 
@@ -42,8 +42,8 @@ No audit flags emitted.
 | `simplify` | 90 | 0 | 0 | 83 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 49 | 0 | 0 | 30 |
-| `trig_expand` | 87 | 0 | 0 | 63 |
+| `trig_contract` | 49 | 0 | 0 | 33 |
+| `trig_expand` | 87 | 0 | 0 | 66 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
@@ -126,8 +126,8 @@ No audit flags emitted.
 | `contract_trig_angle_sum_cosine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_angle_sum_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_cos_diff_sin_diff_quotient` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_cot_quotient` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_cot_quotient` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_csc_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_double_cos_from_one_minus_sin_sq` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_double_cos_from_two_cos_sq_minus_one` | `trig_contract` | 1 | 0 | none |
@@ -157,7 +157,7 @@ No audit flags emitted.
 | `contract_trig_quintuple_angle_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_recursive_six_cosine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_recursive_six_sine` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_sec_reciprocal` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_sec_reciprocal` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_sec_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_sin_diff_special` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_square_double_angle_sine_cosine_product` | `trig_contract` | 1 | 1 | none |
@@ -270,8 +270,8 @@ No audit flags emitted.
 | `expand_trig_cosine_twentieth_power_reduction` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_cosine_twenty_fourth_power_reduction` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_cosine_twenty_second_power_reduction` | `trig_expand` | 1 | 1 | none |
-| `expand_trig_cot_quotient` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_csc_reciprocal` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_cot_quotient` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_csc_reciprocal` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_csc_squared` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_as_one_minus_sin_sq` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_as_two_cos_sq_minus_one` | `trig_expand` | 1 | 0 | none |
@@ -317,7 +317,7 @@ No audit flags emitted.
 | `expand_trig_recursive_six_cosine` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_recursive_six_sine` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_scaled_half_angle_sine_square_to_shifted_cosine` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_sec_reciprocal` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_sec_reciprocal` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_sec_squared` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sin_cos_square_diff` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sin_cos_square_sum` | `trig_expand` | 1 | 0 | none |
@@ -3136,7 +3136,7 @@ Result: tan(2 * x)
 - Target: `cot(x)`
 - Result: `cot(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3160,7 +3160,8 @@ Result: cot(x)
 1. `Reconocer cotangente desde un cociente`
    - before: `cos(x)/sin(x)`
    - after: `cot(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(u) / sin(u) = cot(u)`
 
 ## contract_trig_csc_reciprocal (trig_contract)
 
@@ -3168,7 +3169,7 @@ Result: cot(x)
 - Target: `csc(x)`
 - Result: `csc(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3192,7 +3193,8 @@ Result: csc(x)
 1. `Reconocer cosecante desde un recíproco`
    - before: `1/sin(x)`
    - after: `csc(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 / sin(u) = csc(u)`
 
 ## contract_trig_csc_squared (trig_contract)
 
@@ -4096,7 +4098,7 @@ Result: sin(6 * x)
 - Target: `sec(x)`
 - Result: `sec(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -4120,7 +4122,8 @@ Result: sec(x)
 1. `Reconocer secante desde un recíproco`
    - before: `1/cos(x)`
    - after: `sec(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 / cos(u) = sec(u)`
 
 ## contract_trig_sec_squared (trig_contract)
 
@@ -7829,7 +7832,7 @@ Result: (cos(22 * x) + 22 * cos(20 * x) + 231 * cos(18 * x) + 1540 * cos(16 * x)
 - Target: `cos(x)/sin(x)`
 - Result: `cos(x) / sin(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -7853,7 +7856,8 @@ Result: cos(x) / sin(x)
 1. `Reescribir cotangente como coseno entre seno`
    - before: `cot(x)`
    - after: `cos(x)/sin(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cot(u) = cos(u) / sin(u)`
 
 ## expand_trig_csc_reciprocal (trig_expand)
 
@@ -7861,7 +7865,7 @@ Result: cos(x) / sin(x)
 - Target: `1/sin(x)`
 - Result: `1 / sin(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -7885,7 +7889,8 @@ Result: 1 / sin(x)
 1. `Reescribir cosecante como recíproco del seno`
    - before: `csc(x)`
    - after: `1/sin(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar csc(u) = 1 / sin(u)`
 
 ## expand_trig_csc_squared (trig_expand)
 
@@ -9360,7 +9365,7 @@ Result: 1 - cos(x)
 - Target: `1/cos(x)`
 - Result: `1 / cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -9384,7 +9389,8 @@ Result: 1 / cos(x)
 1. `Reescribir secante como recíproco del coseno`
    - before: `sec(x)`
    - after: `1/cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sec(u) = 1 / cos(u)`
 
 ## expand_trig_sec_squared (trig_expand)
 

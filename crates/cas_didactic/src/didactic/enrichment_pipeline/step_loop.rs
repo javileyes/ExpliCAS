@@ -190,6 +190,7 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
             | "Trig Quotient"
             | "Double Angle Contraction"
             | "Cos 2x Additive Contraction"
+            | "Reciprocal Trig Identity"
     ) && normalized_substep.starts_with("usar "))
         || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
@@ -222,7 +223,6 @@ pub(crate) fn is_single_formula_template_rule(rule_name: &str) -> bool {
             | "Expand Cosecant Squared"
             | "Recognize Secant Squared"
             | "Recognize Cosecant Squared"
-            | "Reciprocal Trig Identity"
             | "Reciprocal Pythagorean Identity"
             | "Half-Angle Square Identity"
             | "Canonicalize Roots"

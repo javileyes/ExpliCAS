@@ -1542,6 +1542,10 @@ fn verified_identity_narrations_reach_the_wire() {
         // only exists on the wire — parser-node unit tests cannot see it
         // (measured twice in one campaign).
         ("4*cos(x)^2 - 2", "Usar 2·cos(u)^2 - 1 = cos(2u)"),
+        // Reciprocal Trig Identity migrated after the DERIVE-route shadow
+        // (2026-07-27): the rule only fires on this route, which the first
+        // instrument could not see at all.
+        ("derive(sec(x), 1/cos(x))", "Usar sec(u) = 1 / cos(u)"),
     ];
     for (input, expected_fragment) in cases {
         let wire = eval_wire_in(input, Language::Es)
