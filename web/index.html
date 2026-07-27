@@ -1487,6 +1487,43 @@
             font-weight: bold;
         }
 
+        /* Insertable name chip in the declaration modals: tapping DUMPS the
+           binding into the input (bare name for a variable, call template
+           with the first argument selected for a function). */
+        .var-insert-chip {
+            font-family: 'Fira Code', monospace;
+            color: #10b981;
+            font-weight: bold;
+            font-size: 1em;
+            background: rgba(16, 185, 129, 0.14);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            border-radius: 8px;
+            padding: 6px 12px;
+            cursor: pointer;
+            flex-shrink: 0;
+            max-width: 45%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .var-insert-chip:hover {
+            background: rgba(16, 185, 129, 0.28);
+            border-color: #10b981;
+        }
+
+        .var-insert-chip.fn {
+            color: #8b5cf6;
+            background: rgba(139, 92, 246, 0.14);
+            border-color: rgba(139, 92, 246, 0.4);
+        }
+
+        .var-insert-chip.fn:hover {
+            background: rgba(139, 92, 246, 0.28);
+            border-color: #8b5cf6;
+        }
+
         .variable-list .var-value {
             color: var(--text-secondary);
             font-family: 'Fira Code', monospace;
@@ -1725,6 +1762,43 @@
             border-color: #8b5cf6;
         }
 
+        /* Declaration browsers next to ⌨️ and ƒ(): x≔ opens the variables
+           modal, ƒ≔ the functions modal (list + insert + delete). Same
+           chip language as ƒ(): variables wear green, functions violet. */
+        .decl-open-btn {
+            display: flex;
+            align-items: center;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.05em;
+            font-weight: 700;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            padding: 0 10px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .decl-open-btn.vars {
+            background: rgba(16, 185, 129, 0.12);
+            color: #10b981;
+        }
+
+        .decl-open-btn.vars:hover {
+            background: rgba(16, 185, 129, 0.25);
+            border-color: #10b981;
+        }
+
+        .decl-open-btn.fns {
+            background: rgba(139, 92, 246, 0.12);
+            color: #8b5cf6;
+        }
+
+        .decl-open-btn.fns:hover {
+            background: rgba(139, 92, 246, 0.25);
+            border-color: #8b5cf6;
+        }
+
         .examples-panel.fnmenu {
             border-color: #8b5cf6;
             box-shadow: 0 8px 32px rgba(139, 92, 246, 0.3);
@@ -1779,6 +1853,11 @@
             .fn-insert-btn {
                 height: 48px;
                 padding: 0 16px;
+            }
+
+            .decl-open-btn {
+                height: 48px;
+                padding: 0 12px;
             }
         }
 
@@ -1875,7 +1954,7 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             color: var(--text-primary);
-            font-size: 1.02em;
+            font-size: 1.28em;
             font-family: 'Fira Code', 'Consolas', monospace;
             padding: 0;
             cursor: pointer;
@@ -1891,13 +1970,13 @@
         }
 
         .kb-key-sm {
-            font-size: 0.72em;
+            font-size: 0.84em;
         }
 
         /* Longest labels (simplify, arcsin, taylor...): shrink further so
            they fit a 7-column phone grid without clipping. */
         .kb-key-xs {
-            font-size: 0.6em;
+            font-size: 0.68em;
         }
 
         /* Functional-group tints, in the app's own hue language: operators
@@ -1963,67 +2042,6 @@
             color: var(--accent);
         }
 
-        /* Declarations layers (x≔ / ƒ≔): one row per binding — the name chip
-           INSERTS, the trash deletes (same plumbing as the header panels). */
-        .kb-decl-list {
-            max-height: 264px;
-            overflow-y: auto;
-            margin-top: 6px;
-        }
-
-        .kb-decl-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 6px;
-        }
-
-        .kb-decl-row .kb-key {
-            flex: 0 0 auto;
-            min-width: 64px;
-            max-width: 45%;
-            padding: 0 14px;
-            height: 40px;
-            font-weight: 600;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .kb-decl-preview {
-            flex: 1;
-            min-width: 0;
-            color: var(--text-secondary);
-            font-family: 'Fira Code', 'Consolas', monospace;
-            font-size: 0.85em;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .kb-decl-del {
-            flex-shrink: 0;
-            background: none;
-            border: none;
-            color: #ef4444;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 6px;
-            opacity: 0.7;
-            transition: all 0.2s;
-        }
-
-        .kb-decl-del:hover {
-            opacity: 1;
-            background: rgba(239, 68, 68, 0.15);
-        }
-
-        .kb-decl-empty {
-            color: var(--text-secondary);
-            font-style: italic;
-            padding: 16px 6px;
-        }
-
         @media (max-width: 720px) {
             .kb-toggle-btn {
                 height: 48px;
@@ -2048,10 +2066,6 @@
 
             .kb-tab-primary {
                 padding: 6px 9px;
-            }
-
-            .kb-decl-row .kb-key {
-                height: 44px;
             }
         }
 
@@ -2143,8 +2157,15 @@
         [data-theme="light"] .examples-panel.fnmenu h2,
         [data-theme="light"] .examples-panel.fnmenu .examples-group-card-count,
         [data-theme="light"] .examples-panel.fnmenu .examples-back-btn,
-        [data-theme="light"] .fn-insert-btn {
+        [data-theme="light"] .fn-insert-btn,
+        [data-theme="light"] .decl-open-btn.fns,
+        [data-theme="light"] .var-insert-chip.fn {
             color: #6d28d9;
+        }
+
+        [data-theme="light"] .decl-open-btn.vars,
+        [data-theme="light"] .var-insert-chip {
+            color: #047857;
         }
 
         /* Keypad functional-group tints on light: pale fills of the same
@@ -2315,6 +2336,12 @@
                 data-i18n-title="kb.toggle.title" title="Teclado de cálculo en pantalla">
                 ⌨️
             </button>
+            <button type="button" class="decl-open-btn vars" id="vars-open-btn" onclick="showVariablesPanel()"
+                data-i18n-aria="kb.vars.title" aria-label="Variables declaradas con := — ver, insertar o eliminar"
+                data-i18n-title="kb.vars.title" title="Variables declaradas con := — ver, insertar o eliminar">x≔</button>
+            <button type="button" class="decl-open-btn fns" id="fns-open-btn" onclick="showFunctionsPanel()"
+                data-i18n-aria="kb.fns.title" aria-label="Funciones definidas con := — ver, insertar o eliminar"
+                data-i18n-title="kb.fns.title" title="Funciones definidas con := — ver, insertar o eliminar">ƒ≔</button>
             <button type="button" class="fn-insert-btn" id="fn-insert-btn" onclick="showFnMenuPanel()"
                 data-i18n-aria="fnmenu.button.aria_label" aria-label="Abrir el menú de inserción de funciones"
                 data-i18n-title="fnmenu.button.title" title="Insertar una función con sus argumentos ya colocados">
@@ -2336,10 +2363,6 @@
                 <button type="button" class="kb-tab kb-tab-primary active" data-kbtab="num">123</button>
                 <button type="button" class="kb-tab kb-tab-primary" data-kbtab="fn">f(x)</button>
                 <button type="button" class="kb-tab kb-tab-primary" data-kbtab="abc">αβγ</button>
-                <button type="button" class="kb-tab" data-kbtab="vars"
-                    data-i18n-title="kb.vars.title" title="Variables declaradas con := — tocar para insertar">x≔</button>
-                <button type="button" class="kb-tab" data-kbtab="fns"
-                    data-i18n-title="kb.fns.title" title="Funciones definidas con := — tocar para insertar">ƒ≔</button>
                 <span class="kb-tabs-spacer"></span>
                 <button type="button" class="kb-tab" id="kb-ref-btn"
                     data-i18n-title="kb.ref.title" title="Referencia a una celda: escribe el número a continuación (p. ej. #3)">#</button>
@@ -2552,10 +2575,10 @@
                         "input.submit.label": "Evaluar",
                         "input.clear.title": "Limpiar la expresión",
                         "input.clear.aria_label": "Limpiar la expresión",
-                        "kb.vars.title": "Variables declaradas con := — tocar para insertar",
-                        "kb.vars.empty": "Aún no hay variables — prueba b3 := 5",
-                        "kb.fns.title": "Funciones definidas con := — tocar para insertar",
-                        "kb.fns.empty": "Aún no hay funciones — prueba g(x) := x^2",
+                        "kb.vars.title": "Variables declaradas con := — ver, insertar o eliminar",
+                        "kb.fns.title": "Funciones definidas con := — ver, insertar o eliminar",
+                        "variables_panel.insert_hint": "Tocar para insertar en la entrada",
+                        "functions_panel.insert_hint": "Tocar para insertar la llamada en la entrada",
                         "variables_panel.title": "📦 Variables asignadas",
                         "variables_panel.empty": "Aún no hay variables asignadas",
                         "functions_panel.title": "𝑓 Funciones definidas",
@@ -2664,10 +2687,10 @@
                         "input.submit.label": "Evaluate",
                         "input.clear.title": "Clear the expression",
                         "input.clear.aria_label": "Clear the expression",
-                        "kb.vars.title": "Variables declared with := — tap to insert",
-                        "kb.vars.empty": "No variables yet — try a := 5",
-                        "kb.fns.title": "Functions defined with := — tap to insert",
-                        "kb.fns.empty": "No functions yet — try g(x) := x^2",
+                        "kb.vars.title": "Variables declared with := — view, insert or delete",
+                        "kb.fns.title": "Functions defined with := — view, insert or delete",
+                        "variables_panel.insert_hint": "Tap to insert into the input",
+                        "functions_panel.insert_hint": "Tap to insert the call into the input",
                         "variables_panel.title": "📦 Assigned Variables",
                         "variables_panel.empty": "No variables assigned yet",
                         "functions_panel.title": "𝑓 Defined Functions",
@@ -3540,9 +3563,10 @@
             } else {
                 badge.style.display = 'none';
             }
-            // Keep the keypad's x≔ layer live: every binding change funnels
+            // Keep an OPEN variables modal live: every binding change funnels
             // through this badge updater (assign, delete, import, clear).
-            kbRefreshIfDeclarations();
+            const overlay = document.getElementById('variables-panel-overlay');
+            if (overlay && overlay.classList.contains('visible')) updateVariablesPanel();
         }
 
         // Show variables panel overlay
@@ -3576,7 +3600,7 @@
                     <ul class="variable-list">
                         ${varNames.map(name => `
                             <li>
-                                <span class="var-name">${escapeHtml(name)}</span>
+                                <button type="button" class="var-insert-chip" onclick="panelInsertVariable('${escapeHtml(name)}')" title="${t('variables_panel.insert_hint')}">${escapeHtml(name)}</button>
                                 <span class="var-value" title="${escapeHtml(sessionVariables[name])}">${escapeHtml(sessionVariables[name])}</span>
                                 <button class="var-delete" onclick="deleteVariable('${escapeHtml(name)}')" title="${t('card.delete_variable')}">🗑️</button>
                             </li>
@@ -3584,6 +3608,24 @@
                     </ul>
                 `;
             }
+        }
+
+        // Insert chips in the declaration modals: dump the binding into the
+        // input (bare name for a variable, call template with the first
+        // argument selected for a function) and close the overlay so the
+        // caret is immediately visible — the modal twin of the old keypad
+        // x≔/ƒ≔ layers.
+        function panelInsertVariable(name) {
+            hideVariablesPanel();
+            kbInsertText(name);
+        }
+
+        function panelInsertFunction(name) {
+            const meta = sessionFunctions[name] || {};
+            const params = meta.params || [];
+            hideFunctionsPanel();
+            kbFocusInput();
+            insertTemplateIntoInput(`${name}(${params.join(', ')})`, params.length ? [params[0]] : []);
         }
 
         async function deleteFunctionCard(fnName) {
@@ -3628,8 +3670,9 @@
             } else {
                 badge.style.display = 'none';
             }
-            // Mirror of updateVariablesBadge: keeps the ƒ≔ layer live.
-            kbRefreshIfDeclarations();
+            // Mirror of updateVariablesBadge: keeps an OPEN functions modal live.
+            const overlay = document.getElementById('functions-panel-overlay');
+            if (overlay && overlay.classList.contains('visible')) updateFunctionsPanel();
         }
 
         function showFunctionsPanel() {
@@ -3663,7 +3706,7 @@
                     const display = meta.display || '';
                     return `
                             <li>
-                                <span class="fn-name">${escapeHtml(signature)}</span>
+                                <button type="button" class="var-insert-chip fn" onclick="panelInsertFunction('${escapeHtml(name)}')" title="${t('functions_panel.insert_hint')}">${escapeHtml(signature)}</button>
                                 <span class="var-value" title="${escapeHtml(display)}">${escapeHtml(display)}</span>
                                 <button class="var-delete" onclick="deleteFunction('${escapeHtml(name)}')" title="${t('card.delete_function')}">🗑️</button>
                             </li>
@@ -4571,8 +4614,6 @@
                 html = KB_NUM_ROWS.map(row => `<div class="kb-row">${row.map(kbKeyButton).join('')}</div>`).join('');
             } else if (kbLayer === 'fn') {
                 html = KB_FN_ROWS.map(row => `<div class="kb-row">${row.map(kbKeyButton).join('')}</div>`).join('');
-            } else if (kbLayer === 'vars' || kbLayer === 'fns') {
-                html = kbRenderDeclarations(kbLayer === 'vars');
             } else {
                 const rows = KB_ABC_ROWS.map(row => row.map(k => {
                     if (typeof k === 'string') {
@@ -4604,51 +4645,6 @@
                 b.classList.toggle('active', b.dataset.kbtab === kbLayer);
             });
             kbSyncPadding();
-        }
-
-        // Declarations layers: one row per `:=` binding. The name chip is a
-        // regular kb-key (tap INSERTS: the bare name for a variable, the
-        // call template with the first parameter selected for a function);
-        // the trash reuses the SAME delete plumbing as the header panels.
-        function kbRenderDeclarations(isVars) {
-            const entries = isVars
-                ? Object.keys(sessionVariables).map(name => ({ name, preview: `= ${sessionVariables[name]}` }))
-                : Object.keys(sessionFunctions).map(name => {
-                    const fn = sessionFunctions[name] || {};
-                    const params = fn.params || [];
-                    return {
-                        name,
-                        params,
-                        preview: `${name}(${params.join(', ')}) := ${fn.display || ''}`
-                    };
-                });
-
-            if (entries.length === 0) {
-                return `<div class="kb-decl-empty">${escapeHtml(t(isVars ? 'kb.vars.empty' : 'kb.fns.empty'))}</div>`;
-            }
-
-            return `<div class="kb-decl-list">${entries.map(e => {
-                const spec = isVars
-                    ? { l: e.name, i: e.name, g: 'var', title: e.preview }
-                    : {
-                        l: `${e.name}(…)`,
-                        tpl: `${e.name}(${e.params.join(', ')})`,
-                        h: e.params.length ? [e.params[0]] : [],
-                        g: 'fn',
-                        title: e.preview
-                    };
-                return `<div class="kb-decl-row">
-                    ${kbKeyButton(spec)}
-                    <span class="kb-decl-preview">${escapeHtml(e.preview)}</span>
-                    <button type="button" class="kb-decl-del" data-kind="${isVars ? 'var' : 'fn'}" data-name="${escapeHtml(e.name)}" title="${escapeHtml(t(isVars ? 'card.delete_variable' : 'card.delete_function'))}">🗑️</button>
-                </div>`;
-            }).join('')}</div>`;
-        }
-
-        // Re-render an OPEN declarations layer when bindings change (assign,
-        // delete, import, clear) — hooked from the badge updaters.
-        function kbRefreshIfDeclarations() {
-            if (window.__kbReady && (kbLayer === 'vars' || kbLayer === 'fns')) kbRefresh();
         }
 
         // --- caret-preserving edit primitives ---------------------------
@@ -4809,15 +4805,6 @@
         });
 
         kbPanel.addEventListener('click', (ev) => {
-            const del = ev.target.closest('.kb-decl-del');
-            if (del) {
-                if (del.dataset.kind === 'var') deleteVariableCard(del.dataset.name);
-                else deleteFunctionCard(del.dataset.name);
-                // State mutates synchronously; the badge hook re-renders too,
-                // this is the belt-and-braces for the open layer.
-                kbRefresh();
-                return;
-            }
             const tab = ev.target.closest('.kb-tab[data-kbtab]');
             if (tab) {
                 kbLayer = tab.dataset.kbtab;
