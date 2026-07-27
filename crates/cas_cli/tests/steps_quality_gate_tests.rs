@@ -1537,6 +1537,11 @@ fn verified_identity_narrations_reach_the_wire() {
         // pairs (blanket title) or picked the template by substring-sniffing.
         ("2*sin(x)*cos(x)", "Usar 2·sin(u)·cos(u) = sin(2u)"),
         ("1 - 2*sin(x)^2", "Usar 1 - 2·sin(u)^2 = cos(2u)"),
+        // The SCALED pair, via coefficient peeling (2026-07-27). End-to-end
+        // on purpose: the engine-canonical Add-with-negative-literal shape
+        // only exists on the wire — parser-node unit tests cannot see it
+        // (measured twice in one campaign).
+        ("4*cos(x)^2 - 2", "Usar 2·cos(u)^2 - 1 = cos(2u)"),
     ];
     for (input, expected_fragment) in cases {
         let wire = eval_wire_in(input, Language::Es)

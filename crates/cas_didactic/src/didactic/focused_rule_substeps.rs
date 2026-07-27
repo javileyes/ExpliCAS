@@ -8818,6 +8818,29 @@ fn named_identity_from_table(
             return Some(substep);
         }
     }
+    // Pass 3 — SCALED instances: the pair applies the identity inside a
+    // linear combination, both sides carrying the same numeric factor
+    // (`4·cos(u)² − 2 ⟹ 2·cos(2u)`). Peel and match structurally.
+    for (lhs, rhs) in templates {
+        let _ = crate::didactic::substep::claim::verify_schematic_identity(lhs, rhs);
+        let Some(template) = crate::didactic::substep::matching::parse_template(lhs, rhs) else {
+            continue;
+        };
+        let scaled = crate::didactic::substep::matching::match_instance_scaled(
+            &template, ctx, before, after,
+        )
+        .or_else(|| {
+            crate::didactic::substep::matching::match_instance_scaled(&template, ctx, after, before)
+        });
+        if scaled.is_some() {
+            return Some(concrete_expr_substep(
+                ctx,
+                format!("Usar {lhs} = {rhs}"),
+                before,
+                after,
+            ));
+        }
+    }
     None
 }
 
@@ -25410,9 +25433,9 @@ mod named_identity_matcher_tests {
     }
 
     /// The old Cos-2x emitter picked its template by substring-sniffing the
-    /// display, so the SCALED pair `4·cos²−2 ⟹ 2·cos(2x)` was cited as
-    /// «2·cos²−1 = cos(2u)» — not an instance. It now declines honestly; the
-    /// genuine unscaled pairs narrate their own identity.
+    /// display, so the SCALED pair `4·cos²−2 ⟹ 2·cos(2x)` was cited without
+    /// being an instance. With coefficient peeling (pass 3) it narrates the
+    /// identity it genuinely uses; a mismatched-scale pair still declines.
     #[test]
     fn cos_2x_additive_contraction_narrates_instances_and_declines_the_scaled_pair() {
         for (before, after, expected) in [
@@ -25436,15 +25459,28 @@ mod named_identity_matcher_tests {
             assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
             assert_eq!(subs[0].description, expected);
         }
+        // The SCALED pair applies the identity inside a linear combination —
+        // pass 3 (coefficient peeling) recognizes it and names the identity
+        // actually used, where the old emitter mis-cited and the first
+        // migration declined.
         let subs = run(
             generate_cos_2x_additive_contraction_substeps,
             "Cos 2x Additive Contraction",
             "4*cos(x)^2 - 2",
             "2*cos(2*x)",
         );
+        assert_eq!(subs.len(), 1, "the scaled pair must narrate via peeling");
+        assert_eq!(subs[0].description, "Usar 2·cos(u)^2 - 1 = cos(2u)");
+        // A pair whose sides shed DIFFERENT factors is not an application.
+        let subs = run(
+            generate_cos_2x_additive_contraction_substeps,
+            "Cos 2x Additive Contraction",
+            "4*cos(x)^2 - 2",
+            "3*cos(2*x)",
+        );
         assert!(
             subs.is_empty(),
-            "the scaled pair is not an instance and must decline: {:?}",
+            "mismatched scale factors must decline: {:?}",
             subs.iter().map(|s| &s.description).collect::<Vec<_>>()
         );
     }

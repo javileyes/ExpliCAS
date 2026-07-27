@@ -97,6 +97,106 @@ pub fn match_instance_structural(
     None
 }
 
+/// Match modulo a COMMON NUMERIC FACTOR: `4·cos(x)² − 2 ⟹ 2·cos(2x)` applies
+/// `2·cos(u)² − 1 = cos(2u)` inside a linear combination, with both sides
+/// carrying the factor 2 — the shape the shadow pass measured declining and
+/// the audit saw mis-titled. Peel the positive gcd of the numeric
+/// coefficients from each side; when both sides shed the SAME factor (≠ 1)
+/// and the peeled pair matches STRUCTURALLY, the identity applies.
+/// Structural-only on the peeled pair, deliberately: the directed mode would
+/// reopen the equivalent-template ambiguity this file just closed.
+pub fn match_instance_scaled(
+    template: &ParsedTemplate,
+    ictx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<Bindings> {
+    let mut scratch = ictx.clone();
+    let (k_before, peeled_before) = peel_common_numeric_factor(&mut scratch, before)?;
+    let (k_after, peeled_after) = peel_common_numeric_factor(&mut scratch, after)?;
+    if k_before != k_after {
+        return None;
+    }
+    match_instance_structural(template, &scratch, peeled_before, peeled_after)
+}
+
+/// The positive common numeric factor of an Add chain's coefficients (their
+/// gcd) or a product's literal factor, together with the expression divided by
+/// it. `None` when there is nothing to peel (factor 1, or a shape without a
+/// numeric coefficient to speak of).
+fn peel_common_numeric_factor(
+    scratch: &mut Context,
+    expr: ExprId,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    use num_traits::{One, Signed, Zero};
+
+    fn split_coefficient(ctx: &Context, term: ExprId) -> (num_rational::BigRational, Vec<ExprId>) {
+        let view = MulView::from_expr(ctx, term);
+        let mut coefficient = num_rational::BigRational::one();
+        let mut rest = Vec::new();
+        for &factor in &view.factors {
+            if let Expr::Number(n) = ctx.get(factor) {
+                coefficient *= n.clone();
+            } else {
+                rest.push(factor);
+            }
+        }
+        (coefficient, rest)
+    }
+
+    fn rational_gcd(
+        a: &num_rational::BigRational,
+        b: &num_rational::BigRational,
+    ) -> num_rational::BigRational {
+        use num_integer::Integer;
+        let numer = a.numer().gcd(b.numer());
+        let denom = a.denom().lcm(b.denom());
+        num_rational::BigRational::new(numer, denom)
+    }
+
+    let terms = AddView::from_expr(scratch, expr).terms;
+    let mut split: Vec<(num_rational::BigRational, Vec<ExprId>, Sign)> = Vec::new();
+    for (term, sign) in &terms {
+        let (coefficient, rest) = split_coefficient(scratch, *term);
+        if coefficient.is_zero() {
+            return None;
+        }
+        // A negative literal coefficient IS the term's sign (the engine
+        // canonicalizes `X − 2` as `+ (−2)`): peel the magnitude, keep the
+        // negativity in the term sign, or `4cos² − 2` peels to `2cos² + 1`.
+        let effective_sign = if coefficient.is_negative() {
+            sign.negate()
+        } else {
+            *sign
+        };
+        split.push((coefficient.abs(), rest, effective_sign));
+    }
+    let mut k = split.first()?.0.clone();
+    for (coefficient, _, _) in split.iter().skip(1) {
+        k = rational_gcd(&k, coefficient);
+    }
+    if k.is_one() || k.is_zero() {
+        return None;
+    }
+
+    let mut peeled_terms = Vec::with_capacity(split.len());
+    for (coefficient, rest, sign) in &split {
+        let reduced = coefficient / &k;
+        let mut factors = Vec::new();
+        if !reduced.is_one() || rest.is_empty() {
+            factors.push(scratch.add(Expr::Number(reduced)));
+        }
+        factors.extend(rest.iter().copied());
+        let mut term = cas_math::expr_nary::build_balanced_mul(scratch, &factors);
+        if *sign == Sign::Neg {
+            term = scratch.add(Expr::Neg(term));
+        }
+        peeled_terms.push(term);
+    }
+    let peeled = cas_math::expr_nary::build_balanced_add(scratch, &peeled_terms);
+    Some((k, peeled))
+}
+
 /// Decide whether `(before, after)` is ONE instance of the template pair under
 /// a single shared σ. Returns the bindings as the positive witness.
 pub fn match_instance(

@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 742 (newest first)
+Active entries: 743 (newest first)
 
 - 2026-07-27 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (test `generated_substep_claim_in... | VERACIDAD (plan · C1.9, tier GENERATIVO): el corpus deja de elegirlo una persona — 5000 expresiones generadas, ~4986 claims re-verificados sobre el wire con el estándar del emisor, 0 refutaciones
 - 2026-07-27 | `retained` | `cas_didactic/focused_rule_substeps.rs` (`generate_repeated_polynomial_elemen... | VERACIDAD (plan · C1.6, por partes repetida): el cierre integra SU integrando y una RECOMPOSICIÓN probada aterriza en la respuesta — el P0 del testigo muere y la familia entera gana el paso que faltaba
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (instrumento nuevo: cobertura del... | VERACIDAD (campaña de sombra del matcher, paso 0 + primera migración): la sombra midió la cola ENTERA en <1 s — y el primer emisor migrado citaba la identidad EQUIVOCADA en 4 de sus 7 pares
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (corpus += ruta derive col2), `sc... | VERACIDAD (sombra ampliada + migración doble-ángulo): el punto ciego del corpus era una regla entera, el sniff de substring elegía plantilla, y el modo dirigido narraba Pitágoras en vez de lo que el alumno veía
+- 2026-07-27 | `retained` | `cas_didactic` — `matching.rs` (`match_instance_scaled` + `peel_common_numeri... | VERACIDAD (coefficient-peeling del matcher): el residual nombrado dos veces cierra — y el peel tropezó EXACTAMENTE con la piedra del ciclo anterior (el literal negativo canónico), cazada por el mismo trace
 - 2026-07-26 | `retained` | `cas_didactic/src/didactic/types/substep/claim.rs` (NUEVO: enum `Claim`, `Cla... | VERACIDAD (plan · C1.8, PRIMERA TANDA): `SubStep::checked` — el emisor DECLARA la relación que afirma y el constructor la verifica antes de publicar
 - 2026-07-26 | `retained` | `cas_didactic/src/didactic/focused_rule_substeps.rs` — `gradient.component` y... | VERACIDAD (plan · C1.8, migración tanda 2): la familia `Derivative` declara y verifica — gradiente y hessiano dejan de afirmar sin prueba
 - 2026-07-26 | `retained` | `cas_didactic/src/didactic/types/substep/methods.rs` (`SubStep::checked_new`,... | VERACIDAD (plan · C1.8, migración tanda 3): la familia `Antiderivative` entera — 11 emisores de tabla declaran y verifican con UN helper
@@ -22353,3 +22354,20 @@ Active entries: 742 (newest first)
   - **Entre plantillas EQUIVALENTES, el modo dirigido es un generador de títulos-verdad-inútil**: decide por la igualdad del motor, así que cualquiera de la clase de equivalencia «casa». La política correcta para tablas es estructural-primero (cita lo que se ve) y dirigido después (rescata lo plegado).
   - **El unit test del emisor ve nodos del parser; el wire ve nodos del MOTOR**: la forma canónica (Sub→Add con literal negativo) solo aparece en el diferencial contra el binario. Un emisor migrado necesita las dos evidencias, y el sweep es la que manda.
   - **Un corpus que no ejercita la familia devuelve 0 diffs y no prueba nada**: el mismo punto ciego (ruta derive) apareció dos veces en el ciclo — en la sombra y en el sweep. Extender el corpus ES parte del fix, no un extra.
+
+## 2026-07-27 - VERACIDAD (coefficient-peeling del matcher): el residual nombrado dos veces cierra — y el peel tropezó EXACTAMENTE con la piedra del ciclo anterior (el literal negativo canónico), cazada por el mismo trace
+
+- area: `cas_didactic` — `matching.rs` (`match_instance_scaled` + `peel_common_numeric_factor`: gcd racional de coeficientes en cadenas Add, factor literal en Mul; estructural-only sobre el par pelado), `focused_rule_substeps.rs` (pasada 3 de `named_identity_from_table`), pin de wire del par escalado, `Cargo.toml` (+num-integer 0.1, ya transitiva).
+- status: `retained`. El testigo del audit (`4cos²−2` citado como «2cos²−1» sin ser instancia) pasa de mentira→silencio-honesto (c4)→narración VERDADERA (c5): «Usar 2·cos(u)^2 − 1 = cos(2u)», la identidad que el paso usa de verdad dentro de la combinación lineal.
+- capture:
+  - **EL MODO**: pelar el gcd POSITIVO de los coeficientes numéricos de cada lado (Add: gcd racional término a término; Mul: el factor literal); si ambos lados sueltan el MISMO k ≠ 1 y el par pelado casa ESTRUCTURALMENTE, la identidad aplica. Estructural-only deliberado sobre el par pelado: el dirigido reabriría la ambigüedad entre plantillas equivalentes que el ciclo 4 acababa de cerrar.
+  - **LA PIEDRA FUE LA MISMA DEL CICLO 4, y el mismo trace la cazó**: el unit test (nodos del parser, forma Sub) pasó a la primera; el wire calló. PEEL-TRACE en el call-site: pelaba 2 de ambos lados pero el par pelado no casaba — `abs()` del coeficiente SIN voltear el signo del término convertía el `+(−2)` canónico en `+1` (pelado `2cos²+1` ≠ plantilla `2cos²−1`). Una línea (`sign.negate()` cuando el coeficiente es negativo) y el wire narra.
+  - **Caza colateral del barrido**: `2·sin(x)·cos(2x)` — el par escalado aparece como paso INTERNO y ahora narra también.
+- observed:
+  - Barrido diferencial (1039 exprs, contra HEAD del ciclo 3 — incluye c4+c5): 0 diffs de result; 6 expresiones ganan +7 sub-pasos, 0 perdidos; todos los títulos nombran la forma en pantalla o la identidad realmente usada.
+  - Tests: par escalado narra, escala DESIGUAL declina (3≠2), 118/118 lib. Pin de wire punta a punta del testigo (la forma canónica Add-con-literal-negativo SOLO existe en el wire — dos veces medido en la campaña).
+  - workspace failed:0 (356), clippy 0, engine-fast/scorecard/pressure/wasm verdes (una caída transitoria de la cadena agrupada se re-corrió suite a suite con log: las cuatro verdes). Huella guardrail: **0 deltas**; pressure: churn top-N conocido.
+- decision: retener. Sombra tras el ciclo: 73 pares en cola (Canonicalize Roots 51 — pedagogía; logs 20 — adjudicación por dominio; Split Log 2 cubiertos). Peldaños vivos: sombra ruta-derive, decisión Canonicalize Roots, censo de logs por dominio.
+- retained learning:
+  - **La forma canónica del motor es un segundo idioma que TODO modo nuevo del matcher debe hablar**: dos ciclos seguidos, el mismo bug-shape (literal negativo con signo Pos) en dos sitios distintos (multiconjunto, peel). Cualquier código nuevo que camine términos aditivos del wire debe normalizar signo-de-literal ANTES de razonar — y su evidencia tiene que incluir un pin de WIRE, porque los nodos del parser no contienen la forma.
+  - **Un residual con dos testigos medidos es mejor candidato que uno nuevo**: el peel cerró en un ciclo porque la sombra y el sweep ya habían acotado el shape exacto y el criterio de éxito.
