@@ -321,6 +321,10 @@
             align-items: center;
             gap: 10px;
             flex: 1;
+            /* Without this, a long rendered input FORCES the flex row wider
+               than the card (overflow:hidden then CLIPS it); min-width lets
+               the LaTeX container shrink and pan on its own scrollbar. */
+            min-width: 0;
         }
 
         .expression-header-right {
@@ -401,21 +405,16 @@
             cursor: default;
         }
 
+        /* Raw-text caption under the rendered input — ALWAYS visible (it
+           used to be a hover tooltip, unreachable on touch screens), with
+           its copy button in permanent reach. */
         .expression-plain-tooltip {
-            display: none;
-            margin-top: 6px;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 6px 12px;
+            display: flex;
+            margin-top: 5px;
             align-items: center;
             gap: 8px;
             width: fit-content;
             max-width: 100%;
-        }
-
-        .expression-input-wrapper:hover .expression-plain-tooltip {
-            display: flex;
         }
 
         .expression-plain-text {
@@ -485,6 +484,26 @@
             font-size: 1.3em;
             overflow-x: auto;
             max-width: 100%;
+        }
+
+        /* Raw-text caption under the rendered result, mirroring the header
+           caption: the copy-paste form (3*x^2/7) one tap away. */
+        .result-plain {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            width: fit-content;
+            max-width: 100%;
+        }
+
+        .result-plain-text {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         /* Scrollable expression content */
@@ -3096,6 +3115,10 @@
                         : `$${result.result_latex || escapeHtml(result.result)}$`
                     }
                             </div>
+                            <div class="result-plain">
+                                <span class="result-plain-text">${escapeHtml(resultPlainPreview(result.result))}</span>
+                                <button class="copy-btn" onclick="copyResultText(this)">📋</button>
+                            </div>
                         </div>
 
                         ${hasRequirements ? `
@@ -3504,6 +3527,20 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Caption preview of the raw result: giant polynomial outputs would
+        // duplicate hundreds of KB into the DOM — the caption truncates, the
+        // COPY always reads the full text from data-result.
+        function resultPlainPreview(text) {
+            const s = text || '';
+            return s.length > 300 ? s.slice(0, 300) + '…' : s;
+        }
+
+        function copyResultText(btn) {
+            const section = btn.closest('.result-section');
+            const rm = section ? section.querySelector('.result-math') : null;
+            copyExpression(btn, rm ? (rm.dataset.result || '') : '');
         }
 
         function copyExpression(btn, text) {
