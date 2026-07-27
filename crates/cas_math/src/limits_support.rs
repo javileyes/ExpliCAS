@@ -9717,6 +9717,9 @@ pub(crate) fn try_limit_rules_at_infinity(
     if let Some(r) = general_base_exponential_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = constant_base_exponential_ratio_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     if let Some(r) = inf_to_zero_power_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
@@ -10201,27 +10204,54 @@ fn apply_finite_one_to_infinity_power_rule(
     }
 }
 
-/// A general-base exponential `b^(s x)` at infinity (`b` a positive rational):
-/// `b^x -> +inf` for `b > 1`, `-> 0` for `0 < b < 1`, `-> 1` for `b = 1`, with
-/// the sign of the exponent slope and the approach direction combined. The
-/// engine already grows `e^x`; this covers the rational bases (`2^x -> inf`),
-/// which also lets a sum like `2^x + 3^x` diverge and feed the inf^0 rule.
+/// Exact comparison of a var-free positive base against 1: rational bases
+/// compare exactly; constant expressions over `e`/`π` fall to the exact
+/// rational interval bounds of the surd-sign chokepoint (`e/π < 1` is a
+/// PROOF, never a float estimate). `None` when positivity or the comparison
+/// is not provable — callers must decline, so a wrong growth class is never
+/// fabricated.
+fn constant_base_vs_one(ctx: &Context, base: ExprId) -> Option<std::cmp::Ordering> {
+    use num_traits::{One, Signed, Zero};
+    use std::cmp::Ordering;
+    if let Some(value) = constant_rational_value(ctx, base) {
+        if !value.is_positive() {
+            return None;
+        }
+        return Some(value.cmp(&BigRational::one()));
+    }
+    if crate::root_forms::provable_const_minus_rational_sign(ctx, base, &BigRational::zero())?
+        != Ordering::Greater
+    {
+        return None;
+    }
+    crate::root_forms::provable_const_minus_rational_sign(ctx, base, &BigRational::one())
+}
+
+/// A general-base exponential `b^(s x)` at infinity (`b` a var-free positive
+/// constant — rational, or provable like `e/π`): `b^x -> +inf` for `b > 1`,
+/// `-> 0` for `0 < b < 1`, `-> 1` for `b = 1`, with the sign of the exponent
+/// slope and the approach direction combined. The engine already grows
+/// `e^x`; this covers rational bases (`2^x -> inf`, feeding `2^x + 3^x` into
+/// the inf^0 rule) and provable constant bases (`(e/π)^x -> 0`).
 fn general_base_exponential_limit_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
     var: ExprId,
     approach: InfSign,
 ) -> Option<ExprId> {
-    use num_traits::{One, Signed, Zero};
+    use num_traits::{Signed, Zero};
     let Expr::Variable(var_symbol) = ctx.get(var) else {
         return None;
     };
     let var_name = ctx.sym_name(*var_symbol).to_string();
-    let (base, exponent) = numeric_base_power(ctx, expr)?;
-    if !base.is_positive() {
+    let Expr::Pow(base, exponent) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if depends_on(ctx, base, var) {
         return None;
     }
-    if base.is_one() {
+    let base_vs_one = constant_base_vs_one(ctx, base)?;
+    if base_vs_one == std::cmp::Ordering::Equal {
         return Some(ctx.num(1));
     }
     // The exponent must be linear in x; its sign at the approach decides growth.
@@ -10235,12 +10265,69 @@ fn general_base_exponential_limit_at_infinity(
     }
     // The exponent tends to +inf when its slope and the approach agree in sign.
     let exponent_to_pos_inf = slope.is_positive() == matches!(approach, InfSign::Pos);
-    let base_gt_one = base > BigRational::one();
+    let base_gt_one = base_vs_one == std::cmp::Ordering::Greater;
     if base_gt_one == exponent_to_pos_inf {
         Some(mk_infinity(ctx, InfSign::Pos))
     } else {
         Some(ctx.num(0))
     }
+}
+
+/// An exponential atom with a var-free base: `exp(u)` (base `e`) or `b^u`.
+fn constant_exponential_atom(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(fn_id, BuiltinFn::Exp) => {
+            let e = ctx.add(Expr::Constant(Constant::E));
+            Some((e, args[0]))
+        }
+        Expr::Pow(base, exponent) if !depends_on(ctx, base, var) => Some((base, exponent)),
+        _ => None,
+    }
+}
+
+/// Provable `base > 0` for a var-free constant base (exact rational compare,
+/// or the exact interval bounds for `e`/`π` combinations).
+fn provably_positive_constant_base(ctx: &Context, base: ExprId) -> bool {
+    use num_traits::{Signed, Zero};
+    if let Some(value) = constant_rational_value(ctx, base) {
+        return value.is_positive();
+    }
+    crate::root_forms::provable_const_minus_rational_sign(ctx, base, &BigRational::zero())
+        == Some(std::cmp::Ordering::Greater)
+}
+
+/// A quotient of same-exponent exponentials `a^u / b^u` with constant bases:
+/// combine into `(a/b)^u` and classify via the general constant-base rule.
+/// Closes `e^x / π^x -> 0` (e/π < 1 by exact bounds) without a global
+/// simplifier rewrite. Both bases must be INDIVIDUALLY provably positive —
+/// `(-2)^x / (-3)^x` must never become `(2/3)^x`, since the original is not
+/// even real-valued along the reals.
+fn constant_base_exponential_ratio_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let (num_base, num_exp) = constant_exponential_atom(ctx, num, var)?;
+    let (den_base, den_exp) = constant_exponential_atom(ctx, den, var)?;
+    if !structurally_equal_expr(ctx, num_exp, den_exp) {
+        return None;
+    }
+    if !provably_positive_constant_base(ctx, num_base)
+        || !provably_positive_constant_base(ctx, den_base)
+    {
+        return None;
+    }
+    let combined_base = ctx.add(Expr::Div(num_base, den_base));
+    let combined = ctx.add(Expr::Pow(combined_base, num_exp));
+    general_base_exponential_limit_at_infinity(ctx, combined, var, approach)
 }
 
 /// The `inf^0` form at infinity: when the base diverges to `+inf` and the
@@ -17690,6 +17777,47 @@ mod tests {
         let out =
             try_limit_rules_at_infinity(&mut ctx, two_x, x, InfSign::Neg).expect("2^x at -inf");
         assert_eq!(display_expr(&ctx, out), "0");
+    }
+
+    #[test]
+    fn constant_base_exponential_ratio_at_infinity() {
+        // Same-exponent exponential quotients with PROVABLE constant bases:
+        // e/π < 1 by exact rational interval bounds, so e^x/π^x decays and
+        // the reciprocal ratio grows. The direct Pow form (e/π)^x classifies
+        // through the same generalized base rule.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (source, expected) in [
+            ("e^x/pi^x", "0"),
+            ("exp(x)/pi^x", "0"),
+            ("pi^x/e^x", "infinity"),
+            ("(e/pi)^x", "0"),
+            ("(pi/e)^x", "infinity"),
+        ] {
+            let expr = parse_expr(&mut ctx, source);
+            let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("must resolve at +inf: {source}"));
+            assert_eq!(display_expr(&ctx, out), expected, "{source}");
+        }
+        // At -infinity the decaying ratio flips: e^x/π^x -> +inf.
+        let ratio = parse_expr(&mut ctx, "e^x/pi^x");
+        let out = try_limit_rules_at_infinity(&mut ctx, ratio, x, InfSign::Neg)
+            .expect("e^x/pi^x at -inf");
+        assert_eq!(display_expr(&ctx, out), "infinity");
+        // Negative bases must DECLINE: (-2)^x/(-3)^x is not real-valued
+        // along the reals, so combining to (2/3)^x would fabricate a limit.
+        let negative = parse_expr(&mut ctx, "(-2)^x/(-3)^x");
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, negative, x, InfSign::Pos).is_none(),
+            "negative bases must not combine"
+        );
+        // A base whose bounds straddle 1 (2e/(e+e) = 1 unsimplified) is
+        // undecidable vs 1 by intervals: the rule must decline, honestly.
+        let unit = parse_expr(&mut ctx, "(2*e/(e+e))^x");
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, unit, x, InfSign::Pos).is_none(),
+            "unprovable base-vs-1 must decline"
+        );
     }
 
     #[test]

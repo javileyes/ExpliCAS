@@ -2145,19 +2145,25 @@ fn rational_bounds(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRatio
             Some((pow_rat_nonneg(&bl, k), pow_rat_nonneg(&bh, k)))
         }
         Expr::Div(a, b) => {
-            let c = as_rational_const(ctx, *b)?;
-            if !c.is_positive() {
+            let (al, ah) = rational_bounds(ctx, *a)?;
+            let (bl, bh) = rational_bounds(ctx, *b)?;
+            // Interval division is sound only when the denominator interval
+            // excludes zero; then the quotient range is spanned by the four
+            // endpoint quotients (this decides e.g. `e/π < 1` exactly).
+            if !(bl.is_positive() || bh.is_negative()) {
                 return None;
             }
-            let (al, ah) = rational_bounds(ctx, *a)?;
-            Some((al / &c, ah / &c))
+            let quots = [&al / &bl, &al / &bh, &ah / &bl, &ah / &bh];
+            let lo = quots.iter().min().cloned()?;
+            let hi = quots.iter().max().cloned()?;
+            Some((lo, hi))
         }
         _ => None,
     }
 }
 
 /// Provable sign of `expr − threshold` for a constant `expr` (decided by exact rational bounds).
-fn provable_const_minus_rational_sign(
+pub(crate) fn provable_const_minus_rational_sign(
     ctx: &Context,
     expr: ExprId,
     threshold: &BigRational,
