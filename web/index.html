@@ -30,6 +30,28 @@
             --warning: #f59e0b;
             --border: #2a4a7f;
             --input-bg: #0d1b2a;
+            /* Layered step/sub-step surfaces. Dark theme keeps the original
+               translucent "glass" overlays; light theme swaps them for a soft
+               blue family (see below) because black overlays over white cards
+               composite into flat dirty grays. */
+            --steps-bg: rgba(0, 0, 0, 0.2);
+            /* steps wrapper */
+            --step-item-bg: rgba(255, 255, 255, 0.02);
+            /* one step row */
+            --step-hover-bg: rgba(255, 255, 255, 0.03);
+            --substep-bg: rgba(0, 0, 0, 0.15);
+            /* sub-step row */
+            --substeps-section-bg: rgba(255, 255, 255, 0.03);
+            --eq-box-bg: rgba(0, 0, 0, 0.2);
+            /* equation / math box */
+            --eq-box-soft-bg: rgba(0, 0, 0, 0.15);
+            --output-bg: rgba(0, 0, 0, 0.3);
+            /* raw/poly output */
+            --chip-bg: rgba(255, 255, 255, 0.05);
+            /* steps-toggle chip */
+            --chip-hover-bg: rgba(255, 255, 255, 0.1);
+            --code-chip-bg: rgba(255, 255, 255, 0.1);
+            /* inline <code> chip */
         }
 
         [data-theme="light"] {
@@ -43,6 +65,21 @@
             --success: #059669;
             --border: #d1d5db;
             --input-bg: #ffffff;
+            /* Light surfaces: a calm blue-paper family instead of gray.
+               Steps sit on soft blue paper, each step row is white, and
+               sub-step / equation boxes are gentle blue tints that stay
+               harmonious when nested. */
+            --steps-bg: #eef4fc;
+            --step-item-bg: #ffffff;
+            --step-hover-bg: rgba(37, 99, 235, 0.06);
+            --substep-bg: rgba(37, 99, 235, 0.055);
+            --substeps-section-bg: rgba(37, 99, 235, 0.045);
+            --eq-box-bg: rgba(37, 99, 235, 0.07);
+            --eq-box-soft-bg: rgba(37, 99, 235, 0.05);
+            --output-bg: #f0f4fa;
+            --chip-bg: rgba(37, 99, 235, 0.07);
+            --chip-hover-bg: rgba(37, 99, 235, 0.14);
+            --code-chip-bg: rgba(37, 99, 235, 0.08);
         }
 
         * {
@@ -444,7 +481,7 @@
 
         /* Steps Section */
         .steps-toggle {
-            background: rgba(255, 255, 255, 0.05);
+            background: var(--chip-bg);
             border: none;
             color: var(--text-secondary);
             padding: 10px 15px;
@@ -458,7 +495,7 @@
         }
 
         .steps-toggle:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: var(--chip-hover-bg);
             color: var(--text-primary);
         }
 
@@ -474,7 +511,7 @@
             display: none;
             margin-top: 15px;
             padding: 15px;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--steps-bg);
             border-radius: 8px;
         }
 
@@ -486,7 +523,7 @@
             padding: 12px;
             border-left: 3px solid var(--border);
             margin-bottom: 10px;
-            background: rgba(255, 255, 255, 0.02);
+            background: var(--step-item-bg);
             border-radius: 0 6px 6px 0;
         }
 
@@ -502,7 +539,7 @@
         }
 
         .step-header:hover {
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--step-hover-bg);
         }
 
         /* Sub-steps */
@@ -520,7 +557,7 @@
 
         .substep-item {
             padding: 8px 12px;
-            background: rgba(0, 0, 0, 0.15);
+            background: var(--substep-bg);
             border-radius: 4px;
             margin-bottom: 6px;
             font-size: 0.9em;
@@ -536,7 +573,7 @@
             align-items: stretch;
             gap: 8px;
             padding: 10px;
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--eq-box-bg);
             border-radius: 6px;
             margin-top: 8px;
         }
@@ -559,7 +596,7 @@
             text-align: center;
             margin: 15px 0;
             padding: 10px;
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--substeps-section-bg);
             border-radius: 8px;
             border: 1px dashed var(--border);
         }
@@ -809,7 +846,7 @@
         }
 
         .solve-step-equation {
-            background: rgba(0, 0, 0, 0.2);
+            background: var(--eq-box-bg);
             border-radius: 8px;
             padding: 12px 16px;
             text-align: center;
@@ -871,7 +908,7 @@
         }
 
         .solve-substep-equation {
-            background: rgba(0, 0, 0, 0.15);
+            background: var(--eq-box-soft-bg);
             border-radius: 6px;
             padding: 8px 12px;
             text-align: center;
@@ -880,7 +917,7 @@
 
         /* Polynomial output */
         .poly-output {
-            background: rgba(0, 0, 0, 0.3);
+            background: var(--output-bg);
             padding: 15px;
             border-radius: 8px;
             font-family: 'Fira Code', monospace;
@@ -1176,7 +1213,7 @@
         }
 
         .empty-state code {
-            background: rgba(255, 255, 255, 0.1);
+            background: var(--code-chip-bg);
             padding: 3px 8px;
             border-radius: 4px;
             font-family: 'Fira Code', monospace;
@@ -1620,6 +1657,76 @@
                 height: 48px;
                 padding: 0 16px;
             }
+        }
+
+        /* ===== Light-theme contrast overrides =====
+           Accent TEXT tuned for dark glass needs the darker shade of the
+           SAME hue over white/tinted chips to stay readable (≈4.5:1);
+           backgrounds keep their hue. Plus the two card gradients that
+           were hardcoded dark. */
+        [data-theme="light"] .variable-card {
+            background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+        }
+
+        [data-theme="light"] .function-card {
+            background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        }
+
+        [data-theme="light"] .error-message {
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .substeps-toggle {
+            color: #92400e;
+            border-color: rgba(180, 83, 9, 0.5);
+        }
+
+        [data-theme="light"] .requires-label,
+        [data-theme="light"] .fn-name,
+        [data-theme="light"] .functions-panel h2 {
+            color: #b45309;
+        }
+
+        [data-theme="light"] .warning-label,
+        [data-theme="light"] .step-before::before {
+            color: #c2410c;
+        }
+
+        [data-theme="light"] .step-after::before {
+            color: #15803d;
+        }
+
+        [data-theme="light"] .solve-step-description,
+        [data-theme="light"] .solve-substeps-toggle,
+        [data-theme="light"] .solve-substep-index,
+        [data-theme="light"] .assume-label,
+        [data-theme="light"] .header-btn.help,
+        [data-theme="light"] .examples-panel h2,
+        [data-theme="light"] .examples-group-card-count,
+        [data-theme="light"] .examples-back-btn {
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .equiv-diagnostic-label {
+            color: #475569;
+        }
+
+        [data-theme="light"] .variables-panel h2,
+        [data-theme="light"] .variable-list .var-name,
+        [data-theme="light"] .header-btn.variables,
+        [data-theme="light"] .example-copied::after {
+            color: #047857;
+        }
+
+        [data-theme="light"] .header-btn.danger {
+            color: #dc2626;
+        }
+
+        [data-theme="light"] .examples-panel.fnmenu h2,
+        [data-theme="light"] .examples-panel.fnmenu .examples-group-card-count,
+        [data-theme="light"] .examples-panel.fnmenu .examples-back-btn,
+        [data-theme="light"] .fn-insert-btn {
+            color: #6d28d9;
         }
     </style>
 </head>
