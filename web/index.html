@@ -1537,6 +1537,90 @@
             background: rgba(59, 130, 246, 0.3);
             transform: translateX(-2px);
         }
+
+        /* ===== Function-insert menu (ƒ() button + violet panels) =====
+           The trigger lives in the INPUT BAR (not the header): inserting a
+           template is an input-helper action, so it sits next to the field
+           it fills and stays one tap away on phones. The two modals reuse
+           the examples panel layout/scroll/responsive rules; only the
+           accent color changes (violet, to read as its own tool). */
+        .fn-insert-btn {
+            display: flex;
+            align-items: center;
+            background: rgba(139, 92, 246, 0.12);
+            border: 2px solid var(--border);
+            color: #8b5cf6;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.05em;
+            font-weight: 700;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            padding: 0 14px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .fn-insert-btn:hover {
+            background: rgba(139, 92, 246, 0.25);
+            border-color: #8b5cf6;
+        }
+
+        .examples-panel.fnmenu {
+            border-color: #8b5cf6;
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.3);
+        }
+
+        .examples-panel.fnmenu h2 {
+            color: #8b5cf6;
+        }
+
+        .examples-panel.fnmenu .examples-list li {
+            background: rgba(139, 92, 246, 0.1);
+            border-left-color: #8b5cf6;
+        }
+
+        .examples-panel.fnmenu .examples-list li:hover {
+            background: rgba(139, 92, 246, 0.25);
+            box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+        }
+
+        .examples-panel.fnmenu .examples-group-card-count {
+            color: #8b5cf6;
+        }
+
+        .examples-panel.fnmenu .examples-back-btn {
+            background: rgba(139, 92, 246, 0.15);
+            color: #8b5cf6;
+            border-color: rgba(139, 92, 246, 0.4);
+        }
+
+        .examples-panel.fnmenu .examples-back-btn:hover {
+            background: rgba(139, 92, 246, 0.3);
+        }
+
+        /* Optional per-category tip under the title (e.g. "turn Complex on"). */
+        .fnmenu-hint {
+            flex-shrink: 0;
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            font-style: italic;
+            margin-bottom: 12px;
+        }
+
+        /* Green flash on the clicked row: the template just landed in the input. */
+        .fn-inserted {
+            background: rgba(16, 185, 129, 0.3) !important;
+            border-left-color: #10b981 !important;
+        }
+
+        @media (max-width: 720px) {
+            /* In the wrapped mobile input bar the ƒ() button joins the
+               [ƒ() ⚙️ Evaluar] row under the full-width field. */
+            .fn-insert-btn {
+                height: 48px;
+                padding: 0 16px;
+            }
+        }
     </style>
 </head>
 
@@ -1642,6 +1726,11 @@
             </label>
             <input type="text" class="input-field" id="expression-input"
                 data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
+            <button type="button" class="fn-insert-btn" id="fn-insert-btn" onclick="showFnMenuPanel()"
+                data-i18n-aria="fnmenu.button.aria_label" aria-label="Abrir el menú de inserción de funciones"
+                data-i18n-title="fnmenu.button.title" title="Insertar una función con sus argumentos ya colocados">
+                ƒ()
+            </button>
             <button type="button" class="options-toggle" id="options-toggle" onclick="toggleInputOptions()"
                 aria-expanded="false"
                 data-i18n-aria="input.options_toggle.aria_label" aria-label="Opciones de evaluación"
@@ -1692,6 +1781,26 @@
                 <span id="examples-group-title" data-i18n="examples_group.title">Ejemplos</span>
             </h2>
             <ul class="examples-list" id="examples-group-list"></ul>
+        </div>
+    </div>
+
+    <!-- Function-insert Panel Overlay (collapsed category list) -->
+    <div class="examples-panel-overlay" id="fnmenu-panel-overlay" onclick="hideFnMenuPanel(event)">
+        <div class="examples-panel fnmenu" onclick="event.stopPropagation()">
+            <h2 data-i18n="fnmenu_panel.title">ƒ() Insertar función — Elige una categoría</h2>
+            <ul class="examples-list" id="fnmenu-list"></ul>
+        </div>
+    </div>
+
+    <!-- Function-insert Group Overlay (second modal: one category's templates) -->
+    <div class="examples-panel-overlay examples-group-overlay" id="fnmenu-group-overlay" onclick="hideFnMenuGroup(event)">
+        <div class="examples-panel fnmenu" onclick="event.stopPropagation()">
+            <h2>
+                <button class="examples-back-btn" onclick="hideFnMenuGroup()" data-i18n-title="fnmenu_group.back.title" title="Volver a categorías">←</button>
+                <span id="fnmenu-group-title">Funciones</span>
+            </h2>
+            <div class="fnmenu-hint" id="fnmenu-group-hint" style="display:none"></div>
+            <ul class="examples-list" id="fnmenu-group-list"></ul>
         </div>
     </div>
 
@@ -1877,7 +1986,12 @@
                         "session.clear_confirm": "¿Borrar todas las expresiones y reiniciar la sesión?",
                         "examples.default_group": "Otros",
                         "examples.none_available": "No hay ejemplos disponibles",
-                        "examples.group_card_count": "{0} ejemplos ›"
+                        "examples.group_card_count": "{0} ejemplos ›",
+                        "fnmenu.button.title": "Insertar una función con sus argumentos ya colocados",
+                        "fnmenu.button.aria_label": "Abrir el menú de inserción de funciones",
+                        "fnmenu_panel.title": "ƒ() Insertar función — Elige una categoría",
+                        "fnmenu_group.back.title": "Volver a categorías",
+                        "fnmenu.group_card_count": "{0} funciones ›"
             },
             "en": {
                         "header.tagline": "Interactive Step-by-Step Math Simplifier",
@@ -1962,7 +2076,12 @@
                         "session.clear_confirm": "Clear all expressions and reset session?",
                         "examples.default_group": "Other",
                         "examples.none_available": "No examples available",
-                        "examples.group_card_count": "{0} examples ›"
+                        "examples.group_card_count": "{0} examples ›",
+                        "fnmenu.button.title": "Insert a function with its arguments already in place",
+                        "fnmenu.button.aria_label": "Open the function insertion menu",
+                        "fnmenu_panel.title": "ƒ() Insert function — Choose a category",
+                        "fnmenu_group.back.title": "Back to categories",
+                        "fnmenu.group_card_count": "{0} functions ›"
             }
         };
         let uiLang = 'es';
@@ -3325,6 +3444,303 @@
                 document.getElementById('examples-group-overlay').classList.remove('visible');
                 document.getElementById('examples-panel-overlay').classList.remove('visible');
             }, 600);
+        }
+
+        // =====================
+        // Function-insert menu (ƒ() button)
+        // =====================
+        // Catalog of engine calls the input accepts, grouped by topic. Each item:
+        //   sig  — template inserted verbatim: name + parens + commas marking the
+        //          argument holes the user fills in.
+        //   h    — hole tokens: h[0] is left SELECTED after insertion so typing
+        //          replaces it; if the input had a selection, that text is wrapped
+        //          into h[0] and h[1] becomes the selected hole instead.
+        //   desc — one-line bilingual description.
+        // Every sig shape below was validated against the engine via the CLI
+        // (same eval wire): placeholders are plain symbols, so shapes parse.
+
+        const FN_CATALOG = [
+            {
+                name: { es: "Derivadas", en: "Derivatives" },
+                items: [
+                    { sig: "diff(expr, x)", h: ["expr", "x"], desc: { es: "Derivada de la expresión respecto a x", en: "Derivative of the expression with respect to x" } },
+                    { sig: "diff(expr, x, n)", h: ["expr", "x"], desc: { es: "Derivada n-ésima: diff(sin(x), x, 4)", en: "n-th derivative: diff(sin(x), x, 4)" } },
+                    { sig: "diff(expr, x, y)", h: ["expr", "x"], desc: { es: "Derivada parcial mixta ∂²/∂y∂x (una variable tras otra)", en: "Mixed partial derivative ∂²/∂y∂x (one variable after another)" } }
+                ]
+            },
+            {
+                name: { es: "Integrales", en: "Integrals" },
+                items: [
+                    { sig: "integrate(expr, x)", h: ["expr", "x"], desc: { es: "Integral indefinida (primitiva) respecto a x", en: "Indefinite integral (antiderivative) with respect to x" } },
+                    { sig: "integrate(expr, x, a, b)", h: ["expr", "x"], desc: { es: "Integral definida entre a y b; los extremos admiten -oo y oo (infinito)", en: "Definite integral from a to b; bounds accept -oo and oo (infinity)" } },
+                    { sig: "arclength(expr, x, a, b)", h: ["expr", "x"], desc: { es: "Longitud de arco de y = f(x) entre a y b", en: "Arc length of y = f(x) from a to b" } }
+                ]
+            },
+            {
+                name: { es: "Límites, series y sumatorios", en: "Limits, series & sums" },
+                items: [
+                    { sig: "limit(expr, x, a)", h: ["expr", "x"], desc: { es: "Límite cuando x tiende al punto a", en: "Limit as x approaches the point a" } },
+                    { sig: "limit(expr, x, infinity)", h: ["expr", "x"], desc: { es: "Límite en el infinito (usa -infinity para −∞)", en: "Limit at infinity (use -infinity for −∞)" } },
+                    { sig: "limit(expr, [x,y], [a,b])", h: ["expr", "a"], desc: { es: "Límite multivariable en el punto (a, b)", en: "Multivariable limit at the point (a, b)" } },
+                    { sig: "taylor(expr, x, a, n)", h: ["expr", "x"], desc: { es: "Polinomio de Taylor en x = a hasta orden n", en: "Taylor polynomial at x = a up to order n" } },
+                    { sig: "sum(expr, k, a, b)", h: ["expr", "k"], desc: { es: "Sumatorio de expr para k desde a hasta b (b puede ser n u oo)", en: "Sum of expr for k from a to b (b may be n or oo)" } },
+                    { sig: "product(expr, k, a, b)", h: ["expr", "k"], desc: { es: "Productorio de expr para k desde a hasta b", en: "Product of expr for k from a to b" } }
+                ]
+            },
+            {
+                name: { es: "Ecuaciones e inecuaciones", en: "Equations & inequalities" },
+                items: [
+                    { sig: "solve(eq, x)", h: ["eq", "x"], desc: { es: "Resuelve una ecuación en x; el = va dentro: solve(x^2 = 4, x)", en: "Solve an equation for x; the = goes inside: solve(x^2 = 4, x)" } },
+                    { sig: "solve(expr > 0, x)", h: ["expr", "x"], desc: { es: "Inecuación: se admiten <, <=, > y >=", en: "Inequality: <, <=, > and >= are accepted" } },
+                    { sig: "solve([eq1, eq2], [x, y])", h: ["eq1", "eq2"], desc: { es: "Sistema de ecuaciones; los símbolos fuera de la lista actúan como parámetros", en: "System of equations; symbols outside the list act as parameters" } }
+                ]
+            },
+            {
+                name: { es: "Ecuaciones diferenciales", en: "Differential equations" },
+                items: [
+                    { sig: "dsolve(diff(y,x) = f, y, x)", h: ["f"], desc: { es: "EDO de 1er orden: la derivada y′ se escribe diff(y,x); f puede usar x e y", en: "1st-order ODE: write y′ as diff(y,x); f may involve x and y" } },
+                    { sig: "dsolve(diff(y,x,2) = f, y, x)", h: ["f"], desc: { es: "EDO de 2º orden: y″ se escribe diff(y,x,2)", en: "2nd-order ODE: write y″ as diff(y,x,2)" } },
+                    { sig: "dsolve(diff(y,x) = f, y, x, y(0) = a)", h: ["f", "a"], desc: { es: "Problema de valor inicial con la condición y(0) = a", en: "Initial value problem with the condition y(0) = a" } },
+                    { sig: "dsolve([diff(x,t) = f, diff(y,t) = g], [x,y], t)", h: ["f", "g"], desc: { es: "Sistema lineal 2×2 de EDOs en la variable t", en: "2×2 linear ODE system in the variable t" } }
+                ]
+            },
+            {
+                name: { es: "Álgebra y verificación", en: "Algebra & verification" },
+                items: [
+                    { sig: "simplify(expr)", h: ["expr"], desc: { es: "Simplificación completa con pasos didácticos", en: "Full simplification with didactic steps" } },
+                    { sig: "expand(expr)", h: ["expr"], desc: { es: "Expande productos y potencias: (x+1)^3 → x³ + 3x² + 3x + 1", en: "Expand products and powers: (x+1)^3 → x³ + 3x² + 3x + 1" } },
+                    { sig: "factor(expr)", h: ["expr"], desc: { es: "Factoriza un polinomio sobre ℚ", en: "Factor a polynomial over ℚ" } },
+                    { sig: "collect(expr, x)", h: ["expr", "x"], desc: { es: "Agrupa los términos por potencias de x", en: "Collect terms by powers of x" } },
+                    { sig: "apart(expr)", h: ["expr"], desc: { es: "Descomposición en fracciones parciales", en: "Partial-fraction decomposition" } },
+                    { sig: "expand_log(expr)", h: ["expr"], desc: { es: "Expande logaritmos con sus leyes (producto, cociente, potencia)", en: "Expand logarithms using the log laws (product, quotient, power)" } },
+                    { sig: "subs(expr, x, a)", h: ["expr", "x"], desc: { es: "Sustituye x por a después de operar (sin trampas de orden)", en: "Substitute x := a after operating (order-safe)" } },
+                    { sig: "equiv(expr1, expr2)", h: ["expr1", "expr2"], desc: { es: "¿Son equivalentes? true solo con prueba exacta, nunca por coincidencia numérica", en: "Equivalent? true only with an exact proof, never by numeric coincidence" } },
+                    { sig: "approx(expr)", h: ["expr"], desc: { es: "Valor numérico con 12 dígitos; todo lo demás sigue exacto", en: "12-digit numeric value; everything else stays exact" } }
+                ]
+            },
+            {
+                name: { es: "Cálculo vectorial", en: "Vector calculus" },
+                items: [
+                    { sig: "gradient(f, [x,y])", h: ["f"], desc: { es: "Gradiente ∇f como vector columna (alias grad)", en: "Gradient ∇f as a column vector (alias grad)" } },
+                    { sig: "jacobian([f,g], [x,y])", h: ["f", "g"], desc: { es: "Matriz jacobiana: filas = funciones, columnas = variables", en: "Jacobian matrix: rows = functions, columns = variables" } },
+                    { sig: "hessian(f, [x,y])", h: ["f"], desc: { es: "Matriz hessiana simétrica de segundas derivadas", en: "Symmetric Hessian matrix of second derivatives" } },
+                    { sig: "divergence([P,Q], [x,y])", h: ["P", "Q"], desc: { es: "Divergencia ∇·F del campo [P, Q]", en: "Divergence ∇·F of the field [P, Q]" } },
+                    { sig: "curl([P,Q,R], [x,y,z])", h: ["P", "Q"], desc: { es: "Rotacional ∇×F (alias rot); en 2D con [P,Q], [x,y] es un escalar", en: "Curl ∇×F (alias rot); in 2D with [P,Q], [x,y] it is a scalar" } },
+                    { sig: "laplacian(f, [x,y])", h: ["f"], desc: { es: "Laplaciano Δf = suma de las segundas derivadas", en: "Laplacian Δf = sum of the second derivatives" } },
+                    { sig: "potential([P,Q], [x,y])", h: ["P", "Q"], desc: { es: "Potencial escalar φ con ∇φ = F, si el campo es conservativo", en: "Scalar potential φ with ∇φ = F, if the field is conservative" } },
+                    { sig: "lineintegral([P,Q], [x,y], [r1,r2], t, a, b)", h: ["P", "Q"], desc: { es: "Integral de línea sobre la curva r(t) = [r1, r2] con t ∈ [a, b]", en: "Line integral along the curve r(t) = [r1, r2] with t ∈ [a, b]" } },
+                    { sig: "surface_integral([P,Q,R], [x,y,z], [s1,s2,s3], [u,v], [a,b], [c,d])", h: ["P", "Q"], desc: { es: "Flujo a través de la superficie s(u,v) con u ∈ [a,b], v ∈ [c,d]", en: "Flux through the surface s(u,v) with u ∈ [a,b], v ∈ [c,d]" } }
+                ]
+            },
+            {
+                name: { es: "Matrices y álgebra lineal", en: "Matrices & linear algebra" },
+                items: [
+                    { sig: "[[a, b], [c, d]]", h: ["a", "b"], desc: { es: "Matriz 2×2: cada fila va entre corchetes", en: "2×2 matrix: each row goes in brackets" } },
+                    { sig: "[[a, b, c], [d, e, f], [g, h, k]]", h: ["a", "b"], desc: { es: "Matriz 3×3", en: "3×3 matrix" } },
+                    { sig: "det(M)", h: ["M"], desc: { es: "Determinante (M puede ser [[a,b],[c,d]])", en: "Determinant (M can be [[a,b],[c,d]])" } },
+                    { sig: "inverse(M)", h: ["M"], desc: { es: "Matriz inversa (alias inv)", en: "Inverse matrix (alias inv)" } },
+                    { sig: "transpose(M)", h: ["M"], desc: { es: "Matriz traspuesta", en: "Transpose" } },
+                    { sig: "rank(M)", h: ["M"], desc: { es: "Rango de la matriz", en: "Rank of the matrix" } },
+                    { sig: "trace(M)", h: ["M"], desc: { es: "Traza: suma de la diagonal (alias tr)", en: "Trace: sum of the diagonal (alias tr)" } },
+                    { sig: "rref(M)", h: ["M"], desc: { es: "Forma escalonada reducida por filas (Gauss-Jordan)", en: "Reduced row echelon form (Gauss-Jordan)" } },
+                    { sig: "charpoly(M)", h: ["M"], desc: { es: "Polinomio característico en lambda", en: "Characteristic polynomial in lambda" } },
+                    { sig: "eigenvalues(M)", h: ["M"], desc: { es: "Autovalores (alias eigvals)", en: "Eigenvalues (alias eigvals)" } },
+                    { sig: "eigenvectors(M)", h: ["M"], desc: { es: "Autovectores (alias eigvecs)", en: "Eigenvectors (alias eigvecs)" } },
+                    { sig: "nullspace(M)", h: ["M"], desc: { es: "Núcleo (kernel) de la matriz", en: "Null space (kernel) of the matrix" } },
+                    { sig: "matmul(A, B)", h: ["A", "B"], desc: { es: "Producto de matrices A·B", en: "Matrix product A·B" } },
+                    { sig: "linsolve(A, b)", h: ["A", "b"], desc: { es: "Resuelve el sistema lineal A·x = b (b es un vector [..., ...])", en: "Solve the linear system A·x = b (b is a vector [..., ...])" } },
+                    { sig: "dot(u, v)", h: ["u", "v"], desc: { es: "Producto escalar de dos vectores", en: "Dot product of two vectors" } },
+                    { sig: "cross(u, v)", h: ["u", "v"], desc: { es: "Producto vectorial en ℝ³", en: "Cross product in ℝ³" } },
+                    { sig: "norm(v)", h: ["v"], desc: { es: "Norma euclídea de un vector", en: "Euclidean norm of a vector" } }
+                ]
+            },
+            {
+                name: { es: "Números y combinatoria", en: "Numbers & combinatorics" },
+                items: [
+                    { sig: "gcd(a, b)", h: ["a", "b"], desc: { es: "Máximo común divisor", en: "Greatest common divisor" } },
+                    { sig: "lcm(a, b)", h: ["a", "b"], desc: { es: "Mínimo común múltiplo", en: "Least common multiple" } },
+                    { sig: "mod(a, n)", h: ["a", "n"], desc: { es: "Resto de la división de a entre n", en: "Remainder of a divided by n" } },
+                    { sig: "factors(n)", h: ["n"], desc: { es: "Factorización en números primos", en: "Prime factorization" } },
+                    { sig: "divisors(n)", h: ["n"], desc: { es: "Lista de todos los divisores", en: "List of all divisors" } },
+                    { sig: "isprime(n)", h: ["n"], desc: { es: "¿Es primo? (1 = sí, 0 = no)", en: "Is it prime? (1 = yes, 0 = no)" } },
+                    { sig: "nextprime(n)", h: ["n"], desc: { es: "Primer número primo mayor que n", en: "First prime greater than n" } },
+                    { sig: "totient(n)", h: ["n"], desc: { es: "Función φ de Euler: cuántos números hasta n son coprimos con n", en: "Euler's totient φ(n): how many numbers up to n are coprime with n" } },
+                    { sig: "fibonacci(n)", h: ["n"], desc: { es: "n-ésimo número de Fibonacci", en: "n-th Fibonacci number" } },
+                    { sig: "factorial(n)", h: ["n"], desc: { es: "Factorial n! = 1·2·…·n", en: "Factorial n! = 1·2·…·n" } },
+                    { sig: "choose(n, k)", h: ["n", "k"], desc: { es: "Número combinatorio C(n, k) (alias nCr)", en: "Binomial coefficient C(n, k) (alias nCr)" } },
+                    { sig: "perm(n, k)", h: ["n", "k"], desc: { es: "Variaciones P(n, k) = n!/(n−k)! (alias nPr)", en: "Permutations P(n, k) = n!/(n−k)! (alias nPr)" } }
+                ]
+            },
+            {
+                name: { es: "Números complejos", en: "Complex numbers" },
+                hint: {
+                    es: "Consejo: pon el selector «Complejo» en on (en el móvil está dentro de ⚙️) para que i sea la unidad imaginaria.",
+                    en: "Tip: set the “Complex” selector to on (inside ⚙️ on mobile) so i is treated as the imaginary unit."
+                },
+                items: [
+                    { sig: "Re(z)", h: ["z"], desc: { es: "Parte real", en: "Real part" } },
+                    { sig: "Im(z)", h: ["z"], desc: { es: "Parte imaginaria", en: "Imaginary part" } },
+                    { sig: "conjugate(z)", h: ["z"], desc: { es: "Conjugado complejo", en: "Complex conjugate" } },
+                    { sig: "arg(z)", h: ["z"], desc: { es: "Argumento principal en (−π, π]", en: "Principal argument in (−π, π]" } },
+                    { sig: "abs(z)", h: ["z"], desc: { es: "Módulo |z|", en: "Modulus |z|" } }
+                ]
+            },
+            {
+                name: { es: "Funciones básicas", en: "Basic functions" },
+                items: [
+                    { sig: "sqrt(expr)", h: ["expr"], desc: { es: "Raíz cuadrada", en: "Square root" } },
+                    { sig: "root(expr, n)", h: ["expr", "n"], desc: { es: "Raíz n-ésima: root(x, 3) es ∛x", en: "n-th root: root(x, 3) is ∛x" } },
+                    { sig: "abs(expr)", h: ["expr"], desc: { es: "Valor absoluto; también la norma de un vector [a, b]", en: "Absolute value; also the norm of a vector [a, b]" } },
+                    { sig: "exp(expr)", h: ["expr"], desc: { es: "Exponencial e^expr", en: "Exponential e^expr" } },
+                    { sig: "ln(expr)", h: ["expr"], desc: { es: "Logaritmo natural (base e)", en: "Natural logarithm (base e)" } },
+                    { sig: "log10(expr)", h: ["expr"], desc: { es: "Logaritmo decimal (base 10)", en: "Base-10 logarithm" } },
+                    { sig: "log2(expr)", h: ["expr"], desc: { es: "Logaritmo en base 2", en: "Base-2 logarithm" } },
+                    { sig: "sign(expr)", h: ["expr"], desc: { es: "Signo: −1, 0 o 1", en: "Sign: −1, 0 or 1" } },
+                    { sig: "floor(expr)", h: ["expr"], desc: { es: "Redondeo hacia abajo (suelo)", en: "Round down (floor)" } },
+                    { sig: "ceil(expr)", h: ["expr"], desc: { es: "Redondeo hacia arriba (techo)", en: "Round up (ceiling)" } },
+                    { sig: "round(expr)", h: ["expr"], desc: { es: "Redondeo al entero más próximo", en: "Round to the nearest integer" } }
+                ]
+            },
+            {
+                name: { es: "Trigonométricas e hiperbólicas", en: "Trigonometric & hyperbolic" },
+                items: [
+                    { sig: "sin(expr)", h: ["expr"], desc: { es: "Seno (también se acepta sen)", en: "Sine" } },
+                    { sig: "cos(expr)", h: ["expr"], desc: { es: "Coseno", en: "Cosine" } },
+                    { sig: "tan(expr)", h: ["expr"], desc: { es: "Tangente (también tg)", en: "Tangent" } },
+                    { sig: "sec(expr)", h: ["expr"], desc: { es: "Secante = 1/cos", en: "Secant = 1/cos" } },
+                    { sig: "csc(expr)", h: ["expr"], desc: { es: "Cosecante = 1/sin (también cosec)", en: "Cosecant = 1/sin" } },
+                    { sig: "cot(expr)", h: ["expr"], desc: { es: "Cotangente = 1/tan (también cotg, ctg)", en: "Cotangent = 1/tan" } },
+                    { sig: "arcsin(expr)", h: ["expr"], desc: { es: "Arcoseno (también asin, arcsen)", en: "Inverse sine (also asin)" } },
+                    { sig: "arccos(expr)", h: ["expr"], desc: { es: "Arcocoseno (también acos)", en: "Inverse cosine (also acos)" } },
+                    { sig: "arctan(expr)", h: ["expr"], desc: { es: "Arcotangente (también atan, arctg)", en: "Inverse tangent (also atan)" } },
+                    { sig: "sinh(expr)", h: ["expr"], desc: { es: "Seno hiperbólico", en: "Hyperbolic sine" } },
+                    { sig: "cosh(expr)", h: ["expr"], desc: { es: "Coseno hiperbólico", en: "Hyperbolic cosine" } },
+                    { sig: "tanh(expr)", h: ["expr"], desc: { es: "Tangente hiperbólica", en: "Hyperbolic tangent" } },
+                    { sig: "asinh(expr)", h: ["expr"], desc: { es: "Argumento del seno hiperbólico (también arcsinh)", en: "Inverse hyperbolic sine (also arcsinh)" } },
+                    { sig: "acosh(expr)", h: ["expr"], desc: { es: "Argumento del coseno hiperbólico (también arccosh)", en: "Inverse hyperbolic cosine (also arccosh)" } },
+                    { sig: "atanh(expr)", h: ["expr"], desc: { es: "Argumento de la tangente hiperbólica (también arctanh)", en: "Inverse hyperbolic tangent (also arctanh)" } }
+                ]
+            }
+        ];
+
+        function fnMenuLang() {
+            return (uiLang === 'en') ? 'en' : 'es';
+        }
+
+        function showFnMenuPanel() {
+            const list = document.getElementById('fnmenu-list');
+            const lang = fnMenuLang();
+            list.innerHTML = FN_CATALOG.map((cat, ci) => `
+                <li class="examples-group-card" onclick="showFnMenuGroup(${ci})">
+                    <span class="examples-group-card-name">${escapeHtml(cat.name[lang])}</span>
+                    <span class="examples-group-card-count">${t('fnmenu.group_card_count', cat.items.length)}</span>
+                </li>
+            `).join('');
+            // Reopening always starts at the collapsed category list.
+            document.getElementById('fnmenu-group-overlay').classList.remove('visible');
+            document.getElementById('fnmenu-panel-overlay').classList.add('visible');
+        }
+
+        function showFnMenuGroup(catIndex) {
+            const cat = FN_CATALOG[catIndex];
+            if (!cat) return;
+            const lang = fnMenuLang();
+            document.getElementById('fnmenu-group-title').textContent = cat.name[lang];
+            const hint = document.getElementById('fnmenu-group-hint');
+            if (cat.hint) {
+                hint.textContent = cat.hint[lang];
+                hint.style.display = '';
+            } else {
+                hint.style.display = 'none';
+            }
+            const list = document.getElementById('fnmenu-group-list');
+            list.innerHTML = cat.items.map((item, ii) => `
+                <li onclick="insertFnTemplate(${catIndex}, ${ii}, this)">
+                    <div class="example-expression">${escapeHtml(item.sig)}</div>
+                    <div class="example-description">${escapeHtml(item.desc[lang])}</div>
+                </li>
+            `).join('');
+            document.getElementById('fnmenu-group-overlay').classList.add('visible');
+        }
+
+        function hideFnMenuGroup(event) {
+            // Back button (no event) or a click on the backdrop closes only the second modal.
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('fnmenu-group-overlay').classList.remove('visible');
+            }
+        }
+
+        function hideFnMenuPanel(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('fnmenu-panel-overlay').classList.remove('visible');
+                document.getElementById('fnmenu-group-overlay').classList.remove('visible');
+            }
+        }
+
+        // Find `tok` in `text` at/after `from` as a whole identifier (not inside
+        // a name: the n of nextprime(n) must match the argument, never the name).
+        function findFnHole(text, tok, from) {
+            const isWordChar = (c) => c !== '' && /[A-Za-z0-9_]/.test(c);
+            let idx = text.indexOf(tok, from);
+            while (idx >= 0) {
+                const before = idx > 0 ? text[idx - 1] : '';
+                const after = text[idx + tok.length] || '';
+                if (!isWordChar(before) && !isWordChar(after)) return idx;
+                idx = text.indexOf(tok, idx + 1);
+            }
+            return -1;
+        }
+
+        // Insert the template at the caret. If the input has a selection, it is
+        // wrapped into the first hole (select "x^2+1", tap diff → diff(x^2+1, x)).
+        // The next hole is left SELECTED so typing replaces it; the parens and
+        // commas stay in place as the guide for the remaining holes.
+        function insertFnTemplate(catIndex, itemIndex, element) {
+            const cat = FN_CATALOG[catIndex];
+            const item = cat && cat.items[itemIndex];
+            if (!item) return;
+            const input = document.getElementById('expression-input');
+            const value = input.value;
+            const start = (input.selectionStart != null) ? input.selectionStart : value.length;
+            const end = (input.selectionEnd != null) ? input.selectionEnd : start;
+            const selected = value.slice(start, end);
+
+            let text = item.sig;
+            const holes = item.h || [];
+            let holeTok = holes[0] || null;
+            let searchFrom = 0;
+
+            if (selected && holeTok) {
+                const hIdx = findFnHole(text, holeTok, 0);
+                if (hIdx >= 0) {
+                    text = text.slice(0, hIdx) + selected + text.slice(hIdx + holeTok.length);
+                    searchFrom = hIdx + selected.length;
+                    holeTok = holes[1] || null;
+                }
+            }
+
+            input.value = value.slice(0, start) + text + value.slice(end);
+
+            let selStart = start + text.length;
+            let selEnd = selStart;
+            if (holeTok) {
+                const idx = findFnHole(text, holeTok, searchFrom);
+                if (idx >= 0) {
+                    selStart = start + idx;
+                    selEnd = selStart + holeTok.length;
+                }
+            }
+            input.focus();
+            input.setSelectionRange(selStart, selEnd);
+
+            // Green flash, then close both modals and hand the caret back.
+            element.classList.add('fn-inserted');
+            setTimeout(() => {
+                element.classList.remove('fn-inserted');
+                document.getElementById('fnmenu-group-overlay').classList.remove('visible');
+                document.getElementById('fnmenu-panel-overlay').classList.remove('visible');
+                input.focus();
+            }, 260);
         }
     </script>
 </body>
