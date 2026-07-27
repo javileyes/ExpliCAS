@@ -1861,6 +1861,29 @@
             border-color: rgba(139, 92, 246, 0.38);
         }
 
+        /* f(x)-layer families: trigonometry cyan, calculus pink, algebra/solve
+           blue (the app's solve color), vectors & matrices emerald. Elementary
+           functions (logs/roots) keep the violet kb-g-fn. */
+        .kb-key.kb-g-trig {
+            background: rgba(6, 182, 212, 0.15);
+            border-color: rgba(6, 182, 212, 0.4);
+        }
+
+        .kb-key.kb-g-calc {
+            background: rgba(236, 72, 153, 0.14);
+            border-color: rgba(236, 72, 153, 0.38);
+        }
+
+        .kb-key.kb-g-alg {
+            background: rgba(59, 130, 246, 0.16);
+            border-color: rgba(59, 130, 246, 0.35);
+        }
+
+        .kb-key.kb-g-vec {
+            background: rgba(16, 185, 129, 0.14);
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+
         .kb-key-alt {
             background: var(--kb-key-alt-bg);
         }
@@ -2023,6 +2046,26 @@
         [data-theme="light"] .kb-key.kb-g-fn {
             background: #f1ebfd;
             border-color: #d7c9f4;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-trig {
+            background: #e3f7fb;
+            border-color: #a8dfec;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-calc {
+            background: #fdeaf4;
+            border-color: #f3bcd9;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-alg {
+            background: #e9f1fe;
+            border-color: #bcd3f8;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-vec {
+            background: #e6f7f0;
+            border-color: #b5e3cf;
         }
 
         [data-theme="light"] .kb-key.kb-pressed {
@@ -4305,15 +4348,17 @@
             [{ i: '4' }, { i: '5' }, { i: '6' }, { l: '×', i: '*', g: 'op' }, { i: 'x', g: 'var' }, { i: 'y', g: 'var' }, { i: 'z', g: 'var' }],
             [{ i: '1' }, { i: '2' }, { i: '3' }, { l: '−', i: '-', g: 'op' }, { l: 'π', i: 'π', title: 'pi', g: 'const' }, { i: 'e', g: 'const' }, { l: 'φ', i: 'φ', title: 'phi', g: 'const' }],
             [{ i: '0' }, { i: '.' }, { i: '=', g: 'op' }, { i: '+', g: 'op' }, { i: '^', g: 'op' }, { l: '√', f: 'sqrt', g: 'fn' }, { i: ',', g: 'op' }],
-            [{ i: '[', g: 'op' }, { i: ']', g: 'op' }, { l: '▦', tpl: '[[a, b], [c, d]]', h: ['a', 'b'], g: 'op', t: 'kb.matrix.title' }, { l: ':=', i: ':=', g: 'op', t: 'kb.assign.title' }, { l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'fn' }, { l: '∫ₐᵇ', tpl: 'integrate(expr, x, a, b)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn', t: 'kb.defint.title' }],
-            [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'fn' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'fn' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'fn' }, { l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: '◀', a: 'left', c: 'kb-key-alt', t: 'kb.left.title' }, { l: '▶', a: 'right', c: 'kb-key-alt', t: 'kb.right.title' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
+            [{ i: '[', g: 'op' }, { i: ']', g: 'op' }, { l: '▦', tpl: '[[a, b], [c, d]]', h: ['a', 'b'], g: 'vec', t: 'kb.matrix.title' }, { l: ':=', i: ':=', g: 'op', t: 'kb.assign.title' }, { l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'calc' }, { l: '∫ₐᵇ', tpl: 'integrate(expr, x, a, b)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc', t: 'kb.defint.title' }],
+            [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'trig' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'trig' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'trig' }, { l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: '◀', a: 'left', c: 'kb-key-alt', t: 'kb.left.title' }, { l: '▶', a: 'right', c: 'kb-key-alt', t: 'kb.right.title' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
         ];
 
         const KB_FN_ROWS = [
-            [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'fn' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'fn' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'fn' }, { l: 'arcsin', f: 'arcsin', c: 'kb-key-xs', g: 'fn' }, { l: 'arccos', f: 'arccos', c: 'kb-key-xs', g: 'fn' }, { l: 'arctan', f: 'arctan', c: 'kb-key-xs', g: 'fn' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
+            [{ l: 'sin', f: 'sin', c: 'kb-key-sm', g: 'trig' }, { l: 'cos', f: 'cos', c: 'kb-key-sm', g: 'trig' }, { l: 'tan', f: 'tan', c: 'kb-key-sm', g: 'trig' }, { l: 'arcsin', f: 'arcsin', c: 'kb-key-xs', g: 'trig' }, { l: 'arccos', f: 'arccos', c: 'kb-key-xs', g: 'trig' }, { l: 'arctan', f: 'arctan', c: 'kb-key-xs', g: 'trig' }, { l: '⌫', a: 'bksp', c: 'kb-key-alt', t: 'kb.backspace.title' }],
             [{ l: 'ln', f: 'ln', c: 'kb-key-sm', g: 'fn' }, { l: 'log10', f: 'log10', c: 'kb-key-xs', g: 'fn' }, { l: 'log2', f: 'log2', c: 'kb-key-xs', g: 'fn' }, { l: 'eˣ', f: 'exp', c: 'kb-key-sm', g: 'fn' }, { l: '√', f: 'sqrt', g: 'fn' }, { l: 'ⁿ√', tpl: 'root(expr, n)', h: ['expr', 'n'], g: 'fn' }, { l: '|x|', f: 'abs', c: 'kb-key-sm', g: 'fn' }],
-            [{ l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'fn' }, { l: 'solve', tpl: 'solve(eq, x)', h: ['eq', 'x'], c: 'kb-key-xs', g: 'fn' }, { l: 'lim', tpl: 'limit(expr, x, a)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'fn' }, { l: 'Σ', tpl: 'sum(expr, k, a, b)', h: ['expr', 'k'], g: 'fn' }, { l: 'taylor', tpl: 'taylor(expr, x, a, n)', h: ['expr', 'x'], c: 'kb-key-xs', g: 'fn' }, { i: ',', g: 'op' }],
-            [{ l: 'simplify', f: 'simplify', c: 'kb-key-xs', g: 'fn' }, { l: 'factor', f: 'factor', c: 'kb-key-xs', g: 'fn' }, { l: 'expand', f: 'expand', c: 'kb-key-xs', g: 'fn' }, { l: 'dsolve', tpl: 'dsolve(diff(y,x) = f, y, x)', h: ['f'], c: 'kb-key-xs', g: 'fn' }, { l: 'equiv', tpl: 'equiv(expr1, expr2)', h: ['expr1', 'expr2'], c: 'kb-key-xs', g: 'fn' }, { l: '≈', f: 'approx', g: 'fn' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
+            [{ l: 'd/dx', tpl: 'diff(expr, x)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc' }, { l: '∫', tpl: 'integrate(expr, x)', h: ['expr', 'x'], g: 'calc' }, { l: '∫ₐᵇ', tpl: 'integrate(expr, x, a, b)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc', t: 'kb.defint.title' }, { l: 'lim', tpl: 'limit(expr, x, a)', h: ['expr', 'x'], c: 'kb-key-sm', g: 'calc' }, { l: 'Σ', tpl: 'sum(expr, k, a, b)', h: ['expr', 'k'], g: 'calc' }, { l: 'taylor', tpl: 'taylor(expr, x, a, n)', h: ['expr', 'x'], c: 'kb-key-xs', g: 'calc' }, { l: 'dsolve', tpl: 'dsolve(diff(y,x) = f, y, x)', h: ['f'], c: 'kb-key-xs', g: 'calc' }],
+            [{ l: 'solve', tpl: 'solve(eq, x)', h: ['eq', 'x'], c: 'kb-key-xs', g: 'alg' }, { l: 'simplify', f: 'simplify', c: 'kb-key-xs', g: 'alg' }, { l: 'factor', f: 'factor', c: 'kb-key-xs', g: 'alg' }, { l: 'expand', f: 'expand', c: 'kb-key-xs', g: 'alg' }, { l: 'equiv', tpl: 'equiv(expr1, expr2)', h: ['expr1', 'expr2'], c: 'kb-key-xs', g: 'alg' }, { l: '≈', f: 'approx', g: 'alg' }, { i: ',', g: 'op' }],
+            [{ l: 'u·v', tpl: 'dot(u, v)', h: ['u', 'v'], c: 'kb-key-sm', g: 'vec', title: 'dot(u, v)' }, { l: 'u×v', tpl: 'cross(u, v)', h: ['u', 'v'], c: 'kb-key-sm', g: 'vec', title: 'cross(u, v)' }, { l: '‖v‖', tpl: 'norm(v)', h: ['v'], c: 'kb-key-sm', g: 'vec', title: 'norm(v)' }, { l: 'det', tpl: 'det(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'det(M)' }, { l: 'A⁻¹', tpl: 'inverse(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'inverse(M)' }, { l: 'Aᵀ', tpl: 'transpose(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'transpose(M)' }, { l: 'A·B', tpl: 'matmul(A, B)', h: ['A', 'B'], c: 'kb-key-sm', g: 'vec', title: 'matmul(A, B)' }],
+            [{ l: '∇f', tpl: 'gradient(f, [x,y])', h: ['f'], c: 'kb-key-sm', g: 'vec', title: 'gradient(f, [x,y])' }, { l: '∇·F', tpl: 'divergence([P,Q], [x,y])', h: ['P', 'Q'], c: 'kb-key-sm', g: 'vec', title: 'divergence([P,Q], [x,y])' }, { l: '∇×F', tpl: 'curl([P,Q,R], [x,y,z])', h: ['P', 'Q'], c: 'kb-key-sm', g: 'vec', title: 'curl([P,Q,R], [x,y,z])' }, { l: 'Δf', tpl: 'laplacian(f, [x,y])', h: ['f'], c: 'kb-key-sm', g: 'vec', title: 'laplacian(f, [x,y])' }, { l: 'Jac', tpl: 'jacobian([f,g], [x,y])', h: ['f', 'g'], c: 'kb-key-sm', g: 'vec', title: 'jacobian([f,g], [x,y])' }, { l: 'eig', tpl: 'eigenvalues(M)', h: ['M'], c: 'kb-key-sm', g: 'vec', title: 'eigenvalues(M)' }, { l: '⏎', a: 'enter', c: 'kb-key-enter', t: 'input.submit.label' }]
         ];
 
         const KB_ABC_ROWS = [
