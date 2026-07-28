@@ -5107,13 +5107,14 @@
 
         let backGuardLeaving = false;
 
+        // `window.` is NOT optional here: this script declares `const history
+        // = []` for the input's command history, which shadows `window.history`
+        // for the whole scope. Written bare, `history.pushState` reached
+        // `Array.prototype` and threw — and the first version swallowed that in
+        // a silent try/catch, so the sentinel was never pushed and back kept
+        // leaving the app while every popstate test passed.
         function armBackGuard() {
-            try {
-                history.pushState({ expliCASBackGuard: true }, '');
-            } catch (e) {
-                // A sandboxed frame can refuse pushState; without the sentinel
-                // back simply behaves as it always did.
-            }
+            window.history.pushState({ expliCASBackGuard: true }, '');
         }
 
         function showExitConfirm() {
@@ -5132,7 +5133,7 @@
             // Two entries down: the sentinel we are standing on and the app
             // entry beneath it. If the app was opened in a fresh tab there is
             // nothing below and the browser stays put — nothing to undo.
-            history.go(-2);
+            window.history.go(-2);
         }
 
         function closeTopmostBackGuardOverlay() {
