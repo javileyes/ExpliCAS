@@ -5089,8 +5089,9 @@
         // number of presses. `pushState` truncates forward history, so the
         // stack never grows.
         //
-        // What back MEANS, in order: dismiss the exit question, then close the
-        // topmost open modal, and only with nothing open ask before leaving.
+        // What back MEANS, from the top of the screen down: dismiss the exit
+        // question, then the topmost open modal, then the on-screen keypad, and
+        // only with nothing open at all ask before leaving.
 
         // Drill-down modals come FIRST: back walks out of the second level
         // before the first, like any native navigation. Each `hide*` treats a
@@ -5147,6 +5148,21 @@
             return false;
         }
 
+        // The keypad is the LAST thing back dismisses before the exit question.
+        // It lives inside the input bar, UNDER every modal, so a modal opened
+        // on top of it goes first — back walks the screen from the top down.
+        function closeKeypadFromBack() {
+            if (!kbInputBar.classList.contains('kb-open')) return false;
+            kbClosePanel();
+            // On desktop the ⌨️ state is persisted, so back has to agree with
+            // the ⌄ button or the keypad would come back on the next reload.
+            if (!isKbTouch()) {
+                kbDesktopOpen = false;
+                try { localStorage.setItem(KB_DESKTOP_STORAGE_KEY, '0'); } catch (e) { }
+            }
+            return true;
+        }
+
         window.addEventListener('popstate', () => {
             if (backGuardLeaving) return;
             armBackGuard();
@@ -5158,6 +5174,7 @@
                 return;
             }
             if (closeTopmostBackGuardOverlay()) return;
+            if (closeKeypadFromBack()) return;
             showExitConfirm();
         });
 
