@@ -1104,13 +1104,15 @@ fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
     // Nonzero thresholds solve in `u = g(x)` space (all-rational breakpoints) and map
     // back through the affine — these previously returned a false "No solution" or a
     // malformed residual.
-    assert_eq!(
-        r("solve(1/(x+sqrt(2))>1, x)"),
-        "(-2\u{b7}2^(-1/2), 1 - sqrt(2))"
-    );
+    // El extremo negativo imprimía `-2·2^(-1/2)`, la forma sin plegar que el
+    // hermano positivo sí plegaba: la corrección del signo en la combinación de
+    // potencias (2026-07-28) lo deja en `-(sqrt(2))`, el MISMO número y la
+    // misma forma que usa el resto de la expresión. El extremo `1 - sqrt(2)`
+    // no cambia, que es la señal de que solo se normalizó la presentación.
+    assert_eq!(r("solve(1/(x+sqrt(2))>1, x)"), "(-(sqrt(2)), 1 - sqrt(2))");
     assert_eq!(
         r("solve(1/(x+sqrt(2))<1, x)"),
-        "(-infinity, -2\u{b7}2^(-1/2)) U (1 - sqrt(2), infinity)"
+        "(-infinity, -(sqrt(2))) U (1 - sqrt(2), infinity)"
     );
     assert_eq!(r("solve(1/(x+sqrt(2))=1, x)"), "{ 1 - sqrt(2) }");
     assert_eq!(r("solve(2/(x-sqrt(3))<=-1, x)"), "[sqrt(3) - 2, sqrt(3))");
@@ -5894,9 +5896,15 @@ fn test_eval_squared_irrational_quadratic_factor_keeps_its_roots() {
         "{ -2, 2, -(sqrt(3)), sqrt(3) }"
     );
     // Controls: the DISTINCT-quadratic-factor case and a plain quadratic are unchanged.
+    // The negative root used to print `-5·5^(-1/2)` — the very form the comment
+    // at the top of this test calls the OLD owner's ugly render. It stayed here
+    // because the fold that produces `-(sqrt(5))` only fired for a POSITIVE
+    // coefficient: `5·5^(-1/2)` combined, `(-5)·5^(-1/2)` did not, so the two
+    // roots of one equation printed in two different shapes. Fixed 2026-07-28
+    // by peeling the sign before comparing bases.
     assert_eq!(
         r("solve(x^5-5*x^3+x^2-5 = 0, x)"),
-        "{ -1, sqrt(5), -5·5^(-1/2) }"
+        "{ -1, sqrt(5), -(sqrt(5)) }"
     );
     assert_eq!(r("solve(x^2-5*x+6 = 0, x)"), "{ 2, 3 }");
 }

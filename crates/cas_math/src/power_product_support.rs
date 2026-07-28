@@ -49,6 +49,22 @@ pub enum PowerProductRewriteKind {
     SameBaseNary,
 }
 
+/// The magnitude of a NEGATIVE numeric literal, as an expression.
+///
+/// Exists so a sign never has to be part of a base: `(-2)·2^e` shares its base
+/// with `2^e` and only the sign differs, but a structural comparison cannot see
+/// that. Returns `None` for zero and for positives, which have nothing to peel.
+fn negative_number_magnitude(ctx: &mut Context, factor: ExprId) -> Option<ExprId> {
+    let Expr::Number(n) = ctx.get(factor) else {
+        return None;
+    };
+    if !num_traits::Signed::is_negative(n) {
+        return None;
+    }
+    let magnitude = num_traits::Signed::abs(n);
+    Some(ctx.add(Expr::Number(magnitude)))
+}
+
 /// Try product-of-powers rewrites:
 /// - `x^a * x^b -> x^(a+b)`
 /// - `x^a * x -> x^(a+1)` and symmetric variants
@@ -113,6 +129,25 @@ pub fn try_rewrite_product_power_expr(
                         rewritten,
                         kind: PowerProductRewriteKind::BaseAndPower,
                     });
+                }
+            }
+            // The NEGATED sibling. `compare_expr` reads `-2` and `2` as
+            // different bases, so the fold that turns `2·2^(-1/2)` into `√2`
+            // walked past `(-2)·2^(-1/2)` and left `-2/√2` on screen: the same
+            // number in two shapes, decided by a sign. The magnitude is what
+            // shares the base; the sign is DATA and rides back out.
+            if let Some(magnitude) = negative_number_magnitude(ctx, lhs) {
+                if compare_expr(ctx, base2, magnitude) == Ordering::Equal {
+                    let one = ctx.num(1);
+                    if should_combine(ctx, base2, one, exp2) {
+                        let sum_exp = add_exp(ctx, one, exp2);
+                        let combined = ctx.add(Expr::Pow(base2, sum_exp));
+                        let rewritten = ctx.add(Expr::Neg(combined));
+                        return Some(PowerProductRewrite {
+                            rewritten,
+                            kind: PowerProductRewriteKind::BaseAndPower,
+                        });
+                    }
                 }
             }
         }
@@ -948,5 +983,57 @@ mod tests {
                 "`{src}` should still split"
             );
         }
+    }
+
+    /// The negated sibling of the base-and-power fold.
+    ///
+    /// `2·2^(-1/2)` folded to `√2` while `(-2)·2^(-1/2)` did not, because the
+    /// structural comparison reads `-2` and `2` as different bases — so one
+    /// equation printed its two roots in two different shapes
+    /// (`{ -2·2^(-1/2), sqrt(2) }`). The sign is data; only the magnitude
+    /// shares the base.
+    ///
+    /// The contract asserted here is SYMMETRY, not "fold more": for every
+    /// shape, the negated product must fold exactly when the positive one
+    /// does, and to the same power with the sign carried outside. Hard-coding
+    /// the rewritten strings would pin this layer's unevaluated exponent
+    /// (`2^(1 - 1/2)`) instead of the property that matters.
+    #[test]
+    fn negated_numeric_coefficient_folds_exactly_when_its_positive_twin_does() {
+        let fold = |src: &str| {
+            let mut ctx = Context::new();
+            let e = parse(src, &mut ctx).expect("parse");
+            try_rewrite_product_power_expr(&mut ctx, e).map(|r| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &ctx,
+                        id: r.rewritten
+                    }
+                )
+            })
+        };
+        for (positive, negated) in [
+            ("2*2^(-1/2)", "(-2)*2^(-1/2)"),
+            ("3*3^(-1/2)", "(-3)*3^(-1/2)"),
+            ("2*2^(-1/3)", "(-2)*2^(-1/3)"),
+            ("5*5^(-3/2)", "(-5)*5^(-3/2)"),
+            ("2*2^(1/2)", "(-2)*2^(1/2)"),
+            ("2*2^2", "(-2)*2^2"),
+        ] {
+            match (fold(positive), fold(negated)) {
+                (None, None) => {}
+                (Some(pos), Some(neg)) => assert_eq!(
+                    format!("-({pos})"),
+                    neg,
+                    "{negated} must fold to the negation of {positive}"
+                ),
+                (p, n) => panic!("asymmetric fold: {positive} => {p:?} but {negated} => {n:?}"),
+            }
+        }
+        // A different base has nothing to share, sign or not.
+        assert_eq!(fold("(-2)*3^(-1/2)"), None);
+        // Zero has no sign to peel.
+        assert_eq!(fold("0*2^(-1/2)"), None);
     }
 }

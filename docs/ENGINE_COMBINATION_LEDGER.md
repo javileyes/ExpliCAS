@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 752 (newest first)
+Active entries: 753 (newest first)
 
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
@@ -123,6 +123,7 @@ Active entries: 752 (newest first)
 - 2026-07-28 | `retained` | `cas_solver/linear_system_command_eval/steps.rs` (identificación POR ECUACIÓN... | VERACIDAD (narración de sistemas, reporte del usuario): tres pasos que arrastraban el MISMO snapshot de relleno — «ruido y sin sentido», y tenía razón
 - 2026-07-28 | `retained` | `cas_solver_core/quadratic_strategy.rs` (`exact_rational_sqrt` + `try_rationa... | VERACIDAD (cuadrática factorizable, reporte del usuario): la ruta de producto-cero existía y era buena — la cuadrática EXPANDIDA no llegaba a ella
 - 2026-07-28 | `retained` | `cas_solver/solve_backend_local.rs` (`solve_polynomial_in_atom` captura los p... | VERACIDAD (narración del polinomio en u): el detector `let (sol, _)` en su cuarta aparición, con la justificación caducada escrita al lado
+- 2026-07-28 | `retained` | `cas_math/power_product_support.rs` (`negative_number_magnitude` + rama negad... | SOUNDNESS DE PRESENTACIÓN (hermano negado del pliegue de potencias): la misma ecuación imprimía sus dos raíces en dos formas, decidido por un signo
 - 2026-07-27 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (test `generated_substep_claim_in... | VERACIDAD (plan · C1.9, tier GENERATIVO): el corpus deja de elegirlo una persona — 5000 expresiones generadas, ~4986 claims re-verificados sobre el wire con el estándar del emisor, 0 refutaciones
 - 2026-07-27 | `retained` | `cas_didactic/focused_rule_substeps.rs` (`generate_repeated_polynomial_elemen... | VERACIDAD (plan · C1.6, por partes repetida): el cierre integra SU integrando y una RECOMPOSICIÓN probada aterriza en la respuesta — el P0 del testigo muere y la familia entera gana el paso que faltaba
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (instrumento nuevo: cobertura del... | VERACIDAD (campaña de sombra del matcher, paso 0 + primera migración): la sombra midió la cola ENTERA en <1 s — y el primer emisor migrado citaba la identidad EQUIVOCADA en 4 de sus 7 pares
@@ -22550,3 +22551,20 @@ Active entries: 752 (newest first)
   - **Una justificación de silencio caduca cuando cambia su término de comparación**: «no lo mostramos porque la otra ruta tampoco» es correcto hasta el día en que la otra ruta empieza a mostrarlo, y nada avisa. Cuando un ciclo hace hablar a una ruta, tocar `grep` de las que se callaban CITÁNDOLA.
   - **Un barrido propio y un carril del harness pueden leer corpus DISTINTOS del mismo fichero**: el carril parsea `web/examples.csv` por campos entrecomillados (219 expresiones) y mi barrido partía por comas — mi «0 cambios» no era evidencia sobre su corpus, y explicar un delta de huella con él habría sido una conclusión falsa. Antes de adjudicar un delta con un instrumento propio, comprobar que carga el MISMO conjunto que el carril.
   - **`substeps_count` del wire suma LOS DOS canales** (`steps[]` y `solve_steps[]`): un instrumento que solo lee el primero es ciego justo a la narración de solve, que es donde vive esta campaña.
+
+## 2026-07-28 - SOUNDNESS DE PRESENTACIÓN (hermano negado del pliegue de potencias): la misma ecuación imprimía sus dos raíces en dos formas, decidido por un signo
+
+- area: `cas_math/power_product_support.rs` (`negative_number_magnitude` + rama negada de `BaseAndPower`), test de simetría; 3 pins de contrato CLI actualizados con la intención escrita.
+- status: `retained`. Cuarto ciclo del reporte del usuario (mitad a).
+- capture:
+  - **EL DEFECTO, medido antes de tocar nada**: `2·2^(-1/2) → √2` pliega, `(-x)·x^(-1/2) → -(x^(1/2))` pliega (base simbólica), pero `(-2)·2^(-1/2) → -2/√2` NO. El hueco exacto es base NUMÉRICA + coeficiente NEGATIVO. Consecuencia visible: `solve(x^2-2=0,x)` devolvía `{ -2·2^(-1/2), sqrt(2) }` — las dos raíces de una misma ecuación en formas distintas.
+  - **LA CAUSA es una comparación estructural de bases**: en la rama `BaseAndPower`, `compare_expr(base2, lhs)` lee `-2` y `2` como bases distintas. El signo estaba HORNEADO en el factor; se pela antes de comparar y se devuelve fuera (`Neg`) — el molde «signo/forma como DATO» del ledger, en su enésima aparición.
+  - **EL TEST QUE ESCRIBÍ PRIMERO ERA PEOR QUE EL ARREGLO**: fijaba la cadena `-(2^(1/2))` y falló porque a esa capa el exponente aún no está evaluado (`2^(1 - 1/2)`), y de paso falsificó mi supuesto de que `2·2^(1/2)` no plegaba ahí. Reescrito para asertar el CONTRATO —el negado pliega exactamente cuando pliega el positivo, y a la negación de lo mismo— computando ambos lados en vez de fijar una forma interna que puede cambiar legítimamente.
+- observed:
+  - Barrido adversarial de 1354 productos `(±n)·m^(±p/q)` sobre los bordes (signo a ambos lados, `n=m` y `n≠m`, exponentes enteros/unitarios/impropios, 0, 1, bases simbólicas, y las mismas formas dentro de un cociente): **16 resultados cambiados, 0 cambios de `ok`**; corpus general de 1129 comandos: **0 cambios**. Cada resultado cambiado verificado con oráculo numérico (`approx(antes − ahora) = 0`; los de conjunto, elemento a elemento).
+  - workspace failed:0 (358 suites, 12632 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes. Huella: **0 deltas de contador** en ambos perfiles (solo `git.commit` y las listas top-N por timing) — lo correcto para un ciclo que normaliza presentación sin ganar ni perder pasos.
+- decision: retener.
+- retained learning:
+  - **Un pliegue a medias es peor que ninguno**: mientras `2·2^(-1/2)` plegaba y su negado no, la MISMA expresión imprimía sus dos mitades en dos idiomas distintos, y eso se lee como dos números de naturaleza distinta. Al añadir un pliegue conviene preguntarse por el hermano negado en el mismo commit; llevaba desde 2026-07-14 con un comentario de test celebrando el «cleaner render» que solo tenía la mitad de los casos.
+  - **Un test que fija la forma interna de una capa intermedia pinea el andamio, no el contrato**: el exponente sin evaluar (`2^(1 - 1/2)`) es un detalle legítimo de esa capa. La propiedad que importa era la SIMETRÍA con el caso positivo, y se aserta computando ambos y comparándolos.
+  - **Tres pins defendían la forma sin plegar**, uno de ellos con un comentario que ya llamaba «cleaner» a la forma buena para OTROS casos: cuando un arreglo normaliza una presentación, sus pins están donde la vieja se citaba como valor esperado, no donde se describe el defecto.
