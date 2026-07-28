@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 757 (newest first)
+Active entries: 758 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
+- 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22649,3 +22650,22 @@ Active entries: 757 (newest first)
   - **Una poda que existe y no dispara es indistinguible de una que no existe — y se arregla arreglando lo que COMPARA, no añadiendo poda.** El filtro de no-op llevaba tandas listando esta regla por nombre; le faltaba que los dos lados se imprimieran igual. Antes de escribir un filtro nuevo, comprobar si el que hay está mirando dos formas que deberían ser una.
   - **«Radical siempre» es una decisión de presentación con TRES superficies, y una de ellas es la IDENTIDAD CANÓNICA**: los latex de cabecera, pasos y resultado son display puro y salen baratos; el `result` en texto es además lo que copian los contratos, los `#N` y el corpus. Medir antes de unificar separó lo barato (2 mejoras, 0 regresiones) de lo que es un ciclo entero (79 cambios, 1 deseado).
   - **El sniffing de estilo cuenta TOKENS del input, así que un sinónimo que no esté en la lista invierte la decisión**: `root(` no contaba como raíz, y quien escribía `root(x, 3)` recibía potencias en las superficies que resuelven por señales (`simplify`, el título del timeline). El paréntesis forma parte del token a propósito — una variable llamada `root` no es una raíz.
+
+## 2026-07-29 - CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
+
+- area: `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO del exponente), `cas_solver/eval_output_latex_style.rs` (brazo `Result`). 3 tests nuevos + el contrato de estilo exponencial restaurado.
+- status: `retained`. Corrige el brazo `Result` del ciclo anterior (`d0b357af4`), que dejaba el resultado en radical incondicional.
+- capture:
+  - **LA REGLA PEDIDA**: potencias fraccionarias en la entrada ⟹ potencias fraccionarias en el resultado; raíces ⟹ raíces; en la MEZCLA da igual (gana la raíz, para que el caso mixto tenga una respuesta y no dos). El ciclo anterior había leído «radical siempre» de una conversación donde la pregunta seguía sin responder.
+  - **PERO LA REGLA DE ECO QUE EXISTÍA NO CUMPLÍA ESA REGLA, por dos motivos, y por eso el usuario la vio mal antes**:
+    1. `saw_caret_fraction` contaba CUALQUIER `^(`, no `^(p/q)` — y el campo se llama *caret_fraction*. `integrate(e^(-x^2), …)` tiene un `^(` sin fracción, así que se clasificaba como «el usuario escribió potencias fraccionarias» y la integral de Gauss salía `pi^(1/2)`. Ahora se exige una barra en el NIVEL de paréntesis del exponente (`x^(a*(b/c))` no cuenta).
+    2. Cuando el input no traía NINGUNA de las dos notaciones, se caía al sniffing del ÁRBOL — del resultado, que ya está convertido a `Pow` y por tanto responde «potencia» pase lo que pase en la entrada. Eso imprimía la fórmula cuadrática como `(b^2-4·a·c)^(1/2)`. Ese tercer caso no lo cubre la regla del usuario y se decide a mano: RADICAL, que es la forma que él mismo señaló como la reconocible.
+- observed:
+  - Probes dirigidos, uno por caso de la regla: `x^(1/2)`→potencia, `sqrt(x)`→raíz, `root(x+1,3)`→raíz, `x^(1/2)·x^(2/3)`→`x^(7/6)` (adiós al `\sqrt[6]{x^7}` del ciclo anterior), mezcla `sqrt(x)·x^(1/3)`→raíz, `x^(1/2) + e^(-x^2)`→potencia (la trampa del `^(`), Gauss→`\sqrt{\pi}`, cuadrática→`\sqrt{b^2-4ac}`.
+  - **El corpus de 219 NO distingue las dos reglas: 0 cambios frente al ciclo anterior** (ninguna de sus expresiones está escrita con `x^(1/q)`), y los mismos 2 cambios frente al HEAD original. La evidencia de este ciclo son los probes; el barrido solo prueba ausencia de daño.
+  - workspace failed:0 (381 suites, 13776 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes. Huella: 0 deltas de contador en ambos perfiles.
+- decision: retener.
+- retained learning:
+  - **Una pregunta que el asistente hace y el usuario no responde no queda respondida por el hecho de que el usuario diga «sigue».** El ciclo anterior implementó la opción que el asistente había recomendado, y el usuario la corrigió en cuanto la vio. Cuando la decisión pendiente cambia el resultado visible, conviene volver a preguntarla ANTES de construir sobre ella, no después.
+  - **Una señal heurística mal contada convierte una regla correcta en un defecto, y el nombre del campo era la pista**: `saw_caret_fraction` contaba `^(` cualquiera. Los tres ejemplos que el usuario reportó como mal impresos eran, dos de ellos, esta cuenta y el sniffing del árbol convertido — no la regla de eco, que era buena.
+  - **Preguntarle al ÁRBOL por el estilo del INPUT no funciona cuando el árbol es el RESULTADO**: la forma interna es siempre `Pow`, así que el sniffing devuelve «potencia» con independencia de lo que se escribiera. El estilo del input solo lo sabe el input.

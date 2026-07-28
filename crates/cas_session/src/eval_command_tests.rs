@@ -1046,13 +1046,8 @@ mod tests {
         );
     }
 
-    /// El eco fiel del estilo del input vive en la CABECERA; el RESULTADO va siempre
-    /// en radical (decisión del usuario 2026-07-29). Este test fijaba las dos mitades
-    /// en exponencial, que era el contrato anterior —la notación la decidía la
-    /// PROCEDENCIA— y por eso resultados que el alumno reconoce de memoria salían en
-    /// la forma menos reconocible cuando nadie había escrito una raíz (`sqrt(pi)` daba
-    /// `pi^(1/2)`). El precio de la consistencia se ve aquí: `x^(7/6)` se presenta como
-    /// `\sqrt[6]{x^7}`, o sea un índice alto que no es más legible que la potencia.
+    /// Quien escribe potencias fraccionarias recibe potencias fraccionarias, en la
+    /// cabecera Y en el resultado (decisión del usuario 2026-07-29).
     #[test]
     fn evaluate_eval_command_pretty_preserves_fractional_power_input_style_in_latex() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
@@ -1081,11 +1076,62 @@ mod tests {
         let result_latex = payload["result_latex"]
             .as_str()
             .expect("result_latex string");
-        assert_eq!(
-            result_latex, "\\sqrt[6]{{x}^{7}}",
-            "el resultado va en radical aunque el input fuese exponencial: la procedencia \
-             decide la cabecera, no el resultado"
+        assert!(
+            result_latex.contains("{x}^{\\frac{7}{6}}"),
+            "expected result_latex to preserve exponential-style result, got: {result_latex}"
         );
+        assert!(
+            !result_latex.contains("\\sqrt"),
+            "expected result_latex to avoid radical notation for exponential-style input, got: {result_latex}"
+        );
+    }
+
+    /// El tercer caso, el que la regla del usuario no nombra: un input SIN raíces y
+    /// SIN potencias fraccionarias no tiene notación que ecoar. Se presenta en
+    /// radical, que es la forma que el alumno reconoce — y es exactamente lo que el
+    /// usuario señaló como mal impreso (`pi^(1/2)` por `√π`). Preguntarle al ÁRBOL no
+    /// sirve: el resultado ya está convertido a `Pow` y responde «potencia» siempre.
+    /// `e^(-x^2)` es la trampa concreta: tiene un `^(` que NO es una fracción.
+    #[test]
+    fn evaluate_eval_command_pretty_uses_radical_result_when_input_has_neither_notation() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("integrate(e^(-x^2), x, -infinity, infinity)"),
+            cas_solver_core::eval_option_axes::Language::Es,
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        let result_latex = payload["result_latex"]
+            .as_str()
+            .expect("result_latex string");
+        assert_eq!(
+            result_latex, "\\sqrt{\\pi}",
+            "sin notación que ecoar el resultado va en radical"
+        );
+    }
+
+    /// Y el eco en el sentido contrario: quien escribe `root(x, 3)` —o `sqrt`— recibe
+    /// raíz, aunque la forma interna sea `x^(1/3)`.
+    #[test]
+    fn evaluate_eval_command_pretty_echoes_root_input_as_radical_result() {
+        for (input, expected) in [
+            ("root(x + 1, 3)", "\\sqrt[3]{x + 1}"),
+            ("sqrt(x)", "\\sqrt{x}"),
+        ] {
+            let json = crate::eval::evaluate_eval_command_pretty_with_session(
+                None,
+                standard_eval_config(input),
+                cas_solver_core::eval_option_axes::Language::Es,
+                |_steps, _events, _context, _steps_mode| Vec::new(),
+            );
+            let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+            let result_latex = payload["result_latex"]
+                .as_str()
+                .expect("result_latex string");
+            assert_eq!(result_latex, expected, "eco de raíz roto para {input}");
+        }
     }
 
     #[test]

@@ -265,16 +265,14 @@ impl ParseStyleSignals {
             + input.matches('√').count()
             + input.matches("root(").count();
 
-        // Count potential fractional exponents (rough heuristic)
-        // Look for patterns like ^(1/2), ^(1/3), ^(2/3)
-        let mut chars = input.chars().peekable();
-        while let Some(c) = chars.next() {
-            if c == '^' {
-                // Check if followed by ( and then a fraction-like pattern
-                if chars.peek() == Some(&'(') {
-                    signals.saw_caret_fraction += 1;
-                }
-            }
+        // Exponentes FRACCIONARIOS escritos por el usuario: `^(1/2)`, `^(2/3)`.
+        // Contaba cualquier `^(`, y el campo se llama *caret_fraction*: `e^(-x^2)`
+        // se declaraba «potencia fraccionaria» y arrastraba el estilo del resultado
+        // a exponencial — así la integral de Gauss salía `pi^(1/2)`. Ahora se exige
+        // una barra DENTRO del paréntesis del exponente.
+        signals.saw_caret_fraction = count_fractional_caret_exponents(input);
+
+        for c in input.chars() {
             if c == '/' {
                 signals.saw_division_slash += 1;
             }
@@ -285,6 +283,44 @@ impl ParseStyleSignals {
 
         signals
     }
+}
+
+/// Cuenta los `^(…)` cuyo exponente contiene una barra en su NIVEL de paréntesis
+/// (`x^(1/2)`, `x^(2/3)` sí; `e^(-x^2)`, `x^(n+1)` no).
+fn count_fractional_caret_exponents(input: &str) -> usize {
+    let bytes = input.as_bytes();
+    let mut count = 0usize;
+    let mut index = 0usize;
+
+    while index + 1 < bytes.len() {
+        if bytes[index] != b'^' || bytes[index + 1] != b'(' {
+            index += 1;
+            continue;
+        }
+        let mut depth = 0usize;
+        let mut has_slash = false;
+        let mut cursor = index + 1;
+        while cursor < bytes.len() {
+            match bytes[cursor] {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                b'/' if depth == 1 => has_slash = true,
+                _ => {}
+            }
+            cursor += 1;
+        }
+        if has_slash {
+            count += 1;
+        }
+        index = cursor.max(index + 1);
+    }
+
+    count
 }
 
 #[cfg(test)]
@@ -375,6 +411,46 @@ mod tests {
         let signals2 = ParseStyleSignals::from_input_string("2^(1/2) + 3^(1/3)");
         assert_eq!(signals2.saw_sqrt_token, 0);
         assert_eq!(signals2.saw_caret_fraction, 2);
+    }
+
+    #[test]
+    fn test_caret_fraction_requires_a_fraction_in_the_exponent() {
+        // `e^(-x^2)` tiene un `^(` y NINGUNA fracción: contarlo declaraba
+        // «el usuario escribió potencias fraccionarias» e imprimía la integral
+        // de Gauss como `pi^(1/2)`.
+        for input in ["e^(-x^2)", "x^(n+1)", "2^(x)", "e^(-x^2) + e^(-y^2)"] {
+            assert_eq!(
+                ParseStyleSignals::from_input_string(input).saw_caret_fraction,
+                0,
+                "exponente sin fracción contado como fraccionario: {input}"
+            );
+        }
+        for (input, expected) in [
+            ("x^(1/2)", 1),
+            ("x^(2/3)*y^(1/5)", 2),
+            ("x^(1/2) + e^(-x^2)", 1),
+            // La barra tiene que estar en el NIVEL del exponente, no en un anidado.
+            ("x^(a*(b/c))", 0),
+        ] {
+            assert_eq!(
+                ParseStyleSignals::from_input_string(input).saw_caret_fraction,
+                expected,
+                "conteo de exponentes fraccionarios erróneo en {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_root_token_counts_the_root_call() {
+        assert_eq!(
+            ParseStyleSignals::from_input_string("root(x, 3)").saw_sqrt_token,
+            1
+        );
+        // Una variable llamada `root` no es una raíz: el paréntesis es parte del token.
+        assert_eq!(
+            ParseStyleSignals::from_input_string("root + 1").saw_sqrt_token,
+            0
+        );
     }
 
     #[test]

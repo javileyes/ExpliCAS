@@ -25,15 +25,26 @@ fn style_for_eval_intent(
                 style.root_style = RootStyle::Radical;
             }
         }
-        // El RESULTADO va siempre en radical (decisión del usuario 2026-07-29,
-        // por consistencia). Antes ecoaba el estilo del input, y eso hacía que
-        // resultados que el alumno reconoce de memoria salieran en la forma
-        // menos reconocible cuando NADIE había escrito una raíz:
-        // `integrate(e^(-x^2), x, -oo, oo)` daba `pi^(1/2)` en vez de `sqrt(pi)`
-        // y la fórmula cuadrática, `(b^2 - 4·a·c)^(1/2)`.
-        // El eco fiel del input se conserva donde toca: en la CABECERA.
+        // El RESULTADO ECOA la notación del INPUT (decisión del usuario 2026-07-29):
+        // raíces si el usuario escribió raíces, potencias fraccionarias si escribió
+        // potencias fraccionarias. En la MEZCLA gana la raíz — al usuario le da igual
+        // cuál, y así el caso mixto tiene una respuesta y no dos.
+        //
+        // Cuando el input no trae NINGUNA de las dos notaciones no hay nada que ecoar
+        // y se presenta en RADICAL: son los casos que el usuario señaló como los peor
+        // impresos — `integrate(e^(-x^2), x, -oo, oo)` es `√π`, no `pi^(1/2)`, y la
+        // fórmula cuadrática lleva `√(b²−4ac)`.
+        //
+        // Ese tercer caso es justo el que hay que decidir a mano: preguntarle al ÁRBOL
+        // no vale, porque el resultado ya está convertido a `Pow` y responde «potencia»
+        // pase lo que pase en la entrada. Sniffearlo era lo que imprimía la integral de
+        // Gauss como potencia.
         EvalLatexRenderIntent::Result => {
-            style.root_style = RootStyle::Radical;
+            style.root_style = if signals.saw_caret_fraction > 0 && signals.saw_sqrt_token == 0 {
+                RootStyle::Exponential
+            } else {
+                RootStyle::Radical
+            };
         }
     }
 
