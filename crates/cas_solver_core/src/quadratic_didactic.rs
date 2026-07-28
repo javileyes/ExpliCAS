@@ -623,6 +623,15 @@ where
 
     // Peephole optimization: check if c is literally zero.
     let c_is_zero = is_zero_literal(ctx, c);
+    // A manoeuvre that does not happen must not be announced. With `a = 1`
+    // there is nothing to divide by, and with `b = 0` there is nothing to
+    // complete and nothing to factor — the step printed the SAME equation it
+    // received while claiming the move, which is the reader's cue that
+    // something happened. Measured 2026-07-28: 11 such lines over the corpus,
+    // invisible to the E8 noop counter because that one reads the simplify
+    // channel and these live in solve.
+    let a_is_one = crate::isolation_utils::is_numeric_one(ctx, a);
+    let b_is_zero = is_zero_literal(ctx, b);
 
     // Build x variable.
     let x = ctx.var(var);
@@ -721,14 +730,16 @@ where
         ctx.add(Expr::Add(x2_plus_bax, c_over_a))
     };
 
-    steps.push(DidacticSubstep {
-        description: "Dividir ambos lados por a (requiere a ≠ 0)".to_string(),
-        equation_after: Equation {
-            lhs: step2_lhs,
-            rhs: zero,
-            op: RelOp::Eq,
-        },
-    });
+    if !a_is_one {
+        steps.push(DidacticSubstep {
+            description: "Dividir ambos lados por a (requiere a ≠ 0)".to_string(),
+            equation_after: Equation {
+                lhs: step2_lhs,
+                rhs: zero,
+                op: RelOp::Eq,
+            },
+        });
+    }
 
     // =========================================================================
     // Step 3: Move constant to RHS.
@@ -764,14 +775,16 @@ where
         ctx.add(Expr::Add(b_over_2a_sq, neg_c_a))
     };
 
-    steps.push(DidacticSubstep {
-        description: "Completar el cuadrado: sumar (b/2a)² a ambos lados".to_string(),
-        equation_after: Equation {
-            lhs: step4_lhs,
-            rhs: step4_rhs,
-            op: RelOp::Eq,
-        },
-    });
+    if !b_is_zero {
+        steps.push(DidacticSubstep {
+            description: "Completar el cuadrado: sumar (b/2a)² a ambos lados".to_string(),
+            equation_after: Equation {
+                lhs: step4_lhs,
+                rhs: step4_rhs,
+                op: RelOp::Eq,
+            },
+        });
+    }
 
     // =========================================================================
     // Step 5: Factor LHS as perfect square.
@@ -791,14 +804,16 @@ where
     let four_a2 = ctx.add(Expr::Mul(four, a2));
     let step5_rhs = ctx.add(Expr::Div(discriminant, four_a2));
 
-    steps.push(DidacticSubstep {
-        description: "Escribir lado izquierdo como cuadrado perfecto".to_string(),
-        equation_after: Equation {
-            lhs: step5_lhs,
-            rhs: step5_rhs,
-            op: RelOp::Eq,
-        },
-    });
+    if !b_is_zero {
+        steps.push(DidacticSubstep {
+            description: "Escribir lado izquierdo como cuadrado perfecto".to_string(),
+            equation_after: Equation {
+                lhs: step5_lhs,
+                rhs: step5_rhs,
+                op: RelOp::Eq,
+            },
+        });
+    }
 
     // =========================================================================
     // Step 6: Take square root.
@@ -1108,10 +1123,13 @@ where
 mod tests {
     use super::*;
 
+    /// The GENERAL case keeps all seven lines. The fixture used `a = 1`, which
+    /// is precisely the case where dividing by `a` changes nothing — it pinned
+    /// a step that announced a manoeuvre it did not perform.
     #[test]
     fn build_quadratic_substeps_numeric_general_case() {
         let mut ctx = Context::new();
-        let a = ctx.num(1);
+        let a = ctx.num(3);
         let b = ctx.num(2);
         let c = ctx.num(1);
 
@@ -1127,6 +1145,39 @@ mod tests {
         assert!(steps[4].description.contains("cuadrado perfecto"));
         assert!(steps[5].description.contains("raíz cuadrada"));
         assert!(steps[6].description.contains("descompone"));
+    }
+
+    /// A sub-step exists to show the state its manoeuvre produced. When the
+    /// manoeuvre is vacuous the line printed the equation it received while
+    /// claiming the move, and the reader reads that as «something happened».
+    #[test]
+    fn vacuous_manoeuvres_are_not_announced() {
+        let build = |a: i64, b: i64, c: i64| {
+            let mut ctx = Context::new();
+            let (a, b, c) = (ctx.num(a), ctx.num(b), ctx.num(c));
+            build_quadratic_substeps_with(&mut ctx, "x", a, b, c, true, |_ctx, id| {
+                format!("{:?}", id)
+            })
+            .into_iter()
+            .map(|s| s.description)
+            .collect::<Vec<_>>()
+        };
+        // a = 1: nothing to divide by.
+        let monic = build(1, 2, 1);
+        assert_eq!(monic.len(), 6);
+        assert!(!monic.iter().any(|d| d.contains("Dividir")));
+        assert!(monic.iter().any(|d| d.contains("Completar")));
+        // b = 0: nothing to complete and nothing to factor.
+        let no_linear = build(3, 0, -4);
+        assert_eq!(no_linear.len(), 5);
+        assert!(no_linear.iter().any(|d| d.contains("Dividir")));
+        assert!(!no_linear.iter().any(|d| d.contains("Completar")));
+        assert!(!no_linear.iter().any(|d| d.contains("cuadrado perfecto")));
+        // Both at once: the shortest honest derivation.
+        let plain = build(1, 0, -2);
+        assert_eq!(plain.len(), 4);
+        assert!(plain.iter().any(|d| d.contains("Identificar")));
+        assert!(plain.iter().any(|d| d.contains("raíz cuadrada")));
     }
 
     #[test]

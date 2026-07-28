@@ -491,6 +491,23 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
         }
     }
     report.measure("E8_substep_noop", substep_noops);
+
+    // The SOLVE channel's own version of the same defect, which E8 above cannot
+    // see: its sub-steps carry no `before`/`after`, only the state AFTER the
+    // manoeuvre, so a vacuous move shows up as an equation identical to the
+    // previous sub-step's. The quadratic derivation announced «divide both
+    // sides by a» with a = 1 and «complete the square» with b = 0 — 11 such
+    // lines over this corpus until 2026-07-28, invisible because every
+    // instrument pointed at the other channel.
+    let mut solve_substep_repeats = 0;
+    for step in &wire.solve_steps {
+        for pair in step.substeps.windows(2) {
+            if pair[0].equation == pair[1].equation {
+                solve_substep_repeats += 1;
+            }
+        }
+    }
+    report.measure("E8b_solve_substep_repeat", solve_substep_repeats);
 }
 
 /// Ceilings for the measures that are NOT yet zero. Each one names the cycle
@@ -503,6 +520,15 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
 //   - row 199 `limit(exp(z), z, i*pi)`: the residual-policy substep, where
 //     before == after IS the narration (same contract as `Conservar …`).
 const E8_SUBSTEP_NOOP_CEILING: usize = 3;
+
+/// The solve channel's vacuous-manoeuvre count is a hard ZERO, not a ceiling:
+/// unlike E8, whose survivors are documented cases where `before == after` IS
+/// the narration (a residual-policy line), a solve sub-step exists precisely to
+/// show the state its manoeuvre produced. If it produces the previous state,
+/// the manoeuvre did not happen and announcing it is the defect. Taken to 0 on
+/// 2026-07-28 by skipping «divide by a» when a = 1 and the two
+/// completing-the-square lines when b = 0.
+const E8B_SOLVE_SUBSTEP_REPEAT_CEILING: usize = 0;
 
 fn run_gate(label: &str, inputs: &[String], min_expected: usize) {
     assert!(
@@ -525,6 +551,16 @@ fn run_gate(label: &str, inputs: &[String], min_expected: usize) {
         e8 <= E8_SUBSTEP_NOOP_CEILING,
         "{label}: E8_substep_noop={e8} exceeds the declared ceiling \
          {E8_SUBSTEP_NOOP_CEILING} — a new substep claims a manoeuvre it does not perform"
+    );
+
+    let e8b = report
+        .measures
+        .get("E8b_solve_substep_repeat")
+        .map_or(0, |m| m.0);
+    assert_eq!(
+        e8b, E8B_SOLVE_SUBSTEP_REPEAT_CEILING,
+        "{label}: E8b_solve_substep_repeat={e8b} — a solve sub-step shows the \
+         equation it received while claiming to have changed it"
     );
 
     assert!(

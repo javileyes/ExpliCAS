@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 753 (newest first)
+Active entries: 754 (newest first)
 
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
@@ -124,6 +124,7 @@ Active entries: 753 (newest first)
 - 2026-07-28 | `retained` | `cas_solver_core/quadratic_strategy.rs` (`exact_rational_sqrt` + `try_rationa... | VERACIDAD (cuadrática factorizable, reporte del usuario): la ruta de producto-cero existía y era buena — la cuadrática EXPANDIDA no llegaba a ella
 - 2026-07-28 | `retained` | `cas_solver/solve_backend_local.rs` (`solve_polynomial_in_atom` captura los p... | VERACIDAD (narración del polinomio en u): el detector `let (sol, _)` en su cuarta aparición, con la justificación caducada escrita al lado
 - 2026-07-28 | `retained` | `cas_math/power_product_support.rs` (`negative_number_magnitude` + rama negad... | SOUNDNESS DE PRESENTACIÓN (hermano negado del pliegue de potencias): la misma ecuación imprimía sus dos raíces en dos formas, decidido por un signo
+- 2026-07-28 | `retained` | `cas_solver_core/quadratic_didactic.rs` (3 guards exactos + test de los tres ... | VERACIDAD (maniobras vacuas en la derivación cuadrática): el candidato del informe anterior NO existía, y el sondeo destapó el de al lado
 - 2026-07-27 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (test `generated_substep_claim_in... | VERACIDAD (plan · C1.9, tier GENERATIVO): el corpus deja de elegirlo una persona — 5000 expresiones generadas, ~4986 claims re-verificados sobre el wire con el estándar del emisor, 0 refutaciones
 - 2026-07-27 | `retained` | `cas_didactic/focused_rule_substeps.rs` (`generate_repeated_polynomial_elemen... | VERACIDAD (plan · C1.6, por partes repetida): el cierre integra SU integrando y una RECOMPOSICIÓN probada aterriza en la respuesta — el P0 del testigo muere y la familia entera gana el paso que faltaba
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (instrumento nuevo: cobertura del... | VERACIDAD (campaña de sombra del matcher, paso 0 + primera migración): la sombra midió la cola ENTERA en <1 s — y el primer emisor migrado citaba la identidad EQUIVOCADA en 4 de sus 7 pares
@@ -22568,3 +22569,22 @@ Active entries: 753 (newest first)
   - **Un pliegue a medias es peor que ninguno**: mientras `2·2^(-1/2)` plegaba y su negado no, la MISMA expresión imprimía sus dos mitades en dos idiomas distintos, y eso se lee como dos números de naturaleza distinta. Al añadir un pliegue conviene preguntarse por el hermano negado en el mismo commit; llevaba desde 2026-07-14 con un comentario de test celebrando el «cleaner render» que solo tenía la mitad de los casos.
   - **Un test que fija la forma interna de una capa intermedia pinea el andamio, no el contrato**: el exponente sin evaluar (`2^(1 - 1/2)`) es un detalle legítimo de esa capa. La propiedad que importa era la SIMETRÍA con el caso positivo, y se aserta computando ambos y comparándolos.
   - **Tres pins defendían la forma sin plegar**, uno de ellos con un comentario que ya llamaba «cleaner» a la forma buena para OTROS casos: cuando un arreglo normaliza una presentación, sus pins están donde la vieja se citaba como valor esperado, no donde se describe el defecto.
+
+## 2026-07-28 - VERACIDAD (maniobras vacuas en la derivación cuadrática): el candidato del informe anterior NO existía, y el sondeo destapó el de al lado
+
+- area: `cas_solver_core/quadratic_didactic.rs` (3 guards exactos + test de los tres bordes; fixture «general» corregida), `cas_cli/tests/steps_quality_gate_tests.rs` (medida `E8b_solve_substep_repeat` con techo CERO duro).
+- status: `retained`.
+- capture:
+  - **EL CANDIDATO HEREDADO ERA FALSO**: mi informe anterior decía «la fórmula se anuncia sin enseñar a, b, c ni el discriminante». Falso: el paso trae 7 sub-pasos con la derivación íntegra de completar el cuadrado y el 1.1 dice literalmente «con a = 3, b = 2, c = -4». Lo había juzgado leyendo solo la descripción de NIVEL 1 — exactamente el fallo que esta skill documenta y que aquí se cobró un candidato entero.
+  - **EL DEFECTO REAL, al lado**: con `a = 1` la línea «Dividir ambos lados por a» imprime la ecuación que recibió; con `b = 0`, igual «Completar el cuadrado» y «Escribir como cuadrado perfecto». La maniobra no ocurre y anunciarla es la señal, para el lector, de que algo pasó. Medido: **11 líneas en 6 expresiones del corpus**.
+  - **ESTABA INVISIBLE POR EL ESQUEMA DEL CANAL**: `E8_substep_noop` compara `before == after`, campos que solo existen en los sub-pasos de SIMPLIFY; los de SOLVE llevan `equation` (el estado DESPUÉS). Ahí la firma equivalente es «igual al sub-paso anterior». Antes de dar con la medida buena produje dos falsas: una leyó `title` (clave del otro canal) y vio 7 títulos `None`; otra leyó `before`/`after` y contó 56 no-ops inexistentes porque `None == None`.
+  - **UN TEST PINEABA EL DEFECTO CON EL NOMBRE AL REVÉS**: `build_quadratic_substeps_numeric_general_case` usaba `a = 1` — el caso donde dividir es vacuo — y fijaba las 7 líneas. Corregido a `a = 3` y añadido un test que fija la intención en los tres bordes (6 / 5 / 4 líneas).
+- observed:
+  - Medida directa: **11 → 0** sub-pasos vacuos en el canal solve. La derivación general (`3x²+2x-4`) conserva sus 7 líneas intactas; `x²-2=0` pasa de 7 a 4, todas con cambio real.
+  - Barridos (1129 comandos + 219 cuadráticas): 0 diffs de result, 0 cambios de `ok`, 0 pasos perdidos. **Ninguno de los dos ve el canal de sub-pasos de solve** — la evidencia del ciclo es la medida directa; los barridos prueban ausencia de daño colateral, no la mejora.
+  - workspace failed:0 (358 suites, 12633 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes. Huella: la medida nueva aparece en 0 y `substeps_total` 308→297, **exactamente los 11 quitados** — dos instrumentos independientes coincidiendo. `engine-fast` rojo una vez por `stderr_fragility` (novena instancia de la clase), verde en exclusiva.
+- decision: retener.
+- retained learning:
+  - **Un candidato heredado de un informe propio es hipótesis, no encargo**: el sondeo del paso 2 no es ceremonia — aquí falsificó el candidato ENTERO y encontró el bueno a su lado. Antes de implementar lo que uno mismo prometió, imprimir el árbol.
+  - **Los dos canales de pasos tienen ESQUEMAS DISTINTOS y un probe escrito para uno miente sobre el otro en silencio**: `steps[].substeps` usa `title` + `before`/`after`; `solve_steps[].substeps` usa `description` + `equation`. Leer el campo ausente devuelve `None`, y `None == None` fabrica métricas perfectas o catastróficas sin error alguno. Tercera vez en la sesión que un instrumento del repo o mío mira un canal y no el otro.
+  - **Un techo CERO no es un techo**: E8 tolera 3 porque sus supervivientes son casos donde `before == after` ES la narración; un sub-paso de solve existe para mostrar el estado que produjo su maniobra, así que repetir el anterior no tiene lectura legítima. `assert_eq!` en vez de `<=` lo dice — y clippy lo exige, porque `<= 0` sobre `usize` es una comparación absurda.
