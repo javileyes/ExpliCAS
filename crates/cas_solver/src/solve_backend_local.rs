@@ -2171,6 +2171,38 @@ fn reconstitute_moved_single_radical(
 /// The degree-≥2 gate is both correctness (a degree-1 `u`-equation is a single
 /// `g(x) = c`, solved directly) and a recursion guard: the back-substitution is
 /// itself a single `g(x) = u_root`, which must NOT re-enter this path.
+/// Republish the u-polynomial's own steps under the DISPLAY name `u`.
+///
+/// The substitution variable is a collision-safe synthetic (`__trig_u`,
+/// `__rps_u`, `__rpl_u`, …) that the reader never typed, and this repo's rule
+/// is that a narration line is predicated of the user's equation, never of an
+/// internal form carrying a synthetic symbol. Both the rendered description
+/// and the step's own equation carry it, so both are rewritten — and so are
+/// the sub-steps, which have the same two fields.
+fn rewrite_substitution_steps_for_display(
+    simplifier: &mut Simplifier,
+    steps: Vec<crate::SolveStep>,
+    u_var: &str,
+) -> Vec<crate::SolveStep> {
+    let internal = simplifier.context.var(u_var);
+    let display = simplifier.context.var("u");
+    let rewrite = |ctx: &mut cas_ast::Context, eq: &mut Equation| {
+        eq.lhs = substitute_expr_by_id(ctx, eq.lhs, internal, display);
+        eq.rhs = substitute_expr_by_id(ctx, eq.rhs, internal, display);
+    };
+    let mut out = Vec::with_capacity(steps.len());
+    for mut step in steps {
+        step.description = step.description.replace(u_var, "u");
+        rewrite(&mut simplifier.context, &mut step.equation_after);
+        for sub in &mut step.substeps {
+            sub.description = sub.description.replace(u_var, "u");
+            rewrite(&mut simplifier.context, &mut sub.equation_after);
+        }
+        out.push(step);
+    }
+    out
+}
+
 fn solve_polynomial_in_atom(
     simplifier: &mut Simplifier,
     u_expr: ExprId,
@@ -2190,17 +2222,23 @@ fn solve_polynomial_in_atom(
         rhs: zero,
         op: cas_ast::RelOp::Eq,
     };
-    let (u_solution, _) = crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
+    let (u_solution, u_steps) =
+        crate::solver_entrypoints_solve::solve(&u_eq, u_var, simplifier).ok()?;
     let u_roots = match u_solution {
         SolutionSet::Discrete(roots) => roots,
         SolutionSet::Empty => return Some(SolutionSet::Empty),
         _ => return None, // non-discrete / unsolved u-polynomial: leave to the existing path
     };
-    // Narration: mirror the exp-substitution strategy's shape (detección +
-    // sustitución inversa por raíz). The internal `u_var` is a collision-safe
-    // synthetic name (`__trig_u`) the student never wrote, so the substituted
-    // equation narrates with a clean display `u` and the u-polynomial's own
-    // sub-steps are not appended (the exp route shows neither).
+    // Narration: detection, then HOW the u-roots were obtained, then one
+    // back-substitution per root. The internal `u_var` is a collision-safe
+    // synthetic name (`__trig_u`, `__rps_u`, …) the student never wrote, so
+    // every republished line is rewritten to the display `u` first.
+    //
+    // Until 2026-07-28 the u-polynomial's own steps were dropped on the floor
+    // (`let (u_solution, _) = solve(...)`) with the reason «the exp route
+    // shows neither». The exp route now DOES show them, and dropping them left
+    // the reader watching `u = 1` and `u = 2` appear from nowhere — the very
+    // gap the user reported.
     let atom_display = format!(
         "{}",
         cas_formatter::DisplayExpr {
@@ -2227,6 +2265,9 @@ fn solve_polynomial_in_atom(
             op: cas_ast::RelOp::Eq,
         },
         crate::ImportanceLevel::Medium,
+    ));
+    steps_out.extend(rewrite_substitution_steps_for_display(
+        simplifier, u_steps, u_var,
     ));
     // Back-substitute each root `atom = u_root`, then union the branch solutions (periodic-aware).
     let mut branch_sets = Vec::with_capacity(u_roots.len());

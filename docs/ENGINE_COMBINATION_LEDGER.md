@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 751 (newest first)
+Active entries: 752 (newest first)
 
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
@@ -122,6 +122,7 @@ Active entries: 751 (newest first)
 - 2026-07-28 | `retained` | `cas_didactic` — `focused_rule_substeps.rs` (`named_identity_oriented` nuevo:... | VERACIDAD (ángulo doble, expansión): la orientación la decide la ESTRUCTURA, porque la descripción del motor deletrea igual una identidad y su inversa
 - 2026-07-28 | `retained` | `cas_solver/linear_system_command_eval/steps.rs` (identificación POR ECUACIÓN... | VERACIDAD (narración de sistemas, reporte del usuario): tres pasos que arrastraban el MISMO snapshot de relleno — «ruido y sin sentido», y tenía razón
 - 2026-07-28 | `retained` | `cas_solver_core/quadratic_strategy.rs` (`exact_rational_sqrt` + `try_rationa... | VERACIDAD (cuadrática factorizable, reporte del usuario): la ruta de producto-cero existía y era buena — la cuadrática EXPANDIDA no llegaba a ella
+- 2026-07-28 | `retained` | `cas_solver/solve_backend_local.rs` (`solve_polynomial_in_atom` captura los p... | VERACIDAD (narración del polinomio en u): el detector `let (sol, _)` en su cuarta aparición, con la justificación caducada escrita al lado
 - 2026-07-27 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (test `generated_substep_claim_in... | VERACIDAD (plan · C1.9, tier GENERATIVO): el corpus deja de elegirlo una persona — 5000 expresiones generadas, ~4986 claims re-verificados sobre el wire con el estándar del emisor, 0 refutaciones
 - 2026-07-27 | `retained` | `cas_didactic/focused_rule_substeps.rs` (`generate_repeated_polynomial_elemen... | VERACIDAD (plan · C1.6, por partes repetida): el cierre integra SU integrando y una RECOMPOSICIÓN probada aterriza en la respuesta — el P0 del testigo muere y la familia entera gana el paso que faltaba
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (instrumento nuevo: cobertura del... | VERACIDAD (campaña de sombra del matcher, paso 0 + primera migración): la sombra midió la cola ENTERA en <1 s — y el primer emisor migrado citaba la identidad EQUIVOCADA en 4 de sus 7 pares
@@ -22532,3 +22533,20 @@ Active entries: 751 (newest first)
   - **Una capacidad narrativa puede existir y ser inalcanzable por la FORMA del input**: la ruta de producto-cero llevaba desde siempre haciendo lo que el usuario pedía, y solo la veía quien tecleaba la ecuación ya factorizada. Antes de construir narración nueva, comprobar si la buena ya existe detrás de un matcher de forma.
   - **Cambiar la RUTA es más honesto que enriquecer el título**: si el trazo que se quiere enseñar es «factorizar y aplicar producto-cero», el solver tiene que factorizar y aplicar producto-cero. La alternativa —narrar eso sobre una fórmula— pasa cualquier verificación de verdad y sigue siendo mentira sobre el método.
   - **Un diagnóstico de narración ausente tiene dos causas y conviene no elegir antes de medir**: «la envoltura tira los pasos» y «el interior no produce pasos» se ven idénticos desde fuera. Aquí el interior era el culpable para un átomo y la envoltura para los otros dos.
+
+## 2026-07-28 - VERACIDAD (narración del polinomio en u): el detector `let (sol, _)` en su cuarta aparición, con la justificación caducada escrita al lado
+
+- area: `cas_solver/solve_backend_local.rs` (`solve_polynomial_in_atom` captura los pasos del u-polinomio; `rewrite_substitution_steps_for_display` nuevo), test de contrato CLI.
+- status: `retained`. Tercer ciclo del reporte del usuario; cierra la mitad que S2 dejó abierta.
+- capture:
+  - **EL DETECTOR DEL LEDGER, LITERAL**: `let (u_solution, _) = solve(&u_eq, u_var, simplifier)` — la narración del polinomio en `u` volvía en la tupla y se tiraba. Con una razón escrita al lado: «the u-polynomial's own sub-steps are not appended (the exp route shows neither)». Era cierta cuando se escribió y **el ciclo anterior la volvió falsa**: la ruta exponencial sí los muestra desde que la cuadrática factorizable narra. Una justificación de silencio caduca cuando cambia aquello con lo que se comparaba.
+  - **REPUBLICAR EXIGE TRADUCIR EL SÍMBOLO**: la variable de sustitución es un sintético anti-colisión (`__trig_u`, `__rps_u`, `__rpl_u`) que el alumno nunca escribió, y aparece TANTO en la descripción renderizada como en la ecuación del paso (y en las de sus sub-pasos). Se reescribe a `u` en los cuatro sitios; el barrido asierta 0 apariciones de `__`.
+- observed:
+  - Barridos: **0 diffs de result** en 219 cuadráticas adversariales + 1129 comandos generales; 2 expresiones ganan pasos (`ln(x)^2`, `sin(x)^2`), 0 los pierden; **0 fugas de símbolo sintético**.
+  - workspace failed:0 (358 suites, 12631 tests), clippy 0 (tras quitar un `mut` innecesario), scorecard/pressure/wasm verdes; engine-fast rojo por `stderr_fragility` con el navegador corriendo en paralelo y verde en exclusiva — **octava instancia de la clase, esta vez provocada por mí mismo mientras verificaba otra cosa**.
+  - Huella guardrail: 3 deltas con **una sola causa** — `solve_steps_total_hits` 169→170, `substeps_total_hits` 301→308, `substeps_total_rows` 97→98. Es `solve(e^x+e^(-x)=4,x)`: su u-polinomio `u²−4u+1` tiene Δ=12, no factoriza sobre ℚ, así que corre la FÓRMULA — cuyo paso arrastra 7 sub-pasos propios (completar el cuadrado) que ahora se republican. Pressure: 0 deltas de comportamiento.
+- decision: retener.
+- retained learning:
+  - **Una justificación de silencio caduca cuando cambia su término de comparación**: «no lo mostramos porque la otra ruta tampoco» es correcto hasta el día en que la otra ruta empieza a mostrarlo, y nada avisa. Cuando un ciclo hace hablar a una ruta, tocar `grep` de las que se callaban CITÁNDOLA.
+  - **Un barrido propio y un carril del harness pueden leer corpus DISTINTOS del mismo fichero**: el carril parsea `web/examples.csv` por campos entrecomillados (219 expresiones) y mi barrido partía por comas — mi «0 cambios» no era evidencia sobre su corpus, y explicar un delta de huella con él habría sido una conclusión falsa. Antes de adjudicar un delta con un instrumento propio, comprobar que carga el MISMO conjunto que el carril.
+  - **`substeps_count` del wire suma LOS DOS canales** (`steps[]` y `solve_steps[]`): un instrumento que solo lee el primero es ciego justo a la narración de solve, que es donde vive esta campaña.

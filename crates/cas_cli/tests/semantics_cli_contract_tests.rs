@@ -11496,3 +11496,56 @@ fn eval_factorable_quadratic_narrates_the_factorization_and_the_zero_product() {
     assert!(joined.contains("fórmula cuadrática"), "{joined}");
     assert!(!joined.contains("factorizada"), "{joined}");
 }
+
+/// The atom substitution paths must show HOW the u-roots were obtained.
+///
+/// `solve_polynomial_in_atom` solved the u-polynomial and dropped its
+/// narration on the floor (`let (u_solution, _) = solve(...)`), justified by
+/// «the exp route shows neither». Once the exp route started narrating its
+/// factorization, that left `ln`/`sin`/radical atoms showing `u = 1` and
+/// `u = 2` arriving from nowhere — the user's original complaint, one path
+/// over.
+///
+/// The republished lines must speak of `u`: the real substitution variable is
+/// a collision-safe synthetic (`__trig_u`, `__rps_u`, …) the reader never
+/// typed, and a step naming it would be narrating an internal form.
+#[test]
+fn eval_atom_substitution_narrates_the_u_polynomial_without_leaking_the_synthetic_var() {
+    for (input, expected_result) in [
+        ("solve(ln(x)^2-3*ln(x)+2=0,x)", "{ e, e^2 }"),
+        (
+            "solve(sin(x)^2-3*sin(x)+2=0,x)",
+            "{ 1/2·pi + k·2·pi : k ∈ ℤ }",
+        ),
+    ] {
+        let (output, _code) = run_cli(&["eval", input, "--format", "json", "--steps", "on"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected_result, "{input}");
+        let steps = wire["solve_steps"].as_array().expect("solve_steps array");
+        let joined: String = steps
+            .iter()
+            .map(|s| {
+                format!(
+                    "{} :: {}",
+                    s["description"].as_str().unwrap_or_default(),
+                    s["equation"].as_str().unwrap_or_default()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
+        // The derivation of the u-roots is present…
+        assert!(
+            joined.contains("Ecuación factorizada: (u - 1)·(u - 2) = 0"),
+            "{input}: {joined}"
+        );
+        assert!(joined.contains("Resuelve el factor: u - 1 = 0"), "{joined}");
+        // …and it lands on the roots the back-substitution then consumes.
+        assert!(joined.contains("u = 1"), "{joined}");
+        assert!(joined.contains("u = 2"), "{joined}");
+        // No internal symbol may reach the reader.
+        assert!(
+            !joined.contains("__"),
+            "a synthetic substitution symbol leaked into the trace: {joined}"
+        );
+    }
+}
