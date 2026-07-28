@@ -1411,6 +1411,89 @@
         }
 
         /* Variables panel overlay */
+        /* Exit confirmation. Above every other overlay (z-index): it can be
+           raised while a panel is still open, and it must be the thing the
+           back button acts on next. */
+        .exit-confirm-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 1100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .exit-confirm-overlay.visible {
+            display: flex;
+        }
+
+        .exit-confirm-panel {
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+            text-align: center;
+        }
+
+        .exit-confirm-panel h2 {
+            margin-bottom: 12px;
+            font-size: 1.2em;
+        }
+
+        .exit-confirm-body {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 0.95em;
+        }
+
+        .exit-confirm-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .exit-confirm-btn {
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px solid var(--border);
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        /* Staying is the safe default: filled, and first in the DOM so a
+           mis-tap costs nothing. Leaving is outlined and RED — the app's
+           --accent is itself a red (#e94560), so borrowing it here would have
+           made the two options look alike, which is the one thing a
+           destructive confirmation may not do. */
+        .exit-confirm-btn.stay {
+            background: var(--success);
+            border-color: var(--success);
+            color: #06281a;
+        }
+
+        .exit-confirm-btn.leave {
+            background: transparent;
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.6);
+        }
+
+        .exit-confirm-btn:hover {
+            filter: brightness(1.25);
+        }
+
         .variables-panel-overlay {
             position: fixed;
             top: 0;
@@ -2410,6 +2493,22 @@
         </div>
     </div>
 
+    <!-- Exit confirmation: the back button of a browser or a phone would
+         otherwise leave the app and take the session (variables, functions,
+         results) with it. See the back-guard block in the script. -->
+    <div class="exit-confirm-overlay" id="exit-confirm-overlay" onclick="hideExitConfirm(event)">
+        <div class="exit-confirm-panel" onclick="event.stopPropagation()">
+            <h2 data-i18n="exit_confirm.title">¿Seguro que quieres salir?</h2>
+            <p class="exit-confirm-body" data-i18n="exit_confirm.body">Se perderán las variables, las funciones y los resultados de esta sesión.</p>
+            <div class="exit-confirm-actions">
+                <button type="button" class="exit-confirm-btn stay" onclick="hideExitConfirm()"
+                    data-i18n="exit_confirm.no">No, seguir aquí</button>
+                <button type="button" class="exit-confirm-btn leave" onclick="confirmExit()"
+                    data-i18n="exit_confirm.yes">Sí, salir</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Variables Panel Overlay -->
     <div class="variables-panel-overlay" id="variables-panel-overlay" onclick="hideVariablesPanel(event)">
         <div class="variables-panel" onclick="event.stopPropagation()">
@@ -2617,6 +2716,10 @@
                         "variables_panel.title": "📦 Variables asignadas",
                         "variables_panel.empty": "Aún no hay variables asignadas",
                         "variables_panel.empty_hint": "Crea una escribiendo una asignación en la entrada:",
+                        "exit_confirm.title": "¿Seguro que quieres salir?",
+                        "exit_confirm.body": "Se perderán las variables, las funciones y los resultados de esta sesión.",
+                        "exit_confirm.yes": "Sí, salir",
+                        "exit_confirm.no": "No, seguir aquí",
                         "functions_panel.title": "𝑓 Funciones definidas",
                         "functions_panel.empty": "Aún no hay funciones definidas",
                         "functions_panel.empty_hint": "Crea una escribiendo una definición en la entrada:",
@@ -2733,6 +2836,10 @@
                         "variables_panel.title": "📦 Assigned Variables",
                         "variables_panel.empty": "No variables assigned yet",
                         "variables_panel.empty_hint": "Create one by typing an assignment in the input:",
+                        "exit_confirm.title": "Leave ExpliCAS?",
+                        "exit_confirm.body": "The variables, functions and results of this session will be lost.",
+                        "exit_confirm.yes": "Yes, leave",
+                        "exit_confirm.no": "No, stay here",
                         "functions_panel.title": "𝑓 Defined Functions",
                         "functions_panel.empty": "No functions defined yet",
                         "functions_panel.empty_hint": "Create one by typing a definition in the input:",
@@ -4968,6 +5075,92 @@
         if (!isKbTouch() && kbDesktopOpen) kbOpenPanel();
         else kbRefresh();
         window.__kbReady = true;
+
+        // =====================
+        // Back-button guard
+        // =====================
+        // ExpliCAS is one page, so the browser's back button (and the phone's
+        // system back gesture, which fires the same event) would leave it and
+        // take the session with it — variables, functions and every result.
+        //
+        // The mechanism is a SENTINEL history entry kept permanently on top:
+        // pressing back pops it and fires `popstate` instead of navigating, and
+        // the handler immediately pushes it again so the guard survives any
+        // number of presses. `pushState` truncates forward history, so the
+        // stack never grows.
+        //
+        // What back MEANS, in order: dismiss the exit question, then close the
+        // topmost open modal, and only with nothing open ask before leaving.
+
+        // Drill-down modals come FIRST: back walks out of the second level
+        // before the first, like any native navigation. Each `hide*` treats a
+        // missing event as "close" — that contract was already written for the
+        // group modals, this is what it was waiting for.
+        const BACK_GUARD_OVERLAYS = [
+            ['examples-group-overlay', hideGroupExamples],
+            ['fnmenu-group-overlay', hideFnMenuGroup],
+            ['examples-panel-overlay', hideExamplesPanel],
+            ['fnmenu-panel-overlay', hideFnMenuPanel],
+            ['variables-panel-overlay', hideVariablesPanel],
+            ['functions-panel-overlay', hideFunctionsPanel],
+        ];
+
+        let backGuardLeaving = false;
+
+        function armBackGuard() {
+            try {
+                history.pushState({ expliCASBackGuard: true }, '');
+            } catch (e) {
+                // A sandboxed frame can refuse pushState; without the sentinel
+                // back simply behaves as it always did.
+            }
+        }
+
+        function showExitConfirm() {
+            document.getElementById('exit-confirm-overlay').classList.add('visible');
+        }
+
+        function hideExitConfirm(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('exit-confirm-overlay').classList.remove('visible');
+            }
+        }
+
+        function confirmExit() {
+            backGuardLeaving = true;
+            hideExitConfirm();
+            // Two entries down: the sentinel we are standing on and the app
+            // entry beneath it. If the app was opened in a fresh tab there is
+            // nothing below and the browser stays put — nothing to undo.
+            history.go(-2);
+        }
+
+        function closeTopmostBackGuardOverlay() {
+            for (const [id, hide] of BACK_GUARD_OVERLAYS) {
+                const overlay = document.getElementById(id);
+                if (overlay && overlay.classList.contains('visible')) {
+                    hide();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        window.addEventListener('popstate', () => {
+            if (backGuardLeaving) return;
+            armBackGuard();
+            const exitOverlay = document.getElementById('exit-confirm-overlay');
+            if (exitOverlay && exitOverlay.classList.contains('visible')) {
+                // Back while being asked reads as «no»: the question goes away
+                // and the app stays.
+                hideExitConfirm();
+                return;
+            }
+            if (closeTopmostBackGuardOverlay()) return;
+            showExitConfirm();
+        });
+
+        armBackGuard();
     </script>
 </body>
 
