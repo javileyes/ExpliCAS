@@ -13,6 +13,104 @@ use crate::quadratic_didactic::{
 use crate::quadratic_formula::execute_quadratic_coefficient_solve_plan_with_default_numeric_solution_with_state;
 use crate::{isolation_utils::is_numeric_zero, quadratic_coeffs::extract_quadratic_coefficients};
 
+/// Exact square root of a rational, or `None` when it is not one.
+///
+/// Both numerator and denominator must be perfect squares — `BigInt::sqrt`
+/// truncates, so the result is squared back and compared. No floats: a
+/// float `sqrt` would accept `Δ = 2` for `x² − 2` and route a surd equation
+/// through a factorization that does not exist over ℚ.
+fn exact_rational_sqrt(value: &num_rational::BigRational) -> Option<num_rational::BigRational> {
+    use num_traits::Signed;
+    if value.is_negative() {
+        return None;
+    }
+    let num_root = value.numer().sqrt();
+    let den_root = value.denom().sqrt();
+    if &(&num_root * &num_root) != value.numer() || &(&den_root * &den_root) != value.denom() {
+        return None;
+    }
+    Some(num_rational::BigRational::new(num_root, den_root))
+}
+
+/// `a·x² + b·x + c` factored over ℚ as `a·(x − r₁)·(x − r₂)`, or `None`.
+///
+/// Why the solver takes this detour at all: the zero-product strategy below
+/// only fires when the input ALREADY is a product, so an expanded quadratic
+/// fell through to the formula and its whole trace was one line — «Detected
+/// quadratic equation. Applying quadratic formula.» — with the roots
+/// appearing from nowhere. When the quadratic factors over ℚ, factoring IS
+/// how it is solved and taught, and the existing zero-product path already
+/// narrates it step by step.
+///
+/// The returned product is handed to that path, so this is not a story told
+/// over a formula result: the equation really is solved factor by factor.
+/// The equivalence is PROVED before routing (expand the product, subtract the
+/// original, require an exact zero) — a factorization that does not reproduce
+/// the polynomial would silently change the equation.
+fn try_rational_quadratic_factorization_with_state<T, FContextMut, FSimplify, FExpand>(
+    state: &mut T,
+    sim_poly_expr: ExprId,
+    var: &str,
+    context_mut: &FContextMut,
+    simplify_expr: &mut FSimplify,
+    expand_expr: &mut FExpand,
+) -> Option<ExprId>
+where
+    FContextMut: Fn(&mut T) -> &mut Context,
+    FSimplify: FnMut(&mut T, ExprId) -> ExprId,
+    FExpand: FnMut(&mut T, ExprId) -> ExprId,
+{
+    use num_traits::{One, Zero};
+
+    let expanded = expand_expr(state, sim_poly_expr);
+    let (a_id, b_id, c_id) = extract_quadratic_coefficients(context_mut(state), expanded, var)?;
+    let ctx = context_mut(state);
+    let a = cas_math::numeric_eval::as_rational_const(ctx, a_id)?;
+    let b = cas_math::numeric_eval::as_rational_const(ctx, b_id)?;
+    let c = cas_math::numeric_eval::as_rational_const(ctx, c_id)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    let two = num_rational::BigRational::from_integer(2.into());
+    let four = num_rational::BigRational::from_integer(4.into());
+    let discriminant = &b * &b - &four * &a * &c;
+    let root_delta = exact_rational_sqrt(&discriminant)?;
+    // A double root would build `(x − r)·(x − r)`, which the context folds to
+    // a Pow that `split_zero_product_factors` does not split — the trace would
+    // silently lose the factor steps. The formula path keeps that case.
+    if root_delta.is_zero() {
+        return None;
+    }
+    let denom = &two * &a;
+    let r1 = (-&b + &root_delta) / &denom;
+    let r2 = (-&b - &root_delta) / &denom;
+
+    let ctx = context_mut(state);
+    let var_expr = ctx.var(var);
+    let r1_expr = ctx.add(Expr::Number(r1));
+    let r2_expr = ctx.add(Expr::Number(r2));
+    let factor1 = ctx.add(Expr::Sub(var_expr, r1_expr));
+    let factor2 = ctx.add(Expr::Sub(var_expr, r2_expr));
+    let mut product = ctx.add(Expr::Mul(factor1, factor2));
+    if !a.is_one() {
+        let a_expr = ctx.add(Expr::Number(a));
+        product = ctx.add(Expr::Mul(a_expr, product));
+    }
+
+    // The proof gate: expand the candidate and require it to cancel the
+    // original EXACTLY. Without it a coefficient-extraction slip would hand
+    // the solver a different equation and every downstream step would be
+    // faithful narration of the wrong problem.
+    let check_expanded = expand_expr(state, product);
+    let difference = context_mut(state).add(Expr::Sub(check_expanded, expanded));
+    let residual = simplify_expr(state, difference);
+    if !is_numeric_zero(context_mut(state), residual) {
+        return None;
+    }
+    Some(product)
+}
+
 /// Prepare quadratic strategy candidate with default coefficient extraction:
 /// 1) normalize equation to `lhs - rhs`,
 /// 2) simplify + expand for coefficient extraction,
@@ -218,10 +316,24 @@ where
     let sim_poly_expr = simplify_expr(state, poly_expr);
     let zero = context_mut(state).num(0);
 
+    // Either the input already IS a product, or it is a quadratic that factors
+    // over ℚ and we hand the (proved) factorization to the same path — one
+    // call site, so a factorable quadratic gets the factor-by-factor trace
+    // instead of a single «applying the quadratic formula» line.
+    let zero_product_subject = try_rational_quadratic_factorization_with_state(
+        state,
+        sim_poly_expr,
+        var,
+        context_mut,
+        &mut simplify_expr,
+        &mut expand_expr,
+    )
+    .unwrap_or(sim_poly_expr);
+
     if let Some(outcome) = execute_factorized_zero_product_strategy_if_applicable_with_state(
         state,
         equation.op.clone(),
-        sim_poly_expr,
+        zero_product_subject,
         var,
         zero,
         include_items,
@@ -555,5 +667,27 @@ mod tests {
             .expect("quadratic path should solve");
 
         assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+    }
+
+    /// The gate is EXACT by construction: `BigInt::sqrt` truncates, so the
+    /// root is squared back. A float `sqrt` would accept Δ = 2 and route
+    /// `x² − 2` through a factorization that does not exist over ℚ — the
+    /// soundness rule of this repo is that keep/drop decisions never touch
+    /// floats.
+    #[test]
+    fn exact_rational_sqrt_accepts_only_true_rational_squares() {
+        let r = |n: i64, d: i64| num_rational::BigRational::new(n.into(), d.into());
+        assert_eq!(exact_rational_sqrt(&r(4, 1)), Some(r(2, 1)));
+        assert_eq!(exact_rational_sqrt(&r(9, 4)), Some(r(3, 2)));
+        assert_eq!(exact_rational_sqrt(&r(0, 1)), Some(r(0, 1)));
+        assert_eq!(exact_rational_sqrt(&r(1, 9)), Some(r(1, 3)));
+        // Not squares: the surd cases the factorization must decline.
+        assert_eq!(exact_rational_sqrt(&r(2, 1)), None);
+        assert_eq!(exact_rational_sqrt(&r(3, 1)), None);
+        assert_eq!(exact_rational_sqrt(&r(1, 3)), None);
+        assert_eq!(exact_rational_sqrt(&r(8, 2)), Some(r(2, 1)));
+        // Negative discriminant: no real roots, no factorization over ℚ.
+        assert_eq!(exact_rational_sqrt(&r(-4, 1)), None);
+        assert_eq!(exact_rational_sqrt(&r(-1, 4)), None);
     }
 }

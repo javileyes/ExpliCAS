@@ -11412,3 +11412,87 @@ fn eval_linear_system_trace_shows_every_equation_and_the_verification_arithmetic
         "every step must carry its own equation, got {equations:?}"
     );
 }
+
+/// A quadratic that factors over ℚ is SOLVED by factoring, and the trace says
+/// so — the roots may not appear from nowhere.
+///
+/// Before 2026-07-28 the zero-product strategy only fired when the input was
+/// ALREADY a product, so `u² − 3u + 2 = 0` fell through to the formula and its
+/// entire narration was one line: «Se detectó una ecuación cuadrática.
+/// Aplicando la fórmula cuadrática.» The reader was then shown `u = 1` and
+/// `u = 2` with nothing in between. Reported by the user against the
+/// substitution wrapper, where the gap is starkest.
+#[test]
+fn eval_factorable_quadratic_narrates_the_factorization_and_the_zero_product() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(u^2-3*u+2=0,u)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "{ 1, 2 }");
+    let descriptions: Vec<String> = wire["solve_steps"]
+        .as_array()
+        .expect("solve_steps array")
+        .iter()
+        .map(|s| s["description"].as_str().unwrap_or_default().to_string())
+        .collect();
+    let joined = descriptions.join(" | ");
+    assert!(
+        joined.contains("Ecuación factorizada: (u - 1)·(u - 2) = 0"),
+        "{joined}"
+    );
+    assert!(joined.contains("Resuelve el factor: u - 1 = 0"), "{joined}");
+    assert!(joined.contains("Resuelve el factor: u - 2 = 0"), "{joined}");
+    assert!(
+        !joined.contains("fórmula cuadrática"),
+        "a factorable quadratic must not announce the formula: {joined}"
+    );
+
+    // The substitution wrapper inherits it: the atom's quadratic is where the
+    // roots come from, and that is exactly what was missing from the trace.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(e^(2*x)-3*e^x+2=0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "{ ln(2), 0 }");
+    let joined: String = wire["solve_steps"]
+        .as_array()
+        .expect("solve_steps array")
+        .iter()
+        .map(|s| s["description"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert!(joined.contains("Ecuación sustituida"), "{joined}");
+    assert!(joined.contains("Ecuación factorizada"), "{joined}");
+    assert!(joined.contains("Sustitución inversa"), "{joined}");
+
+    // The gate DECLINES what does not factor over ℚ: an irrational-root
+    // quadratic keeps the formula, and its result is untouched.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve(x^2-2=0,x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+    let joined: String = wire["solve_steps"]
+        .as_array()
+        .expect("solve_steps array")
+        .iter()
+        .map(|s| s["description"].as_str().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join(" | ");
+    assert!(joined.contains("fórmula cuadrática"), "{joined}");
+    assert!(!joined.contains("factorizada"), "{joined}");
+}
