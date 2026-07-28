@@ -325,6 +325,42 @@ Si falla un test existente, primero juzga la intención: si fijaba como
 residual algo que tu ciclo convierte en soportado, actualiza el contrato;
 si fija soundness (condiciones, dominios), tu cambio es el problema.
 
+**La cadena es la PUERTA DE COMMIT, no el bucle de desarrollo.** Correrla
+entera en cada iteración intermedia multiplica por 3-4 el tiempo del ciclo sin
+añadir señal: los fallos que caza una iteración temprana (compila, el emisor
+emite, el contrato pertinente pasa) los caza también un comando de segundos.
+Medido 2026-07-28: **~19 min son puro tiempo de test**, y cuatro suites que
+lanzan el binario por caso se llevan 12 de ellos (`cli_contract_tests` 267 s,
+`nonaffine_trig_principal_drop_contract_tests` 185 s, `stress_solve_tests`
+139 s, `steps_divergence_gate_tests` 138 s).
+
+Cadencia que conserva todas las garantías y quita casi toda la espera:
+1. **Iterando** — `cargo test -p <crate_tocado> <filtro>` y el test de contrato
+   CLI del caso. Segundos.
+2. **Antes de dar el ciclo por hecho** — el barrido diferencial (evidencia de
+   comportamiento, y es el que de verdad decide si retienes) + `cargo clippy
+   --workspace --all-targets`.
+3. **Puerta de commit** — la cadena entera, UNA vez. Si quieres señal temprana,
+   el workspace sin las cuatro suites pesadas son ~7 min.
+
+**Prohibido paralelizar con otro `cargo` o `make` a la vez.** No es prudencia
+abstracta, son dos fallos MEDIDOS y recurrentes:
+- **Contención → rojos falsos.** Los harnesses de huella marcan `fail` cuando
+  el motor emite un `WARN phase_timeout` bajo carga. En la sesión del
+  2026-07-28 pasó **siete veces**, siempre con algo corriendo en paralelo, y
+  siempre verde al re-correr en exclusiva. El discriminante barato está en el
+  propio caso problemático: `error_kind = stderr_fragility` es contención;
+  cualquier otro `error_kind` es tuyo. **Léelo ANTES de construir una
+  reproducción** — un probe por CLI puede dar las mismas subcadenas ausentes en
+  HEAD (donde el harness pasa) y con cambios (donde falla), o sea ser inútil
+  como oráculo.
+- **Editar durante una corrida la invalida.** El test compila del árbol al
+  arrancar cada crate: una edición a mitad hace que reporte fallos de la
+  versión ANTERIOR (o que muera sin salida). Si editas, la corrida no cuenta.
+- Un **worktree** aparte evita el lock del `target/` pero no la competencia por
+  CPU: con `target/` frío haría las dos cosas más lentas y devolvería los
+  mismos rojos falsos. No es la salida.
+
 **Gate condicional de Pages (build completo + E2E).** `wasm-check` NO cubre
 codegen/linker (lección W3: check ≠ build). Si el ciclo toca `cas_wasm`,
 `web/`, `Cargo.toml`/`Cargo.lock` o código `cfg(target_arch)`, añade ANTES de
@@ -487,10 +523,20 @@ repitas en bucle).
   (√3/2, no 3/2·3^(-1/2)). Construir ambas en el punto de reducción; en líneas
   de narración plegar SOLO el ruido nombrado (base 0, −0), nunca simplify
   general (factoriza a formas ilegibles).
-- **`git add -A` con edición humana concurrente barre cambios ajenos**: el
-  status limpio al INICIO no cubre ediciones DURANTE el ciclo — antes de
-  commitear, revisa `git diff --stat` y cuestiona archivos fuera del área
-  tocada (un reorden de examples.csv entró así y movió los índices del harness).
+- **`git add -A` con edición concurrente barre cambios ajenos**: el status
+  limpio al INICIO no cubre ediciones DURANTE el ciclo — antes de commitear,
+  revisa `git diff --stat` y cuestiona archivos fuera del área tocada (un
+  reorden de examples.csv entró así y movió los índices del harness). Aplica
+  igual a tu PROPIO trabajo en otra área: si el usuario te pide algo de `web/`
+  mientras validas un ciclo de engine, stagea por RUTAS EXPLÍCITAS y commitea
+  cada cosa aparte. Y `git add` con una ruta inexistente falla en bloque sin
+  stagear NADA: verifica con `git status --porcelain` que la primera columna
+  quedó marcada antes de commitear.
+- **El cwd del shell PERSISTE entre llamadas**: un `cd` para un barrido deja
+  ahí las siguientes. Un exit no-cero UNIFORME en toda la cadena («could not
+  find Cargo.toml» ×6) es la firma de un cwd equivocado, no de una regresión —
+  cuesta una corrida entera descubrirlo. Lanza la cadena con la ruta del repo
+  explícita o con un `pwd` delante.
 
 ## Meta-mantenimiento: revisiones periódicas (docs y esta skill)
 
@@ -530,4 +576,13 @@ dos podredumbres cazadas EN CICLO (peldaño 3×3 secretamente graduado; «residu
 cosmético» abs(-pi) que era familia divergente entera) motivaron adelantar la
 pasada; memorias de frentes S/E/gate actualizadas con verificación CLI, y el
 harness de consistencia entró como fuente (2) de candidatos — sus inventarios
-por eje son medida reproducible, no estimación.)*
+por eje son medida reproducible, no estimación. 2026-07-28: pasada B pedida por
+el usuario al ver que cada ciclo se iba a ~90 min de espera. Se midió el reparto
+del tiempo (19 min de test, 12 en cuatro suites que lanzan el binario por caso)
+y se separó explícitamente la CADENA-PUERTA del BUCLE de desarrollo, con la
+prohibición de paralelizar respaldada por dos fallos medidos —siete rojos falsos
+de `stderr_fragility` por contención y dos corridas invalidadas por editar a
+mitad— y con el discriminante `error_kind` para no confundir contención con
+regresión. La lección de fondo: una cadena de validación cara se convierte, sin
+que nadie lo decida, en el bucle de iteración, y entonces el coste no se paga
+una vez por ciclo sino una por intento.)*
