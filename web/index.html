@@ -1461,6 +1461,15 @@
             flex-wrap: wrap;
         }
 
+        /* `display: flex` from the class above OUTRANKS the UA's
+           `[hidden] { display: none }`, so the attribute alone would not hide
+           these rows — the swap between the question and the blocked note
+           needs the explicit rule. */
+        .exit-confirm-actions[hidden],
+        .exit-confirm-note[hidden] {
+            display: none;
+        }
+
         .exit-confirm-btn {
             border-radius: 10px;
             padding: 10px 18px;
@@ -2500,11 +2509,17 @@
         <div class="exit-confirm-panel" onclick="event.stopPropagation()">
             <h2 data-i18n="exit_confirm.title">¿Seguro que quieres salir?</h2>
             <p class="exit-confirm-body" data-i18n="exit_confirm.body">Se perderán las variables, las funciones y los resultados de esta sesión.</p>
-            <div class="exit-confirm-actions">
+            <p class="exit-confirm-body exit-confirm-note" id="exit-confirm-note" hidden
+                data-i18n="exit_confirm.blocked">El navegador no deja que una página cierre una pestaña que no abrió. Pulsa atrás una vez más para salir.</p>
+            <div class="exit-confirm-actions" id="exit-confirm-actions">
                 <button type="button" class="exit-confirm-btn stay" onclick="hideExitConfirm()"
                     data-i18n="exit_confirm.no">No, seguir aquí</button>
                 <button type="button" class="exit-confirm-btn leave" onclick="confirmExit()"
                     data-i18n="exit_confirm.yes">Sí, salir</button>
+            </div>
+            <div class="exit-confirm-actions" id="exit-confirm-blocked-actions" hidden>
+                <button type="button" class="exit-confirm-btn stay" onclick="hideExitConfirm()"
+                    data-i18n="exit_confirm.ok">Entendido</button>
             </div>
         </div>
     </div>
@@ -2720,6 +2735,8 @@
                         "exit_confirm.body": "Se perderán las variables, las funciones y los resultados de esta sesión.",
                         "exit_confirm.yes": "Sí, salir",
                         "exit_confirm.no": "No, seguir aquí",
+                        "exit_confirm.blocked": "El navegador no deja que una página cierre una pestaña que no abrió. Pulsa atrás una vez más para salir.",
+                        "exit_confirm.ok": "Entendido",
                         "functions_panel.title": "𝑓 Funciones definidas",
                         "functions_panel.empty": "Aún no hay funciones definidas",
                         "functions_panel.empty_hint": "Crea una escribiendo una definición en la entrada:",
@@ -2840,6 +2857,8 @@
                         "exit_confirm.body": "The variables, functions and results of this session will be lost.",
                         "exit_confirm.yes": "Yes, leave",
                         "exit_confirm.no": "No, stay here",
+                        "exit_confirm.blocked": "The browser will not let a page close a tab it did not open. Press back once more to leave.",
+                        "exit_confirm.ok": "Got it",
                         "functions_panel.title": "𝑓 Defined Functions",
                         "functions_panel.empty": "No functions defined yet",
                         "functions_panel.empty_hint": "Create one by typing a definition in the input:",
@@ -5125,16 +5144,37 @@
         function hideExitConfirm(event) {
             if (!event || event.target === event.currentTarget) {
                 document.getElementById('exit-confirm-overlay').classList.remove('visible');
+                // Back to the question for any future opening.
+                document.getElementById('exit-confirm-note').hidden = true;
+                document.getElementById('exit-confirm-actions').hidden = false;
+                document.getElementById('exit-confirm-blocked-actions').hidden = true;
             }
         }
 
         function confirmExit() {
+            // Disarm for good: from here on, back must go THROUGH.
             backGuardLeaving = true;
             hideExitConfirm();
-            // Two entries down: the sentinel we are standing on and the app
-            // entry beneath it. If the app was opened in a fresh tab there is
-            // nothing below and the browser stays put — nothing to undo.
+            // Two entries down: the sentinel we stand on and the app entry
+            // beneath it. This is the whole exit when the reader arrived from
+            // another page.
             window.history.go(-2);
+            // …but most phone users arrive by bookmark or home-screen shortcut,
+            // and then the app IS the first entry: there is nothing below and
+            // `go` silently does nothing. A script may only close a window it
+            // opened itself, so the tab cannot be closed either. What is left
+            // is honest: drop our own sentinel so the reader stands on the
+            // first entry, where ONE more back press really does leave, and
+            // say so. If `go(-2)` did navigate, this document is already gone
+            // and none of it runs.
+            window.setTimeout(() => {
+                window.close();
+                window.history.back();
+                document.getElementById('exit-confirm-note').hidden = false;
+                document.getElementById('exit-confirm-actions').hidden = true;
+                document.getElementById('exit-confirm-blocked-actions').hidden = false;
+                document.getElementById('exit-confirm-overlay').classList.add('visible');
+            }, 200);
         }
 
         function closeTopmostBackGuardOverlay() {
