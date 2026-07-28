@@ -197,6 +197,8 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
             | "Recognize Cosecant Squared"
             | "Reciprocal Pythagorean Identity"
             | "Pythagorean Factor Form"
+            | "Half-Angle Square Identity"
+            | "Angle Consistency (Half-Angle)"
     ) && normalized_substep.starts_with("usar "))
         || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
@@ -224,7 +226,6 @@ pub(crate) fn is_single_formula_template_rule(rule_name: &str) -> bool {
         "Evaluate Logarithms"
             | "Factor Perfect Square in Logarithm"
             | "Split Log Exponents"
-            | "Half-Angle Square Identity"
             | "Canonicalize Roots"
             | "expand_log"
             | "Log Contraction"

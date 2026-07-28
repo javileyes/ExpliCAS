@@ -94,6 +94,46 @@ pub const SCHEMATIC_IDENTITIES: &[Schema] = &[
         rhs: "(1 - cos(2u)) / sin(2u)",
         status: Proven,
     },
+    // Ángulo mitad («Half-Angle Square Identity» / «Angle Consistency
+    // (Half-Angle)»), migrado al matcher tras medir la ruta derive
+    // (2026-07-28): 4 pares, cobertura ESTRUCTURAL 4/4 — y el probe de «qué
+    // plantilla casó» confirmó que cada par instancia SU identidad, no un
+    // espejismo del modo dirigido. Seis filas para seis gestos: el emisor
+    // enruta por descripción y el título nombra la orientación que el alumno
+    // ve (expandir vs reconocer), así que cada orientación necesita su fila —
+    // el lookup del censo es exacto (lhs, rhs). `sin²(u)` es notación de
+    // display: `to_parser_input` la lee como `sin(u)^2`. Las seis pliegan
+    // a 0 — medido.
+    Schema {
+        lhs: "sin²(u)",
+        rhs: "(1 - cos(2u)) / 2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cos²(u)",
+        rhs: "(1 + cos(2u)) / 2",
+        status: Proven,
+    },
+    Schema {
+        lhs: "(1 - cos(2u)) / 2",
+        rhs: "sin²(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "(1 + cos(2u)) / 2",
+        rhs: "cos²(u)",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cos(2u)",
+        rhs: "2 · cos(u)^2 - 1",
+        status: Proven,
+    },
+    Schema {
+        lhs: "cos(2u)",
+        rhs: "1 - 2 · sin(u)^2",
+        status: Proven,
+    },
     // Contracciones de ángulo doble de los emisores «Double Angle
     // Contraction» y «Cos 2x Additive Contraction», migrados al matcher tras
     // la sombra ampliada (2026-07-27): uno citaba 2·sin·cos = sin(2u) para

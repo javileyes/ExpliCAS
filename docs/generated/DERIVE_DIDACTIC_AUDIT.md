@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.05`
-- Total web substeps: `508`
+- Total web substeps: `512`
 
 ## Flag Summary
 
@@ -42,8 +42,8 @@ No audit flags emitted.
 | `simplify` | 90 | 0 | 0 | 87 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 49 | 0 | 0 | 35 |
-| `trig_expand` | 87 | 0 | 0 | 68 |
+| `trig_contract` | 49 | 0 | 0 | 37 |
+| `trig_expand` | 87 | 0 | 0 | 70 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
@@ -133,8 +133,8 @@ No audit flags emitted.
 | `contract_trig_double_cos_from_two_cos_sq_minus_one` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_double_sin` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_double_tangent` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_half_angle_cos_squared` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_half_angle_sin_squared` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_half_angle_cos_squared` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_half_angle_sin_squared` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_half_angle_tangent` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_half_angle_tangent_alt` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_half_scaled_double_sin` | `trig_contract` | 1 | 0 | none |
@@ -282,8 +282,8 @@ No audit flags emitted.
 | `expand_trig_double_sin_inverse_arccos` | `trig_expand` | 1 | 2 | none |
 | `expand_trig_double_sin_inverse_arcsin` | `trig_expand` | 1 | 2 | none |
 | `expand_trig_double_tangent` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_half_angle_cos_squared` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_half_angle_sin_squared` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_half_angle_cos_squared` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_half_angle_sin_squared` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_half_angle_tangent` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_half_angle_tangent_alt` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_half_angle_tangent_one_minus_cos_over_sin` | `trig_expand` | 1 | 1 | none |
@@ -3356,7 +3356,7 @@ Result: tan(2 * x)
 - Target: `cos(x)^2`
 - Result: `cos(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3378,7 +3378,8 @@ Result: cos(x)^(2)
 1. `Aplicar identidad de ángulo mitad`
    - before: `(cos(2 · x) + 1)/2`
    - after: `cos(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar (1 + cos(2u)) / 2 = cos²(u)`
 
 ## contract_trig_half_angle_sin_squared (trig_contract)
 
@@ -3386,7 +3387,7 @@ Result: cos(x)^(2)
 - Target: `sin(x)^2`
 - Result: `sin(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3408,7 +3409,8 @@ Result: sin(x)^(2)
 1. `Aplicar identidad de ángulo mitad`
    - before: `(1 - cos(2 · x))/2`
    - after: `sin(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar (1 - cos(2u)) / 2 = sin²(u)`
 
 ## contract_trig_half_angle_tangent (trig_contract)
 
@@ -8219,7 +8221,7 @@ Result: 2 * tan(x) / (1 - tan(x)^(2))
 - Target: `(1+cos(2*x))/2`
 - Result: `(cos(2 * x) + 1) / 2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8241,7 +8243,8 @@ Result: (cos(2 * x) + 1) / 2
 1. `Aplicar identidad de ángulo mitad`
    - before: `cos(x)^2`
    - after: `(cos(2 · x) + 1)/2`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2`
 
 ## expand_trig_half_angle_sin_squared (trig_expand)
 
@@ -8249,7 +8252,7 @@ Result: (cos(2 * x) + 1) / 2
 - Target: `(1-cos(2*x))/2`
 - Result: `(1 - cos(2 * x)) / 2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8271,7 +8274,8 @@ Result: (1 - cos(2 * x)) / 2
 1. `Aplicar identidad de ángulo mitad`
    - before: `sin(x)^2`
    - after: `(1 - cos(2 · x))/2`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2`
 
 ## expand_trig_half_angle_tangent (trig_expand)
 

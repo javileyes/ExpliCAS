@@ -2433,8 +2433,13 @@ fn derive_didactic_half_angle_sin_square_expansion_uses_direct_identity_language
         })
         .expect("expected half-angle sine-square expansion step");
 
+    // Pre-migration this pinned SILENCE: the emitter's «Usar L = R» was an
+    // unverified claim and the rule sat in the silenced list, so the "direct
+    // identity language" this test asks for could only be implied by the rule
+    // name. Since the matcher migration (2026-07-28) the identity is SAID, and
+    // only when the pair provably instantiates the censused row.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar sin²(u) = (1 - cos(2u)) / 2".to_string()]);
 }
 
 #[test]
@@ -2451,8 +2456,11 @@ fn derive_didactic_half_angle_cos_square_contraction_uses_direct_identity_langua
         })
         .expect("expected half-angle cosine-square contraction step");
 
+    // Same contract update as the sine-square expansion: the CONTRACTION
+    // gesture cites its own orientation — `(1 + cos(2u)) / 2 = cos²(u)`, not
+    // the expansion row it inverts.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar (1 + cos(2u)) / 2 = cos²(u)".to_string()]);
 }
 
 #[test]

@@ -6734,66 +6734,56 @@ fn generate_double_angle_contraction_substeps(ctx: &Context, step: &Step) -> Vec
         .collect()
 }
 
+/// Migrated to the instance↔template matcher (2026-07-28) after the shadow
+/// pass measured the rule on the derive route: 4 pairs, structural coverage
+/// 4/4, and the «which template matched» probe confirmed each pair
+/// instantiates ITS own identity — not the directed-mode mirage that the
+/// sec²/csc² cycle caught.
+///
+/// The six description arms route to ORIENTED census rows: the title names
+/// the gesture the student is watching (expand `sin²(u)` vs recognize
+/// `(1 - cos(2u))/2`), so the direction is content, not spelling. The matcher
+/// then gates the instance — a described-but-not-instance arm declines
+/// instead of publishing, which is what the silenced list used to buy with
+/// blanket silence.
+///
+/// The `cos(2u)` arms keep their pre-migration routing (rule name + the shape
+/// of the `after`) because the engine's description does not distinguish the
+/// two equivalent right-hand sides; the matcher still has the last word.
 fn generate_half_angle_square_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    if step.rule_name == "Angle Consistency (Half-Angle)"
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+
+    let template: Option<(&'static str, &'static str)> = if step.rule_name
+        == "Angle Consistency (Half-Angle)"
         || step.description.contains("Half-Angle Expansion")
     {
-        let after = human_expr(ctx, step.after_local().unwrap_or(step.after)).replace(' ', "");
-        if after.contains("2·cos(") || after.contains("2*cos(") {
-            return vec![concrete_expr_substep(
-                ctx,
-                "Usar cos(2u) = 2 · cos(u)^2 - 1",
-                step.before_local().unwrap_or(step.before),
-                step.after_local().unwrap_or(step.after),
-            )];
+        let after_display = human_expr(ctx, after).replace(' ', "");
+        if after_display.contains("2·cos(") || after_display.contains("2*cos(") {
+            Some(("cos(2u)", "2 · cos(u)^2 - 1"))
+        } else if after_display.contains("1-2·sin(") || after_display.contains("1-2*sin(") {
+            Some(("cos(2u)", "1 - 2 · sin(u)^2"))
+        } else {
+            None
         }
-        if after.contains("1-2·sin(") || after.contains("1-2*sin(") {
-            return vec![concrete_expr_substep(
-                ctx,
-                "Usar cos(2u) = 1 - 2 · sin(u)^2",
-                step.before_local().unwrap_or(step.before),
-                step.after_local().unwrap_or(step.after),
-            )];
-        }
-    }
+    } else if step.description.contains("Expand sin²") {
+        Some(("sin²(u)", "(1 - cos(2u)) / 2"))
+    } else if step.description.contains("Expand cos²") {
+        Some(("cos²(u)", "(1 + cos(2u)) / 2"))
+    } else if step.description.contains("Recognize (1 - cos(2u))/2") {
+        Some(("(1 - cos(2u)) / 2", "sin²(u)"))
+    } else if step.description.contains("Recognize (1 + cos(2u))/2") {
+        Some(("(1 + cos(2u)) / 2", "cos²(u)"))
+    } else {
+        None
+    };
 
-    if step.description.contains("Expand sin²") {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Usar sin²(u) = (1 - cos(2u)) / 2",
-            step.before_local().unwrap_or(step.before),
-            step.after_local().unwrap_or(step.after),
-        )];
-    }
-
-    if step.description.contains("Expand cos²") {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Usar cos²(u) = (1 + cos(2u)) / 2",
-            step.before_local().unwrap_or(step.before),
-            step.after_local().unwrap_or(step.after),
-        )];
-    }
-
-    if step.description.contains("Recognize (1 - cos(2u))/2") {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Usar (1 - cos(2u)) / 2 = sin²(u)",
-            step.before_local().unwrap_or(step.before),
-            step.after_local().unwrap_or(step.after),
-        )];
-    }
-
-    if step.description.contains("Recognize (1 + cos(2u))/2") {
-        return vec![concrete_expr_substep(
-            ctx,
-            "Usar (1 + cos(2u)) / 2 = cos²(u)",
-            step.before_local().unwrap_or(step.before),
-            step.after_local().unwrap_or(step.after),
-        )];
-    }
-
-    Vec::new()
+    let Some((lhs, rhs)) = template else {
+        return Vec::new();
+    };
+    named_identity_substep(ctx, lhs, rhs, before, after)
+        .into_iter()
+        .collect()
 }
 
 fn generate_hyperbolic_half_angle_square_substeps(_ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -25227,10 +25217,11 @@ mod limit_notable_tests {
 mod named_identity_matcher_tests {
     use super::{
         generate_cos_2x_additive_contraction_substeps, generate_double_angle_contraction_substeps,
-        generate_half_angle_tangent_substeps, generate_pythagorean_factor_form_substeps,
-        generate_reciprocal_product_identity_substeps, generate_reciprocal_pythagorean_substeps,
-        generate_reciprocal_trig_identity_substeps, generate_sec_csc_squared_contraction_substeps,
-        generate_sec_csc_squared_expansion_substeps, generate_trig_quotient_substeps,
+        generate_half_angle_square_identity_substeps, generate_half_angle_tangent_substeps,
+        generate_pythagorean_factor_form_substeps, generate_reciprocal_product_identity_substeps,
+        generate_reciprocal_pythagorean_substeps, generate_reciprocal_trig_identity_substeps,
+        generate_sec_csc_squared_contraction_substeps, generate_sec_csc_squared_expansion_substeps,
+        generate_trig_quotient_substeps,
     };
     use crate::runtime::Step;
     use cas_ast::Context;
@@ -25479,6 +25470,93 @@ mod named_identity_matcher_tests {
         assert!(
             subs.is_empty(),
             "a non-instance must decline: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// Half-angle squares: the four pairs the derive-route shadow measured
+    /// (structural 4/4) narrate their OWN oriented identity — expansion and
+    /// recognition are different gestures and must not borrow each other's
+    /// title — and the `cos(2u)` arms keep their shape-of-`after` routing.
+    /// A described-but-non-instance pair declines, which is what leaving the
+    /// silenced list is allowed to cost.
+    #[test]
+    fn half_angle_square_identity_narrates_each_oriented_gesture() {
+        let run = |rule: &str, desc: &str, before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact(desc, rule, before, after);
+            generate_half_angle_square_identity_substeps(&ctx, &step)
+        };
+        for (rule, desc, before, after, expected) in [
+            (
+                "Half-Angle Square Identity",
+                "Expand sin²(u) as (1 - cos(2u))/2",
+                "sin(x)^2",
+                "(1 - cos(2*x))/2",
+                "Usar sin²(u) = (1 - cos(2u)) / 2",
+            ),
+            (
+                "Half-Angle Square Identity",
+                "Expand cos²(u) as (1 + cos(2u))/2",
+                "cos(3*x)^2",
+                "(1 + cos(6*x))/2",
+                "Usar cos²(u) = (1 + cos(2u)) / 2",
+            ),
+            // The INVERSE gesture cites the inverse orientation, not the one
+            // it undoes: recognition is what the reader is watching.
+            (
+                "Half-Angle Square Identity",
+                "Recognize (1 - cos(2u))/2 as sin²(u)",
+                "(1 - cos(2*x))/2",
+                "sin(x)^2",
+                "Usar (1 - cos(2u)) / 2 = sin²(u)",
+            ),
+            (
+                "Half-Angle Square Identity",
+                "Recognize (1 + cos(2u))/2 as cos²(u)",
+                "(1 + cos(2*x))/2",
+                "cos(x)^2",
+                "Usar (1 + cos(2u)) / 2 = cos²(u)",
+            ),
+            // The two `cos(2u)` right-hand sides are EQUIVALENT, so the engine
+            // description cannot disambiguate them: the shape of `after` does,
+            // and the matcher still gates the instance.
+            (
+                "Angle Consistency (Half-Angle)",
+                "Half-Angle Expansion",
+                "cos(2*x)",
+                "2*cos(x)^2 - 1",
+                "Usar cos(2u) = 2 · cos(u)^2 - 1",
+            ),
+            (
+                "Angle Consistency (Half-Angle)",
+                "Half-Angle Expansion",
+                "cos(2*x)",
+                "1 - 2*sin(x)^2",
+                "Usar cos(2u) = 1 - 2 · sin(u)^2",
+            ),
+        ] {
+            let subs = run(rule, desc, before, after);
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(
+                subs[0].description, expected,
+                "each gesture cites the orientation the reader sees"
+            );
+        }
+        // Described as a half-angle expansion, but the pair is not an
+        // instance: the matcher declines instead of publishing the title the
+        // pre-migration emitter would have printed unconditionally.
+        let subs = run(
+            "Half-Angle Square Identity",
+            "Expand sin²(u) as (1 - cos(2u))/2",
+            "sin(x)^2",
+            "(1 - cos(3*x))/2",
+        );
+        assert!(
+            subs.is_empty(),
+            "a described-but-non-instance pair must decline: {:?}",
             subs.iter().map(|s| &s.description).collect::<Vec<_>>()
         );
     }

@@ -159,6 +159,18 @@ fn shadow_silenced_template_instance_rates() {
             }
             if covered {
                 tally.covered += 1;
+                for (lhs, rhs, template) in &templates {
+                    if match_instance_structural(template, ctx, before, after).is_some()
+                        || match_instance_structural(template, ctx, after, before).is_some()
+                    {
+                        println!(
+                            "    PROBE-WHICH {} :: {} ⟹ {} :: BY {lhs} = {rhs}",
+                            step.rule_name,
+                            display(ctx, before),
+                            display(ctx, after)
+                        );
+                    }
+                }
             } else if tally.uncovered_samples.len() < 3 {
                 tally.uncovered_samples.push(format!(
                     "{} ⟹ {}",
@@ -286,6 +298,20 @@ fn shadow_silenced_template_instance_rates_derive_route() {
                     }
                     if covered {
                         tally.covered += 1;
+                        for (lhs, rhs, template) in &templates {
+                            if match_instance_structural(template, context, before, after).is_some()
+                                || match_instance_structural(template, context, after, before)
+                                    .is_some()
+                            {
+                                println!(
+                                    "    PROBE-WHICH {} :: {} ⟹ {} :: BY {lhs} = {rhs} :: DESC {}",
+                                    step.rule_name,
+                                    display(context, before),
+                                    display(context, after),
+                                    step.description
+                                );
+                            }
+                        }
                     } else if tally.uncovered_samples.len() < 3 {
                         tally.uncovered_samples.push(format!(
                             "{} ⟹ {}",
