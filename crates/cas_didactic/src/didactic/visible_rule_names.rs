@@ -32,6 +32,10 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Change of Base" => "Aplicar cambio de base",
         "Log-Exp Inverse" => "Cancelar logaritmo natural y exponencial inversos",
         "Exponential-Log Inverse" => "Cancelar exponencial y logaritmo inversos",
+        // Sin esta fila el nombre CRUDO del motor llegaba al usuario: el paso
+        // se anunciaba «Split Log Exponents» en medio de una traza en español
+        // (medido 2026-07-28 sobre `e^(2·ln(x) + 3·ln(y))`).
+        "Split Log Exponents" => "Separar la exponencial de una suma",
         "Exponential-Log Power Inverse" => {
             "Cancelar exponencial con logaritmo y conservar exponente"
         }
@@ -886,6 +890,7 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Sacar el cuadrado perfecto de la raíz" => "Take the perfect square out of the root",
         "Sacar factor común" => "Factor out the common term",
         "Sacar un exponente fuera del logaritmo" => "Bring an exponent out of the logarithm",
+        "Separar la exponencial de una suma" => "Split the exponential of a sum",
         "Simplificar fracción anidada" => "Simplify the nested fraction",
         "Simplificar una potencia con exponente 0 o 1" => "Simplify a power with exponent 0 or 1",
         "Sumar exponentes de la misma base" => "Add exponents of the same base",

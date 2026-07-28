@@ -407,6 +407,7 @@ fn generate_focused_rule_substeps_at_depth(
             generate_sec_csc_squared_contraction_substeps(ctx, step)
         }
         "Reciprocal Product Identity" => generate_reciprocal_product_identity_substeps(ctx, step),
+        "Split Log Exponents" => generate_split_log_exponents_substeps(ctx, step),
         "Reciprocal Pythagorean Identity" => generate_reciprocal_pythagorean_substeps(ctx, step),
         "Cos 2x Additive Contraction" => generate_cos_2x_additive_contraction_substeps(ctx, step),
         "Power Reduction Identity" => generate_power_reduction_identity_substeps(ctx, step),
@@ -8124,6 +8125,28 @@ fn generate_reciprocal_trig_identity_substeps(ctx: &Context, step: &Step) -> Vec
         return Vec::new();
     };
     named_identity_substep(ctx, lhs, rhs, before, after)
+        .into_iter()
+        .collect()
+}
+
+/// `Split Log Exponents` migrated to the matcher (2026-07-28). The rule is
+/// named after its PURPOSE (freeing `e^(ln x)` pairs so they can cancel) but
+/// the identity it applies is plain exponential algebra — `e^(A+B) = e^A·e^B`,
+/// FREE of domain conditions — which is why it could migrate without the
+/// domain-conditional census the other log rules are waiting for.
+///
+/// The engine folds `e^(log_e x)` to `x` inline while splitting, so a pair
+/// like `e^(log_e(x) + k) ⟹ x·e^k` no longer LOOKS like the identity. The
+/// directed pass of `match_instance` rescues it, which is exactly the job the
+/// cycle-4 policy assigns to it: structural-first cites what is on screen,
+/// directed-after rescues instances whose shape folded away. The ambiguity
+/// that policy guards against — the directed mode picking the wrong row among
+/// EQUIVALENT templates — cannot arise here, because this rule cites a single
+/// template and there is nothing to choose between.
+fn generate_split_log_exponents_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    named_identity_substep(ctx, "e^(A+B)", "e^A · e^B", before, after)
         .into_iter()
         .collect()
 }
@@ -25221,7 +25244,7 @@ mod named_identity_matcher_tests {
         generate_pythagorean_factor_form_substeps, generate_reciprocal_product_identity_substeps,
         generate_reciprocal_pythagorean_substeps, generate_reciprocal_trig_identity_substeps,
         generate_sec_csc_squared_contraction_substeps, generate_sec_csc_squared_expansion_substeps,
-        generate_trig_quotient_substeps,
+        generate_split_log_exponents_substeps, generate_trig_quotient_substeps,
     };
     use crate::runtime::Step;
     use cas_ast::Context;
@@ -25467,6 +25490,43 @@ mod named_identity_matcher_tests {
             "tan(x)^2 + 2",
             "sec(x)^2",
         );
+        assert!(
+            subs.is_empty(),
+            "a non-instance must decline: {:?}",
+            subs.iter().map(|s| &s.description).collect::<Vec<_>>()
+        );
+    }
+
+    /// `Split Log Exponents` cites plain exponential algebra — the identity
+    /// is FREE of domain conditions even though the rule lives among the log
+    /// rules — and the inline `e^(log_e x) ⟹ x` fold is rescued by the
+    /// directed pass. A pair that is not an instance at all declines.
+    #[test]
+    fn split_log_exponents_narrates_the_exponential_split_and_declines_non_instances() {
+        let run = |before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact(
+                "e^(a+b) -> e^a * e^b (log cancellation)",
+                "Split Log Exponents",
+                before,
+                after,
+            );
+            generate_split_log_exponents_substeps(&ctx, &step)
+        };
+        // The printed instance: both factors survive the split.
+        let subs = run("e^(2*ln(x) + 3*ln(y))", "e^(2*ln(x))*e^(3*ln(y))");
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].description, "Usar e^(A+B) = e^A · e^B");
+        // The FOLDED instance: `e^(log_e x)` collapsed to `x` on the way out,
+        // so the pair no longer looks like the identity — the directed pass
+        // rescues it because the equality still holds.
+        let subs = run("e^(log(e,x) + 5)", "x*e^5");
+        assert_eq!(subs.len(), 1, "the folded instance must still narrate");
+        assert_eq!(subs[0].description, "Usar e^(A+B) = e^A · e^B");
+        // Not an instance under any reading: the sum did not become a product.
+        let subs = run("e^(a + b)", "e^a + e^b");
         assert!(
             subs.is_empty(),
             "a non-instance must decline: {:?}",
