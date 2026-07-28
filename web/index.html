@@ -1524,6 +1524,36 @@
             border-color: #8b5cf6;
         }
 
+        /* Empty state of the declaration modals: "aún no hay variables" is a
+           dead end — it never says HOW to make one. The hint names the syntax
+           and the chip carries a literal example (dashed border = sample, not
+           a real binding) that drops itself into the input on tap. */
+        .decl-empty {
+            text-align: center;
+            padding: 4px 0;
+        }
+
+        .decl-empty .no-variables,
+        .decl-empty .no-functions {
+            padding: 4px 0 10px;
+        }
+
+        .decl-empty-hint {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin: 0 0 12px;
+        }
+
+        .var-insert-chip.decl-example {
+            border-style: dashed;
+            max-width: 100%;
+            white-space: normal;
+        }
+
+        .var-insert-chip.decl-example:hover {
+            border-style: solid;
+        }
+
         .variable-list .var-value {
             color: var(--text-secondary);
             font-family: 'Fira Code', monospace;
@@ -2581,8 +2611,11 @@
                         "functions_panel.insert_hint": "Tocar para insertar la llamada en la entrada",
                         "variables_panel.title": "📦 Variables asignadas",
                         "variables_panel.empty": "Aún no hay variables asignadas",
+                        "variables_panel.empty_hint": "Crea una escribiendo una asignación en la entrada:",
                         "functions_panel.title": "𝑓 Funciones definidas",
                         "functions_panel.empty": "Aún no hay funciones definidas",
+                        "functions_panel.empty_hint": "Crea una escribiendo una definición en la entrada:",
+                        "decl_panel.example_insert_hint": "Tocar para insertar el ejemplo en la entrada",
                         "examples_panel.title": "❓ Ejemplos — Elige una categoría",
                         "examples_panel.loading": "Cargando ejemplos...",
                         "examples_group.back.title": "Volver a categorías",
@@ -2694,8 +2727,11 @@
                         "functions_panel.insert_hint": "Tap to insert the call into the input",
                         "variables_panel.title": "📦 Assigned Variables",
                         "variables_panel.empty": "No variables assigned yet",
+                        "variables_panel.empty_hint": "Create one by typing an assignment in the input:",
                         "functions_panel.title": "𝑓 Defined Functions",
                         "functions_panel.empty": "No functions defined yet",
+                        "functions_panel.empty_hint": "Create one by typing a definition in the input:",
+                        "decl_panel.example_insert_hint": "Tap to insert the example into the input",
                         "examples_panel.title": "❓ Examples — Choose a category",
                         "examples_panel.loading": "Loading examples...",
                         "examples_group.back.title": "Back to categories",
@@ -3596,7 +3632,7 @@
             const varNames = Object.keys(sessionVariables);
 
             if (varNames.length === 0) {
-                container.innerHTML = `<p class="no-variables">${t('variables_panel.empty')}</p>`;
+                container.innerHTML = declEmptyStateHtml('vars');
             } else {
                 container.innerHTML = `
                     <ul class="variable-list">
@@ -3628,6 +3664,37 @@
             hideFunctionsPanel();
             kbFocusInput();
             insertTemplateIntoInput(`${name}(${params.join(', ')})`, params.length ? [params[0]] : []);
+        }
+
+        // Empty declaration list = the one moment the user most needs the
+        // syntax: an empty modal that only says "aún no hay variables" never
+        // reveals that `:=` is how you make one. Both modals answer with a
+        // runnable literal, and the chip inserts exactly what it shows. The
+        // data-i18n attributes keep the block live under a language switch
+        // (applyI18n re-walks the DOM, including this injected markup).
+        const DECL_EXAMPLES = { vars: 'b1 := 5 + x', fns: 'f(x) := x^2 + 1' };
+
+        function declEmptyStateHtml(kind) {
+            const isVars = kind === 'vars';
+            const emptyKey = isVars ? 'variables_panel.empty' : 'functions_panel.empty';
+            const hintKey = isVars ? 'variables_panel.empty_hint' : 'functions_panel.empty_hint';
+            const tipKey = 'decl_panel.example_insert_hint';
+            return `
+                <div class="decl-empty">
+                    <p class="${isVars ? 'no-variables' : 'no-functions'}" data-i18n="${emptyKey}">${escapeHtml(t(emptyKey))}</p>
+                    <p class="decl-empty-hint" data-i18n="${hintKey}">${escapeHtml(t(hintKey))}</p>
+                    <button type="button" class="var-insert-chip decl-example${isVars ? '' : ' fn'}"
+                            onclick="panelInsertExample('${kind}')"
+                            data-i18n-title="${tipKey}" title="${escapeHtml(t(tipKey))}">${escapeHtml(DECL_EXAMPLES[kind])}</button>
+                </div>
+            `;
+        }
+
+        function panelInsertExample(kind) {
+            const text = DECL_EXAMPLES[kind];
+            if (!text) return;
+            if (kind === 'vars') hideVariablesPanel(); else hideFunctionsPanel();
+            kbInsertText(text);
         }
 
         async function deleteFunctionCard(fnName) {
@@ -3698,7 +3765,7 @@
             const fnNames = Object.keys(sessionFunctions);
 
             if (fnNames.length === 0) {
-                container.innerHTML = `<p class="no-functions">${t('functions_panel.empty')}</p>`;
+                container.innerHTML = declEmptyStateHtml('fns');
             } else {
                 container.innerHTML = `
                     <ul class="variable-list">
