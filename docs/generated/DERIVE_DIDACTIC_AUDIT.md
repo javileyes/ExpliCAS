@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.05`
-- Total web substeps: `512`
+- Total web substeps: `518`
 
 ## Flag Summary
 
@@ -42,8 +42,8 @@ No audit flags emitted.
 | `simplify` | 90 | 0 | 0 | 87 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 49 | 0 | 0 | 37 |
-| `trig_expand` | 87 | 0 | 0 | 70 |
+| `trig_contract` | 49 | 0 | 0 | 40 |
+| `trig_expand` | 87 | 0 | 0 | 73 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
@@ -129,9 +129,9 @@ No audit flags emitted.
 | `contract_trig_cot_quotient` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_csc_squared` | `trig_contract` | 1 | 1 | none |
-| `contract_trig_double_cos_from_one_minus_sin_sq` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_double_cos_from_two_cos_sq_minus_one` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_double_sin` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_double_cos_from_one_minus_sin_sq` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_double_cos_from_two_cos_sq_minus_one` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_double_sin` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_double_tangent` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_half_angle_cos_squared` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_half_angle_sin_squared` | `trig_contract` | 1 | 1 | none |
@@ -273,11 +273,11 @@ No audit flags emitted.
 | `expand_trig_cot_quotient` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_csc_reciprocal` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_csc_squared` | `trig_expand` | 1 | 1 | none |
-| `expand_trig_double_cos_as_one_minus_sin_sq` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_double_cos_as_two_cos_sq_minus_one` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_double_cos_as_one_minus_sin_sq` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_double_cos_as_two_cos_sq_minus_one` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_double_cos_inverse_arccos` | `trig_expand` | 1 | 2 | none |
 | `expand_trig_double_cos_inverse_arcsin` | `trig_expand` | 1 | 2 | none |
-| `expand_trig_double_sin` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_double_sin` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_double_sin_arctan_projection` | `trig_expand` | 1 | 2 | none |
 | `expand_trig_double_sin_inverse_arccos` | `trig_expand` | 1 | 2 | none |
 | `expand_trig_double_sin_inverse_arcsin` | `trig_expand` | 1 | 2 | none |
@@ -3233,7 +3233,7 @@ Result: csc(x)^(2)
 - Target: `cos(2*x)`
 - Result: `cos(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3255,7 +3255,8 @@ Result: cos(2 * x)
 1. `Expandir ángulo doble`
    - before: `1 - 2 · sin(x)^2`
    - after: `cos(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar 1 - 2·sin(u)^2 = cos(2u)`
 
 ## contract_trig_double_cos_from_two_cos_sq_minus_one (trig_contract)
 
@@ -3263,7 +3264,7 @@ Result: cos(2 * x)
 - Target: `cos(2*x)`
 - Result: `cos(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3285,7 +3286,8 @@ Result: cos(2 * x)
 1. `Expandir ángulo doble`
    - before: `2 · cos(x)^2 - 1`
    - after: `cos(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·cos(u)^2 - 1 = cos(2u)`
 
 ## contract_trig_double_sin (trig_contract)
 
@@ -3293,7 +3295,7 @@ Result: cos(2 * x)
 - Target: `sin(2*x)`
 - Result: `sin(2 * x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -3315,7 +3317,8 @@ Result: sin(2 * x)
 1. `Expandir ángulo doble`
    - before: `2 · sin(x) · cos(x)`
    - after: `sin(2 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·sin(u)·cos(u) = sin(2u)`
 
 ## contract_trig_double_tangent (trig_contract)
 
@@ -7934,7 +7937,7 @@ Result: cot(x)^(2) + 1
 - Target: `1 - 2*sin(x)^2`
 - Result: `1 - 2 * sin(x)^2`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -7956,7 +7959,8 @@ Result: 1 - 2 * sin(x)^(2)
 1. `Expandir ángulo doble`
    - before: `cos(2 · x)`
    - after: `1 - 2 · sin(x)^2`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(2u) = 1 - 2 · sin(u)^2`
 
 ## expand_trig_double_cos_as_two_cos_sq_minus_one (trig_expand)
 
@@ -7964,7 +7968,7 @@ Result: 1 - 2 * sin(x)^(2)
 - Target: `2*cos(x)^2 - 1`
 - Result: `2 * cos(x)^2 - 1`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -7986,7 +7990,8 @@ Result: 2 * cos(x)^(2) - 1
 1. `Expandir ángulo doble`
    - before: `cos(2 · x)`
    - after: `2 · cos(x)^2 - 1`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(2u) = 2 · cos(u)^2 - 1`
 
 ## expand_trig_double_cos_inverse_arccos (trig_expand)
 
@@ -8058,7 +8063,7 @@ Result: 1 - 2 * x^(2)
 - Target: `2*sin(x)*cos(x)`
 - Result: `2 * sin(x) * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -8080,7 +8085,8 @@ Result: 2 * sin(x) * cos(x)
 1. `Expandir ángulo doble`
    - before: `sin(2 · x)`
    - after: `2 · sin(x) · cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(2u) = 2 · sin(u) · cos(u)`
 
 ## expand_trig_double_sin_arctan_projection (trig_expand)
 

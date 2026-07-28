@@ -134,6 +134,15 @@ pub const SCHEMATIC_IDENTITIES: &[Schema] = &[
         rhs: "1 - 2 · sin(u)^2",
         status: Proven,
     },
+    // La orientación de EXPANSIÓN del seno de ángulo doble, que faltaba: la
+    // contracción `2·sin(u)·cos(u) = sin(2u)` ya estaba censada, pero el
+    // emisor `Double Angle Expansion` narra los dos sentidos y el título
+    // nombra el que el alumno ve (2026-07-28).
+    Schema {
+        lhs: "sin(2u)",
+        rhs: "2 · sin(u) · cos(u)",
+        status: Proven,
+    },
     // Contracciones de ángulo doble de los emisores «Double Angle
     // Contraction» y «Cos 2x Additive Contraction», migrados al matcher tras
     // la sombra ampliada (2026-07-27): uno citaba 2·sin·cos = sin(2u) para

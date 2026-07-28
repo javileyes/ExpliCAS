@@ -5892,25 +5892,31 @@ fn generate_double_angle_expansion_substeps(ctx: &Context, step: &Step) -> Vec<S
         return substeps;
     }
 
-    let before_display = human_expr(ctx, before_expr);
-    let after_display = human_expr(ctx, after_expr);
-
-    let title = if before_display.contains("1 - 2")
-        && before_display.contains("sin(")
-        && after_display.contains("cos(2")
-    {
-        "Reconocer el patrón 1 - 2 · sin(u)^2 = cos(2u)"
-    } else if step.description.contains("1 - 2·sin")
-        || step.description.contains("2·cos")
-        || step.description.contains("sine")
-        || step.description.contains("cosine")
-    {
-        "Usar la identidad de ángulo doble"
-    } else {
-        return Vec::new();
-    };
-
-    vec![concrete_expr_substep(ctx, title, before_expr, after_expr)]
+    // Migrated to the matcher (2026-07-28). The pre-migration emitter chose
+    // its title by sniffing displays and the engine description, and its
+    // fallback said «Usar la identidad de ángulo doble» — true of three
+    // different identities at once, so it named none of them. The shadow
+    // measured the rule on the derive route: 18 pairs, 6 covered
+    // STRUCTURALLY, and those 6 are exactly the three families in their two
+    // application directions.
+    //
+    // Orientation comes from structure, not from the description: the engine
+    // spells `sin(2x) ⟹ 2·sin·cos` and its inverse with the SAME description,
+    // so only the pair itself can say which way the reader is reading. The
+    // twelve pairs the matcher cannot see (inverse-trig compositions, the
+    // half-scaled `sin·cos ⟹ sin(2x)/2`) keep the silence they already had —
+    // this rule sat in the silenced list, so nothing is lost.
+    const DOUBLE_ANGLE_TEMPLATES: [(&str, &str); 6] = [
+        ("sin(2u)", "2 · sin(u) · cos(u)"),
+        ("2·sin(u)·cos(u)", "sin(2u)"),
+        ("cos(2u)", "1 - 2 · sin(u)^2"),
+        ("1 - 2·sin(u)^2", "cos(2u)"),
+        ("cos(2u)", "2 · cos(u)^2 - 1"),
+        ("2·cos(u)^2 - 1", "cos(2u)"),
+    ];
+    named_identity_oriented(ctx, &DOUBLE_ANGLE_TEMPLATES, before_expr, after_expr)
+        .into_iter()
+        .collect()
 }
 
 fn generate_inverse_trig_double_angle_expansion_substeps(
@@ -8825,6 +8831,46 @@ fn named_identity_from_table(
             crate::didactic::substep::matching::match_instance_scaled(&template, ctx, after, before)
         });
         if scaled.is_some() {
+            return Some(concrete_expr_substep(
+                ctx,
+                format!("Usar {lhs} = {rhs}"),
+                before,
+                after,
+            ));
+        }
+    }
+    None
+}
+
+/// Orientation-AWARE table. `named_identity_from_table` accepts either
+/// application direction, which is right when a rule only ever applies its
+/// identity one way — but it cannot tell an EXPANSION from the contraction it
+/// inverts, and `Double Angle Expansion` publishes both. Here each row is
+/// tried in the single direction the pair is printed: the first whose `lhs`
+/// binds `before` and whose `rhs` binds `after` is, by construction, the
+/// formula on screen.
+///
+/// Structural-only on purpose. The rows of one family are equivalent by
+/// Pythagoras (`1 − 2·sin²` and `2·cos² − 1` are both `cos(2u)`), so a
+/// directed pass would happily verify either against the other and print a
+/// form the reader is not looking at — the cycle-4 finding, in the one place
+/// where the whole table is a class of equivalents.
+fn named_identity_oriented(
+    ctx: &Context,
+    templates: &[(&'static str, &'static str)],
+    before: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    for (lhs, rhs) in templates {
+        let _ = crate::didactic::substep::claim::verify_schematic_identity(lhs, rhs);
+        let Some(template) = crate::didactic::substep::matching::parse_template(lhs, rhs) else {
+            continue;
+        };
+        if crate::didactic::substep::matching::match_instance_structural(
+            &template, ctx, before, after,
+        )
+        .is_some()
+        {
             return Some(concrete_expr_substep(
                 ctx,
                 format!("Usar {lhs} = {rhs}"),
@@ -25240,11 +25286,12 @@ mod limit_notable_tests {
 mod named_identity_matcher_tests {
     use super::{
         generate_cos_2x_additive_contraction_substeps, generate_double_angle_contraction_substeps,
-        generate_half_angle_square_identity_substeps, generate_half_angle_tangent_substeps,
-        generate_pythagorean_factor_form_substeps, generate_reciprocal_product_identity_substeps,
-        generate_reciprocal_pythagorean_substeps, generate_reciprocal_trig_identity_substeps,
-        generate_sec_csc_squared_contraction_substeps, generate_sec_csc_squared_expansion_substeps,
-        generate_split_log_exponents_substeps, generate_trig_quotient_substeps,
+        generate_double_angle_expansion_substeps, generate_half_angle_square_identity_substeps,
+        generate_half_angle_tangent_substeps, generate_pythagorean_factor_form_substeps,
+        generate_reciprocal_product_identity_substeps, generate_reciprocal_pythagorean_substeps,
+        generate_reciprocal_trig_identity_substeps, generate_sec_csc_squared_contraction_substeps,
+        generate_sec_csc_squared_expansion_substeps, generate_split_log_exponents_substeps,
+        generate_trig_quotient_substeps,
     };
     use crate::runtime::Step;
     use cas_ast::Context;
@@ -25495,6 +25542,62 @@ mod named_identity_matcher_tests {
             "a non-instance must decline: {:?}",
             subs.iter().map(|s| &s.description).collect::<Vec<_>>()
         );
+    }
+
+    /// `Double Angle Expansion` publishes an identity in BOTH directions
+    /// under the same engine description, so orientation can only come from
+    /// the pair. The decisive case is the `cos(2u)` family: its two rows are
+    /// equivalent by Pythagoras, and a directed match would accept either —
+    /// each pair must cite the form on screen, not its equivalent.
+    #[test]
+    fn double_angle_expansion_cites_the_orientation_on_screen() {
+        let run = |before_src: &str, after_src: &str| {
+            let mut ctx = Context::new();
+            let before = parse(before_src, &mut ctx).expect("parse before");
+            let after = parse(after_src, &mut ctx).expect("parse after");
+            let step = Step::new_compact(
+                "Expand double-angle sine",
+                "Double Angle Expansion",
+                before,
+                after,
+            );
+            generate_double_angle_expansion_substeps(&ctx, &step)
+        };
+        for (before, after, expected) in [
+            (
+                "sin(2*x)",
+                "2*sin(x)*cos(x)",
+                "Usar sin(2u) = 2 · sin(u) · cos(u)",
+            ),
+            (
+                "2*sin(x)*cos(x)",
+                "sin(2*x)",
+                "Usar 2·sin(u)·cos(u) = sin(2u)",
+            ),
+            (
+                "cos(2*x)",
+                "1-2*sin(x)^2",
+                "Usar cos(2u) = 1 - 2 · sin(u)^2",
+            ),
+            (
+                "cos(2*x)",
+                "2*cos(x)^2-1",
+                "Usar cos(2u) = 2 · cos(u)^2 - 1",
+            ),
+            ("1-2*sin(x)^2", "cos(2*x)", "Usar 1 - 2·sin(u)^2 = cos(2u)"),
+            ("2*cos(x)^2-1", "cos(2*x)", "Usar 2·cos(u)^2 - 1 = cos(2u)"),
+        ] {
+            let subs = run(before, after);
+            assert_eq!(subs.len(), 1, "pair {before} ⟹ {after} must narrate");
+            assert_eq!(
+                subs[0].description, expected,
+                "the cited form must be the one printed, never its Pythagorean twin"
+            );
+        }
+        // Non-instances decline: the half-scaled contraction the shadow lists
+        // as uncovered, and a fabricated pair.
+        assert!(run("sin(x)*cos(x)", "sin(2*x)/2").is_empty());
+        assert!(run("sin(2*x)", "2*sin(x)*sin(x)").is_empty());
     }
 
     /// `Split Log Exponents` cites plain exponential algebra — the identity

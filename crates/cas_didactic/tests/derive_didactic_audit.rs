@@ -3548,8 +3548,13 @@ fn derive_didactic_cos_double_angle_expansion_keeps_an_explicit_identity_step() 
         })
         .expect("expected double-angle cosine expansion step");
 
+    // The name of this test asked for «an explicit identity step» and could
+    // only pin SILENCE: pre-matcher the emitter's fallback said «Usar la
+    // identidad de ángulo doble», true of three identities at once. Since the
+    // matcher migration (2026-07-28) the step names the one it applies, in the
+    // orientation the reader sees.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar cos(2u) = 1 - 2 · sin(u)^2".to_string()]);
 }
 
 #[test]
@@ -3570,8 +3575,11 @@ fn derive_didactic_cos_double_angle_contraction_explains_the_additive_pattern() 
         })
         .expect("expected additive cosine contraction step");
 
+    // The CONTRACTION cites its own orientation, not the expansion it
+    // inverts: same identity, opposite gesture, and the reader is watching
+    // `1 - 2·sin(u)^2` become `cos(2u)`.
     let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+    assert_eq!(titles, vec!["Usar 1 - 2·sin(u)^2 = cos(2u)".to_string()]);
 }
 
 #[test]

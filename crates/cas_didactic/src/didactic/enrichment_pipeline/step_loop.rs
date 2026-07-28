@@ -200,6 +200,7 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
             | "Half-Angle Square Identity"
             | "Angle Consistency (Half-Angle)"
             | "Split Log Exponents"
+            | "Double Angle Expansion"
     ) && normalized_substep.starts_with("usar "))
         || step.rule_name.starts_with("Evaluar límite")
         || normalized_substep.starts_with("aquí ")
@@ -229,7 +230,6 @@ pub(crate) fn is_single_formula_template_rule(rule_name: &str) -> bool {
             | "Canonicalize Roots"
             | "expand_log"
             | "Log Contraction"
-            | "Double Angle Expansion"
             | "Combine powers with same base (n-ary)"
     )
 }

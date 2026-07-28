@@ -5551,7 +5551,17 @@ fn eval_double_angle_cos_one_minus_two_sin_sq_raw_difference_collapses_to_zero_i
             "Expandir ángulo doble",
         ],
     );
-    assert!(steps[0].get("substeps").is_none());
+    // Pinned SILENCE before the matcher migration (2026-07-28): the rule sat
+    // in the silenced list because its «Usar L = R» was an unverified claim.
+    // Now the identity is stated only when the pair provably instantiates the
+    // censused row, and the sub-step's own sides are the LOCAL pair the
+    // identity applies to — `cos(2·x) ⟹ 1 - 2·sin(x)^2` inside the difference
+    // that collapses — so the cited formula is the one on screen.
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 1);
+    assert_eq!(substeps[0]["title"], "Usar cos(2u) = 1 - 2 · sin(u)^2");
+    assert_eq!(substeps[0]["before"], "cos(2·x)");
+    assert_eq!(substeps[0]["after"], "1 - 2·sin(x)^2");
 }
 
 #[test]
