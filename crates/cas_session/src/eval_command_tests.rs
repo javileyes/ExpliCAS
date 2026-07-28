@@ -1046,6 +1046,13 @@ mod tests {
         );
     }
 
+    /// El eco fiel del estilo del input vive en la CABECERA; el RESULTADO va siempre
+    /// en radical (decisión del usuario 2026-07-29). Este test fijaba las dos mitades
+    /// en exponencial, que era el contrato anterior —la notación la decidía la
+    /// PROCEDENCIA— y por eso resultados que el alumno reconoce de memoria salían en
+    /// la forma menos reconocible cuando nadie había escrito una raíz (`sqrt(pi)` daba
+    /// `pi^(1/2)`). El precio de la consistencia se ve aquí: `x^(7/6)` se presenta como
+    /// `\sqrt[6]{x^7}`, o sea un índice alto que no es más legible que la potencia.
     #[test]
     fn evaluate_eval_command_pretty_preserves_fractional_power_input_style_in_latex() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
@@ -1074,13 +1081,10 @@ mod tests {
         let result_latex = payload["result_latex"]
             .as_str()
             .expect("result_latex string");
-        assert!(
-            result_latex.contains("{x}^{\\frac{7}{6}}"),
-            "expected result_latex to preserve exponential-style result, got: {result_latex}"
-        );
-        assert!(
-            !result_latex.contains("\\sqrt"),
-            "expected result_latex to avoid radical notation for exponential-style input, got: {result_latex}"
+        assert_eq!(
+            result_latex, "\\sqrt[6]{{x}^{7}}",
+            "el resultado va en radical aunque el input fuese exponencial: la procedencia \
+             decide la cabecera, no el resultado"
         );
     }
 

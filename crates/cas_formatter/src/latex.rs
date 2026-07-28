@@ -286,6 +286,32 @@ mod tests {
     }
 
     #[test]
+    fn test_latex_binary_root_function_is_a_radical() {
+        // `root(a, n)` es una función BINARIA: sin brazo propio caía al
+        // `\text{…}` genérico y la cabecera de `root(x, 3)` salía como texto
+        // plano dentro del LaTeX (`\text{root}(x, 3)`) en vez de `\sqrt[3]{x}`.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let three = ctx.num(3);
+        let root = ctx.call("root", vec![x, three]);
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: root,
+        };
+        assert_eq!(latex.to_latex(), "\\sqrt[3]{x}");
+
+        // Radicando compuesto: la agrupación la da la propia caja del radical.
+        let one = ctx.num(1);
+        let sum = ctx.add(Expr::Add(x, one));
+        let root_sum = ctx.call("root", vec![sum, three]);
+        let latex_sum = LaTeXExpr {
+            context: &ctx,
+            id: root_sum,
+        };
+        assert_eq!(latex_sum.to_latex(), "\\sqrt[3]{x + 1}");
+    }
+
+    #[test]
     fn test_latex_fractional_power() {
         let mut ctx = Context::new();
         let x = ctx.var("x");

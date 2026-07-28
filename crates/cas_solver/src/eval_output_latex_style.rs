@@ -25,14 +25,15 @@ fn style_for_eval_intent(
                 style.root_style = RootStyle::Radical;
             }
         }
-        // Normalize mixed root/power inputs to radical style in the result so
-        // the output does not keep a mixed "smell".
+        // El RESULTADO va siempre en radical (decisión del usuario 2026-07-29,
+        // por consistencia). Antes ecoaba el estilo del input, y eso hacía que
+        // resultados que el alumno reconoce de memoria salieran en la forma
+        // menos reconocible cuando NADIE había escrito una raíz:
+        // `integrate(e^(-x^2), x, -oo, oo)` daba `pi^(1/2)` en vez de `sqrt(pi)`
+        // y la fórmula cuadrática, `(b^2 - 4·a·c)^(1/2)`.
+        // El eco fiel del input se conserva donde toca: en la CABECERA.
         EvalLatexRenderIntent::Result => {
-            if signals.saw_sqrt_token > 0 {
-                style.root_style = RootStyle::Radical;
-            } else if signals.saw_caret_fraction > 0 {
-                style.root_style = RootStyle::Exponential;
-            }
+            style.root_style = RootStyle::Radical;
         }
     }
 

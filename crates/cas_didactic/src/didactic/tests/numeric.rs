@@ -85,6 +85,34 @@ fn test_cli_substep_render_prefers_explicit_latex_when_available() {
 }
 
 #[test]
+fn test_latex_to_plain_text_converts_indexed_roots() {
+    // El radicando compuesto DEBE quedar agrupado: `sqrt[3]x + 1` se lee como
+    // ∛x + 1 (otra expresión) y no vuelve a parsear.
+    assert_eq!(
+        latex_to_plain_text(r"\sqrt[3]{x + 1}"),
+        "root(x + 1, 3)",
+        "radicando compuesto sin agrupar"
+    );
+    assert_eq!(latex_to_plain_text(r"\sqrt[3]{x}"), "root(x, 3)");
+    // Índice 2 explícito habla la lengua del índice-menos: `sqrt(x)`.
+    assert_eq!(latex_to_plain_text(r"\sqrt[2]{x}"), "sqrt(x)");
+    // Potencia bajo la raíz: el paso de exponentes sigue corriendo después.
+    assert_eq!(latex_to_plain_text(r"\sqrt[3]{{x}^{2}}"), "root(x^2, 3)");
+    // Anidamiento en ambos sentidos.
+    assert_eq!(
+        latex_to_plain_text(r"\sqrt{\sqrt[3]{x}}"),
+        "sqrt(root(x, 3))"
+    );
+    assert_eq!(
+        latex_to_plain_text(r"\sqrt[3]{\sqrt{x}}"),
+        "root(sqrt(x), 3)"
+    );
+    // Ni rastro de la forma cruda.
+    let mixed = latex_to_plain_text(r"\sqrt[4]{y} + \sqrt[3]{x + 1}");
+    assert_eq!(mixed, "root(y, 4) + root(x + 1, 3)", "got {mixed}");
+}
+
+#[test]
 fn test_latex_to_plain_text_handles_rationalization_fraction_and_sqrt() {
     let input = r"\frac{(1) \cdot (\sqrt{x} + 1)}{\sqrt{x} - 1  \cdot  (\sqrt{x} + 1)}";
     let output = latex_to_plain_text(input);

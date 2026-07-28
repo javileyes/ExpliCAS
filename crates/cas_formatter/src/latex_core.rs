@@ -915,7 +915,11 @@ pub trait LaTeXRenderer {
             "sqrt" if args.len() == 1 => {
                 format!("\\sqrt{{{}}}", self.expr_to_latex(args[0], false))
             }
-            "sqrt" if args.len() == 2 => {
+            // `root(a, n)` es la MISMA función que `sqrt(a, n)` para el lector
+            // (ambas son `BuiltinFn` distintas por dentro, pero la notación de
+            // un alumno es una sola): sin este brazo la cabecera de `root(x, 3)`
+            // caía al `\text{…}` genérico de funciones no unarias.
+            "sqrt" | "root" if args.len() == 2 => {
                 let radicand = self.expr_to_latex(args[0], false);
                 let index = self.expr_to_latex(args[1], false);
                 format!("\\sqrt[{}]{{{}}}", index, radicand)
@@ -2539,7 +2543,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                     self.render_with_path(args[0], false, &self.child_path(path, 0))
                 )
             }
-            "sqrt" if args.len() == 2 => {
+            "sqrt" | "root" if args.len() == 2 => {
                 let radicand = self.render_with_path(args[0], false, &self.child_path(path, 0));
                 let index = self.render_with_path(args[1], false, &self.child_path(path, 1));
                 format!("\\sqrt[{}]{{{}}}", index, radicand)

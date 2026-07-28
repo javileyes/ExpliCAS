@@ -255,7 +255,15 @@ impl ParseStyleSignals {
         let mut signals = Self::new();
 
         // Count sqrt occurrences
-        signals.saw_sqrt_token = input.matches("sqrt").count() + input.matches('√').count();
+        // `root(x, n)` es tan «token de raíz» como `sqrt(x)`, y sin contarlo el
+        // sniffing veía la forma YA convertida (`x^(1/3)`, un `Pow`) y la
+        // declaraba potencia: quien escribe `root(x, 3)` recibía potencias en las
+        // superficies que resuelven el estilo por señales (`simplify`, el título
+        // del timeline). El paréntesis es parte del token a propósito — así una
+        // variable llamada `root` no cuenta como raíz.
+        signals.saw_sqrt_token = input.matches("sqrt").count()
+            + input.matches('√').count()
+            + input.matches("root(").count();
 
         // Count potential fractional exponents (rough heuristic)
         // Look for patterns like ^(1/2), ^(1/3), ^(2/3)

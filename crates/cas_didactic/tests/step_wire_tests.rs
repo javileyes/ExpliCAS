@@ -1750,3 +1750,97 @@ fn step_wire_root_denesting_keeps_didactic_substeps() {
         );
     }
 }
+
+#[test]
+fn step_wire_indexed_root_text_is_grouped_and_reparseable() {
+    // El texto plano de un paso es lo que copia el usuario. Con la raíz de índice
+    // sin agrupar (`sqrt[3]x + 1`) se leía como ∛x + 1 —otra expresión— y la
+    // propia app la rechazaba al volver a entrar.
+    let expr = "root(x + 1, 3)^2";
+    let (engine, output) = eval_output_for(expr);
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    for step in &steps {
+        for side in [&step.before, &step.after] {
+            assert!(
+                !side.contains("sqrt["),
+                "raíz indexada sin agrupar en {side:?} (paso {:?})",
+                step.rule
+            );
+            // Y el texto vuelve a entrar por el parser.
+            let mut ctx = cas_ast::Context::new();
+            assert!(
+                cas_parser::parse(side, &mut ctx).is_ok(),
+                "el texto de un paso no re-parsea: {side:?} (paso {:?})",
+                step.rule
+            );
+        }
+    }
+}
+
+#[test]
+fn step_wire_prunes_pure_root_notation_canonicalization() {
+    // `Canonicalize Roots` en su brazo de NOTACIÓN cambia la forma interna, no la
+    // presentada: con la raíz como presentación en las tres superficies sus dos
+    // lados se imprimen idénticos, así que el paso no puede enseñar nada. Con dos
+    // radicales lo único que quedaba visible era el reorden del contexto.
+    for expr in ["root(x, 3)", "sqrt(x)", "root(y, 4) + root(x + 1, 3)"] {
+        let steps = step_payloads_on_for(expr);
+        assert!(
+            !steps
+                .iter()
+                .any(|step| step.rule == "Reescribir la raíz como potencia fraccionaria"),
+            "el no-op de notación de raíz sigue visible en {expr:?}: {:?}",
+            steps.iter().map(|step| &step.rule).collect::<Vec<_>>()
+        );
+    }
+
+    // El cuarto brazo, `sqrt(x^2k) -> |x|^k`, SÍ cambia lo presentado (mete el
+    // valor absoluto, identidad real-only) y debe seguir viéndose.
+    let steps = step_payloads_on_for("sqrt(x^2)");
+    assert!(
+        steps.iter().any(|step| step.after.contains("|x|")),
+        "el brazo de potencia par no debe podarse: {:?}",
+        steps
+            .iter()
+            .map(|step| (&step.rule, &step.before, &step.after))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn step_wire_events_fallback_prunes_pure_root_notation_canonicalization() {
+    // El camino de EVENTOS solo entra cuando el normal se queda vacío — es decir,
+    // justo cuando el paso podado era el único. Si divergiera, el no-op reaparece
+    // exactamente en el caso que se quería podar.
+    let mut ctx = cas_ast::Context::new();
+    let x = ctx.var("x");
+    let three = ctx.num(3);
+    let root = ctx.call("root", vec![x, three]);
+    let third = ctx.rational(1, 3);
+    let pow = ctx.add(cas_ast::Expr::Pow(x, third));
+
+    let steps = cas_didactic::collect_step_payloads_with_events(
+        &[],
+        &[EngineEvent::RuleApplied {
+            rule_name: "Canonicalize Roots".to_string(),
+            before: root,
+            after: pow,
+            global_before: Some(root),
+            global_after: Some(pow),
+            is_chained: false,
+        }],
+        &ctx,
+        "on",
+    );
+
+    assert!(
+        steps.is_empty(),
+        "el camino de eventos debe podar lo mismo que el normal, got {:?}",
+        steps
+            .iter()
+            .map(|step| (&step.rule, &step.before, &step.after))
+            .collect::<Vec<_>>()
+    );
+}

@@ -37,6 +37,38 @@ pub(super) fn additive_term_multiset(ctx: &Context, expr: ExprId) -> Vec<String>
     terms
 }
 
+/// Reglas de canonicalización PURA cuya aplicación no puede cambiar lo que el alumno ve.
+///
+/// - `Canonicalize Negation` ("Quitar paréntesis tras el signo menos") reordena sumandos
+///   (`√19 − √17 + x → √19 + x − √17`) o reparte una negación de cabeza.
+/// - `Canonicalize Roots` en sus brazos de NOTACIÓN (`sqrt(x) = x^(1/2)`,
+///   `root(x, n) = x^(1/n)`) cambia la forma INTERNA, no la presentada: desde que la
+///   raíz es la presentación en las tres superficies (cabecera, pasos y resultado —
+///   decisión del usuario 2026-07-29) sus dos lados se imprimen idénticos. Con un solo
+///   radical el paso ya se autopodaba por `before == after`; con dos, lo único visible
+///   era el REORDEN del contexto (`root(y,4) + root(x+1,3)` ⟹ el mismo par al revés y
+///   vuelta), churn puro.
+///
+/// El criterio es el multiset de sumandos, no la igualdad de cadenas, justo porque el
+/// reorden cambia la cadena. Y es AUTOLIMITADO: el cuarto brazo de `Canonicalize Roots`,
+/// `sqrt(x^2k) -> |x|^k`, mete un valor absoluto (identidad real-only), cambia el
+/// multiset y por tanto SIGUE viéndose — igual que una reescritura estructural genuina
+/// bajo `Canonicalize Negation` (la expansión del cubo).
+///
+/// Vive aquí, compartido, porque los dos recolectores de pasos (el normal y el de
+/// eventos) deben podar lo mismo: el de eventos solo entra cuando el normal se queda
+/// vacío, así que una divergencia entre ambos se manifiesta como "el paso reaparece
+/// justo cuando era el único".
+pub(super) fn is_presentation_noop_canonicalization(
+    ctx: &Context,
+    rule_name: &str,
+    before: ExprId,
+    after: ExprId,
+) -> bool {
+    matches!(rule_name, "Canonicalize Negation" | "Canonicalize Roots")
+        && additive_term_multiset(ctx, before) == additive_term_multiset(ctx, after)
+}
+
 pub(super) fn build_step_wire(
     context: &Context,
     index: usize,

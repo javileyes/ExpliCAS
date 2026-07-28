@@ -31,6 +31,17 @@ pub(crate) fn latex_to_plain_text(s: &str) -> String {
         result = next_result;
     }
 
+    // La raíz CON índice tiene su propio prefijo (`\sqrt[n]{…}`): sin este bucle
+    // no la ve nadie y el borrado ciego de llaves de más abajo la parte en dos.
+    let mut indexed_sqrt_iterations = 0;
+    while result.contains("\\sqrt[") && indexed_sqrt_iterations < 10 {
+        indexed_sqrt_iterations += 1;
+        let Some(next_result) = sqrt::replace_last_indexed_sqrt(&result) else {
+            break;
+        };
+        result = next_result;
+    }
+
     let mut power_iterations = 0;
     while result.contains("}^{") && power_iterations < 10 {
         power_iterations += 1;

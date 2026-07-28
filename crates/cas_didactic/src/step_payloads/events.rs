@@ -35,17 +35,19 @@ fn build_event_step_payload(
             let before_expr = global_before.unwrap_or(*before);
             let after_expr = global_after.unwrap_or(*after);
 
-            // `Canonicalize Negation` ("Quitar paréntesis tras el signo menos") is a pure normalization
-            // rule — it reorders additive terms (`√19 − √17 + x → √19 + x − √17`) or distributes a
-            // leading negation, always preserving the multiset of signed terms. Those are didactic noise
-            // (the step-quality tests assert this visible name never appears), but the display-equal
-            // no-op filter below misses them (the reorder changes the string) and `is_always_keep`
-            // protects `Canonicalize*` anyway. Drop them whenever the additive-term multiset is
-            // unchanged; a STRUCTURAL rewrite under the same rule changes the multiset and is kept.
-            if rule_name == "Canonicalize Negation"
-                && super::build::additive_term_multiset(ctx, before_expr)
-                    == super::build::additive_term_multiset(ctx, after_expr)
-            {
+            // Canonicalización que no puede cambiar lo PRESENTADO (reorden aditivo o pura
+            // notación de raíz): didáctica nula. El filtro de no-op por igualdad de cadena
+            // de más abajo NO las ve (el reorden cambia la cadena) y `is_always_keep`
+            // protege a todo `Canonicalize*` de todas formas. Mismo predicado —
+            // literalmente la misma función— que el camino normal de pasos: este camino
+            // solo entra cuando aquel se queda vacío, así que una divergencia se
+            // manifestaría como "el paso reaparece justo cuando era el único".
+            if super::build::is_presentation_noop_canonicalization(
+                ctx,
+                rule_name,
+                before_expr,
+                after_expr,
+            ) {
                 return None;
             }
 

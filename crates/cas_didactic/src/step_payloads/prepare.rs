@@ -49,18 +49,17 @@ fn prune_semantically_noop_step_payloads(steps: &[Step], ctx: &Context) -> Vec<S
 }
 
 fn should_drop_semantically_noop_step_payload(step: &Step, ctx: &Context) -> bool {
-    // `Canonicalize Negation` ("Quitar paréntesis tras el signo menos") is a pure NORMALIZATION rule:
-    // it reorders additive terms (`√19 − √17 + x → √19 + x − √17`) or distributes a leading negation
-    // (`−(√21 − √19) → √19 − √21`), always preserving the multiset of signed additive terms. Those steps
-    // are didactic noise (the step-quality tests assert this visible name never appears). This check
-    // runs BEFORE the `is_always_keep_step_rule_name` guard below, because every `Canonicalize*` rule is
-    // "always keep" — yet a value-preserving reordering teaches nothing. A genuine STRUCTURAL rewrite
-    // under the same rule (the `(a+b)^3` cube expansion, relabelled to "Expandir la expresión") changes
-    // the term multiset and is therefore kept.
-    if step.rule_name == "Canonicalize Negation"
-        && super::build::additive_term_multiset(ctx, step.before)
-            == super::build::additive_term_multiset(ctx, step.after)
-    {
+    // Canonicalización que no puede cambiar lo PRESENTADO (reorden aditivo o pura
+    // notación de raíz): didáctica nula. Va ANTES del guard `is_always_keep_step_rule_name`
+    // de abajo, porque todo `Canonicalize*` es "always keep" — y aun así un reordenamiento
+    // que preserva el valor no enseña nada. Ver `build::is_presentation_noop_canonicalization`
+    // para el criterio exacto y por qué el brazo `sqrt(x^2k) -> |x|^k` sí se conserva.
+    if super::build::is_presentation_noop_canonicalization(
+        ctx,
+        step.rule_name.as_str(),
+        step.before,
+        step.after,
+    ) {
         return true;
     }
 

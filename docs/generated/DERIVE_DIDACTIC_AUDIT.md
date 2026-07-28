@@ -13569,8 +13569,8 @@ Result: x^(5 / 6)
 ### Web / JSON Steps
 
 1. `Sumar exponentes de la misma base`
-   - before: `sqrt(x) · sqrt[3]x`
-   - after: `sqrt[6]x^5`
+   - before: `sqrt(x) · root(x, 3)`
+   - after: `root(x^5, 6)`
    - substeps: none
 
 ## merge_mixed_root_and_fractional_powers_to_integer_with_passthrough (power_merge)
@@ -13665,8 +13665,8 @@ Result: x^(7 / 6)
 ### Web / JSON Steps
 
 1. `Sumar exponentes de la misma base`
-   - before: `sqrt(x) · sqrt[3]x^2`
-   - after: `sqrt[6]x^7`
+   - before: `sqrt(x) · root(x^2, 3)`
+   - after: `root(x^7, 6)`
    - substeps: none
 
 ## merge_same_base_fractional_powers_to_integer (power_merge)
@@ -13697,7 +13697,7 @@ Result: x
 ### Web / JSON Steps
 
 1. `Sumar exponentes de la misma base`
-   - before: `sqrt[4]x · sqrt[4]x^3`
+   - before: `root(x, 4) · root(x^3, 4)`
    - after: `x`
    - substeps: none
 
@@ -13727,8 +13727,8 @@ Result: x^(4 / 3)
 ### Web / JSON Steps
 
 1. `Sumar exponentes de la misma base`
-   - before: `x · sqrt[3]x`
-   - after: `sqrt[3]x^4`
+   - before: `x · root(x, 3)`
+   - after: `root(x^4, 3)`
    - substeps: none
 
 ## merge_same_base_integer_and_symbolic_power (power_merge)
@@ -14575,8 +14575,8 @@ Result: (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
 ### Web / JSON Steps
 
 1. `Racionalizar el denominador`
-   - before: `1/(sqrt[3]x + 1)`
-   - after: `(sqrt[3]x^2 + 1 - sqrt[3]x)/(x + 1)`
+   - before: `1/(root(x, 3) + 1)`
+   - after: `(root(x^2, 3) + 1 - root(x, 3))/(x + 1)`
    - substeps:
      1. `Multiplicar por el conjugado cúbico`
      2. `Aplicar suma de cubos en el denominador`
