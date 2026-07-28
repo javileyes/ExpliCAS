@@ -9986,8 +9986,16 @@ fn solve_system_educational_s3_contract() {
         "{par}"
     );
     // Lineal racional narra método; degenerado narra el porqué.
+    // El pin decía «Cramer/Gauss» — un hedge sobre un snapshot de relleno: los
+    // tres pasos arrastraban `exprs.first()`, así que el método se anunciaba
+    // sobre una ecuación que no estaba resolviendo y la ecuación 2 no salía en
+    // la traza. Desde 2026-07-28 se nombra el método que REALMENTE corre
+    // (`solve_nxn_gauss`: escalonar la matriz ampliada sobre ℚ y
+    // back-substituir) y cada paso lleva su propia ecuación.
     let lin = json_of("solve([x+y=3, x-y=1], [x, y])", None);
-    assert!(lin.contains("Cramer/Gauss"), "{lin}");
+    assert!(lin.contains("Eliminación gaussiana exacta"), "{lin}");
+    assert!(lin.contains("Ecuación 2 de 2 del sistema"), "{lin}");
+    assert!(lin.contains("Verificación exacta"), "{lin}");
     let inc = json_of("solve([x+y=1, x+y=2], [x, y])", Some("en"));
     assert!(
         inc.contains("inconsistent (no assignment satisfies all)"),

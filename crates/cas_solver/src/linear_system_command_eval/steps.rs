@@ -9,6 +9,51 @@ use cas_ast::{Context, Equation, ExprId, RelOp};
 
 use super::nonlinear::SystemNarration;
 
+/// Substitution that rebuilds RAW, for narration only.
+///
+/// The canonical `substitute_expr_by_id` re-adds every node through
+/// `Context::add`, which reorders and folds: `2·x + 3·y` with `x = 3, y = 2`
+/// came out as `2·3 + 2·3` — two identical-looking terms where the reader has
+/// to trace which value replaced which unknown. A verification step that
+/// cannot be read back against its own equation is the same filler the old
+/// narration was, so the substituted tree keeps the shape of the original.
+///
+/// Arithmetic nodes are rebuilt raw; anything else (functions, matrices)
+/// delegates to the canonical substitution — correct, just canonical, and a
+/// linear system does not produce those shapes anyway.
+fn substitute_raw(ctx: &mut Context, root: ExprId, bindings: &[(ExprId, ExprId)]) -> ExprId {
+    if let Some((_, replacement)) = bindings.iter().find(|(target, _)| *target == root) {
+        return *replacement;
+    }
+    let expr = ctx.get(root).clone();
+    macro_rules! binary {
+        ($variant:ident, $l:expr, $r:expr) => {{
+            let l = substitute_raw(ctx, $l, bindings);
+            let r = substitute_raw(ctx, $r, bindings);
+            ctx.add_raw(cas_ast::Expr::$variant(l, r))
+        }};
+    }
+    match expr {
+        cas_ast::Expr::Add(l, r) => binary!(Add, l, r),
+        cas_ast::Expr::Sub(l, r) => binary!(Sub, l, r),
+        cas_ast::Expr::Mul(l, r) => binary!(Mul, l, r),
+        cas_ast::Expr::Div(l, r) => binary!(Div, l, r),
+        cas_ast::Expr::Pow(l, r) => binary!(Pow, l, r),
+        cas_ast::Expr::Neg(inner) => {
+            let inner = substitute_raw(ctx, inner, bindings);
+            ctx.add_raw(cas_ast::Expr::Neg(inner))
+        }
+        cas_ast::Expr::Number(_) | cas_ast::Expr::Constant(_) | cas_ast::Expr::Variable(_) => root,
+        _ => {
+            let mut out = root;
+            for (target, replacement) in bindings {
+                out = cas_ast::substitute_expr_by_id(ctx, out, *target, *replacement);
+            }
+            out
+        }
+    }
+}
+
 fn eq_zero(ctx: &mut Context, lhs: ExprId) -> Equation {
     let zero = ctx.num(0);
     Equation {
@@ -31,28 +76,73 @@ pub(super) fn build_system_solve_steps(
         return steps;
     };
     let identify_eq = eq_zero(ctx, anchor);
-    steps.push(crate::SolveStep::new(
-        format!(
-            "Identificar sistema de {} ecuaciones con incógnitas [{}]",
-            exprs.len(),
-            vars.join(", ")
-        ),
-        identify_eq.clone(),
-        crate::ImportanceLevel::High,
-    ));
+
+    // Identification, ONE step per equation. The single header step used
+    // `exprs.first()` as a filler anchor, so a two-equation system announced
+    // itself over equation 1 and equation 2 never appeared in the trace at
+    // all — and the steps that followed repeated that same snapshot while
+    // claiming to solve and to verify the whole system.
+    for (index, &expr) in exprs.iter().enumerate() {
+        let eq = eq_zero(ctx, expr);
+        steps.push(crate::SolveStep::new(
+            format!(
+                "Ecuación {} de {} del sistema en las incógnitas [{}]",
+                index + 1,
+                exprs.len(),
+                vars.join(", ")
+            ),
+            eq,
+            crate::ImportanceLevel::High,
+        ));
+    }
 
     match result {
-        crate::LinSolveResult::Unique(_) => {
-            steps.push(crate::SolveStep::new(
-                "Resolver el sistema lineal por eliminación exacta (Cramer/Gauss sobre racionales)",
-                identify_eq.clone(),
-                crate::ImportanceLevel::High,
-            ));
-            steps.push(crate::SolveStep::new(
-                "Solución única: cada valor sustituye exacto en todas las ecuaciones",
-                identify_eq,
-                crate::ImportanceLevel::Medium,
-            ));
+        crate::LinSolveResult::Unique(values) => {
+            // The method named as it RUNS: `solve_nxn_gauss` reduces the
+            // augmented matrix to row echelon over ℚ and back-substitutes.
+            // The old text hedged «Cramer/Gauss» over a filler snapshot; each
+            // value now rides its own equation, which is what back-substitution
+            // actually produces.
+            for (var, value) in vars.iter().zip(values.iter()) {
+                let var_expr = ctx.var(var);
+                let value_expr = ctx.add(cas_ast::Expr::Number(value.clone()));
+                steps.push(crate::SolveStep::new(
+                    format!(
+                        "Eliminación gaussiana exacta sobre racionales y back-substitución: {var}"
+                    ),
+                    Equation {
+                        lhs: var_expr,
+                        rhs: value_expr,
+                        op: RelOp::Eq,
+                    },
+                    crate::ImportanceLevel::High,
+                ));
+            }
+            // The honesty clause, made visible: the old step ASSERTED that
+            // every value substitutes exactly and showed equation 1 untouched.
+            // Now each original equation is shown WITH the values in place, so
+            // the reader can do the arithmetic that backs the claim.
+            let bindings: Vec<(ExprId, ExprId)> = vars
+                .iter()
+                .zip(values.iter())
+                .map(|(var, value)| {
+                    let var_expr = ctx.var(var);
+                    let value_expr = ctx.add(cas_ast::Expr::Number(value.clone()));
+                    (var_expr, value_expr)
+                })
+                .collect();
+            for (index, &expr) in exprs.iter().enumerate() {
+                let substituted = substitute_raw(ctx, expr, &bindings);
+                let eq = eq_zero(ctx, substituted);
+                steps.push(crate::SolveStep::new(
+                    format!(
+                        "Verificación exacta: sustituir los valores en la ecuación {}",
+                        index + 1
+                    ),
+                    eq,
+                    crate::ImportanceLevel::Medium,
+                ));
+            }
         }
         crate::LinSolveResult::UniqueExpr {
             nonzero_conditions, ..

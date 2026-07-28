@@ -66,9 +66,17 @@ DEFAULT_SOLVE_SYSTEM_COMMAND_MATRIX_CASES = (
         name="linear_2x2_integer",
         expr="solve([x+y=3, x-y=1], [x, y])",
         expected_result="{ x = 2, y = 1 }",
+        # Pineaba la narración de relleno: los tres pasos arrastraban la MISMA
+        # ecuación (`exprs.first()` como anchor), así que «Cramer/Gauss» se
+        # anunciaba sobre `x + y - 3 = 0` y la ecuación 2 no aparecía en la
+        # traza. Ahora cada paso lleva SU ecuación: las dos del sistema, el
+        # valor que produce la back-substitución, y la verificación con los
+        # valores puestos — que es la aritmética que respalda la afirmación.
         expected_solve_step_substrings=(
-            "Identificar sistema de 2 ecuaciones",
-            "Cramer/Gauss",
+            "Ecuación 1 de 2 del sistema",
+            "Ecuación 2 de 2 del sistema",
+            "Eliminación gaussiana exacta",
+            "Verificación exacta",
         ),
     ),
     SolveSystemCommandMatrixCase(

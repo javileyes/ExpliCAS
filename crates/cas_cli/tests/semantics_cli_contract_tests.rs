@@ -11345,3 +11345,70 @@ fn eval_abs_of_provably_signed_constants_resolves_both_orientations() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "pi - 3");
 }
+
+/// A system trace must let the reader CHECK it, not just be told a method ran.
+///
+/// The pre-2026-07-28 narration emitted three steps that all carried
+/// `exprs.first()` as a filler snapshot: «Identificar sistema de 2
+/// ecuaciones», «Resolver por eliminación exacta (Cramer/Gauss)» and
+/// «Solución única: cada valor sustituye exacto en todas las ecuaciones» all
+/// displayed `x + y - 3 = 0`. Equation 2 never appeared, the elimination step
+/// showed something it was not eliminating, and the verification asserted an
+/// arithmetic the reader could not see.
+///
+/// This pins the three properties that fix required: every equation of the
+/// system appears, each step carries its OWN equation, and the verification
+/// shows the substituted arithmetic.
+#[test]
+fn eval_linear_system_trace_shows_every_equation_and_the_verification_arithmetic() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "solve([x+y=3, x-y=1], [x, y])",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "{ x = 2, y = 1 }");
+
+    let steps = wire["solve_steps"].as_array().expect("solve_steps array");
+    let described: Vec<(&str, &str)> = steps
+        .iter()
+        .map(|s| {
+            (
+                s["description"].as_str().unwrap_or_default(),
+                s["equation"].as_str().unwrap_or_default(),
+            )
+        })
+        .collect();
+
+    // Both equations of the system are stated, each on its own step.
+    assert_eq!(described[0].1, "x + y - 3 = 0");
+    assert_eq!(described[1].1, "x - y - 1 = 0");
+    assert!(described[0].0.contains("Ecuación 1 de 2"));
+    assert!(described[1].0.contains("Ecuación 2 de 2"));
+
+    // Back-substitution publishes the value it produced, one per unknown.
+    assert!(described[2].0.contains("Eliminación gaussiana exacta"));
+    assert_eq!(described[2].1, "x = 2");
+    assert_eq!(described[3].1, "y = 1");
+
+    // The honesty clause is now CHECKABLE: the originals with the values in
+    // place. The raw rebuild is what keeps the coefficients readable — a
+    // canonical re-add folds and reorders (`2·x + 3·y` came out `2·3 + 2·3`).
+    assert!(described[4].0.contains("Verificación exacta"));
+    assert_eq!(described[4].1, "1 + 2 - 3 = 0");
+    assert_eq!(described[5].1, "2 - 1 - 1 = 0");
+
+    // No step may repeat another's snapshot: that WAS the defect.
+    let equations: Vec<&str> = described.iter().map(|(_, eq)| *eq).collect();
+    let mut unique = equations.clone();
+    unique.sort_unstable();
+    unique.dedup();
+    assert_eq!(
+        unique.len(),
+        equations.len(),
+        "every step must carry its own equation, got {equations:?}"
+    );
+}
