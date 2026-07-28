@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 755 (newest first)
+Active entries: 756 (newest first)
 
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
@@ -126,6 +126,7 @@ Active entries: 755 (newest first)
 - 2026-07-28 | `retained` | `cas_math/power_product_support.rs` (`negative_number_magnitude` + rama negad... | SOUNDNESS DE PRESENTACIÓN (hermano negado del pliegue de potencias): la misma ecuación imprimía sus dos raíces en dos formas, decidido por un signo
 - 2026-07-28 | `retained` | `cas_solver_core/quadratic_didactic.rs` (3 guards exactos + test de los tres ... | VERACIDAD (maniobras vacuas en la derivación cuadrática): el candidato del informe anterior NO existía, y el sondeo destapó el de al lado
 - 2026-07-28 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (detector `D5b_solve_step_repeat`... | MEDIDA (cobertura por canal del carril): D5 y D6 solo miraban `steps[]`, y la mitad legítima de lo que encontraron NO era un defecto
+- 2026-07-28 | `retained` | `cas_solver/linear_system_command_eval/steps.rs` (brazo `UniqueExpr`: un paso... | VERACIDAD (los dos supervivientes de D5b): un techo con los casos NOMBRADOS se cierra mecánicamente
 - 2026-07-27 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (test `generated_substep_claim_in... | VERACIDAD (plan · C1.9, tier GENERATIVO): el corpus deja de elegirlo una persona — 5000 expresiones generadas, ~4986 claims re-verificados sobre el wire con el estándar del emisor, 0 refutaciones
 - 2026-07-27 | `retained` | `cas_didactic/focused_rule_substeps.rs` (`generate_repeated_polynomial_elemen... | VERACIDAD (plan · C1.6, por partes repetida): el cierre integra SU integrando y una RECOMPOSICIÓN probada aterriza en la respuesta — el P0 del testigo muere y la familia entera gana el paso que faltaba
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (instrumento nuevo: cobertura del... | VERACIDAD (campaña de sombra del matcher, paso 0 + primera migración): la sombra midió la cola ENTERA en <1 s — y el primer emisor migrado citaba la identidad EQUIVOCADA en 4 de sus 7 pares
@@ -22607,3 +22608,21 @@ Active entries: 755 (newest first)
   - **Antes de poner un techo a cero, mirar quién sobrevive**: aquí la mayoría de lo detectado era la narración honesta de la verificación. Una medida nueva sin su escapatoria convierte un instrumento en una orden de borrar contenido bueno.
   - **Un techo con los supervivientes NOMBRADOS es una lista de trabajo; uno con un número suelto es una tolerancia**. Los dos que quedan citan su expresión y su causa, así que el ciclo que los cierre sabe exactamente qué buscar.
   - **`doc_lazy_continuation` (2ª vez en la sesión)**: tras una lista `///   - …`, un párrafo nuevo necesita una línea `///` vacía o clippy lo lee como continuación. Barato de evitar, caro de descubrir en la puerta de commit.
+
+## 2026-07-28 - VERACIDAD (los dos supervivientes de D5b): un techo con los casos NOMBRADOS se cierra mecánicamente
+
+- area: `cas_solver/linear_system_command_eval/steps.rs` (brazo `UniqueExpr`: un paso de Cramer por incógnita con su valor), `cas_engine/src/eval/dsolve_action.rs` (el paso que calcula μ muestra μ), `eval_output_presentation_solve_steps/localization.rs` (fila con placeholder), `steps_quality_gate_tests.rs` (techo D5b → aserción de CERO).
+- status: `retained`.
+- capture:
+  - **LA LISTA DE TRABAJO SE CIERRA SOLA CUANDO ESTÁ NOMBRADA**: el ciclo anterior no dejó «D5b ≤ 2» sino los dos casos con expresión y causa. Este ciclo no tuvo que buscar nada: `solve([a·x+y=1, x−y=0])` y `dsolve(y' + y = x)`, y en ambos el dato correcto YA estaba en el sitio de emisión.
+  - **EL MOLDE ES EL MISMO QUE LA CARACTERÍSTICA**: el paso muestra lo que su frase produce. Cramer PRODUCE un valor por incógnita (están en `values` del `UniqueExpr`, igual que en el brazo `Unique`), así que pasa a un paso por incógnita con `x = 1/(a+1)`; «calcular el factor integrante μ = e^x» produce μ, así que muestra `μ = e^x` en vez de la EDO sin tocar.
+  - **TECHO → ASERCIÓN**: `D5B_..._CEILING` pasa de 2 a 0 y el `assert!(<=)` a `assert_eq!`. Ya no queda ningún caso donde repetir la ecuación anterior sea legítimo salvo la verificación, que tiene su escapatoria explícita (`solve_repeat_is_honest`).
+- observed:
+  - `D5b_solve_step_repeat`: **2 → 0**. Barrido general (1129 comandos): **0 diffs de result**.
+  - workspace failed:0 (358 suites, 12633 tests), clippy 0, scorecard/pressure/wasm verdes; `engine-fast` rojo una vez por `stderr_fragility` (**décima instancia** de la clase en la sesión) y verde en exclusiva.
+  - Huella: `D5b` 2→0 y `solve_steps_total` 170→171 (el paso único de Cramer se vuelve uno por incógnita) — ambos la firma del ciclo. Pressure: 0 deltas de comportamiento.
+- decision: retener.
+- retained learning:
+  - **Un techo con los supervivientes nombrados es una lista de trabajo; uno con un número suelto es deuda sin dirección.** La diferencia se cobra en el ciclo siguiente: aquí el trabajo fue mecánico porque el techo citaba expresión y causa, y el ciclo pudo dedicarse a arreglar en vez de a re-descubrir.
+  - **«Muestra lo que tu frase produce» ya ha cerrado cuatro sitios** (verificación de sistemas, característica del sistema, Cramer paramétrico, factor integrante). Cuando un tipo de paso EXIGE una ecuación y el emisor no tiene una natural, la pregunta correcta no es «cuál pongo» sino «qué produce este paso» — y casi siempre está en el ámbito.
+  - **Un contador que llega a 0 debe cambiar de forma**: `assert!(x <= 0)` es además una comparación absurda sobre `usize`; `assert_eq!(x, 0)` dice que es contrato y no tolerancia. El molde del repo (C1.4: «lo lleva a cero y se vuelve aserción») aplicado literalmente.

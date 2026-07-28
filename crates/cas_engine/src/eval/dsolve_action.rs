@@ -4381,12 +4381,23 @@ fn build_linear_steps(
         importance: ImportanceLevel::High,
         substeps: vec![],
     });
+    // El paso CALCULA μ, así que la ecuación que muestra es μ — llevaba la EDO
+    // sin tocar como anchor, o sea repetía el paso anterior mientras anunciaba
+    // un objeto nuevo (el superviviente D5b nombrado en el ciclo previo).
+    let mu_eq = {
+        let mu_var = ctx.var("μ");
+        Equation {
+            lhs: mu_var,
+            rhs: mu,
+            op: RelOp::Eq,
+        }
+    };
     steps.push(crate::api::SolveStep {
         description: format!(
             "Calcular el factor integrante: μ = e^(∫p dx) = {}",
             render_expr(ctx, mu)
         ),
-        equation_after: ode_eq.clone(),
+        equation_after: mu_eq,
         importance: ImportanceLevel::High,
         substeps: vec![],
     });

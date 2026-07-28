@@ -543,17 +543,14 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
 //     verbs' mega-substep, its own cycle.
 //   - row 199 `limit(exp(z), z, i*pi)`: the residual-policy substep, where
 //     before == after IS the narration (same contract as `Conservar …`).
-/// Techo MEDIDO, con los dos supervivientes nombrados — no es una tolerancia
-/// genérica, es la lista de lo que queda:
-///   - `solve([a·x+y=1, x−y=0])`: el brazo `UniqueExpr` («Coeficientes
-///     simbólicos» → «Resolver por Cramer exacto») arrastra la ecuación 1 como
-///     anchor. Residual ya nombrado al arreglar el brazo `Unique` (S1).
-///   - `dsolve(y' + y = x)`: «Calcular el factor integrante: μ = e^(∫p dx)»
-///     muestra la EDO sin tocar; su contenido real (μ) vive en la descripción.
-///
-/// Bajar este número exige darle a cada paso la ecuación que su frase nombra,
-/// como se hizo con la característica del sistema en este mismo ciclo.
-const D5B_SOLVE_STEP_REPEAT_CEILING: usize = 2;
+/// CERO, y por eso es aserción y no techo. Nació en 2 con los supervivientes
+/// nombrados —el brazo `UniqueExpr` de sistemas y el factor integrante de
+/// dsolve— y ambos se cerraron con el mismo molde: darle a cada paso la
+/// ecuación que su frase nombra (Cramer PRODUCE un valor por incógnita;
+/// «calcular μ» produce μ). No queda ningún caso donde repetir la ecuación
+/// anterior sea legítimo salvo la verificación, que tiene su propia
+/// escapatoria en `solve_repeat_is_honest`.
+const D5B_SOLVE_STEP_REPEAT_CEILING: usize = 0;
 
 const E8_SUBSTEP_NOOP_CEILING: usize = 3;
 
@@ -593,11 +590,10 @@ fn run_gate(label: &str, inputs: &[String], min_expected: usize) {
         .measures
         .get("D5b_solve_step_repeat")
         .map_or(0, |m| m.0);
-    assert!(
-        d5b <= D5B_SOLVE_STEP_REPEAT_CEILING,
-        "{label}: D5b_solve_step_repeat={d5b} exceeds {D5B_SOLVE_STEP_REPEAT_CEILING} — \
-         a solve step repeats the previous equation while its description \
-         announces something else"
+    assert_eq!(
+        d5b, D5B_SOLVE_STEP_REPEAT_CEILING,
+        "{label}: D5b_solve_step_repeat={d5b} — a solve step repeats the \
+         previous equation while its description announces something else"
     );
 
     let e8b = report

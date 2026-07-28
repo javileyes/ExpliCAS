@@ -145,18 +145,30 @@ pub(super) fn build_system_solve_steps(
             }
         }
         crate::LinSolveResult::UniqueExpr {
-            nonzero_conditions, ..
+            values,
+            nonzero_conditions,
         } => {
             steps.push(crate::SolveStep::new(
                 "Coeficientes simbólicos: la lista de incógnitas decide la linealidad y los parámetros van a los coeficientes",
                 identify_eq.clone(),
                 crate::ImportanceLevel::High,
             ));
-            steps.push(crate::SolveStep::new(
-                "Resolver por Cramer exacto sobre polinomios en los parámetros",
-                identify_eq.clone(),
-                crate::ImportanceLevel::High,
-            ));
+            // Cramer PRODUCE un valor por incógnita, así que eso es lo que
+            // muestra — un solo paso con la ecuación 1 repetida anunciaba el
+            // método sobre algo que no estaba resolviendo (el segundo
+            // superviviente D5b). Mismo trato que el brazo `Unique`.
+            for (var, &value) in vars.iter().zip(values.iter()) {
+                let var_expr = ctx.var(var);
+                steps.push(crate::SolveStep::new(
+                    format!("Resolver por Cramer exacto sobre polinomios en los parámetros: {var}"),
+                    Equation {
+                        lhs: var_expr,
+                        rhs: value,
+                        op: RelOp::Eq,
+                    },
+                    crate::ImportanceLevel::High,
+                ));
+            }
             for &cond in nonzero_conditions {
                 let cond_eq = Equation {
                     lhs: cond,
