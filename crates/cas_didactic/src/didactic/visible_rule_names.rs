@@ -273,6 +273,50 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Multivariate Limit" => "Evaluar el límite multivariable por continuidad",
         "Zero Property of Division" => "Cero dividido entre cualquier valor es cero",
         "sinh(x)/cosh(x) = tanh(x)" => "Reconocer la tangente hiperbólica",
+
+        // Las 31 reglas que el barrido de 2026-07-28 pilló publicando su
+        // IDENTIFICADOR INTERNO: sin fila aquí, el `_ => rule_name` de abajo
+        // deja el nombre crudo del motor en la traza («Trig Phase Shift» en
+        // medio de pasos en español). Medidas sobre el corpus que la propia
+        // app ofrece en su menú de ejemplos — 31 de 166 nombres visibles.
+        // El gate `every_corpus_rule_has_a_visible_name` impide que vuelva a
+        // crecer en silencio.
+        "Trig Phase Shift" => "Aplicar el desfase entre seno y coseno",
+        "Supplementary Angle" => "Usar el ángulo suplementario",
+        "Trig Half-Angle Squares" => "Aplicar el cuadrado del ángulo mitad",
+        "Angle Sum Fraction to Tan" => "Reconocer la tangente de una suma de ángulos",
+        "Abs Squared Identity" => "Quitar el valor absoluto al elevar al cuadrado",
+        "Abs Idempotent" => "Quitar el valor absoluto repetido",
+        "Abs Positive Factor" => "Sacar el factor positivo del valor absoluto",
+        "Abs Product" => "Unir valores absolutos en un producto",
+        "Abs Quotient" => "Unir valores absolutos en un cociente",
+        "Abs Distribute Over Odd Power" => "Sacar el valor absoluto de la potencia",
+        "Abs Odd Power Canonicalize" => "Separar la parte par de la potencia con valor absoluto",
+        "Log Abs Power" => "Sacar el exponente de un logaritmo con valor absoluto",
+        "Rationalize Single Surd" => "Racionalizar el denominador",
+        "Rationalize Sum of Sqrts Denominator" => "Racionalizar el denominador con el conjugado",
+        "Factor Common Integer" => "Sacar el factor entero común",
+        "Denest Nested Square Root" => "Desanidar la raíz cuadrada",
+        "Denest Cube Root in Quadratic Field" => "Desanidar la raíz cúbica en un cuerpo cuadrático",
+        "Exp Quotient" => "Restar exponentes al dividir exponenciales",
+        "Factor e from ln Product" => "Separar el factor e dentro del logaritmo",
+        "Factor e from ln Quotient" => "Separar el divisor e dentro del logaritmo",
+        "Hyperbolic Sum to Exponential" => "Reconocer la exponencial como suma hiperbólica",
+        "Hyperbolic Negative Argument" => "Aplicar la paridad hiperbólica al argumento",
+        "Hyperbolic Triple Angle Identity" => "Reescribir el ángulo triple hiperbólico",
+        "Hyperbolic Tanh Pythagorean" => {
+            "Aplicar la identidad pitagórica de la tangente hiperbólica"
+        }
+        "sinh(2x) = 2·sinh(x)·cosh(x)" => "Reescribir el ángulo doble hiperbólico",
+        "tanh(2x) = 2·tanh(x)/(1+tanh(x)^2)" => {
+            "Reescribir la tangente hiperbólica del ángulo doble"
+        }
+        "N-Angle Inverse Asin Composition" => "Componer seno con arcoseno",
+        "N-Angle Inverse Acos Composition" => "Componer seno con arcocoseno",
+        "Recognize Phi" => "Reconocer el número áureo",
+        "Phi Squared" => "Usar el cuadrado del número áureo",
+        "Phi Reciprocal" => "Usar el recíproco del número áureo",
+
         _ => rule_name,
     }
 }
@@ -891,10 +935,120 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Sacar factor común" => "Factor out the common term",
         "Sacar un exponente fuera del logaritmo" => "Bring an exponent out of the logarithm",
         "Separar la exponencial de una suma" => "Split the exponential of a sum",
+
+        // Contrapartes en inglés de las 31 filas nuevas (2026-07-28).
+        // «Racionalizar el denominador» ya tenía la suya: `Rationalize Single
+        // Surd` reutiliza ese nombre visible en vez de duplicar la fila.
+        "Aplicar el desfase entre seno y coseno" => "Apply the sine/cosine phase shift",
+        "Usar el ángulo suplementario" => "Use the supplementary angle",
+        "Aplicar el cuadrado del ángulo mitad" => "Apply the half-angle square",
+        "Reconocer la tangente de una suma de ángulos" => "Recognize the tangent of an angle sum",
+        "Quitar el valor absoluto al elevar al cuadrado" => "Drop the absolute value when squaring",
+        "Quitar el valor absoluto repetido" => "Drop the repeated absolute value",
+        "Sacar el factor positivo del valor absoluto" => {
+            "Take the positive factor out of the absolute value"
+        }
+        "Unir valores absolutos en un producto" => "Combine absolute values in a product",
+        "Unir valores absolutos en un cociente" => "Combine absolute values in a quotient",
+        "Sacar el valor absoluto de la potencia" => "Take the absolute value out of the power",
+        "Separar la parte par de la potencia con valor absoluto" => {
+            "Split the even part out of the absolute-value power"
+        }
+        "Sacar el exponente de un logaritmo con valor absoluto" => {
+            "Bring the exponent out of a logarithm with an absolute value"
+        }
+        "Racionalizar el denominador con el conjugado" => {
+            "Rationalize the denominator with its conjugate"
+        }
+        "Sacar el factor entero común" => "Factor out the common integer",
+        "Desanidar la raíz cuadrada" => "Denest the nested square root",
+        "Desanidar la raíz cúbica en un cuerpo cuadrático" => {
+            "Denest the cube root in a quadratic field"
+        }
+        "Restar exponentes al dividir exponenciales" => {
+            "Subtract the exponents when dividing exponentials"
+        }
+        "Separar el factor e dentro del logaritmo" => "Split the factor e inside the logarithm",
+        "Separar el divisor e dentro del logaritmo" => "Split the divisor e inside the logarithm",
+        "Reconocer la exponencial como suma hiperbólica" => {
+            "Recognize the exponential as a hyperbolic sum"
+        }
+        "Aplicar la paridad hiperbólica al argumento" => "Apply hyperbolic parity to the argument",
+        "Reescribir el ángulo triple hiperbólico" => "Rewrite the hyperbolic triple angle",
+        "Aplicar la identidad pitagórica de la tangente hiperbólica" => {
+            "Apply the hyperbolic tangent Pythagorean identity"
+        }
+        "Reescribir el ángulo doble hiperbólico" => "Rewrite the hyperbolic double angle",
+        "Reescribir la tangente hiperbólica del ángulo doble" => {
+            "Rewrite the hyperbolic double-angle tangent"
+        }
+        "Componer seno con arcoseno" => "Compose sine with arcsine",
+        "Componer seno con arcocoseno" => "Compose sine with arccosine",
+        "Reconocer el número áureo" => "Recognize the golden ratio",
+        "Usar el cuadrado del número áureo" => "Use the square of the golden ratio",
+        "Usar el recíproco del número áureo" => "Use the reciprocal of the golden ratio",
         "Simplificar fracción anidada" => "Simplify the nested fraction",
         "Simplificar una potencia con exponente 0 o 1" => "Simplify a power with exponent 0 or 1",
         "Sumar exponentes de la misma base" => "Add exponents of the same base",
         "Sumar fracciones" => "Add fractions",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod visible_name_coverage_tests {
+    use super::visible_rule_name;
+    use cas_solver::runtime::{to_display_steps, Simplifier};
+
+    /// AUTO-INVALIDATING, the property that keeps this table from rotting into
+    /// a partial glossary: `visible_rule_name` falls through to `rule_name`,
+    /// so a rule with no row publishes the engine's INTERNAL IDENTIFIER to the
+    /// reader — «Trig Phase Shift» in the middle of a Spanish trace. Silence
+    /// is not the failure mode here; English is, and nothing was watching.
+    ///
+    /// The 2026-07-28 sweep measured 31 such leaks over the corpus the app
+    /// itself ships in its examples menu (31 of 166 distinct visible names).
+    /// This test re-measures on every run: a NEW rule that fires on the corpus
+    /// without a row breaks it, and the fix is one row, not an investigation.
+    ///
+    /// Scope is deliberately the corpus, not the whole registry: ~180 declared
+    /// rules never surface as a visible step, and demanding a didactic name
+    /// for a rule no reader ever sees would be ceremony.
+    #[test]
+    fn every_corpus_rule_has_a_visible_name() {
+        let corpus = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../web/examples.csv"
+        ));
+        let mut leaked: Vec<(String, String)> = Vec::new();
+        for line in corpus.lines().skip(1) {
+            let mut cols = line.splitn(3, ',');
+            let _id = cols.next();
+            let Some(expr) = cols.next().map(str::trim) else {
+                continue;
+            };
+            if expr.is_empty() {
+                continue;
+            }
+            let mut simplifier = Simplifier::with_default_rules();
+            simplifier.set_collect_steps(true);
+            let Ok(parsed) = cas_parser::parse(expr, &mut simplifier.context) else {
+                continue;
+            };
+            let (_result, raw_steps) = simplifier.simplify(parsed);
+            for step in to_display_steps(raw_steps) {
+                let rule = step.rule_name.as_str();
+                if visible_rule_name(rule) == rule && !leaked.iter().any(|(seen, _)| seen == rule) {
+                    leaked.push((rule.to_string(), expr.to_string()));
+                }
+            }
+        }
+        assert!(
+            leaked.is_empty(),
+            "{} rules publish their internal identifier instead of a didactic \
+             name; add a row to `visible_rule_name` for each (rule, witness \
+             expression): {leaked:#?}",
+            leaked.len()
+        );
     }
 }

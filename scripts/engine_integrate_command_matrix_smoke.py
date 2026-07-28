@@ -2492,7 +2492,11 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expected_derivative_required_display=("sinh(b - x^2) ≠ 0",),
         expected_required_display=("sinh(b - x^2) ≠ 0",),
         expected_step_substrings=(
-            "Hyperbolic Negative Argument",
+            # Antes fijaba el identificador CRUDO del motor, que era una
+            # fuga de inglés en mitad de una traza en español (medida
+            # 2026-07-28: 31 reglas la tenían). Ahora la regla se anuncia
+            # con su nombre didáctico, como sus vecinas de esta lista.
+            "Aplicar la paridad hiperbólica al argumento",
             "Sacar constante de una fracción",
             "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
             "Identificar u y du",
@@ -5493,7 +5497,11 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         ),
         expected_required_display=("x > 0", "sinh(b - sqrt(x)) ≠ 0"),
         expected_step_substrings=(
-            "Hyperbolic Negative Argument",
+            # Antes fijaba el identificador CRUDO del motor, que era una
+            # fuga de inglés en mitad de una traza en español (medida
+            # 2026-07-28: 31 reglas la tenían). Ahora la regla se anuncia
+            # con su nombre didáctico, como sus vecinas de esta lista.
+            "Aplicar la paridad hiperbólica al argumento",
             "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
             "Identificar u y du",
             "u =",
