@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 754 (newest first)
+Active entries: 755 (newest first)
 
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
@@ -125,6 +125,7 @@ Active entries: 754 (newest first)
 - 2026-07-28 | `retained` | `cas_solver/solve_backend_local.rs` (`solve_polynomial_in_atom` captura los p... | VERACIDAD (narración del polinomio en u): el detector `let (sol, _)` en su cuarta aparición, con la justificación caducada escrita al lado
 - 2026-07-28 | `retained` | `cas_math/power_product_support.rs` (`negative_number_magnitude` + rama negad... | SOUNDNESS DE PRESENTACIÓN (hermano negado del pliegue de potencias): la misma ecuación imprimía sus dos raíces en dos formas, decidido por un signo
 - 2026-07-28 | `retained` | `cas_solver_core/quadratic_didactic.rs` (3 guards exactos + test de los tres ... | VERACIDAD (maniobras vacuas en la derivación cuadrática): el candidato del informe anterior NO existía, y el sondeo destapó el de al lado
+- 2026-07-28 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (detector `D5b_solve_step_repeat`... | MEDIDA (cobertura por canal del carril): D5 y D6 solo miraban `steps[]`, y la mitad legítima de lo que encontraron NO era un defecto
 - 2026-07-27 | `retained` | `cas_cli/tests/steps_quality_gate_tests.rs` (test `generated_substep_claim_in... | VERACIDAD (plan · C1.9, tier GENERATIVO): el corpus deja de elegirlo una persona — 5000 expresiones generadas, ~4986 claims re-verificados sobre el wire con el estándar del emisor, 0 refutaciones
 - 2026-07-27 | `retained` | `cas_didactic/focused_rule_substeps.rs` (`generate_repeated_polynomial_elemen... | VERACIDAD (plan · C1.6, por partes repetida): el cierre integra SU integrando y una RECOMPOSICIÓN probada aterriza en la respuesta — el P0 del testigo muere y la familia entera gana el paso que faltaba
 - 2026-07-27 | `retained` | `cas_didactic` — `tests/shadow_silenced.rs` (instrumento nuevo: cobertura del... | VERACIDAD (campaña de sombra del matcher, paso 0 + primera migración): la sombra midió la cola ENTERA en <1 s — y el primer emisor migrado citaba la identidad EQUIVOCADA en 4 de sus 7 pares
@@ -22588,3 +22589,21 @@ Active entries: 754 (newest first)
   - **Un candidato heredado de un informe propio es hipótesis, no encargo**: el sondeo del paso 2 no es ceremonia — aquí falsificó el candidato ENTERO y encontró el bueno a su lado. Antes de implementar lo que uno mismo prometió, imprimir el árbol.
   - **Los dos canales de pasos tienen ESQUEMAS DISTINTOS y un probe escrito para uno miente sobre el otro en silencio**: `steps[].substeps` usa `title` + `before`/`after`; `solve_steps[].substeps` usa `description` + `equation`. Leer el campo ausente devuelve `None`, y `None == None` fabrica métricas perfectas o catastróficas sin error alguno. Tercera vez en la sesión que un instrumento del repo o mío mira un canal y no el otro.
   - **Un techo CERO no es un techo**: E8 tolera 3 porque sus supervivientes son casos donde `before == after` ES la narración; un sub-paso de solve existe para mostrar el estado que produjo su maniobra, así que repetir el anterior no tiene lectura legítima. `assert_eq!` en vez de `<=` lo dice — y clippy lo exige, porque `<= 0` sobre `usize` es una comparación absurda.
+
+## 2026-07-28 - MEDIDA (cobertura por canal del carril): D5 y D6 solo miraban `steps[]`, y la mitad legítima de lo que encontraron NO era un defecto
+
+- area: `cas_cli/tests/steps_quality_gate_tests.rs` (detector `D5b_solve_step_repeat` + escapatoria `solve_repeat_is_honest` + techo MEDIDO con supervivientes nombrados), `cas_engine/src/eval/dsolve_action.rs` (la ecuación característica pasa a ser la ecuación característica).
+- status: `retained`.
+- capture:
+  - **AUDITORÍA DE COBERTURA**: de los detectores del carril, D9/D10 (LaTeX) y las fugas de idioma ya recorren AMBOS canales; **D5 (no-op) y D6 (duplicados) solo `wire.steps`**. Y la firma del defecto no se puede copiar tal cual, porque los esquemas difieren: un paso de simplify lleva `before`/`after`, uno de solve solo el estado DESPUÉS de su maniobra — ahí «no-op» es «mi ecuación es la del paso anterior».
+  - **LA MEDIDA CRUDA MENTÍA POR EXCESO**: 9 repeticiones, de las que **5 son legítimas**. Los pasos de verificación («Verificar por sustitución: el residuo…», «Verificar el potencial: ∂φ/∂x = M…») existen para mostrar SIN CAMBIOS el objeto que acaban de comprobar — misma lógica que la excepción `Conservar …` que D5 ya tenía en el otro canal. Un techo cero habría exigido borrarlos.
+  - **EL ARREGLO**: de los 4 de relleno, el más claro era `Característica del sistema: λ² − tr(A)·λ + det(A) = 0` mostrando `diff(x,t) = -y` — un paso que INTRODUCE un objeto nuevo mostrando otro. Ahora construye el suyo (`λ² + λ − 6 = 0`, cuyas raíces son los autovalores). Los términos nulos se omiten: `ctx.add` no pliega `0·λ` y `λ² − 0·λ + 1 = 0` no es lo que escribiría quien lee — pliegue del ruido NOMBRADO, nunca simplify general.
+- observed:
+  - `D5b_solve_step_repeat`: 9 crudos → 4 tras la escapatoria → **2 tras el arreglo**, declarados como techo MEDIDO con nombre y razón (brazo `UniqueExpr` de sistemas y factor integrante de dsolve, ambos residuales ya nombrados).
+  - Barrido general (1129 comandos): **0 diffs de result**. workspace failed:0 (358 suites, 12633 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes. Huella: solo la medida nueva (`<missing>` → 2); ningún contador de comportamiento se mueve, que es lo correcto para un ciclo que cambia QUÉ ecuación muestra un paso, no cuántos hay.
+- decision: retener.
+- retained learning:
+  - **Un detector no se porta de un canal a otro copiándolo: se porta traduciendo su SIGNATURA**. `before == after` no existe en solve; su equivalente es «igual al paso anterior». Copiar el código habría dado un detector que no compila o que mide otra cosa; copiar la INTENCIÓN da el correcto.
+  - **Antes de poner un techo a cero, mirar quién sobrevive**: aquí la mayoría de lo detectado era la narración honesta de la verificación. Una medida nueva sin su escapatoria convierte un instrumento en una orden de borrar contenido bueno.
+  - **Un techo con los supervivientes NOMBRADOS es una lista de trabajo; uno con un número suelto es una tolerancia**. Los dos que quedan citan su expresión y su causa, así que el ciclo que los cierre sabe exactamente qué buscar.
+  - **`doc_lazy_continuation` (2ª vez en la sesión)**: tras una lista `///   - …`, un párrafo nuevo necesita una línea `///` vacía o clippy lo lee como continuación. Barato de evitar, caro de descubrir en la puerta de commit.

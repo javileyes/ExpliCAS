@@ -3188,11 +3188,39 @@ impl Engine {
             importance: ImportanceLevel::High,
             substeps: vec![],
         });
+        // El paso nombra la ecuación característica, así que la ecuación que
+        // muestra tiene que SER esa — llevaba `eq1` (la primera EDO del
+        // sistema) como anchor de relleno, y el lector leía el objeto
+        // equivocado justo donde se introduce el objeto nuevo.
+        let characteristic_eq = {
+            use num_traits::Zero;
+            let lambda = ctx.var("λ");
+            let two = ctx.num(2);
+            let mut lhs = ctx.add(cas_ast::Expr::Pow(lambda, two));
+            // Los términos NULOS se omiten en vez de imprimirse: `ctx.add` no
+            // pliega `0·λ`, y `λ² − 0·λ + 1 = 0` no es lo que escribiría quien
+            // lee. Se pliega solo ese ruido nombrado, nunca simplify general.
+            if !tr.is_zero() {
+                let neg_tr = ctx.add(cas_ast::Expr::Number(-tr.clone()));
+                let term = ctx.add(cas_ast::Expr::Mul(neg_tr, lambda));
+                lhs = ctx.add(cas_ast::Expr::Add(lhs, term));
+            }
+            if !det.is_zero() {
+                let det_expr = ctx.add(cas_ast::Expr::Number(det.clone()));
+                lhs = ctx.add(cas_ast::Expr::Add(lhs, det_expr));
+            }
+            let zero = ctx.num(0);
+            Equation {
+                lhs,
+                rhs: zero,
+                op: RelOp::Eq,
+            }
+        };
         solve_steps.push(crate::api::SolveStep {
             description: format!(
                 "Característica del sistema: λ² − tr(A)·λ + det(A) = 0 con tr = {tr}, det = {det}"
             ),
-            equation_after: eq1.clone(),
+            equation_after: characteristic_eq,
             importance: ImportanceLevel::High,
             substeps: vec![],
         });

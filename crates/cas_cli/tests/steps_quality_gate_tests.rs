@@ -110,6 +110,16 @@ fn eval_wire(input: &str) -> Option<EvalWireOutput> {
 
 /// The honest-residual steps are the ONE legitimate `before == after`
 /// narration: their whole point is "this stays as itself".
+/// A solve step that RESTATES the equation of the previous one is normally the
+/// filler shape (`equation_after: eq1.clone()` because the type demands an
+/// equation and the step's real content lives in its description). The honest
+/// exception is verification: «Verificar por sustitución …» exists precisely to
+/// show, unchanged, the object it just checked — the same reasoning that lets
+/// `Conservar …` repeat its snapshot in the simplify channel.
+fn solve_repeat_is_honest(description: &str) -> bool {
+    description.starts_with("Verificar") || description.starts_with("Verify")
+}
+
 fn is_honest_residual(rule: &str) -> bool {
     matches!(
         rule,
@@ -499,6 +509,20 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
     // sides by a» with a = 1 and «complete the square» with b = 0 — 11 such
     // lines over this corpus until 2026-07-28, invisible because every
     // instrument pointed at the other channel.
+    // ---- the solve channel's own D5 ----------------------------------------
+    // D5 above walks `wire.steps` only, and the two channels have DIFFERENT
+    // schemas: a simplify step carries `before`/`after`, a solve step carries
+    // only the state AFTER its manoeuvre. So the solve-channel signature of the
+    // same defect is «my equation is the previous step's», and no detector was
+    // watching for it — measured 2026-07-28 over this corpus.
+    let mut solve_step_repeats = 0;
+    for pair in wire.solve_steps.windows(2) {
+        if pair[0].equation == pair[1].equation && !solve_repeat_is_honest(&pair[1].description) {
+            solve_step_repeats += 1;
+        }
+    }
+    report.measure("D5b_solve_step_repeat", solve_step_repeats);
+
     let mut solve_substep_repeats = 0;
     for step in &wire.solve_steps {
         for pair in step.substeps.windows(2) {
@@ -519,6 +543,18 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
 //     verbs' mega-substep, its own cycle.
 //   - row 199 `limit(exp(z), z, i*pi)`: the residual-policy substep, where
 //     before == after IS the narration (same contract as `Conservar …`).
+/// Techo MEDIDO, con los dos supervivientes nombrados — no es una tolerancia
+/// genérica, es la lista de lo que queda:
+///   - `solve([a·x+y=1, x−y=0])`: el brazo `UniqueExpr` («Coeficientes
+///     simbólicos» → «Resolver por Cramer exacto») arrastra la ecuación 1 como
+///     anchor. Residual ya nombrado al arreglar el brazo `Unique` (S1).
+///   - `dsolve(y' + y = x)`: «Calcular el factor integrante: μ = e^(∫p dx)»
+///     muestra la EDO sin tocar; su contenido real (μ) vive en la descripción.
+///
+/// Bajar este número exige darle a cada paso la ecuación que su frase nombra,
+/// como se hizo con la característica del sistema en este mismo ciclo.
+const D5B_SOLVE_STEP_REPEAT_CEILING: usize = 2;
+
 const E8_SUBSTEP_NOOP_CEILING: usize = 3;
 
 /// The solve channel's vacuous-manoeuvre count is a hard ZERO, not a ceiling:
@@ -551,6 +587,17 @@ fn run_gate(label: &str, inputs: &[String], min_expected: usize) {
         e8 <= E8_SUBSTEP_NOOP_CEILING,
         "{label}: E8_substep_noop={e8} exceeds the declared ceiling \
          {E8_SUBSTEP_NOOP_CEILING} — a new substep claims a manoeuvre it does not perform"
+    );
+
+    let d5b = report
+        .measures
+        .get("D5b_solve_step_repeat")
+        .map_or(0, |m| m.0);
+    assert!(
+        d5b <= D5B_SOLVE_STEP_REPEAT_CEILING,
+        "{label}: D5b_solve_step_repeat={d5b} exceeds {D5B_SOLVE_STEP_REPEAT_CEILING} — \
+         a solve step repeats the previous equation while its description \
+         announces something else"
     );
 
     let e8b = report
