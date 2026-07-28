@@ -1895,9 +1895,9 @@
            Lives INSIDE the fixed .input-bar, below the input row, so the
            bottom-anchored bar simply grows upward when it opens — the input
            sits directly on top of the keys, like every calculator app, and
-           the thumb zone stays at the bottom of the phone. On phones the
-           system keyboard is suppressed (inputmode=none) and this opens on
-           tapping the input; on desktop the ⌨️ button toggles it. */
+           the thumb zone stays at the bottom of the phone. On phones the OS
+           keyboard is suppressed for good (inputmode=none) and this opens on
+           tapping the input; the ⌨️ button shows/hides it everywhere. */
         .kb-toggle-btn {
             display: flex;
             align-items: center;
@@ -2355,7 +2355,12 @@
                 </select>
             </label>
             <span class="input-clear-wrap">
-                <input type="text" class="input-field" id="expression-input"
+                <!-- inputmode=none ships in the MARKUP, not from the script: the
+                     suppressed state is the default and kbApplyInputMode() only
+                     RELAXES it on desktop. Set from JS it was live from the end
+                     of the body onward, leaving a window where a fast tap on a
+                     phone still popped the OS keyboard. -->
+                <input type="text" class="input-field" id="expression-input" inputmode="none"
                     data-i18n-placeholder="input.expression.placeholder" placeholder="Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
                 <button type="button" class="input-clear-btn" id="input-clear-btn" tabindex="-1"
                     data-i18n-aria="input.clear.aria_label" aria-label="Limpiar la expresión"
@@ -4579,13 +4584,15 @@
         // =====================
         // A bottom-sheet calculator keyboard living INSIDE the fixed input bar,
         // so the bar grows upward and the input sits right on top of the keys.
-        // Phones (≤720px): the system keyboard is suppressed (inputmode=none)
-        // and the keypad opens on tapping the input; the ⌨️ button or the
-        // "⌨️ abc" tab switches to the system keyboard (persisted). Desktop:
-        // the ⌨️ button toggles the keypad (persisted).
+        // The OS keyboard NEVER opens on a touch device: it is suppressed for
+        // as long as the page lives (inputmode=none), and the ⌨️ button means
+        // the same thing everywhere — show/hide THIS keypad. There is no
+        // "switch to the system keyboard" mode: the keypad carries qwerty,
+        // Greek and every function, so the OS one only got in the way.
+        // Phones: the keypad also opens on tapping the input. Desktop: the
+        // ⌨️ toggle is persisted.
 
         const KB_DESKTOP_STORAGE_KEY = 'expliCAS_kb_desktop_open';
-        const KB_MOBILE_MODE_STORAGE_KEY = 'expliCAS_kb_mobile_mode';
         // Two axes, two behaviors:
         // - SMALL (narrow phones OR short landscape phones): keypad also
         //   CLOSES after evaluating so the result is visible on the little
@@ -4601,10 +4608,11 @@
         let kbLayer = 'num';
         let kbShift = false;
         let kbDesktopOpen = false;
-        let kbMobileMode = 'calc';
         try {
             kbDesktopOpen = localStorage.getItem(KB_DESKTOP_STORAGE_KEY) === '1';
-            if (localStorage.getItem(KB_MOBILE_MODE_STORAGE_KEY) === 'system') kbMobileMode = 'system';
+            // A 'system' preference persisted by the old two-keyboard toggle
+            // would otherwise keep summoning the OS keyboard forever.
+            localStorage.removeItem('expliCAS_kb_mobile_mode');
         } catch (e) { }
 
         function isKbSmall() {
@@ -4809,7 +4817,7 @@
         }
 
         function kbOpenAfterInsert() {
-            if (isKbTouch() && kbMobileMode === 'calc' && !kbInputBar.classList.contains('kb-open')) {
+            if (isKbTouch() && !kbInputBar.classList.contains('kb-open')) {
                 kbOpenPanel();
             }
         }
@@ -4817,25 +4825,12 @@
         function kbApplyInputMode() {
             // The whole trick that keeps the device's OS keyboard closed while
             // the input stays genuinely focused (caret, selection, paste).
-            if (isKbTouch() && kbMobileMode === 'calc') {
+            // Unconditional on touch: hiding the keypad must not hand the
+            // input back to the OS keyboard, it must just hide the keypad.
+            if (isKbTouch()) {
                 input.setAttribute('inputmode', 'none');
             } else {
                 input.removeAttribute('inputmode');
-            }
-        }
-
-        function kbSetMobileMode(mode) {
-            kbMobileMode = mode;
-            try { localStorage.setItem(KB_MOBILE_MODE_STORAGE_KEY, mode); } catch (e) { }
-            kbApplyInputMode();
-            if (mode === 'system') {
-                kbClosePanel();
-                // Re-focus within this tap so the OS keyboard pops right away.
-                input.blur();
-                input.focus();
-            } else {
-                kbOpenPanel();
-                input.focus();
             }
         }
 
@@ -4901,23 +4896,20 @@
             }
         });
 
+        // One meaning everywhere: show/hide THIS keypad, never the OS one.
         document.getElementById('kb-toggle-btn').addEventListener('click', () => {
-            if (isKbTouch()) {
-                // One button, two keyboards: swap between keypad and system.
-                if (kbInputBar.classList.contains('kb-open')) kbSetMobileMode('system');
-                else kbSetMobileMode('calc');
-            } else {
-                const open = !kbInputBar.classList.contains('kb-open');
+            const open = !kbInputBar.classList.contains('kb-open');
+            if (!isKbTouch()) {
                 kbDesktopOpen = open;
                 try { localStorage.setItem(KB_DESKTOP_STORAGE_KEY, open ? '1' : '0'); } catch (e) { }
-                if (open) { kbOpenPanel(); input.focus(); } else { kbClosePanel(); }
             }
+            if (open) { kbOpenPanel(); input.focus(); } else { kbClosePanel(); }
         });
 
         // Tapping the input on a touch device opens the keypad (programmatic
         // focus, e.g. after evaluating, does NOT — results stay visible).
         input.addEventListener('click', () => {
-            if (isKbTouch() && kbMobileMode === 'calc' && !kbInputBar.classList.contains('kb-open')) {
+            if (isKbTouch() && !kbInputBar.classList.contains('kb-open')) {
                 kbOpenPanel();
             }
         });
