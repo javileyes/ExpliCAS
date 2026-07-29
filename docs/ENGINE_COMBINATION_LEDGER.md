@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 767 (newest first)
+Active entries: 768 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
@@ -127,6 +127,7 @@ Active entries: 767 (newest first)
 - 2026-07-29 | `retained` | `cas_math/power_product_support.rs` (`try_fold_numeric_coefficient_valuation`... | CANON (valuación b-ádica del coeficiente): `solve(x²=8)` y `sqrt(8)` decían el mismo número en dos idiomas
 - 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`apply_same_base_power_quotient_rule`, cableada... | CAPACIDAD (límite del cociente de la misma base): reduce-a-canónico con un wrong-answer propio cazado por el probe de −∞
 - 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`exp_sum_top_level_limit_at_infinity`, cableada... | CAPACIDAD (suma de exponenciales a nivel raíz): la maquinaria existía y solo se consumía dentro de cocientes
+- 2026-07-29 | `retained` | `cas_formatter/periodic.rs` (`latex_period_term` compartido por familia e int... | PRESENTACIÓN (el símbolo fantasma «k2»): la yuxtaposición del término periódico
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22830,3 +22831,15 @@ Active entries: 767 (newest first)
 - retained learning:
   - **Antes de escribir capacidad nueva, buscar el decisor que ya existe y mirar QUIÉN lo consume**: el gap no era de matemática sino de cableado — la función correcta estaba a 100 líneas del dispatcher que nunca la llamaba. El grep barato es «¿quién llama a X?» sobre los decisores de la familia.
   - **Fijar el residual honesto EN EL CONTRATO cuando se cierra a su hermano**: `pi^x−e^x` queda pineado como residual con test — si un ciclo futuro lo resuelve, el test le exigirá actualizar el contrato a capacidad; si lo rompe a wrong-answer, lo caza.
+
+## 2026-07-29 - PRESENTACIÓN (el símbolo fantasma «k2»): la yuxtaposición del término periódico
+
+- area: `cas_formatter/periodic.rs` (`latex_period_term` compartido por familia e intervalo-unión) + test unitario.
+- status: `retained`. Cosmético preexistente nombrado en el ciclo de conjuntos; visible en TODA familia trig de periodo 2π en la web.
+- capture:
+  - `format!("k{}")` yuxtaponía la `k` al LaTeX del periodo: con periodo `2π` salía `k2\cdot \pi` — «k2·π», que un alumno lee como un símbolo *k2*. Con periodo que empieza por dígito se interpone `\cdot`; con `π` se conserva la forma ideal `k\pi` (no se paga `k·π` donde la yuxtaposición es la convención).
+- observed:
+  - Corpus 219: **4 cambios en `result_latex`, los cuatro el fix exacto** (sin(x)=1/2, 2cos(x)−√3=0, ángulo auxiliar, sin(x)>1/2 con intervalos). workspace failed:0 (381 suites, 13796 tests), clippy 0, lanes verdes, huella **0 deltas**.
+- decision: retener.
+- retained learning:
+  - **La yuxtaposición LaTeX es un operador invisible y por eso peligroso**: `k` + `2\cdot \pi` compone un token nuevo para el lector. Todo `format!` que pegue un símbolo a LaTeX arbitrario debe preguntarse qué carácter viene primero — y la condición correcta es sobre el RENDER (empieza por dígito), no sobre el árbol.

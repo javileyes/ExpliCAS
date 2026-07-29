@@ -70,6 +70,24 @@ pub fn latex_periodic_family(ctx: &Context, bases: &[ExprId], period: ExprId) ->
     latex_periodic_family_styled(ctx, bases, period, &StylePreferences::default())
 }
 
+/// `k·T` en LaTeX. Con periodo `2π` la yuxtaposición desnuda daba `k2\cdot \pi`
+/// — «k2·π», que se lee como un símbolo *k2* — así que cuando el periodo
+/// empieza por dígito se interpone el `\cdot` que el lector necesita. Con
+/// periodo `π` se conserva la forma ideal `k\pi`.
+fn latex_period_term(ctx: &Context, period: ExprId, style: &StylePreferences) -> String {
+    let period_latex = LaTeXExprStyled {
+        context: ctx,
+        id: period,
+        style_prefs: style,
+    }
+    .to_latex();
+    if period_latex.starts_with(|c: char| c.is_ascii_digit()) {
+        format!(r"k\cdot {}", period_latex)
+    } else {
+        format!("k{}", period_latex)
+    }
+}
+
 /// Como [`latex_periodic_family`], con la notación de raíz del llamante: las bases
 /// de una familia trig pueden llevar potencias fraccionarias
 /// (`arcsin(root(1/4, 4)) + k·2·pi`) y el conjunto solución debe ecoar la
@@ -80,15 +98,7 @@ pub fn latex_periodic_family_styled(
     period: ExprId,
     style: &StylePreferences,
 ) -> String {
-    let period_term = format!(
-        "k{}",
-        LaTeXExprStyled {
-            context: ctx,
-            id: period,
-            style_prefs: style,
-        }
-        .to_latex()
-    );
+    let period_term = latex_period_term(ctx, period, style);
     let families: Vec<String> = bases
         .iter()
         .map(|&b| latex_family_term(ctx, b, &period_term, style))
@@ -175,15 +185,7 @@ pub fn latex_periodic_interval_union_styled(
     period: ExprId,
     style: &StylePreferences,
 ) -> String {
-    let period_term = format!(
-        "k{}",
-        LaTeXExprStyled {
-            context: ctx,
-            id: period,
-            style_prefs: style,
-        }
-        .to_latex()
-    );
+    let period_term = latex_period_term(ctx, period, style);
     let parts: Vec<String> = windows
         .iter()
         .map(|w| latex_window(ctx, w, &period_term, style))
@@ -213,6 +215,18 @@ mod tests {
             latex_periodic_family(&ctx, &[zero], pi),
             r"\left\{ k\pi : k \in \mathbb{Z} \right\}"
         );
+        // Periodo que EMPIEZA por dígito: sin el separador, `k2\cdot \pi` se
+        // lee como un símbolo «k2».
+        let two_pi = {
+            let two = ctx.num(2);
+            ctx.add(Expr::Mul(two, pi))
+        };
+        let family_2pi = latex_periodic_family(&ctx, &[zero], two_pi);
+        assert!(
+            family_2pi.contains(r"k\cdot 2"),
+            "falta el separador tras k: {family_2pi}"
+        );
+        assert!(!family_2pi.contains("k2"), "k yuxtapuesta: {family_2pi}");
         // Nonzero base keeps it.
         let two = ctx.num(2);
         let half_pi = ctx.add(Expr::Div(pi, two));
