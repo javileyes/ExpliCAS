@@ -6020,6 +6020,75 @@ pub(crate) fn apply_rational_power_rule(
     }
 }
 
+/// `x^a / x^b` con exponentes CONSTANTES reducido a `x^(a-b)`, delegando en las
+/// reglas de potencia existentes (entera con paridad, racional, y constante
+/// decidible vía `provable_const_sign`).
+///
+/// El camino de límites recibía el cociente CRUDO y ninguna regla veía a través:
+/// `limit(x^(5/2)/x^(3/2), x, ∞)` quedaba residual aunque la expresión suelta
+/// simplifique a `x`, y `limit(x^pi/x^3, x, ∞)` ni con la regla de exponente
+/// constante (que ya decide `x^(pi-3)` a solas). La resta se pliega EXACTA si
+/// ambos exponentes son racionales; si no, queda como `Sub` estructurado, que es
+/// justo lo que la capa de signo constante sabe decidir.
+fn apply_same_base_power_quotient_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let split = |ctx: &Context, side: ExprId| -> (ExprId, Option<ExprId>) {
+        match ctx.get(side) {
+            Expr::Pow(base, exponent) => (*base, Some(*exponent)),
+            _ => (side, None),
+        }
+    };
+    let (base1, exp1) = split(ctx, numerator);
+    let (base2, exp2) = split(ctx, denominator);
+    if cas_ast::ordering::compare_expr(ctx, base1, var) != std::cmp::Ordering::Equal
+        || cas_ast::ordering::compare_expr(ctx, base2, var) != std::cmp::Ordering::Equal
+    {
+        return None;
+    }
+    // Al menos un lado debe traer exponente explícito: `x/x` tiene otro dueño.
+    if exp1.is_none() && exp2.is_none() {
+        return None;
+    }
+    let one = ctx.num(1);
+    let exp1 = exp1.unwrap_or(one);
+    let exp2 = exp2.unwrap_or(one);
+    // Exponentes constantes (la variable en el exponente es otra familia).
+    if depends_on(ctx, exp1, var) || depends_on(ctx, exp2, var) {
+        return None;
+    }
+
+    let rational_exponents = (
+        crate::numeric_eval::as_rational_const(ctx, exp1),
+        crate::numeric_eval::as_rational_const(ctx, exp2),
+    );
+    // En −∞ la reducción solo es sound con exponentes ENTEROS: `x^(5/2)/x^(3/2)`
+    // no es real para x<0 (la original no existe donde el límite mira) y
+    // reducirla a `x` fabricaría un −∞ de una expresión indefinida. Con enteros,
+    // `apply_power_rule` ya cuida la paridad.
+    if approach == InfSign::Neg
+        && !matches!(
+            &rational_exponents,
+            (Some(a), Some(b)) if a.is_integer() && b.is_integer()
+        )
+    {
+        return None;
+    }
+    let difference = match rational_exponents {
+        (Some(a), Some(b)) => ctx.add(Expr::Number(a - b)),
+        _ => ctx.add(Expr::Sub(exp1, exp2)),
+    };
+    let reduced = ctx.add(Expr::Pow(var, difference));
+    apply_power_rule(ctx, reduced, var, approach)
+        .or_else(|| apply_rational_power_rule(ctx, reduced, var, approach))
+}
+
 /// Rule 4: Reciprocal power - lim c/x^n = 0 for n > 0 and c independent of x.
 pub(crate) fn apply_reciprocal_power_rule(
     ctx: &mut Context,
@@ -9868,6 +9937,9 @@ pub(crate) fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = apply_rational_power_rule(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = apply_same_base_power_quotient_rule(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = apply_reciprocal_power_rule(ctx, expr, var) {
@@ -18721,6 +18793,54 @@ mod tests {
         assert!(apply_rational_power_rule(&mut ctx, symbolic, x, InfSign::Pos).is_none());
         let irrational = parse_expr(&mut ctx, "x^(pi - 3)");
         assert!(apply_rational_power_rule(&mut ctx, irrational, x, InfSign::Neg).is_none());
+    }
+
+    #[test]
+    fn same_base_power_quotient_reduces_and_delegates() {
+        // `x^a/x^b` con exponentes constantes → `x^(a−b)` → reglas de potencia.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (src, expect_inf) in [
+            ("x^(5/2) / x^(3/2)", true),
+            ("x^(3/2) / x^(5/2)", false),
+            ("x^pi / x^3", true),
+            ("x^3 / x^pi", false),
+            ("x / x^(1/2)", true),
+            ("x^(1/2) / x", false),
+        ] {
+            let expr = parse_expr(&mut ctx, src);
+            let out = apply_same_base_power_quotient_rule(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("{src} should resolve"));
+            if expect_inf {
+                assert!(
+                    matches!(ctx.get(out), Expr::Constant(Constant::Infinity)),
+                    "{src}"
+                );
+            } else {
+                assert!(
+                    matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0))),
+                    "{src}"
+                );
+            }
+        }
+
+        // Declines honestos: diferencia de signo indecidible o cero, exponente
+        // dependiente de la variable, y −∞ con exponentes NO enteros (la
+        // original no es real para x<0: reducirla fabricaría un límite de algo
+        // indefinido — el wrong-answer que este guard cazó antes de commitear).
+        for src in ["x^pi / x^pi", "x^a / x^2", "x^x / x^2"] {
+            let expr = parse_expr(&mut ctx, src);
+            assert!(
+                apply_same_base_power_quotient_rule(&mut ctx, expr, x, InfSign::Pos).is_none(),
+                "{src}"
+            );
+        }
+        let fractional = parse_expr(&mut ctx, "x^(5/2) / x^(3/2)");
+        assert!(
+            apply_same_base_power_quotient_rule(&mut ctx, fractional, x, InfSign::Neg).is_none()
+        );
+        let integers = parse_expr(&mut ctx, "x^5 / x^2");
+        assert!(apply_same_base_power_quotient_rule(&mut ctx, integers, x, InfSign::Neg).is_some());
     }
 
     #[test]

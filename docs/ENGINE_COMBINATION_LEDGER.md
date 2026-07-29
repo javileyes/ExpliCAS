@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 765 (newest first)
+Active entries: 766 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
@@ -125,6 +125,7 @@ Active entries: 765 (newest first)
 - 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`apply_rational_power_rule` cae a `provable_con... | CAPACIDAD (límite de potencia con exponente constante irracional): la decisión era de SIGNO y la capa exacta ya existía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (`split_improper_fractional_exponent`... | PRESENTACIÓN (extracción del radical impropio + el eco llega al LaTeX de conjuntos): decisión delegada por el usuario, resuelta con la canónica que el motor ya tenía
 - 2026-07-29 | `retained` | `cas_math/power_product_support.rs` (`try_fold_numeric_coefficient_valuation`... | CANON (valuación b-ádica del coeficiente): `solve(x²=8)` y `sqrt(8)` decían el mismo número en dos idiomas
+- 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`apply_same_base_power_quotient_rule`, cableada... | CAPACIDAD (límite del cociente de la misma base): reduce-a-canónico con un wrong-answer propio cazado por el probe de −∞
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22799,3 +22800,18 @@ Active entries: 765 (newest first)
   - **La forma canónica de un valor numérico es un contrato transversal, y cada camino que lo produce debe converger a ella**: `sqrt(N)`, `solve(x²=N)` y la aritmética directa producían el mismo surd por tres rutas; solo una lo dejaba bonito. El pliegue por valuación es el chokepoint que las une.
   - **Un guard «más ancho que el diseño» es un bug aunque todo pase**: la versión ancha reconstruía expresiones idénticas — invisible en probes (el interning devuelve el mismo id) y carga inútil en cada pasada. Al escribir un guard, copiar la CONDICIÓN del diseño, no una que la implique.
   - **Un test unitario sobre el árbol del parser puede medir al VECINO**: en crudo, otro brazo con default permisivo dispara antes; el pipeline canonicaliza y llega al brazo correcto. Los tests de reglas que compiten por la misma forma se escriben con los nodos CANÓNICOS que la regla ve en producción.
+
+## 2026-07-29 - CAPACIDAD (límite del cociente de la misma base): reduce-a-canónico con un wrong-answer propio cazado por el probe de −∞
+
+- area: `cas_math/limits_support.rs` (`apply_same_base_power_quotient_rule`, cableada tras `apply_rational_power_rule`) + test unitario + contrato CLI ampliado.
+- status: `retained`. Cierra el residual re-diagnosticado en `b9f5b9b6b` («el camino de límites no ve a través del cociente ni con exponentes racionales»).
+- capture:
+  - **REDUCE-A-CANÓNICO, no regla nueva de valor**: `x^a/x^b` con exponentes constantes → `x^(a−b)` y DELEGA en las reglas de potencia existentes (entera con paridad, racional, y la de constante decidible de `b9f5b9b6b`). La resta se pliega EXACTA si ambos exponentes son racionales; si no, queda como `Sub` estructurado — que es justo lo que `provable_const_sign` sabe decidir (`x^pi/x^3` → `x^(pi−3)` → ∞).
+  - **EL PROBE DE −∞ CAZÓ UN WRONG-ANSWER MÍO ANTES DE COMMITEAR**: la primera versión daba `limit(x^(5/2)/x^(3/2), x, −∞) = −∞`. La reducción a `x` AMPLÍA el dominio — la expresión original no es real para x<0, así que el límite es de algo indefinido y la respuesta honesta es declinar. Guard: en `−∞` solo exponentes ENTEROS (donde `apply_power_rule` ya cuida la paridad); todo lo demás declina.
+  - Declines honestos con test: `x^pi/x^pi` (diferencia cero, `x^0` tiene otro dueño), `x^a/x^2` (signo indecidible), `x^x/x^2` (el exponente depende de la variable — otra familia).
+- observed:
+  - `x^(5/2)/x^(3/2)` → ∞ y su inverso → 0; `x^pi/x^3` → ∞ y su inverso → 0; `x/√x` → ∞; enteros en −∞ intactos (`x^5/x^2` → −∞). Corpus 219: **0 cambios**. workspace failed:0 (381 suites, 13795 tests), clippy 0, lanes verdes, huella **0 deltas**.
+- decision: retener. Residual nombrado: el mismo cociente en punto FINITO (`limit(x^(5/2)/x^(3/2), x, 4)`) sigue residual — el camino finito es de otro dueño y la reducción allí exige el mismo análisis de dominio unilateral.
+- retained learning:
+  - **Una reducción sintácticamente correcta puede AMPLIAR el dominio, y el límite es exactamente el contexto donde eso fabrica respuestas**: `x^(5/2)/x^(3/2) = x` vale donde AMBOS lados existen; en −∞ el lado izquierdo no existe. Toda regla de límites que reduzca formas debe preguntarse dónde vivía la forma ORIGINAL, no la reducida — y el probe direccional (±∞) es el test barato que lo destapa.
+  - **Delegar convierte la regla nueva en solo-su-matcher** (7ª instancia del molde): la regla no sabe de signos ni paridades — reduce y delega, y hereda gratis la capa de constante decidible del ciclo anterior.

@@ -4910,9 +4910,32 @@ fn test_eval_power_limit_with_decidable_irrational_exponent() {
         assert_eq!(wire["result"], expected, "{input}");
     }
 
-    // Declina honesto donde debe: exponente de signo indecidible, y `x -> -∞`
-    // (una potencia no entera de una magnitud negativa no es real).
-    for input in ["limit(x^a, x, infinity)", "limit(x^(pi-3), x, -infinity)"] {
+    // El COCIENTE de la misma base se reduce a la resta de exponentes y delega
+    // (cerró el residual medido: el camino de límites no veía a través del
+    // cociente ni con exponentes racionales, aunque la expresión simplifique).
+    for (input, expected) in [
+        ("limit(x^(5/2)/x^(3/2), x, infinity)", "infinity"),
+        ("limit(x^pi/x^3, x, infinity)", "infinity"),
+        ("limit(x^3/x^pi, x, infinity)", "0"),
+        ("limit(x/x^(1/2), x, infinity)", "infinity"),
+        ("limit(x^5/x^2, x, -infinity)", "-infinity"),
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["result"], expected, "{input}");
+    }
+
+    // Declina honesto donde debe: exponente de signo indecidible, `x -> -∞`
+    // (una potencia no entera de una magnitud negativa no es real — también en
+    // la forma de cociente, donde reducir ampliaría el dominio), y exponente
+    // que depende de la variable.
+    for input in [
+        "limit(x^a, x, infinity)",
+        "limit(x^(pi-3), x, -infinity)",
+        "limit(x^(5/2)/x^(3/2), x, -infinity)",
+        "limit(x^x/x^2, x, infinity)",
+    ] {
         let (success, stdout) = run_eval(input, "json");
         assert!(success, "should succeed for {input}");
         let wire: Value = serde_json::from_str(&stdout).expect("eval json");
