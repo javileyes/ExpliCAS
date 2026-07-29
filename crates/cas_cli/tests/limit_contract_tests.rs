@@ -4877,3 +4877,48 @@ fn test_limit_unsupported_polynomial_exp_subpolynomial_dominance_remains_residua
         );
     }
 }
+
+/// `limit(x^c, x, ∞)` con `c` constante pero IRRACIONAL no daba una respuesta
+/// incorrecta: no daba ninguna. Lo único que hay que decidir es el signo del
+/// exponente, y la capa exacta que lo decide (`provable_const_sign`, superset con
+/// e/π) ya existía — la regla se quedaba en `as_rational_const`, que solo casa
+/// literales plegables.
+///
+/// Residual nombrado que este ciclo NO cierra: la forma de COCIENTE
+/// (`limit(x^pi/x^3, x, ∞)`) sigue sin evaluar, y no es cosa de los irracionales
+/// — `limit(x^(5/2)/x^(3/2), x, ∞)` tampoco evalúa, pese a que la expresión
+/// simplifica a `x`. El camino de límites no ve a través del cociente de
+/// potencias de la misma base ni con exponentes racionales.
+#[test]
+fn test_eval_power_limit_with_decidable_irrational_exponent() {
+    for (input, expected) in [
+        ("limit(x^pi, x, infinity)", "infinity"),
+        ("limit(x^(pi-3), x, infinity)", "infinity"),
+        ("limit(x^e, x, infinity)", "infinity"),
+        ("limit(x^(3-pi), x, infinity)", "0"),
+        ("limit(x^(2-e), x, infinity)", "0"),
+        // Controles: los racionales y enteros siguen igual.
+        ("limit(x^(3/2), x, infinity)", "infinity"),
+        ("limit(x^2, x, infinity)", "infinity"),
+        ("limit(x^(-2), x, infinity)", "0"),
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "{input}");
+        assert_eq!(wire["result"], expected, "{input}");
+    }
+
+    // Declina honesto donde debe: exponente de signo indecidible, y `x -> -∞`
+    // (una potencia no entera de una magnitud negativa no es real).
+    for input in ["limit(x^a, x, infinity)", "limit(x^(pi-3), x, -infinity)"] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert!(
+            wire["result"].as_str().unwrap_or("").starts_with("limit("),
+            "{input} debe seguir declinando, got {:?}",
+            wire["result"]
+        );
+    }
+}

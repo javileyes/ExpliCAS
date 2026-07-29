@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 762 (newest first)
+Active entries: 763 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
@@ -122,6 +122,7 @@ Active entries: 762 (newest first)
 - 2026-07-29 | `retained` | `cas_ast/domain.rs` (`map_exprs` en `SolutionSet`/`Interval`/`Case`/`SolveRes... | PRESENTACIÓN (los conjuntos solución hablan la misma notación) + la ortografía de la raíz cúbica ya existía
 - 2026-07-29 | `retained` | `cas_formatter/{latex_core,latex_no_roots}.rs` (brazo `cbrt` en los 3 renderi... | PRESENTACIÓN de `cbrt` (retenida) + canonicalización de `cbrt` RECHAZADA por coste medido, + truncamiento silencioso del convertidor
 - 2026-07-29 | `retained` | `scripts/engine_command_matrix_observability.py` (`stderr_fragility_error` ju... | MEDIDA (el gate no determinista): `WARN` metía el presupuesto de fase en la misma bolsa que `SIGSEGV`
+- 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`apply_rational_power_rule` cae a `provable_con... | CAPACIDAD (límite de potencia con exponente constante irracional): la decisión era de SIGNO y la capa exacta ya existía
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22745,3 +22746,19 @@ Active entries: 762 (newest first)
   - **Un gate que falla un tercio de las veces no es un gate: es un impuesto.** Y el coste no se ve en la corrida que falla sino en las tres siguientes, porque enseña a leer el rojo como ruido — que es exactamente lo que hice tres ciclos seguidos.
   - **Antes de clasificar un aviso como fragilidad, preguntar de qué depende.** Los siete WARN del motor se parten limpio en dos clases: los que dependen de la EXPRESIÓN (deterministas, son defectos) y los que dependen del RELOJ (presupuesto, son coste). Meterlos en la misma lista de subcadenas es lo que hace el gate no determinista.
   - **La disciplina «re-corre en exclusiva» tapa el problema en vez de resolverlo.** El ledger llevaba diez instancias documentadas de `stderr_fragility` tratadas como contención. La contención era real en algunas, pero la clasificación de fondo estaba mal, y ninguna re-corrida iba a descubrirlo: hacía falta aislar el caso y contar.
+
+## 2026-07-29 - CAPACIDAD (límite de potencia con exponente constante irracional): la decisión era de SIGNO y la capa exacta ya existía
+
+- area: `cas_math/limits_support.rs` (`apply_rational_power_rule` cae a `provable_const_sign` cuando el exponente no es racional) + test unitario + contrato CLI.
+- status: `retained`. Cierra parcialmente el residual nombrado «`x^pi/x^3` (Polynomial)» de [[limits-narration-done-capability-residual]] — y corrige su diagnóstico.
+- capture:
+  - **NO ERA UNA RESPUESTA INCORRECTA, ERA UNA NO-RESPUESTA**: `limit(x^pi, x, ∞)`, `limit(x^(pi-3), x, ∞)` y `limit(x^e, x, ∞)` salían sin evaluar. La regla hace `as_rational_const(ctx, exp)?` y ahí se acaba — el smell que esta skill documenta («un `as_rational_const`-only en un guard de signo»), aquí en su variante benigna.
+  - **LO ÚNICO QUE LA REGLA DECIDE ES EL SIGNO DEL EXPONENTE**, y la capa que lo decide de forma exacta lleva meses en el repo (`const_sign::provable_const_sign`, superset con e/π). El arreglo es caer a ella cuando no hay valor racional: sin valor racional el exponente no puede ser entero, así que no invade a `apply_power_rule` (que cuida la paridad para `x → -∞`), y el guard de «potencia no entera de magnitud negativa no es real» se conserva intacto.
+  - **EL DIAGNÓSTICO DE LA MEMORIA ERA OTRO**: el residual estaba anotado como «`x^pi/x^3` (Polynomial)». El sondeo lo corrige — la forma de COCIENTE sigue sin evaluar y **no por los irracionales**: `limit(x^(5/2)/x^(3/2), x, ∞)` tampoco evalúa, pese a que la expresión simplifica a `x`. El camino de límites no ve a través del cociente de potencias de la misma base ni con exponentes RACIONALES. Residual nuevo, mejor descrito y de dueño distinto.
+- observed:
+  - `x^pi`, `x^(pi-3)`, `x^e`, `x^(pi/2)` → ∞; `x^(3-pi)`, `x^(2-e)` → 0. Declinan honesto `x^a` (signo indecidible) y todo `x → -∞`. Racionales y enteros intactos.
+  - Barrido sobre 219: **0 cambios** (el corpus no ejercita exponentes irracionales; su valor aquí es probar ausencia de daño). workspace failed:0 (381 suites, 13788 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes. Huella: **1 delta intencionado** (`calculus_limit_contract.passed` 189→190, el contrato nuevo).
+- decision: retener. Residual nombrado con su medida: el cociente `x^a/x^b` de la misma base no se resuelve como límite ni con exponentes racionales, aunque simplifique.
+- retained learning:
+  - **Un `as_rational_const(...)?` en una regla que solo necesita el SIGNO es una no-respuesta esperando**: el ledger tenía catalogada la variante que produce wrong-answers (guards de signo); esta es la hermana benigna, que no miente pero calla. Mismo grep, misma capa exacta al otro lado.
+  - **Un residual heredado trae su diagnóstico, y el diagnóstico también se pudre.** «`x^pi/x^3` (Polynomial)» apuntaba a la fusión de potencias; el sondeo enseñó que la fusión racional funciona (`x^(5/2)/x^(3/2)` → `x`) y que quien no responde es el límite. Sondear el residual antes de creerse su etiqueta cuesta un minuto y cambia el ciclo entero.

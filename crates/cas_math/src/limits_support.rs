@@ -5984,22 +5984,39 @@ pub(crate) fn apply_rational_power_rule(
         return None;
     }
 
-    // Integer exponents belong to `apply_power_rule`, which also handles the
-    // sign parity for `x->-∞`.
-    let q = crate::numeric_eval::as_rational_const(ctx, exp)?;
-    if q.is_integer() {
-        return None;
-    }
+    // Lo único que hace falta decidir es el SIGNO del exponente. `as_rational_const`
+    // solo casa literales plegables, así que un exponente constante pero irracional
+    // (`pi`, `pi - 3`, `e`) dejaba el límite sin evaluar — no era una respuesta
+    // incorrecta, era una NO-respuesta, y la capa que decide ese signo de forma
+    // exacta ya existe (`provable_const_sign`, superset con e/π).
+    let sign = match crate::numeric_eval::as_rational_const(ctx, exp) {
+        Some(q) => {
+            // Los exponentes ENTEROS son de `apply_power_rule`, que además cuida la
+            // paridad para `x -> -∞`.
+            if q.is_integer() {
+                return None;
+            }
+            if q.is_negative() {
+                crate::const_sign::ConstSign::Negative
+            } else {
+                crate::const_sign::ConstSign::Positive
+            }
+        }
+        // Sin valor racional el exponente no puede ser entero, así que no invade a
+        // `apply_power_rule`; solo se acepta si su signo es DECIDIBLE.
+        None => crate::const_sign::provable_const_sign(ctx, exp)?,
+    };
 
     // A non-integer power of a negative magnitude is not real-valued.
     if approach == InfSign::Neg {
         return None;
     }
 
-    if q.is_negative() {
-        Some(ctx.num(0))
-    } else {
-        Some(mk_infinity(ctx, InfSign::Pos))
+    match sign {
+        crate::const_sign::ConstSign::Negative => Some(ctx.num(0)),
+        crate::const_sign::ConstSign::Positive => Some(mk_infinity(ctx, InfSign::Pos)),
+        // `x^0 = 1` tiene dueño en otra regla; aquí declinar es lo honesto.
+        crate::const_sign::ConstSign::Zero => None,
     }
 }
 
@@ -18667,6 +18684,43 @@ mod tests {
             ctx.get(out_three),
             Expr::Constant(Constant::Infinity)
         ));
+    }
+
+    #[test]
+    fn apply_rational_power_rule_resolves_decidable_irrational_exponents() {
+        // Lo único que la regla decide es el SIGNO del exponente, y para eso ya
+        // existe una capa exacta. Con `as_rational_const` a secas, `x^pi` o
+        // `x^(pi-3)` no daban una respuesta INCORRECTA: no daban ninguna.
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        for src in ["x^pi", "x^(pi - 3)", "x^e", "x^(pi/2)"] {
+            let expr = parse_expr(&mut ctx, src);
+            let out = apply_rational_power_rule(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("{src} -> ∞"));
+            assert!(
+                matches!(ctx.get(out), Expr::Constant(Constant::Infinity)),
+                "{src}"
+            );
+        }
+
+        for src in ["x^(3 - pi)", "x^(2 - e)"] {
+            let expr = parse_expr(&mut ctx, src);
+            let out = apply_rational_power_rule(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("{src} -> 0"));
+            assert!(
+                matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0))),
+                "{src}"
+            );
+        }
+
+        // Un exponente cuyo signo NO es decidible declina, y `x -> -∞` sigue
+        // declinando porque una potencia no entera de una magnitud negativa no es
+        // real — el mismo argumento que ya protegía a los racionales.
+        let symbolic = parse_expr(&mut ctx, "x^a");
+        assert!(apply_rational_power_rule(&mut ctx, symbolic, x, InfSign::Pos).is_none());
+        let irrational = parse_expr(&mut ctx, "x^(pi - 3)");
+        assert!(apply_rational_power_rule(&mut ctx, irrational, x, InfSign::Neg).is_none());
     }
 
     #[test]
