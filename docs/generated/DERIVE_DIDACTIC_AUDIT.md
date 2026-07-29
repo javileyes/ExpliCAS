@@ -13545,7 +13545,7 @@ Result: x^(a + b + c + d)
 
 - Source: `sqrt(x)*x^(1/3)`
 - Target: `x^(5/6)`
-- Result: `x^(5 / 6)`
+- Result: `root(x^5, 6)`
 - Web step count: `1`
 - Web substep count: `0`
 - Flags: none

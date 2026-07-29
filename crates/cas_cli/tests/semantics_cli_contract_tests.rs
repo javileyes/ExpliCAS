@@ -205,7 +205,7 @@ fn root_product_merge_in_generic_carries_nonnegative_requires() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "(x·y)^(1/2)");
+    assert_eq!(wire["result"], "sqrt(x·y)");
     assert_eq!(wire["domain"]["mode"], "generic");
     assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
 }
@@ -216,7 +216,7 @@ fn root_quotient_merge_in_generic_carries_positive_denominator_requires() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "(x / y)^(1/2)");
+    assert_eq!(wire["result"], "sqrt(x / y)");
     assert_eq!(wire["domain"]["mode"], "generic");
     assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
 }
@@ -234,7 +234,7 @@ fn root_product_merge_in_assume_preserves_intrinsic_requires_not_assumes() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "(x·y)^(1/2)");
+    assert_eq!(wire["result"], "sqrt(x·y)");
     assert_eq!(wire["domain"]["mode"], "assume");
     assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
     assert!(
@@ -268,7 +268,7 @@ fn root_quotient_merge_in_assume_preserves_intrinsic_requires_not_assumes() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "(x / y)^(1/2)");
+    assert_eq!(wire["result"], "sqrt(x / y)");
     assert_eq!(wire["domain"]["mode"], "assume");
     assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
     assert!(
@@ -302,7 +302,7 @@ fn root_product_merge_is_disabled_in_strict_but_definedness_requires_remain() {
     assert_eq!(code, 0);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "x^(1/2)·y^(1/2)");
+    assert_eq!(wire["result"], "sqrt(x)·sqrt(y)");
     assert_eq!(wire["domain"]["mode"], "strict");
     assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
 }
@@ -586,7 +586,7 @@ fn complex_negative_even_root_folds_to_imaginary_by_rules() {
 
     // REAL mode must keep the same forms symbolic (never `i`): the backstop's
     // real-domain semantics are unchanged.
-    for (src, expected) in [("(-1)^(1/2)", "(-1)^(1/2)"), ("sqrt(-4)", "2·(-1)^(1/2)")] {
+    for (src, expected) in [("(-1)^(1/2)", "(-1)^(1/2)"), ("sqrt(-4)", "2·sqrt(-1)")] {
         let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);
         let wire = parse_wire(&output);
         assert_eq!(wire["result"], expected, "real `{src}` must stay symbolic");
@@ -3688,7 +3688,7 @@ fn root_nesting_drops_intrinsically_nonnegative_radicand_require() {
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "(x^2 + 1)^(1/2) + 1");
+    assert_eq!(wire["result"], "sqrt(x^2 + 1) + 1");
     assert_eq!(wire["required_display"], json!([]));
 }
 
@@ -10718,7 +10718,7 @@ fn complex_mode_computes_general_powers_and_gaussian_sqrt() {
     for (src, expected) in [
         ("i^i", "i^i"),
         ("2^i", "2^i"),
-        ("sqrt(3+4*i)", "(3 + 4·i)^(1/2)"),
+        ("sqrt(3+4*i)", "sqrt(3 + 4·i)"),
         ("(-8)^(1/3)", "-2"),
     ] {
         let (output, _code) = run_cli(&["eval", src, "--format", "json", "--value-domain", "real"]);

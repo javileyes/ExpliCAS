@@ -7,6 +7,20 @@ pub(crate) enum EvalLatexRenderIntent {
     Result,
 }
 
+/// Notación de raíz del RESULTADO, la ÚNICA fuente de esa decisión.
+///
+/// La consumen las DOS superficies del resultado —el LaTeX y el texto plano—
+/// precisamente porque la queja que abrió este frente era que la misma expresión
+/// se imprimía distinto según qué formateador la tocara. Con una función y dos
+/// llamantes, divergir exige borrar una llamada.
+pub(crate) fn result_root_style(signals: &ParseStyleSignals) -> RootStyle {
+    if signals.saw_caret_fraction > 0 && signals.saw_sqrt_token == 0 {
+        RootStyle::Exponential
+    } else {
+        RootStyle::Radical
+    }
+}
+
 fn style_for_eval_intent(
     ctx: &Context,
     id: ExprId,
@@ -40,11 +54,7 @@ fn style_for_eval_intent(
         // pase lo que pase en la entrada. Sniffearlo era lo que imprimía la integral de
         // Gauss como potencia.
         EvalLatexRenderIntent::Result => {
-            style.root_style = if signals.saw_caret_fraction > 0 && signals.saw_sqrt_token == 0 {
-                RootStyle::Exponential
-            } else {
-                RootStyle::Radical
-            };
+            style.root_style = result_root_style(signals);
         }
     }
 

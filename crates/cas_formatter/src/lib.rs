@@ -22,6 +22,7 @@ pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod path;
 pub mod periodic;
+pub mod root_display_rewrite;
 pub mod root_style;
 pub mod rule_scope;
 pub mod visualizer;

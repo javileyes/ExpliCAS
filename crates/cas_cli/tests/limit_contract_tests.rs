@@ -1724,7 +1724,11 @@ fn test_eval_finite_integer_power_composition_limits_json() {
     let cases = [
         ("limit((abs(x)+1)^2, x, -2)", "9"),
         ("limit((sqrt(x^2 + 1))^2, x, -2)", "5"),
-        ("limit((sqrt(x^2 + 1))^3, x, -2)", "5^(3/2)"),
+        // El texto del resultado ECOA la notación del input (2026-07-29) y aquí el
+        // usuario escribió `sqrt`. `5^(3/2)` pasa a `sqrt(5^3)`, que es la MISMA forma
+        // que su LaTeX lleva imprimiendo desde siempre (`\sqrt{5^3}`) — el texto deja
+        // de contradecirlo.
+        ("limit((sqrt(x^2 + 1))^3, x, -2)", "sqrt(5^3)"),
         ("limit((abs(x)+1)^(-2), x, -2)", "1/9"),
         ("limit((sqrt(x^2 + 1))^(-1), x, -2)", "1 / sqrt(5)"),
         ("limit((sqrt(x^2 + 1))^(-2), x, -2)", "1/5"),
@@ -1946,7 +1950,8 @@ fn test_eval_finite_independent_sqrt_limit_preserves_domain_requirements_json() 
     );
     let wire: Value = serde_json::from_str(&stdout).expect("eval json");
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "y^(1/2)");
+    // El input escribe `sqrt`, así que el resultado vuelve en raíz.
+    assert_eq!(wire["result"], "sqrt(y)");
     assert_eq!(wire["warnings"], json!([]));
     assert_eq!(wire["required_conditions"][0]["kind"], "NonNegative");
     assert_eq!(wire["required_conditions"][0]["expr_display"], "y");

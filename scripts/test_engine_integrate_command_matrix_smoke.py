@@ -1864,10 +1864,12 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
 
         self.assertIsNotNone(shifted_case.expected_derivative_result)
         self.assertIsNone(shifted_case.expected_derivative_equivalent_to)
-        self.assertIn("tanh(x^(1/2) - b)", shifted_case.expected_derivative_result)
+        # El texto del resultado ECOA la notación del input (2026-07-29): estos
+        # integrandos escriben `sqrt`, así que su derivada de verificación también.
+        self.assertIn("tanh(sqrt(x) - b)", shifted_case.expected_derivative_result)
         self.assertIsNotNone(case.expected_derivative_result)
         self.assertIsNone(case.expected_derivative_equivalent_to)
-        self.assertIn("tanh((3·x + 1)^(1/2) - b)", case.expected_derivative_result)
+        self.assertIn("tanh(sqrt(3·x + 1) - b)", case.expected_derivative_result)
 
     def test_inverse_trig_root_scale_siblings_use_direct_derivative_verification(
         self,

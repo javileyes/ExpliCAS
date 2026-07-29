@@ -742,7 +742,7 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
     DiffCommandMatrixCase(
         name="inverse_trig_root_external_symbolic_denominator_scale",
         expr="diff((2*arctan(sqrt(x)/a))/a, x)",
-        expected_result="(x^(1/2)·2)/(2·(x·a^2 + x^2))",
+        expected_result="(sqrt(x)·2)/(2·(x·a^2 + x^2))",
         expected_required_display=("a ≠ 0", "x > 0"),
         expected_step_substrings=(
             "Sacar constante de una fracción",

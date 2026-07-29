@@ -2291,16 +2291,19 @@ fn test_eval_vector_norm() {
     assert_eq!(r("norm([1,1])"), "sqrt(2)");
     assert_eq!(r("norm([3,-4])"), "5");
     assert_eq!(r("norm([[3,4],[0,12]])"), "13"); // Frobenius norm of a matrix
-    assert_eq!(r("norm([a,b])"), "(a^2 + b^2)^(1/2)"); // symbolic, real-valued symbols
+                                                 // El texto del resultado ECOA la notación del input (2026-07-29): estas entradas
+                                                 // no escriben ni raíz ni potencia fraccionaria, así que reciben la forma que un
+                                                 // alumno reconoce — `sqrt(a^2 + b^2)`, no `(a^2 + b^2)^(1/2)`. Y re-parsea.
+    assert_eq!(r("norm([a,b])"), "sqrt(a^2 + b^2)"); // symbolic, real-valued symbols
     assert_eq!(rc("norm([3,4])"), "5");
     assert_eq!(rc("norm([[3,4],[0,12]])"), "13");
     // Real mode + `i`: honest symbolic radical (i is a plain symbol here; the Imaginary
     // Usage Warning nudges to complex mode). Folding these to 5 / sqrt(2) was the V0
     // incoherence: the metric layer treated `i` as imaginary while every gated Gaussian
     // rule (and `abs(3+4i)`) kept it symbolic.
-    assert_eq!(r("norm([3,4i])"), "(9 + 16·i^2)^(1/2)");
-    assert_eq!(r("norm([1,i])"), "(1 + i^2)^(1/2)");
-    assert_eq!(r("norm([1+i,1])"), "(2 + i^2 + 2·i)^(1/2)");
+    assert_eq!(r("norm([3,4i])"), "sqrt(9 + 16·i^2)");
+    assert_eq!(r("norm([1,i])"), "sqrt(1 + i^2)");
+    assert_eq!(r("norm([1+i,1])"), "sqrt(2 + i^2 + 2·i)");
     assert_eq!(r("norm([2i])"), "2·|i|"); // sqrt((2i)²) = |2i| with i symbolic
     assert_eq!(r("norm([3i,4i])"), "5·|i|");
     // Complex mode: the magnitude fold lives HERE (its correct domain).
@@ -2311,7 +2314,7 @@ fn test_eval_vector_norm() {
     assert_eq!(rc("norm([3i,4i])"), "5");
     // Complex mode + symbols: Hermitian form — the V0 P0 fix. `(x^2+y^2)^(1/2)` here was a
     // latent wrong answer (x:=i, y:=1 → 0 instead of sqrt(2)).
-    assert_eq!(rc("norm([x,y])"), "(|x|^2 + |y|^2)^(1/2)");
+    assert_eq!(rc("norm([x,y])"), "sqrt(|x|^2 + |y|^2)");
     // Conscious contract: `dot` stays BILINEAR (no conjugation — SymPy's default), so over
     // ℂ `norm(v) ≠ sqrt(dot(v,v))` by design: dot([i,1],[i,1]) = i²+1 = 0 while the norm
     // of [i,1] is sqrt(2) (pinned above).
@@ -3020,7 +3023,7 @@ fn test_eval_surface_integral_verb_f5() {
     // Residuales HONESTOS pineados: el verbo jamás fuerza valor.
     assert_eq!(
         eval_result("surface_integral(1,[x,y,z],[u,v,u^2+v^2],[u,v],[0,1],[0,1])"),
-        "integrate(integrate((4·u^2 + 4·v^2 + 1)^(1/2), v, 0, 1), u, 0, 1)"
+        "integrate(integrate(sqrt(4·u^2 + 4·v^2 + 1), v, 0, 1), u, 0, 1)"
     );
     // Esfera: el interior computa (2π·|sin u|) y el exterior queda residual —
     // el |sin(u)| definido no pliega (dueño: backlog abs-en-integral).
@@ -3467,7 +3470,7 @@ fn test_eval_gaussian_surd_modulus() {
     assert_eq!(rc("abs(-i*sqrt(3))"), "sqrt(3)");
     assert_eq!(rc("abs(i*pi)"), "pi");
     // Transcendentales: forma exacta sin plegar, sound.
-    assert_eq!(rc("abs(e + i*pi)"), "(pi^2 + e^2)^(1/2)");
+    assert_eq!(rc("abs(e + i*pi)"), "sqrt(pi^2 + e^2)");
     // Ownership: racionales al dueño exacto; símbolos declinan (disciplina V0).
     assert_eq!(rc("abs(3+4*i)"), "5");
     assert_eq!(rc("abs(x + i*sqrt(3))"), "|x + i·sqrt(3)|");
@@ -3614,7 +3617,7 @@ fn test_eval_unimodular_abs() {
     // racionales) → √(sin(3)²+cos(2)²), correcto y más informativo. La propiedad
     // de ESTE test (unimodularidad solo con θ IGUAL y decidible) sigue fijada
     // por los asserts de arriba.
-    assert_eq!(rc("abs(cos(2)+i*sin(3))"), "(sin(3)^2 + cos(2)^2)^(1/2)");
+    assert_eq!(rc("abs(cos(2)+i*sin(3))"), "sqrt(sin(3)^2 + cos(2)^2)");
     // θ=i: la unimodularidad sigue DECLINANDO aquí, pero el puente trig-de-i
     // (ciclo 3) compone |cosh(1) − sinh(1)| = 1/e — exactamente el contraejemplo
     // |e^(i·i)| = 1/e que motiva el guard de realidad. El valor confirma la
@@ -3696,7 +3699,7 @@ fn test_eval_gradient_verb() {
     );
     // Composition (the result is a live Matrix): norm — pin THIS form, the engine does
     // not extract the square factor from the radical — and the directional derivative.
-    assert_eq!(r("norm(gradient(x^2+y^2,[x,y]))"), "(4·x^2 + 4·y^2)^(1/2)");
+    assert_eq!(r("norm(gradient(x^2+y^2,[x,y]))"), "sqrt(4·x^2 + 4·y^2)");
     assert_eq!(r("dot(gradient(x^2*y,[x,y]),[1,0])"), "2·x·y");
     // Honest declines: non-variable list entry, Matrix field (jacobian territory, V4),
     // over-cap var list (VERB_MAX_VARS=8).
@@ -4015,8 +4018,8 @@ fn test_eval_abs_vector_and_componentwise_integrate() {
     };
     // V7a — abs of a vector is the norm, in BOTH domains (V0 inheritance).
     assert_eq!(r("abs([3,4])"), "5");
-    assert_eq!(r("abs([x,y])"), "(x^2 + y^2)^(1/2)");
-    assert_eq!(rc("abs([x,y])"), "(|x|^2 + |y|^2)^(1/2)");
+    assert_eq!(r("abs([x,y])"), "sqrt(x^2 + y^2)");
+    assert_eq!(rc("abs([x,y])"), "sqrt(|x|^2 + |y|^2)");
     assert_eq!(rc("abs([1,i])"), "sqrt(2)");
     // General matrix: honest residual (matrix modulus ≠ Frobenius norm); scalar abs
     // untouched (the abs family is 4-historic-P0 territory).
@@ -4588,7 +4591,7 @@ fn test_eval_arclength_curve() {
                                                                              // Honest residual integrals when the integrand is not elementary.
     assert_eq!(
         r("arclength(x^3, x, 0, 1)"),
-        "integrate((9·x^4 + 1)^(1/2), x, 0, 1)"
+        "integrate(sqrt(9·x^4 + 1), x, 0, 1)"
     );
 }
 

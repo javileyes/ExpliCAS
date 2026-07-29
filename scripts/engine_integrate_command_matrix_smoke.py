@@ -490,7 +490,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arcsine_square_by_parts",
         expr="integrate(arcsin(x)^2, x)",
-        expected_result="2·arcsin(x)·(1 - x^2)^(1/2) + x·arcsin(x)^2 - 2·x",
+        expected_result="2·arcsin(x)·sqrt(1 - x^2) + x·arcsin(x)^2 - 2·x",
         expected_derivative_result="arcsin(x)^2",
         expected_derivative_required_display=("-1 ≤ x ≤ 1",),
         expected_required_display=("-1 ≤ x ≤ 1",),
@@ -504,7 +504,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arccosine_square_by_parts",
         expr="integrate(arccos(x)^2, x)",
-        expected_result="x·arccos(x)^2 - 2·arccos(x)·(1 - x^2)^(1/2) - 2·x",
+        expected_result="x·arccos(x)^2 - 2·arccos(x)·sqrt(1 - x^2) - 2·x",
         expected_derivative_result="arccos(x)^2",
         expected_derivative_required_display=("-1 ≤ x ≤ 1",),
         expected_required_display=("-1 ≤ x ≤ 1",),
@@ -520,7 +520,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(arcsin(2*x+1)^2, x)",
         expected_result=(
             "1/2·(arcsin(2·x + 1)^2 + 2·x·arcsin(2·x + 1)^2 + "
-            "4·arcsin(2·x + 1)·(-x^2 - x)^(1/2) - 4·x - 2)"
+            "4·arcsin(2·x + 1)·sqrt(-x^2 - x) - 4·x - 2)"
         ),
         expected_derivative_result="arcsin(2·x + 1)^2",
         expected_derivative_required_display=("-1 ≤ x ≤ 0",),
@@ -2781,7 +2781,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="inverse_trig_symbolic_denominator_scale_sqrt_reciprocal_bridge",
         expr="integrate(1/(sqrt(x)*(x+a^2)), x)",
         expected_result="(2·arctan(sqrt(x) / a))/a",
-        expected_derivative_result="(x^(1/2)·2)/(2·(x·a^2 + x^2))",
+        expected_derivative_result="(sqrt(x)·2)/(2·(x·a^2 + x^2))",
         expected_derivative_required_display=("a ≠ 0", "x > 0"),
         expected_required_display=("a ≠ 0", "x > 0"),
         expected_direct_diff_integrate_result="1 / (sqrt(x)·(a^2 + x))",
@@ -3671,7 +3671,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="radical_numerator_unit_circle",
         expr="integrate(sqrt(1-x^2), x)",
-        expected_result="1/2·(arcsin(x) + x·(1 - x^2)^(1/2))",
+        expected_result="1/2·(arcsin(x) + x·sqrt(1 - x^2))",
         expected_derivative_equivalent_to="sqrt(1-x^2)",
         expected_direct_diff_integrate_equivalent_to="sqrt(1-x^2)",
         expected_direct_diff_integrate_required_display=("-1 < x < 1",),
@@ -3687,7 +3687,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="radical_numerator_square_cofactor",
         expr="integrate(x^2*sqrt(1-x^2), x)",
-        expected_result="1/8·(arcsin(x) + (1 - x^2)^(1/2)·(2·x^3 - x))",
+        expected_result="1/8·(arcsin(x) + sqrt(1 - x^2)·(2·x^3 - x))",
         expected_derivative_equivalent_to="x^2*sqrt(1-x^2)",
         expected_derivative_required_display=("-1 < x < 1",),
         expected_required_display=("-1 ≤ x ≤ 1",),
@@ -3701,7 +3701,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="radical_numerator_hyperbolic_asinh",
         expr="integrate(sqrt(x^2+1), x)",
-        expected_result="1/2·(asinh(x) + x·(x^2 + 1)^(1/2))",
+        expected_result="1/2·(asinh(x) + x·sqrt(x^2 + 1))",
         expected_derivative_equivalent_to="sqrt(x^2+1)",
         expected_direct_diff_integrate_equivalent_to="sqrt(x^2+1)",
         expected_direct_diff_integrate_required_display=(),
@@ -3845,7 +3845,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="linear_radical_scaled_radicand",
         expr="integrate(x*sqrt(2*x-1), x)",
-        expected_result="1/30·(3·(2·x - 1)^(5/2) + 5·(2·x - 1)^(3/2))",
+        expected_result="1/30·(3·sqrt((2·x - 1)^5) + 5·sqrt((2·x - 1)^3))",
         expected_derivative_equivalent_to="x*sqrt(2*x-1)",
         expected_direct_diff_integrate_equivalent_to="x*sqrt(2*x-1)",
         expected_direct_diff_integrate_required_display=("x ≥ 1/2",),
@@ -3861,7 +3861,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="linear_radical_rationalized_reciprocal",
         expr="integrate(1/(sqrt(x)+1), x)",
-        expected_result="2·x^(1/2) - 2·ln(x^(1/2) + 1)",
+        expected_result="2·sqrt(x) - 2·ln(sqrt(x) + 1)",
         expected_required_display=("x ≥ 0",),
         expected_step_substrings=(
             "Racionalizar el denominador",
@@ -3876,7 +3876,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="linear_radical_arctan_quotient",
         expr="integrate(sqrt(x)/(1+x), x)",
-        expected_result="2·x^(1/2) - 2·arctan(sqrt(x))",
+        expected_result="2·sqrt(x) - 2·arctan(sqrt(x))",
         expected_required_display=("x ≥ 0",),
         expected_step_substrings=("Calcular la integral",),
         family="linear_radical_substitution",
@@ -4006,7 +4006,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arcsec_inverse_square_cofactor",
         expr="integrate(1/(x^2*sqrt(x^2+4)), x)",
-        expected_result="-(x^2 + 4)^(1/2) / (4·x)",
+        expected_result="-sqrt(x^2 + 4) / (4·x)",
         expected_derivative_equivalent_to="1/(x^2*sqrt(x^2+4))",
         expected_direct_diff_integrate_equivalent_to="1/(x^2*sqrt(x^2+4))",
         expected_direct_diff_integrate_required_display=("x ≠ 0",),
@@ -4022,7 +4022,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arcsec_circle_radical_over_x",
         expr="integrate(sqrt(4-x^2)/x, x)",
-        expected_result="ln(-|(4 - x^2)^(1/2) - 2|·((4 - x^2)^(1/2) - 2) / x^2) + (4 - x^2)^(1/2)",
+        expected_result="ln(-|sqrt(4 - x^2) - 2|·(sqrt(4 - x^2) - 2) / x^2) + sqrt(4 - x^2)",
         expected_required_display=(
             "-2 ≤ x ≤ 2",
             "-|(4 - x^2)^(1/2) - 2|·((4 - x^2)^(1/2) - 2) / x^2 > 0",
@@ -4038,7 +4038,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arcsec_circle_radical_over_square",
         expr="integrate(sqrt(1-x^2)/x^2, x)",
-        expected_result="(-(1 - x^2)^(1/2) - x·arcsin(x)) / x",
+        expected_result="(-sqrt(1 - x^2) - x·arcsin(x)) / x",
         expected_derivative_equivalent_to="sqrt(1-x^2)/x^2",
         expected_direct_diff_integrate_equivalent_to="sqrt(1-x^2)/x^2",
         expected_direct_diff_integrate_required_display=(
@@ -4063,7 +4063,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arcsec_log_kernel_positive_shift",
         expr="integrate(1/(x*sqrt(x^2+4)), x)",
-        expected_result="1/4·ln(|((x^2 + 4)^(1/2) - 2)^2 / x^2|)",
+        expected_result="1/4·ln(|(sqrt(x^2 + 4) - 2)^2 / x^2|)",
         expected_required_display=("x ≠ 0",),
         expected_step_substrings=("Calcular la integral",),
         family="quadratic_radical_over_monomial",
@@ -4075,7 +4075,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="arcsec_hyperbola_radical_over_x",
         expr="integrate(sqrt(x^2-1)/x, x)",
-        expected_result="(x^2 - 1)^(1/2) - arctan(sqrt(x^2 - 1))",
+        expected_result="sqrt(x^2 - 1) - arctan(sqrt(x^2 - 1))",
         expected_required_display=(
             "x ≠ 0",
             "x ≤ -1 or x ≥ 1",
@@ -4455,7 +4455,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gaussian_half_line_unit",
         expr="integrate(e^(-x^2), x, 0, infinity)",
-        expected_result="1/2·pi^(1/2)",
+        expected_result="1/2·sqrt(pi)",
         expected_required_display=(),
         expected_step_substrings=("Calcular la integral",),
         family="gaussian_moment_table",
@@ -4467,7 +4467,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gaussian_full_line",
         expr="integrate(e^(-x^2), x, -infinity, infinity)",
-        expected_result="pi^(1/2)",
+        expected_result="sqrt(pi)",
         expected_required_display=(),
         expected_step_substrings=("Calcular la integral",),
         family="gaussian_moment_table",
@@ -4479,7 +4479,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gaussian_second_moment_half_line",
         expr="integrate(x^2*e^(-x^2), x, 0, infinity)",
-        expected_result="1/4·pi^(1/2)",
+        expected_result="1/4·sqrt(pi)",
         expected_required_display=(),
         expected_step_substrings=("Calcular la integral",),
         family="gaussian_moment_table",
@@ -4491,7 +4491,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gaussian_scaled_decay_half_line",
         expr="integrate(e^(-2*x^2), x, 0, infinity)",
-        expected_result="1/2·(1/2·pi)^(1/2)",
+        expected_result="1/2·sqrt(1/2·pi)",
         expected_required_display=(),
         expected_step_substrings=("Calcular la integral",),
         family="gaussian_moment_table",
@@ -4503,7 +4503,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gamma_half_integer_reciprocal_root",
         expr="integrate(e^(-x)/sqrt(x), x, 0, infinity)",
-        expected_result="pi^(1/2)",
+        expected_result="sqrt(pi)",
         expected_required_display=("x > 0",),
         expected_step_substrings=("Calcular la integral",),
         family="gamma_half_integer_table",
@@ -4515,7 +4515,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gamma_half_integer_root_moment",
         expr="integrate(sqrt(x)*e^(-x), x, 0, infinity)",
-        expected_result="1/2·pi^(1/2)",
+        expected_result="1/2·sqrt(pi)",
         expected_required_display=("x ≥ 0",),
         expected_step_substrings=("Calcular la integral",),
         family="gamma_half_integer_table",
@@ -4527,6 +4527,8 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gamma_half_integer_three_halves_moment",
         expr="integrate(x^(3/2)*e^(-x), x, 0, infinity)",
+        # Este caso escribe `x^(3/2)` y NINGUNA raíz, así que su resultado vuelve
+        # en potencia fraccionaria: el eco funciona en los dos sentidos.
         expected_result="3/4·pi^(1/2)",
         expected_required_display=("x ≥ 0",),
         expected_step_substrings=("Calcular la integral",),
@@ -4539,7 +4541,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="gamma_half_integer_scaled_decay",
         expr="integrate(e^(-2*x)/sqrt(x), x, 0, infinity)",
-        expected_result="(1/2·pi)^(1/2)",
+        expected_result="sqrt(1/2·pi)",
         expected_required_display=("x > 0",),
         expected_step_substrings=("Calcular la integral",),
         family="gamma_half_integer_table",
@@ -4580,7 +4582,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="hermite_split_square_over_circle_shifted",
         expr="integrate(x^2/sqrt(2*x-x^2), x)",
-        expected_result="1/2·(3·arcsin(x - 1) + (2·x - x^2)^(1/2)·(-x - 3))",
+        expected_result="1/2·(3·arcsin(x - 1) + sqrt(2·x - x^2)·(-x - 3))",
         expected_derivative_equivalent_to="x^2/sqrt(2*x-x^2)",
         expected_direct_diff_integrate_equivalent_to="x^2/sqrt(2*x-x^2)",
         expected_direct_diff_integrate_required_display=("0 < x < 2",),
@@ -4596,7 +4598,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="hermite_split_cross_terms_over_acosh_radical",
         expr="integrate((x^2+1)/sqrt(x^2+2*x), x)",
-        expected_result="1/2·(5·acosh(x + 1) + (x^2 + 2·x)^(1/2)·(x - 3))",
+        expected_result="1/2·(5·acosh(x + 1) + sqrt(x^2 + 2·x)·(x - 3))",
         expected_derivative_equivalent_to="(x^2+1)/sqrt(x^2+2*x)",
         expected_direct_diff_integrate_equivalent_to="(x^2+1)/sqrt(x^2+2*x)",
         expected_direct_diff_integrate_required_display=("x > 0",),
@@ -4631,7 +4633,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="linear_over_sqrt_completed_square_arcsin",
         expr="integrate(x/sqrt(2*x-x^2), x)",
-        expected_result="arcsin(x - 1) - (2·x - x^2)^(1/2)",
+        expected_result="arcsin(x - 1) - sqrt(2·x - x^2)",
         expected_derivative_equivalent_to="x/sqrt(2*x-x^2)",
         expected_direct_diff_integrate_equivalent_to="x/sqrt(2*x-x^2)",
         expected_direct_diff_integrate_required_display=("0 < x < 2",),
@@ -4647,7 +4649,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="monomial_over_sqrt_hyperbolic_asinh",
         expr="integrate(x^2/sqrt(1+x^2), x)",
-        expected_result="1/2·(x·(x^2 + 1)^(1/2) - asinh(x))",
+        expected_result="1/2·(x·sqrt(x^2 + 1) - asinh(x))",
         expected_derivative_equivalent_to="x^2/sqrt(1+x^2)",
         expected_direct_diff_integrate_equivalent_to="x^2/sqrt(1+x^2)",
         expected_direct_diff_integrate_required_display=(),
@@ -4663,7 +4665,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="monomial_over_sqrt_hyperbolic_acosh",
         expr="integrate(x^2/sqrt(x^2-1), x)",
-        expected_result="1/2·(acosh(x) + x·(x^2 - 1)^(1/2))",
+        expected_result="1/2·(acosh(x) + x·sqrt(x^2 - 1))",
         expected_derivative_equivalent_to="x^2/sqrt(x^2-1)",
         expected_direct_diff_integrate_equivalent_to="x^2/sqrt(x^2-1)",
         expected_direct_diff_integrate_required_display=("x > 1",),
@@ -4682,7 +4684,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="monomial_over_sqrt_reduction_square",
         expr="integrate(x^2/sqrt(1-x^2), x)",
-        expected_result="1/2·(arcsin(x) - x·(1 - x^2)^(1/2))",
+        expected_result="1/2·(arcsin(x) - x·sqrt(1 - x^2))",
         expected_derivative_equivalent_to="x^2/sqrt(1-x^2)",
         expected_direct_diff_integrate_equivalent_to="x^2/sqrt(1-x^2)",
         expected_direct_diff_integrate_required_display=("-1 < x < 1",),
@@ -4698,7 +4700,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="monomial_over_sqrt_reduction_scaled_radicand",
         expr="integrate(x^2/sqrt(4-x^2), x)",
-        expected_result="1/2·(4·arcsin(x / 2) - x·(4 - x^2)^(1/2))",
+        expected_result="1/2·(4·arcsin(x / 2) - x·sqrt(4 - x^2))",
         expected_derivative_equivalent_to="x^2/sqrt(4-x^2)",
         expected_direct_diff_integrate_equivalent_to="x^2/sqrt(4-x^2)",
         expected_direct_diff_integrate_required_display=("-2 < x < 2",),
@@ -4729,7 +4731,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="by_parts_square_arcsine_radical_tail",
         expr="integrate(x^2*arcsin(x), x)",
-        expected_result="1/9·(3·arcsin(x)·x^3 + (1 - x^2)^(1/2)·(x^2 + 2))",
+        expected_result="1/9·(3·arcsin(x)·x^3 + sqrt(1 - x^2)·(x^2 + 2))",
         expected_derivative_equivalent_to="x^2*arcsin(x)",
         expected_direct_diff_integrate_equivalent_to="x^2*arcsin(x)",
         expected_direct_diff_integrate_required_display=("-1 < x < 1",),
@@ -4745,7 +4747,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="by_parts_monomial_scaled_arcsine_radical_tail",
         expr="integrate(x*arcsin(2*x), x)",
-        expected_result="1/16·(2·x·(1 - 4·x^2)^(1/2) + 8·arcsin(2·x)·x^2 - arcsin(2·x))",
+        expected_result="1/16·(2·x·sqrt(1 - 4·x^2) + 8·arcsin(2·x)·x^2 - arcsin(2·x))",
         expected_derivative_equivalent_to="x*arcsin(2*x)",
         expected_direct_diff_integrate_equivalent_to="x*arcsin(2*x)",
         expected_direct_diff_integrate_required_display=("-1/2 < x < 1/2",),
@@ -4761,7 +4763,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="by_parts_monomial_shifted_arcsine_domain",
         expr="integrate(x*arcsin(x+1), x)",
-        expected_result="1/4·(2·arcsin(x + 1)·x^2 + (-x^2 - 2·x)^(1/2)·(x - 3) - 3·arcsin(x + 1))",
+        expected_result="1/4·(2·arcsin(x + 1)·x^2 + sqrt(-x^2 - 2·x)·(x - 3) - 3·arcsin(x + 1))",
         expected_derivative_equivalent_to="x*arcsin(x+1)",
         expected_derivative_required_display=("-2 < x < 0",),
         expected_required_display=("-2 ≤ x ≤ 0",),
@@ -4775,7 +4777,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="by_parts_monomial_arcsine_domain",
         expr="integrate(x*arcsin(x), x)",
-        expected_result="1/4·(2·arcsin(x)·x^2 + x·(1 - x^2)^(1/2) - arcsin(x))",
+        expected_result="1/4·(2·arcsin(x)·x^2 + x·sqrt(1 - x^2) - arcsin(x))",
         expected_derivative_equivalent_to="x*arcsin(x)",
         expected_direct_diff_integrate_equivalent_to="x*arcsin(x)",
         expected_direct_diff_integrate_required_display=("-1 < x < 1",),
@@ -4791,7 +4793,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="by_parts_monomial_arccosine_domain",
         expr="integrate(x*arccos(x), x)",
-        expected_result="1/4·(arccos(x)·(2·x^2 - 1) - x·(1 - x^2)^(1/2))",
+        expected_result="1/4·(arccos(x)·(2·x^2 - 1) - x·sqrt(1 - x^2))",
         expected_derivative_equivalent_to="x*arccos(x)",
         expected_direct_diff_integrate_equivalent_to="x*arccos(x)",
         expected_direct_diff_integrate_required_display=("-1 < x < 1",),
@@ -4823,7 +4825,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="by_parts_log_fractional_power_radical",
         expr="integrate(ln(x)/sqrt(x), x)",
-        expected_result="4·x^(1/2)·(1/2·ln(x) - 1)",
+        expected_result="4·sqrt(x)·(1/2·ln(x) - 1)",
         expected_derivative_result="ln(x) / sqrt(x)",
         expected_direct_diff_integrate_result="ln(x) / sqrt(x)",
         expected_direct_diff_integrate_required_display=("x > 0",),
@@ -5404,7 +5406,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="shifted_sqrt_chain_hyperbolic_tangent_log_domain",
         expr="integrate(1/(2*sqrt(x)*tanh(b-sqrt(x))), x)",
         expected_result="-ln(|sinh(sqrt(x) - b)|)",
-        expected_derivative_result="-1 / (2·tanh(x^(1/2) - b)·sqrt(x))",
+        expected_derivative_result="-1 / (2·tanh(sqrt(x) - b)·sqrt(x))",
         expected_derivative_required_display=("sinh(sqrt(x) - b) ≠ 0", "x > 0"),
         expected_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
         expected_step_substrings=(
@@ -5424,7 +5426,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         name="affine_shifted_sqrt_chain_hyperbolic_tangent_log_domain",
         expr="integrate(3/(2*sqrt(3*x+1)*tanh(b-sqrt(3*x+1))), x)",
         expected_result="-ln(|sinh(sqrt(3·x + 1) - b)|)",
-        expected_derivative_result="-3 / (2·tanh((3·x + 1)^(1/2) - b)·sqrt(3·x + 1))",
+        expected_derivative_result="-3 / (2·tanh(sqrt(3·x + 1) - b)·sqrt(3·x + 1))",
         expected_derivative_required_display=(
             "sinh(sqrt(3·x + 1) - b) ≠ 0",
             "x > -1/3",
@@ -5467,7 +5469,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
         expected_result="-k / cosh(sqrt(x) - b)",
         expected_derivative_result=(
-            "k·sinh(x^(1/2) - b) / (2·cosh(x^(1/2) - b)^2·sqrt(x))"
+            "k·sinh(sqrt(x) - b) / (2·cosh(sqrt(x) - b)^2·sqrt(x))"
         ),
         expected_derivative_required_display=("x > 0",),
         expected_required_display=("x > 0",),
@@ -5489,7 +5491,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         expr="integrate(k*cosh(b-sqrt(x))/(2*sqrt(x)*sinh(b-sqrt(x))^2), x)",
         expected_result="-k / sinh(sqrt(x) - b)",
         expected_derivative_result=(
-            "k·cosh(x^(1/2) - b) / (2·sinh(x^(1/2) - b)^2·sqrt(x))"
+            "k·cosh(sqrt(x) - b) / (2·sinh(sqrt(x) - b)^2·sqrt(x))"
         ),
         expected_derivative_required_display=(
             "x > 0",

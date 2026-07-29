@@ -10,8 +10,12 @@ fn build_expr_result_payload(
     max_chars: usize,
     style_signals: &ParseStyleSignals,
 ) -> EvalOutputResultPayload {
-    let (result_str, truncated, char_count) =
-        crate::eval_output_stats::format_limited_output_expr(ctx, result_expr, max_chars);
+    let (result_str, truncated, char_count) = crate::eval_output_stats::format_limited_output_expr(
+        ctx,
+        result_expr,
+        max_chars,
+        style_signals,
+    );
     let stats = crate::eval_output_stats::expr_output_stats(ctx, result_expr);
     let hash = if truncated {
         Some(crate::eval_output_stats::expr_output_hash(ctx, result_expr))
