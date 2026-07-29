@@ -156,9 +156,15 @@ impl Simplifier {
         // result AND the last_* side channels, so it is observably identical
         // to a fresh call. Disabled when a step listener is attached (the
         // listener would miss its per-rewrite notifications).
-        let memo_active = self.solve_memo_depth > 0 && self.step_listener.is_none();
+        // Only when no sticky state is set at entry: the pipeline then derives
+        // its sticky domain from the input itself, making the result a pure
+        // function of the key. Sticky-scoped nested calls skip the memo.
+        let memo_active = self.solve_memo_depth > 0
+            && self.step_listener.is_none()
+            && self.sticky_root_expr.is_none()
+            && self.sticky_implicit_domain.is_none();
         if memo_active {
-            if let Some(entry) = self.solve_memo.get(&(expr_id, self.sticky_root_expr)) {
+            if let Some(entry) = self.solve_memo.get(&(expr_id, self.sticky_value_domain)) {
                 self.last_domain_warnings = entry.domain_warnings.clone();
                 self.last_required_conditions = entry.required_conditions.clone();
                 self.last_blocked_hints = entry.blocked_hints.clone();
@@ -173,7 +179,7 @@ impl Simplifier {
         let (out, steps) = self.simplify_with_options(expr_id, options);
         if memo_active {
             self.solve_memo.insert(
-                (expr_id, self.sticky_root_expr),
+                (expr_id, self.sticky_value_domain),
                 super::simplifier::SolveMemoEntry {
                     out,
                     steps: steps.clone(),

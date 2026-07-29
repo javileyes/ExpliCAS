@@ -47,11 +47,17 @@ pub struct Simplifier {
     pub(super) step_listener: Option<Box<dyn crate::StepListener>>,
     /// P16: memo for repeated plain `simplify()` calls inside a solve scope.
     /// The solver's handler chain re-simplifies the same interned expression
-    /// 4-8x per solve (measured up to 85% redundant calls). Keyed by
-    /// (input, sticky root) — sticky state changes simplify semantics — and
-    /// replaying the last_* side channels so a hit is observably identical
-    /// to a fresh call. Active only while `solve_memo_depth > 0`.
-    pub(super) solve_memo: HashMap<(ExprId, Option<ExprId>), SolveMemoEntry>,
+    /// 4-8x per solve (measured up to 85% redundant calls). ONLY consulted
+    /// when no sticky root/domain is set at entry: there the pipeline derives
+    /// its sticky state from the input itself, so the result is a pure
+    /// function of `(input, sticky value domain)` — the key — over the
+    /// append-only Context, and entries never go stale across pipelines
+    /// (the per-pipeline sticky set/clear used to wipe this map, leaving it
+    /// a single-entry cache: 55 hits out of 241 solve-scope simplifies with
+    /// 46 distinct inputs on the abs-split solve). Replays the last_* side
+    /// channels so a hit is observably identical to a fresh call. Active
+    /// only while `solve_memo_depth > 0`; rule enable/disable still clears.
+    pub(super) solve_memo: HashMap<(ExprId, crate::semantics::ValueDomain), SolveMemoEntry>,
     pub(super) solve_memo_depth: u32,
     /// Sticky value domain consumed by plain `simplify()` (which otherwise runs
     /// with `SimplifyOptions::default()` = RealOnly). The solve backend sets it
@@ -390,30 +396,28 @@ impl Simplifier {
         self.sticky_root_expr = Some(root);
         self.sticky_implicit_domain =
             Some(infer_implicit_domain(&self.context, root, value_domain));
-        // Sticky state changes simplify semantics: drop any solve-scope memo.
-        self.solve_memo.clear();
+        // No solve-memo invalidation needed: the memo is only consulted (and
+        // filled) when NO sticky state is set at `simplify()` entry, so
+        // sticky-scoped pipelines never read stale entries.
     }
 
     /// Clear sticky implicit domain (call after pipeline completes).
     pub fn clear_sticky_implicit_domain(&mut self) {
         self.sticky_root_expr = None;
         self.sticky_implicit_domain = None;
-        self.solve_memo.clear();
+        // No solve-memo invalidation needed (see `set_sticky_implicit_domain`).
     }
 
     /// Set the sticky value domain consumed by plain `simplify()` calls and
     /// return the previous value (save/restore discipline for scoped callers
-    /// like the solve backend). Sticky state changes simplify semantics, so a
-    /// domain change drops the solve-scope memo.
+    /// like the solve backend). The solve-scope memo keys by value domain, so
+    /// no invalidation is needed on change.
     pub fn set_sticky_value_domain(
         &mut self,
         value_domain: crate::semantics::ValueDomain,
     ) -> crate::semantics::ValueDomain {
         let previous = self.sticky_value_domain;
-        if previous != value_domain {
-            self.sticky_value_domain = value_domain;
-            self.solve_memo.clear();
-        }
+        self.sticky_value_domain = value_domain;
         previous
     }
 
