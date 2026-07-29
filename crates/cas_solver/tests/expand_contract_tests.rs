@@ -343,3 +343,54 @@ fn test_expand_large_multinomial() {
         elapsed, plus_count
     );
 }
+
+// =========================================================================
+// D) expand() no debe ser deshecho por fases posteriores (2 tests)
+// =========================================================================
+
+/// El resultado de expand() es la petición explícita del usuario: la fase POST
+/// no puede re-factorizarlo. Regresión: `expand(3*(2+pi))` devolvía `3·(2+pi)`
+/// (los pasos expandían y "Factor out 3" lo deshacía — un no-op de punta a punta).
+#[test]
+fn test_expand_call_not_refactored_by_post_phase() {
+    let (result_str, _, _) = simplify_standard("expand(3*(2+pi))");
+    assert!(
+        !result_str.contains('('),
+        "expand(3*(2+pi)) must stay expanded, got: {}",
+        result_str
+    );
+    assert!(
+        result_str.contains('6'),
+        "expected distributed constant 6 in: {}",
+        result_str
+    );
+
+    // Same contract for surd sums, where the POST factor aesthetic applies to
+    // plain input: an explicit expand() overrides it.
+    let (surd_str, _, _) = simplify_standard("expand(2*(1+sqrt(2)))");
+    assert!(
+        !surd_str.contains("2 * (1") && !surd_str.contains("2*(1"),
+        "expand(2*(1+sqrt(2))) must stay expanded, got: {}",
+        surd_str
+    );
+}
+
+/// Los resultados de expand() con variables NO se congelan (solo los constantes
+/// llevan barrera hold): la composición aritmética alrededor debe seguir
+/// digiriéndose — cancelación completa y combinación de términos semejantes.
+#[test]
+fn test_expand_variable_results_still_compose() {
+    let (result_str, _, _) = simplify_standard("expand((x+1)^2) - x^2 - 2*x - 1");
+    assert_eq!(
+        result_str, "0",
+        "cancellation around expand must work, got: {}",
+        result_str
+    );
+
+    let (combined_str, _, _) = simplify_standard("expand((x+1)^2) + x");
+    assert!(
+        combined_str.contains("3 * x") || combined_str.contains("3·x"),
+        "like terms around expand must combine, got: {}",
+        combined_str
+    );
+}

@@ -240,10 +240,17 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD_SUB),
     PhaseMask::POST,
     |ctx, expr, parent_ctx| {
-        if let Some(rewrite) = try_rewrite_factor_common_integer_from_add_expr(ctx, expr) {
-            let rewritten = rewrite.rewritten;
-            let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
-            return Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten));
+        // Factoring undoes a requested expansion; the two variable branches
+        // below already guard on expand contexts, keep the constant branch
+        // in parity.
+        let in_expand_context = parent_ctx.is_expand_mode() || parent_ctx.is_auto_expand();
+
+        if !in_expand_context {
+            if let Some(rewrite) = try_rewrite_factor_common_integer_from_add_expr(ctx, expr) {
+                let rewritten = rewrite.rewritten;
+                let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
+                return Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten));
+            }
         }
 
         if should_factor_variable_common_integer_in_compact_power_product(ctx, expr, parent_ctx) {

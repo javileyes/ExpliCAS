@@ -101,3 +101,29 @@ fn test_factor_distribute_no_loop() {
 
     // If we got here without timeout/stack overflow, no loop occurred
 }
+
+/// Partial constant factoring must NOT fire: `6 + 3·π → 3·(2 + π)` is a
+/// lateral move (same node count, no div/sub gain) that only adds step noise.
+/// Factoring is kept when every coefficient collapses to ±1
+/// (`2·arctan(3) - 2·arctan(2) → 2·(arctan(3) - arctan(2))`) or when a surd is
+/// present (`2·√2 - 2 → 2·(√2-1)`, the post-rationalization aesthetic).
+#[test]
+fn test_radical_free_constant_sum_not_factored() {
+    for input in ["6+3*pi", "6+3*e"] {
+        let result = simplify_to_string(input);
+        assert!(
+            !result.contains('('),
+            "{} must stay unfactored, got: {}",
+            input,
+            result
+        );
+    }
+
+    // Surd sums keep the factored aesthetic.
+    let surd = simplify_to_string("6+3*sqrt(2)");
+    assert!(
+        surd.contains('('),
+        "surd sum should still factor, got: {}",
+        surd
+    );
+}

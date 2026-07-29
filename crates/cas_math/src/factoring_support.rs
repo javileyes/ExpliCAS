@@ -9,7 +9,7 @@ use crate::expr_relations::{
 use crate::expr_rewrite::smart_mul;
 use crate::numeric::gcd_rational;
 use cas_ast::ordering::compare_expr;
-use cas_ast::{count_nodes, Context, Expr, ExprId};
+use cas_ast::{count_nodes, BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Signed};
@@ -210,6 +210,31 @@ pub fn try_rewrite_factor_function_expr(
     })
 }
 
+/// True when any subexpression is a radical: a sqrt/cbrt/root call or a power
+/// with a fractional numeric exponent.
+fn contains_radical(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Sqrt | BuiltinFn::Cbrt | BuiltinFn::Root)
+            ) || args.iter().any(|&arg| contains_radical(ctx, arg))
+        }
+        Expr::Pow(base, exp) => {
+            // Covers canonical `Number(1/3)` exponents and raw `Div(1, 3)` trees alike.
+            crate::numeric_eval::as_rational_const(ctx, *exp).is_some_and(|q| !q.is_integer())
+                || contains_radical(ctx, *base)
+                || contains_radical(ctx, *exp)
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            contains_radical(ctx, *l) || contains_radical(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => contains_radical(ctx, *inner),
+        Expr::Matrix { data, .. } => data.iter().any(|&elem| contains_radical(ctx, elem)),
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+    }
+}
+
 fn get_integer_coefficient(ctx: &Context, term: ExprId) -> Option<BigRational> {
     match ctx.get(term) {
         Expr::Number(n) if n.is_integer() => Some(n.clone()),
@@ -291,9 +316,8 @@ pub fn try_rewrite_factor_common_integer_from_add_expr_with_policy(
     let coef_left = get_integer_coefficient(ctx, left)?;
     let coef_right = get_integer_coefficient(ctx, right)?;
 
-    if !policy.allow_variable_terms
-        && (contains_variable(ctx, left) || contains_variable(ctx, right))
-    {
+    let constants_only = !policy.allow_variable_terms;
+    if constants_only && (contains_variable(ctx, left) || contains_variable(ctx, right)) {
         return None;
     }
 
@@ -305,6 +329,22 @@ pub fn try_rewrite_factor_common_integer_from_add_expr_with_policy(
     let gcd_int = gcd.to_integer();
     if gcd_int <= BigInt::from(1) {
         return None;
+    }
+
+    // The constants-only path must EARN the rewrite: either every coefficient
+    // collapses to ±1 (`2·arctan(3) - 2·arctan(2) → 2·(arctan(3) - arctan(2))`
+    // removes all explicit coefficients) or a surd is present (`2·√2 - 2 →
+    // 2·(√2 - 1)`, the post-rationalization aesthetic). A partial division like
+    // `6 + 3·π → 3·(2 + π)` is a lateral move (same node count, no div/sub
+    // gain) that only adds step noise, so those sums keep their input form.
+    if constants_only {
+        let coefficients_collapse = coef_left.abs() == gcd && coef_right.abs() == gcd;
+        if !coefficients_collapse
+            && !contains_radical(ctx, left)
+            && !contains_radical(ctx, right)
+        {
+            return None;
+        }
     }
 
     let new_left = divide_term_by_rational(ctx, left, &gcd);
@@ -545,6 +585,40 @@ mod tests {
             try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(rewrite.gcd_int, 2.into());
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Mul(_, _)));
+    }
+
+    #[test]
+    fn factor_common_integer_support_declines_radical_free_constant_sum() {
+        let mut ctx = Context::new();
+        // `6 + 3·π → 3·(2 + π)` is a lateral move (same node count), not a
+        // simplification: without a radical the constant sum keeps its form.
+        for input in ["6+3*pi", "6+3*e", "6+10"] {
+            let expr = parse(input, &mut ctx).expect("parse");
+            assert!(
+                try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).is_none(),
+                "{input} must not factor"
+            );
+        }
+    }
+
+    #[test]
+    fn factor_common_integer_support_accepts_fractional_power_radical() {
+        let mut ctx = Context::new();
+        let expr = parse("2*2^(1/3)+4", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.gcd_int, 2.into());
+    }
+
+    #[test]
+    fn factor_common_integer_support_accepts_radical_free_strict_improvement() {
+        let mut ctx = Context::new();
+        // Both coefficients equal the gcd, so factoring collapses them to 1
+        // (no explicit coefficient survives): kept even without a radical.
+        let expr = parse("2*ln(2)+2*ln(3)", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.gcd_int, 2.into());
     }
 
     #[test]

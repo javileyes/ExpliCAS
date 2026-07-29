@@ -85,7 +85,65 @@ pub fn try_plan_conservative_implicit_expand_expr(
 pub fn expand_explicit_arg_with_post_compaction(ctx: &mut Context, arg: ExprId) -> ExprId {
     let expanded = expand(ctx, arg);
     let stripped = strip_all_holds(ctx, expanded);
-    compact_explicit_expand_polynomial(ctx, stripped)
+    let compacted = compact_explicit_expand_polynomial(ctx, stripped);
+    // The caller freezes this result behind a hold barrier, so the phase
+    // pipeline will not re-canonicalize it afterwards: re-intern through
+    // `Context::add` here so `expand(expand(x))` reaches the same interned
+    // tree as `expand(x)` (idempotence by ExprId).
+    readd_canonical(ctx, compacted)
+}
+
+/// Rebuild a tree through `Context::add` so every node takes its canonical
+/// interned form (ordering, trivial-identity collapse).
+fn readd_canonical(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let node = ctx.get(expr).clone();
+    match node {
+        Expr::Add(l, r) => {
+            let l = readd_canonical(ctx, l);
+            let r = readd_canonical(ctx, r);
+            ctx.add(Expr::Add(l, r))
+        }
+        Expr::Sub(l, r) => {
+            let l = readd_canonical(ctx, l);
+            let r = readd_canonical(ctx, r);
+            ctx.add(Expr::Sub(l, r))
+        }
+        Expr::Mul(l, r) => {
+            let l = readd_canonical(ctx, l);
+            let r = readd_canonical(ctx, r);
+            ctx.add(Expr::Mul(l, r))
+        }
+        Expr::Div(l, r) => {
+            let l = readd_canonical(ctx, l);
+            let r = readd_canonical(ctx, r);
+            ctx.add(Expr::Div(l, r))
+        }
+        Expr::Pow(l, r) => {
+            let l = readd_canonical(ctx, l);
+            let r = readd_canonical(ctx, r);
+            ctx.add(Expr::Pow(l, r))
+        }
+        Expr::Neg(inner) => {
+            let inner = readd_canonical(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Hold(inner) => readd_canonical(ctx, inner),
+        Expr::Function(fn_id, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| readd_canonical(ctx, arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|elem| readd_canonical(ctx, elem))
+                .collect();
+            ctx.add(Expr::Matrix { rows, cols, data })
+        }
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
+    }
 }
 
 /// Decide rewrite for function call `expand(arg)`.

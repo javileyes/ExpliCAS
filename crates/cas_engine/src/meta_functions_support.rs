@@ -34,10 +34,17 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
 
     let arg = args[0];
     match ctx.sym_name(fn_id) {
-        "simplify" => Some(MetaFunctionRewrite {
-            rewritten: arg,
-            desc: "simplify(x) = x (already processed)",
-        }),
+        "simplify" => {
+            // An explicit simplify() is a request to re-normalize everything:
+            // drop the internal hold barriers other commands left to protect
+            // their presentation (expand/factor/apart), so blocked folds like
+            // `simplify(expand(3*(2+pi)) + 1) -> 7 + 3·pi` can complete.
+            let unprotected = cas_ast::hold::strip_all_holds(ctx, arg);
+            Some(MetaFunctionRewrite {
+                rewritten: unprotected,
+                desc: "simplify(x) = x (already processed)",
+            })
+        }
         "factor" => {
             let factored = cas_math::factor::factor(ctx, arg);
             let desc = if factored != arg {
@@ -50,10 +57,26 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
                 desc,
             })
         }
-        "expand" => Some(MetaFunctionRewrite {
-            rewritten: expand_explicit_arg_with_post_compaction(ctx, arg),
-            desc: "expand(x) -> expanded form",
-        }),
+        "expand" => {
+            let expanded = expand_explicit_arg_with_post_compaction(ctx, arg);
+            // Constant results get the internal hold barrier so the POST
+            // factor rules cannot undo the requested expansion
+            // (`expand(3·(2+π))` was round-tripping back to `3·(2+π)`; only
+            // the constants-only factor branch performs that undo). Variable
+            // results stay bare: later phases still owe them arithmetic
+            // digestion (`expand(abs((x-2)·(x+2)))` reaches the meta with a
+            // raw product because the abs canonical guard skips child
+            // simplification — freezing it would publish `|x·x + …|`).
+            let rewritten = if cas_ast::collect_variables(ctx, expanded).is_empty() {
+                cas_ast::hold::wrap_hold(ctx, expanded)
+            } else {
+                expanded
+            };
+            Some(MetaFunctionRewrite {
+                rewritten,
+                desc: "expand(x) -> expanded form",
+            })
+        }
         // approx(x) / evalf(x): the explicit numeric-presentation surface.
         // Exact-only everywhere else; here the value is evaluated in f64
         // (root_sum-aware: sums over the numeric roots of the resultant) and
@@ -410,6 +433,25 @@ mod tests {
             }
         );
         assert!(rendered.contains("x^2"));
+    }
+
+    #[test]
+    fn rewrites_expand_call_into_hold_barrier_for_constant_results() {
+        // A constant expanded form is the user's explicit request: it must come
+        // back hold-wrapped so the constants-only POST factor branch cannot
+        // undo it (expand(3*(2+pi)) was round-tripping back to 3*(2+pi)).
+        let mut ctx = Context::new();
+        let expr = parse("expand(3*(2+pi))", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
+        assert!(cas_ast::hold::is_hold(&ctx, rewrite.rewritten));
+
+        // Variable results stay bare: later phases still owe them arithmetic
+        // digestion (x·x → x², like-term cancellation).
+        let expr = parse("expand(abs((x-2)*(x+2)))", &mut ctx).expect("parse");
+        let rewrite =
+            try_rewrite_meta_function_expr_in_domain(&mut ctx, expr, false).expect("rewrite");
+        assert!(!cas_ast::hold::is_hold(&ctx, rewrite.rewritten));
     }
 
     #[test]
