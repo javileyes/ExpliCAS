@@ -20,7 +20,7 @@
 use super::methods::*;
 
 use crate::expr_predicates::contains_named_var;
-use crate::multipoly::{multipoly_from_expr, MultiPoly, PolyBudget};
+use crate::multipoly::{multipoly_from_expr, Monomial, MultiPoly, PolyBudget};
 use crate::semantic_equality::SemanticEqualityChecker;
 use crate::substitute::{substitute_power_aware, SubstituteOptions};
 use cas_ast::{BuiltinFn, ConditionPredicate, Context, Expr, ExprId};
@@ -475,43 +475,74 @@ fn poly_pow(poly: &MultiPoly, exponent: u32, budget: &PolyBudget) -> Option<Mult
 
 /// Reduce `poly` modulo every relation `t^d = radicand` (`d = 2` for square
 /// roots, `d = 3` for cube roots): while any term carries `t^e` with `e >= d`,
-/// replace `t^e` by `t^(e-d) * radicand`. Each step strictly lowers the atom
-/// degree at that atom's nesting height, so the loop terminates; the step cap
-/// guards budget blowups from large radicands.
+/// replace `t^e` by `t^(e-d) * radicand`. Each rewrite strictly lowers the
+/// atom degree at that atom's nesting height, so the loop terminates; the
+/// step cap (counted per rewritten term, as before) guards budget blowups
+/// from large radicands.
+///
+/// BATCHED: one pass rewrites EVERY reducible term of a relation at once,
+/// accumulating replacements into a coefficient map. The previous
+/// term-at-a-time loop built a single-term `MultiPoly` and re-ran full
+/// `sub`/`add` rebuilds of the whole polynomial per step — up to 8916
+/// measured steps over ~370 monomials on the doubly-even octic tower, which
+/// was ~95% of the wall-clock of `integrate(1/(x^8+1), x)` (dominated by
+/// BTreeMap/BigRational allocation churn). The rewrite is linear over terms,
+/// so batching with coefficient merging reaches the same normal form.
 fn reduce_by_relations(
     mut poly: MultiPoly,
     relations: &[(usize, u32, MultiPoly)],
     budget: &PolyBudget,
 ) -> Option<MultiPoly> {
-    for _ in 0..ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS {
-        let Some((coeff, mono, atom_index, degree, radicand)) =
-            relations.iter().find_map(|(atom_index, degree, radicand)| {
-                poly.terms
-                    .iter()
-                    .find(|(_, mono)| mono[*atom_index] >= *degree)
-                    .map(|(coeff, mono)| {
-                        (coeff.clone(), mono.clone(), *atom_index, *degree, radicand)
-                    })
-            })
-        else {
+    let mut steps = 0usize;
+    loop {
+        let mut changed = false;
+        for (atom_index, degree, radicand) in relations {
+            // Mirrors the var-universe check `add`/`sub` performed in the
+            // per-term loop (a mismatch surfaced as PolyError -> None).
+            if radicand.vars != poly.vars {
+                return None;
+            }
+            loop {
+                let mut kept: std::collections::BTreeMap<Monomial, BigRational> =
+                    std::collections::BTreeMap::new();
+                let mut reducible: Vec<(BigRational, Monomial)> = Vec::new();
+                for (coeff, mono) in &poly.terms {
+                    if mono[*atom_index] >= *degree {
+                        reducible.push((coeff.clone(), mono.clone()));
+                    } else {
+                        kept.insert(mono.clone(), coeff.clone());
+                    }
+                }
+                if reducible.is_empty() {
+                    break;
+                }
+                steps = steps.saturating_add(reducible.len());
+                if steps > ALGEBRAIC_ZERO_TEST_REDUCTION_STEPS {
+                    return None;
+                }
+                for (coeff, mut mono) in reducible {
+                    mono[*atom_index] -= degree;
+                    for (rad_coeff, rad_mono) in &radicand.terms {
+                        let merged_mono: Monomial = mono
+                            .iter()
+                            .zip(rad_mono.iter())
+                            .map(|(a, b)| a + b)
+                            .collect();
+                        let entry = kept
+                            .entry(merged_mono)
+                            .or_insert_with(num_traits::Zero::zero);
+                        *entry += rad_coeff * &coeff;
+                    }
+                }
+                poly = MultiPoly::from_map(poly.vars.clone(), kept);
+                if poly.num_terms() > budget.max_terms {
+                    return None;
+                }
+                changed = true;
+            }
+        }
+        if !changed {
             return Some(poly);
-        };
-
-        let mut single_terms = std::collections::BTreeMap::new();
-        single_terms.insert(mono.clone(), coeff.clone());
-        let single = MultiPoly::from_map(poly.vars.clone(), single_terms);
-
-        let mut reduced_mono = mono;
-        reduced_mono[atom_index] -= degree;
-        let replacement = radicand
-            .mul_scalar(&coeff)
-            .mul_monomial(&reduced_mono)
-            .ok()?;
-
-        poly = poly.sub(&single).ok()?.add(&replacement).ok()?;
-        if poly.num_terms() > budget.max_terms {
-            return None;
         }
     }
-    None
 }
