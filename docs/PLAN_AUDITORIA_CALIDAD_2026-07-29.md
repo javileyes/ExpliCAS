@@ -1,274 +1,280 @@
-# Plan de auditoría de calidad del código — multi-agente, paralelizada
+# Plan de auditoría integral — soundness × universalidad × didáctica, multi-agente
 
-**Fecha**: 2026-07-29 · **Estado**: PLAN (sin ejecutar) · **Autor**: sesión de perf campaña 2ª
+**Fecha**: 2026-07-29 (v2) · **Estado**: PLAN (sin ejecutar) · **Supersede** la
+v1 "auditoría de calidad": el soundness pasa de invariante protegido a
+OBJETIVO de primera clase, y el plan se reorganiza alrededor de la meta.
 
-## 0. Tesis y correcciones de rumbo
+## 0. La meta y su descomposición
 
-Tesis del proyecto: optimizar dirigido por métricas "desenreda" el código —
-quita ineficiencias, sanea y simplifica — y eso da más garantías de alcanzar
-**universalidad con steps educativos**.
+Meta del proyecto: **universalidad con pasos didácticos**. Descompuesta en las
+tres dimensiones que la definen — y en su multiplicador:
 
-Evidencia a favor (campaña 2ª de perf, commits `2918f13a2`→`08ebf09d1`):
-- El memo P16 estaba neutralizado por wipes mal concebidos → revivirlo fue
-  *arreglar un diseño*, no "tunear".
-- El reductor del quotient ring era término-a-término con rebuild completo →
-  el batching es *mejor algoritmo*, no un truco.
-- `atanh_ln_bounds` sin retícula era una *asimetría interna* (sus vecinos
-  Newton ya la tenían).
+- **S — Soundness**: nada falso. Ni un resultado incorrecto ni un gate que
+  decida con aproximaciones. Un CAS que responde mal no es universal por
+  mucho que responda.
+- **U — Universalidad (completitud)**: menos residuales honestos, más
+  familias cerradas, capacidad a medio cablear terminada. Un CAS que declina
+  es honesto pero incompleto.
+- **D — Didáctica**: cada paso publicado es verdadero, no vacío, y pedagógico
+  (el contrato «publicado ⇒ verificado» del Frente E).
+- **Q — Calidad de código (multiplicador)**: cohesión, desacoplo, sin
+  duplicados divergentes, sin enredo. No es meta en sí: es lo que hace baratas
+  y seguras las otras tres. La campaña de perf 2ª lo demostró en ambos
+  sentidos (defectos de diseño → lentitud; medir → sanear).
 
-Dos correcciones que este plan incorpora:
-1. **La perf es el detector, no el objetivo.** La flecha causal es
-   medir → entender → sanear. Por eso el plan usa las métricas de rendimiento
-   como UNA lente (L4) y añade lentes que la perf no ve.
-2. **La universalidad vive en la larga cola, no en los hot paths.** Sus
-   riesgos son: gates inexactos, contratos sin test, fugas entre capas,
-   capacidad a medio cablear. Lentes L2, L3, L5, L8.
+Precedencia ante conflicto: **S > D > U > Q**. Un P0 de soundness bloquea
+cualquier otro lote que toque los mismos archivos.
 
-Principio rector heredado del Frente E: **publicado ⇒ verificado**. Ningún
-hallazgo se acepta sin prueba mecánica; ningún cambio se fusiona sin gate
-conductual completo.
+## 1. Reglas del juego (contrato literal para TODOS los agentes)
 
----
+- **R1** `as_rational_const` no se modifica.
+- **R2** Gates de soundness exactos: jamás f64 para drop/keep. (En pista S
+  esto es además CAZA ACTIVA: encontrar los que hoy no lo son.)
+- **R3** `__hold`/`Expr::Hold`: contrato de `cas_ast/src/hold.rs`; strip solo
+  en fronteras de salida.
+- **R4** Ciclos de vida de sticky/memos (P16, sondas): cambiarlos exige el
+  análisis de invalidación por escrito (la campaña 2ª documenta el molde).
+- **R5** El orden de reglas y root-shortcuts es semántico: no se reordena.
+- **R6** Budgets/caps: instrumentables y ajustables, nunca eliminados ni
+  silenciosos.
+- **R7** Cambios de COMPORTAMIENTO: prohibidos en pistas Q/U/D. En pista S
+  están PERMITIDOS únicamente para fichas S-P0 CONFIRMADAS con oráculo
+  exacto (la corrección de un wrong answer cambia el comportamiento porque
+  el comportamiento era falso); siguen el proceso de la skill auto-mejora
+  (candidato → fix acotado → huella → ledger → commit propio).
+- **R8** Dead code en crates de dominio no se borra: se cataloga (pista U).
+  Solo plumbing 0-refs es borrable (pista Q).
+- **R9** Nombres visibles de reglas/steps no cambian (hay pins).
+- **R10** Push = deploy: nadie pushea. Commit por lote, mensaje en español.
+- **R11** «La “correct answer” de un audit es hipótesis, no oráculo»: todo
+  P0 de soundness exige verificación NUMÉRICA EXACTA independiente
+  (Fraction/BigRational literal, jamás float — lección
+  sympy-subs-masks-poles) antes de tocar código.
+- **R12** Atribución antes de arreglar: contadores/perfil primero (3 de 5
+  atribuciones de la campaña 2ª se redirigieron al medir).
 
-## 1. Invariantes intocables (contrato para TODOS los agentes)
+## 2. Gates mecánicos únicos (compartidos por todas las pistas)
 
-Todo agente recibe esta lista literal. Violar una = rechazo automático.
+- **GATE-A (conducta)**: (1) `cargo test --workspace` exit 0 con log crudo
+  (`> log 2>&1; echo EXIT=$?` — nunca juzgar por un pipe); (2) diff
+  conductual VACÍO del corpus 221 (`scripts/corpus_behavior_diff.py`,
+  result+steps_count+solve_steps+substeps+warnings); (3) clippy limpio.
+  *Excepción R7*: una ficha S-P0 tiene diff NO vacío esperado — su gate es
+  «diff EXACTAMENTE las filas previstas por la ficha, ni una más».
+- **GATE-B (perf no-regresión)**: los 8 trazadores de la campaña 2ª
+  (`simplify_us` mediana de 3, presupuesto = base × 1.25).
+- **GATE-C (huella)**: `make engine-scorecard` — contadores estructurales y
+  slot identity idénticos (campos de latencia se ignoran).
+- **GATE-D (steps)**: (1) barrido diferencial de steps del gate
+  anti-divergencia (dos perfiles) sin divergencias nuevas; (2) verificador
+  de claims (`substep_claim`/`verify_claim`, maquinaria C1.9) con 0
+  refutaciones sobre la muestra tocada.
+- Lección de la campaña 2ª sobre cobertura: **el diff de corpus NO cazó el
+  crash cross-arena; el workspace sí** — por eso GATE-A exige ambos, y por
+  eso la pista S usa generadores además del corpus fijo.
 
-- **I1** `as_rational_const` no se modifica (regla R1 del proyecto).
-- **I2** Los gates de soundness son exactos: jamás f64 para decidir drop/keep.
-- **I3** `__hold`/`Expr::Hold`: contrato documentado en `cas_ast/src/hold.rs`.
-  No se altera su semántica; strip solo en fronteras de salida.
-- **I4** Sticky domain/root y memos (P16, sondas, exact-zero): su ciclo de
-  vida está razonado en comentarios; cambiarlo exige el análisis completo de
-  invalidación por escrito en el PR.
-- **I5** El ORDEN de reglas y de root-shortcuts es semántico. No se reordena
-  "por estética".
-- **I6** Budgets y caps: se pueden subir/instrumentar, nunca eliminar ni
-  convertir en silenciosos (lección "no silent caps").
-- **I7** Cambio de COMPORTAMIENTO (resultado, steps, warnings) = fuera de
-  alcance de esta auditoría. Si un agente cree que el comportamiento actual
-  es un bug, lo cataloga en `HALLAZGOS_CAPACIDAD.md` — no lo "arregla".
-- **I8** Dead code en crates de dominio (`cas_math`, `cas_engine`,
-  `cas_solver*`) NO se borra: se cataloga como posible capacidad a medio
-  cablear (lección dead-code-detector). Solo el plumbing 0-refs es borrable.
-- **I9** Nombres de reglas/steps visibles al usuario no cambian (hay pins).
-- **I10** Push = deploy. Nadie pushea. Commit por lote, mensaje en español.
+## 3. Fase 0 — Preparación común (secuencial, 1 agente)
 
----
+- **F0.1** Working tree limpio, commit de partida anotado (los agentes de
+  workflow mutan el árbol: commitear antes de lanzar nada).
+- **F0.2** Materializar harnesses como `scripts/` del repo:
+  `corpus_behavior_diff.py`, `corpus_timing.py` (portar del scratchpad de la
+  sesión b5a0d3cf), y `sound_probe.py` (nuevo: evalúa una identidad en
+  puntos racionales con `Fraction` exacto — el oráculo R11).
+- **F0.3** Baseline commiteado en `docs/generated/quality_audit_baseline/`:
+  tokei/wc por crate, archivos >5k líneas, funciones >300 líneas,
+  `cargo tree -d`, salidas de los lints del Makefile, corpus timing, huella.
+- **F0.4** Consolidar el backlog previo: fichas abiertas de los
+  frontier-audits (11 P2 del 2026-07-13, F13/F3/F14 del 07-14, pendientes
+  del Frente E §Pendientes, residuales de límites) en un índice único
+  `docs/generated/quality_audit/BACKLOG_PREVIO.md` — la pista U parte de ahí,
+  no de cero.
 
-## 2. Gates mecánicos (definición única, usada por todas las fases)
+## 4. Fase 1 — Cuatro pistas de lectura/medición (paralelismo total)
 
-**GATE-A (conductual)** — obligatorio por lote de cambio:
-1. `cargo test --workspace` = exit 0 (preservar log crudo: `> log 2>&1;
-   echo EXIT=$?` — un grep en el pipe enmascara el exit).
-2. Diff conductual del corpus VACÍO: los 221 de `web/examples.csv` por
-   `eval --steps on --format json`, comparando result + steps_count +
-   solve_steps_count + substeps_count + warnings (harness:
-   `scripts/` — portar `corpus_results.py`/`corpus_timing.py` del scratchpad
-   de la sesión b5a0d3cf; F0 los materializa).
-3. `cargo clippy --workspace` sin warnings nuevos.
+Todos los agentes de F1 son de SOLO LECTURA (+ ejecución de binarios de
+medición). Nadie muta código ⟹ sin conflictos. Cada lente produce
+`docs/generated/quality_audit/<pista><n>_<slug>.md` con fichas (§7).
 
-**GATE-B (rendimiento, no-regresión)** — por lote que toque crates calientes:
-- Los 8 trazadores de la campaña con presupuesto = medición base × 1.25:
-  `solve(e^x+e^(-x)=4,x)`, `solve(x^3-6x^2+11x-6=0,x)`, `solve(x+1/x>2,x)`,
-  `solve(abs(x^2-1)=x+1,x)`, `integrate(1/(x^8+1),x)`,
-  `integrate(1/(x^8+16),x)`, `dsolve(diff(y,x,2)+y=cos(x),y,x)`,
-  `solve([x^2+y^2=25,x+y=7],[x,y])` (medir por `timings_us.simplify_us`,
-  mediana de 3; el ruido run-to-run es ±15% — lección scorecard-huella:
-  juzgar tendencia, no un run).
+### Pista S — Caza de unsoundness (la nueva primera clase)
 
-**GATE-C (huella)** — al cierre de cada fase de mutación:
-- `make engine-scorecard`: contadores estructurales (state/passed/failed/
-  total) y slot identity idénticos; los campos de latencia se ignoran.
+- **S1 — Differential/metamórfico generativo** (×3 agentes: álgebra/trig,
+  calculus, solve). Generar familias paramétricas (plantilla: las 40
+  familias del frontier-audit 2026-07-09) y comparar cada
+  `simplify/derive/integrate` contra el oráculo exacto de `sound_probe.py`
+  en ≥5 puntos racionales seguros (fuera de polos — detectarlos con
+  denominador exacto). Discrepancia ⟹ ficha S-P0. Barrer formas desnudas Y
+  simplificadas (lección: el audit de formas desnudas pierde las
+  simplificadas) y variantes de signo/paridad (lección: la reducción cubre
+  el caso impar y pierde el par/negado).
+- **S2 — Auditoría de gates de decisión** (×2: cas_engine, cas_math+solver).
+  Inventario de todo punto drop/keep (`provable_*`, `poly_eq`, `are_equal`,
+  `is_zero`, comparaciones de score): ¿exacto, conservador o aproximado?
+  Grep dirigido de f64/`to_f64`/floats en rutas de decisión + clasificación.
+  Cada gate aproximado ⟹ ficha S (severidad por alcance).
+- **S3 — Solve: emisión sin verificación** (×1). Mapear handlers que emiten
+  SolutionSet sin verificación por sustitución exacta o con verificación
+  más débil que la emisión (precedente: el radical-product filter). Para
+  inecuaciones: muestreo exacto dentro/fuera de cada intervalo emitido.
+- **S4 — Condiciones perdidas** (×1). Requires/domain conditions que se
+  derivan y luego se pierden por el camino al wire (precedentes: E3 y el
+  filtro de dominios de radicales). Muestreo de casos con `sqrt/ln/1/x` y
+  comprobación de que las condiciones llegan al usuario.
+- **S5 — Fixtures never-confirm** (×1). Extender el detector que cazó 2 P0
+  en Fase 2 compleja: catálogo de equivalencias FALSAS plausibles (con
+  |x|, ramas, dominios) que el equivalence-checker jamás debe confirmar,
+  como suite permanente.
 
----
+### Pista Q — Calidad de código (multiplicador; lentes de la v1 podadas)
 
-## 3. Fase 0 — Preparación (secuencial, ~1 agente, barato)
-
-Sin esto no arranca nada. Entregables:
-
-- **F0.1** Working tree limpio y commit de partida anotado (lección:
-  workflow-agents-mutate-working-tree — commitear ANTES de lanzar agentes).
-- **F0.2** Materializar los harness del scratchpad como scripts del repo:
-  `scripts/corpus_behavior_diff.py` (GATE-A.2) y
-  `scripts/corpus_timing.py` (GATE-B), con baseline commiteado en
-  `docs/generated/quality_audit_baseline/`.
-- **F0.3** Inventario base: `tokei` por crate (o `wc -l` si no está),
-  lista de archivos >5k líneas, funciones >300 líneas
-  (`rg -n "^    (pub )?fn " + awk`), `cargo tree -d` (deps duplicadas),
-  salida de los lints existentes del Makefile (`lint-allowlist`,
-  `lint-budget`, `lint-limits`, `audit-utils`, `lint-string-compares`,
-  `lint-no-panic-prod`). Todo a `docs/generated/quality_audit_baseline/`.
-- **F0.4** Congelar este plan + invariantes en el prompt-plantilla (ver §8).
-
-## 4. Fase 1 — Barrido de lectura (8 lentes × particiones, TODO paralelo)
-
-Agentes de SOLO LECTURA (tipo Explore/general-purpose sin Write). Cada lente
-produce `docs/generated/quality_audit/L<k>_<slug>.md` con hallazgos en
-formato fijo (§7). Ninguna lente muta código ⟹ paralelismo total (8-16
-agentes; las lentes grandes se parten por crates).
-
-- **L1 — Duplicación de moldes** (partición: por pares de crates).
-  Buscar el mismo patrón reimplementado con formas distintas. Semillas
-  conocidas: 3+ memos thread-local con contratos de invalidación distintos
-  (`CANCELLATION_MATCH_MEMO`, `VARIABLE_SQUARE_GATE_MEMO`,
-  `DEFAULT_SIMPLIFY_PROBE_MEMO`, `ISOLATED_SIMPLIFY_PROBE_MEMO`, memos de
-  `perf-recurrence`); 2 mecanismos de hold (`Expr::Hold` vs `__hold`);
-  variantes de `as_rational_const`/eval numérico; walkers contains-X
-  repetidos (`contains_radical`, `is_surd_like`, `expr_contains_sqrt_or_half_power`…).
-  Salida: mapa de familias duplicadas + propuesta de primitivo canónico +
-  coste de migración. **No migrar aún.**
-- **L2 — Capas y acoplamiento** (partición: por crate).
-  Verificar la dirección declarada `cas_ast → cas_math → cas_engine →
-  cas_solver_core → cas_solver → cas_session* → cli/wasm/didactic`.
-  Detectar: re-exports que perforan capas, lógica de dominio en crates de
-  plumbing y viceversa, dependencias cíclicas lógicas (aunque compilen),
-  tipos públicos que deberían ser pub(crate). Semilla: el catálogo de
-  re-exports de `cas_solver::runtime`.
-- **L3 — Código muerto CON clasificación domain/plumbing** (partición: por
-  crate). Para cada símbolo 0-refs: (a) plumbing → candidato a borrar;
-  (b) dominio → ficha de "capacidad a medio cablear" con qué faltaría para
-  cablearla (esto ALIMENTA el backlog de universalidad, no la papelera).
-  Herramienta: `cargo +nightly udeps` si está, si no `rg` de nombres +
-  `#[allow(dead_code)]` existentes.
-- **L4 — Calidad adyacente a hotspots** (partición: orchestrator.rs /
-  arithmetic.rs / solve_backend_local.rs / focused_rule_substeps.rs — los
-  4 monstruos de >10k líneas). Medido en campaña: `orchestrator.rs` ~30k
-  líneas con `simplify_pipeline_inner` de ~3.5k y ~66 root-shortcuts (solo
-  13 instrumentados). Salida: plan de partición POR COHESIÓN en módulos
-  (sin mover semántica), lista de shortcuts sin instrumentar (candidatos a
-  `orchestrator_shortcut_profiler`), funciones >300 líneas con corte
-  natural. **Solo diseño de partición; la ejecución va en F3.**
-- **L5 — Contratos sin test** (partición: por crate). Todo comentario
-  normativo ("MUST", "never", "always", "invariant", "sound") sin test que
-  lo pinne → ficha de test de contrato propuesto (con esqueleto). Semillas:
-  contrato de hold.rs, ciclo de vida de sticky, exactitud de gates, "el
-  resultado de expand queda expandido".
-- **L6 — Errores y paths de pánico** (partición: por crate). unwrap/expect/
-  panic en rutas de producción (fuera de tests), índices sin guard,
-  aritmética que puede desbordar. Cruzar con `lint-no-panic-prod` existente
-  y catalogar las excepciones toleradas. Semilla: el crash cross-arena de
-  esta campaña (`Context::get` index-out-of-bounds) — ¿hay más caches
+- **Q1 — Duplicación de moldes** (×2). Semillas: los 4+ memos thread-local
+  con contratos de invalidación distintos → un molde canónico sobre
+  `Context::instance_tag`; 2 mecanismos de hold (¿2-por-diseño? documentar
+  o unificar); walkers `contains_*` repetidos; variantes de eval numérico.
+- **Q2 — Capas y acoplamiento** (×2). Dirección declarada
+  `ast → math → engine → solver_core → solver → session → cli/wasm/didactic`:
+  re-exports que perforan, dominio en plumbing y viceversa, pub que debería
+  ser pub(crate).
+- **Q3 — Monstruos por cohesión** (×4: orchestrator.rs ~30k,
+  arithmetic.rs ~30k, solve_backend_local.rs, focused_rule_substeps.rs).
+  SOLO diseño de partición en módulos cohesivos sin mover semántica (R5),
+  + lista de los ~53 root-shortcuts sin instrumentar en el
+  shortcut-profiler.
+- **Q4 — Paths de pánico** (×2). unwrap/expect/index fuera de tests; cruzar
+  con `lint-no-panic-prod`; pregunta heredada de la campaña: ¿más caches
   ExprId-keyed sin `instance_tag`?
-- **L7 — Consistencia de presupuestos y caps** (transversal, 1 agente).
-  Inventario de TODOS los budgets/caps/timeouts (`max_terms`, `MAX_TERMS`,
-  `PROBE_BUDGET`, `time_budget_ms`, N=60-style constants). Para cada uno:
-  ¿está documentado su porqué con MEDICIÓN (como el 8916 del reductor)?
-  ¿reporta cuando recorta o traga silenciosamente? ¿es alcanzable por
-  inputs razonables? Los comentarios de presupuesto documentan el coste:
-  leerlos como perfiles (lección tanda 5).
-- **L8 — Métricas de perf como síntoma** (transversal, 1 agente).
-  Re-correr `scripts/corpus_timing.py`, tomar el top-20 y para cada caso
-  >50ms: ¿el coste es esencial (trabajo matemático real) o accidental
-  (repetición, rebuild, churn)? Etiquetar con el patrón de la campaña:
-  rewriter-término-a-término, memo-neutralizado, sonda-sin-gate,
-  serie-sin-retícula, registry-por-sonda. Salida: candidatos de perf con
-  su clase de defecto — la cola de la próxima campaña.
+- **Q5 — Presupuestos y caps** (×1). Inventario completo; para cada uno:
+  ¿su porqué está MEDIDO y documentado (el «8916 pasos» del reductor era un
+  perfil escrito en un comentario)? ¿recorta en silencio (R6)?
 
-## 5. Fase 2 — Verificación adversarial (paralela por hallazgo)
+### Pista U — Universalidad (completitud)
 
-Cada hallazgo de F1 pasa por un agente verificador INDEPENDIENTE (no el
-autor) con instrucción explícita de **REFUTAR** (lección audit5: hunter y
-verifier pueden compartir el mismo misread; lección C1.9: el fixture
-never-confirm caza unsoundness):
+- **U1 — Mapa de residuales** (×2). Correr corpus + familias de F0.4 y
+  catalogar TODOS los declines/residuales honestos (integrate/solve/limit/
+  dsolve) con causa y frecuencia; salida = backlog priorizado por ROI
+  (familia × frecuencia × coste estimado).
+- **U2 — Capacidad a medio cablear** (×2). El «dead code» de dominio
+  clasificado: qué es, qué le falta para cablearse, qué familia cerraría.
+  Alimenta U1, no la papelera.
+- **U3 — Paridad de formas en handlers** (×1). Barrido sistemático de
+  matchers con casos nombrados: ¿cubren negativo/par/recíproco/wrapper
+  afín? (lecciones scout-workflow y reaudit-post-fixes).
 
-1. Confirmar contra el código ACTUAL (cita file:line viva, no de memoria).
-2. Clasificar: ¿toca invariante I1-I10? ¿hot path (GATE-B)? ¿cubierto por
-   tests hoy?
-3. Redactar el criterio de aceptación mecánico del fix (qué test/gate
-   demuestra que el cambio es correcto Y que el defecto existía).
-4. Veredicto: CONFIRMADO / REFUTADO / REDIRIGIDO (el defecto real es otro —
-   patrón frecuente: 3 de 5 atribuciones de esta campaña se redirigieron al
-   medir).
+### Pista D — Didáctica
 
-Presupuesto: kill-rate esperado ≥40%. Solo lo CONFIRMADO pasa a F3.
+- **D1 — Muestreo ciego de steps** (×2). N=30 filas aleatorias del corpus
+  con steps on, verificación humana-grado de cada paso (claims con la
+  maquinaria C1.9 donde aplique; ojo → ficha donde no). La lección del
+  re-audit del Frente E: una campaña cerrada por métricas propias necesita
+  muestreo ciego externo.
+- **D2 — Pasos vacíos / no-mejorantes** (×1). Detector sobre el corpus de
+  pasos cuyo before/after empatan en score NF sin estar en la lista
+  didáctica (el «Factor out 3» de esta sesión como semilla); + pasos cuyo
+  texto no re-parsea (lección Canonicalize Roots).
+- **D3 — Cobertura de narración** (×1). Familias con resultado correcto y
+  0 narración (las 15/42 de solve que no narran, inecuaciones familia I,
+  |x|=a paramétrico) — consolidar el mapa del Frente E con estado actual.
+
+## 5. Fase 2 — Verificación adversarial (paralela por ficha)
+
+Cada ficha pasa por un verificador INDEPENDIENTE con instrucción de REFUTAR
+(hunter y verifier pueden compartir el mismo misread):
+
+1. Confirmar contra código/salida ACTUAL (cita viva file:line o
+   reproducción CLI).
+2. **Fichas S además**: reproducir el wrong answer con `sound_probe.py`
+   (oráculo exacto, R11). Sin reproducción numérica exacta no hay P0.
+3. Clasificar riesgo (¿toca R1-R12? ¿hot path? ¿cubierto por tests?).
+4. Redactar el criterio de aceptación mecánico del fix.
+5. Veredicto: CONFIRMADO / REFUTADO / REDIRIGIDO.
+
+Kill-rate esperado ≥40%. Solo lo CONFIRMADO pasa a F3.
 
 ## 6. Fase 3 — Remediación por lotes desacoplados (paralela por worktree)
 
-- Agrupar hallazgos confirmados en lotes **sin intersección de archivos**
-  (el grafo de conflictos se calcula con las rutas de las fichas). Lotes
-  típicos: "partición de orchestrator.rs en módulos" (L4), "unificación de
-  memos sobre instance_tag" (L1), "tests de contrato de hold" (L5),
-  "borrado plumbing 0-refs" (L3a), "catálogo capacidad a-medio-cablear"
-  (L3b, solo documentación).
-- Cada lote: un agente en **worktree aislado**, entrega cambio + tests
-  nuevos + GATE-A completo (+ GATE-B si toca crates calientes). Un commit
-  por lote (bisect-friendly), mensaje en español estilo repo.
-- Prioridad de lotes (ROI para universalidad):
-  1. L5 (contratos sin test) — convierte invariantes implícitos en red.
-  2. L1 (primitivos unificados) — cada duplicado es un futuro divergente.
-  3. L4 (partición de monstruos) — habilita los audits siguientes.
-  4. L6 (paths de pánico) — robustez.
-  5. L3a (plumbing muerto) — última, la más barata y la más arriesgada de
-     hacer a ciegas.
-- Integración: los lotes aterrizan SECUENCIALMENTE en main (rebase +
-  GATE-A re-corrido tras cada aterrizaje). Paralelo en desarrollo,
-  serializado en merge.
+- Orden de aterrizaje: **S-P0 → D-falsos → Q-contratos/tests → U-cierres →
+  Q-restos → borrado plumbing** (lo más barato y ciego, al final).
+- Lotes sin intersección de archivos; un agente por lote en worktree
+  aislado; entrega = cambio + tests nuevos + GATE-A(+B si caliente,
+  +D si toca steps) verdes; un commit por lote.
+- Fichas S-P0 usan el proceso de la skill auto-mejora (ciclo completo con
+  huella y ledger) — no el carril rápido de Q.
+- Merge secuencial en main con GATE-A re-corrido tras cada aterrizaje.
+- Cada lote Q de «partición de monstruo» debe ser un move-only verificable:
+  mismo set de símbolos antes/después (`rg` de firmas), GATE-C idéntico.
 
-## 7. Formato de ficha de hallazgo (obligatorio, machine-friendly)
+## 7. Ficha de hallazgo (formato único, machine-friendly)
 
 ```markdown
-### [L4-017] simplify_pipeline_inner: bloque de shortcuts trig sin cohesión
-- **Archivo**: crates/cas_engine/src/orchestrator.rs:26496-26544
-- **Lente**: L4 (partición por cohesión)
-- **Defecto**: 3 shortcuts consecutivos comparten el mismo pre-check
-  duplicado 3 veces (líneas X, Y, Z).
-- **Propuesta**: extraer `try_trig_zero_family_shortcuts(...)` en
-  `orchestrator/shortcuts_trig.rs`; sin cambio semántico.
-- **Riesgo**: I5 (orden) — la extracción DEBE preservar el orden de probes.
-- **Aceptación**: GATE-A + GATE-B(solve trazadores) + diff de orden de
-  secciones del shortcut-profiler vacío.
-- **Verificación (F2)**: CONFIRMADO por <agente> — <fecha> — <cita>.
+### [S1-004] simplify colapsa |x|·sign(x) a x sin condición
+- **Pista/Lente**: S1 (differential trig/álgebra)
+- **Reproducción**: `expli eval "abs(x)*sign(x)" ...` → `x`;
+  sound_probe.py en x=-3/7 (exacto): motor=-3/7, identidad=−3/7 ✓/✗ …
+- **Severidad**: P0 (wrong answer) / P1 (gate aproximado) / P2 (cosmético)
+- **Riesgo**: toca R-…; hot path sí/no; tests que lo cubren hoy: …
+- **Aceptación**: test exacto nuevo + diff conductual = exactamente las
+  filas previstas + GATE-D sin divergencias.
+- **Verificación (F2)**: CONFIRMADO por <agente> — <cita/reproducción>.
 ```
 
-## 8. Plantilla de prompt por agente (F1; F2/F3 análogas)
+## 8. Plantillas de prompt (esqueleto por pista)
 
-> Eres el agente de la lente **L<k>** sobre la partición **<crates/archivos>**
-> del repo ExpliCAS. SOLO LECTURA: no editas nada. Tu contrato: (1) la lista
-> de invariantes I1-I10 de docs/PLAN_AUDITORIA_CALIDAD_2026-07-29.md §1 es
-> intocable y todo hallazgo que la roce debe declararlo; (2) cada hallazgo en
-> el formato §7, con file:line del código ACTUAL; (3) nada de gustos: cada
-> ficha necesita un defecto ARGUMENTADO (duplicación medible, capa violada,
-> contrato sin test, coste medido) y un criterio de aceptación mecánico;
-> (4) si detectas lo que parece un bug de comportamiento, va a
-> HALLAZGOS_CAPACIDAD.md, no lo arregles; (5) máximo 25 fichas: prioriza por
-> impacto en universalidad (soundness > contratos > duplicación > estética,
-> y estética NO entra).
+Común: «Contrato R1-R12 de docs/PLAN_AUDITORIA_CALIDAD_2026-07-29.md §1.
+SOLO LECTURA/medición. Fichas en formato §7, máx 25, priorizadas por impacto
+en la meta (S > D > U > Q). Nada de estética. Si dudas entre dos lentes, la
+ficha va a la más severa.»
 
-## 9. DAG de paralelización
+- S: «Tu oráculo es sound_probe.py con racionales exactos; una discrepancia
+  sin reproducción exacta NO es ficha. Barre formas desnudas Y simplificadas,
+  y las variantes par/negado/recíproco de cada patrón.»
+- Q: «Cada ficha necesita defecto ARGUMENTADO (duplicación medible, capa
+  violada, contrato sin test, coste medido) — un gusto no es un defecto.»
+- U: «Tu salida es un backlog priorizado por familia×frecuencia×coste; un
+  residual honesto no es un bug, es un candidato.»
+- D: «Un paso es defecto si es falso, vacío (sin mejora y sin valor
+  didáctico declarado), no re-parseable o mudo donde debería narrar.»
+
+## 9. DAG de ejecución
 
 ```
-F0 (1 agente, secuencial)
- └─> F1: L1×3 ∥ L2×5 ∥ L3×5 ∥ L4×4 ∥ L5×5 ∥ L6×5 ∥ L7×1 ∥ L8×1  (≈29 tareas, sin conflictos: solo lectura)
-      └─> F2: 1 verificador por ficha, agrupados por lente (∥ total; presupuesto: ~2 fichas/agente)
-           └─> F3: lotes desacoplados por archivos (∥ en worktrees; merge secuencial con GATE-A)
-                └─> F4 (1 agente): re-baseline completo (F0.3 + GATE-C + corpus timing),
-                     comparación antes/después, actualización de ledger/memoria,
-                     residuales → backlog
+F0 (1 agente)
+ └─> F1  S1×3 ∥ S2×2 ∥ S3 ∥ S4 ∥ S5        (8)
+        ∥ Q1×2 ∥ Q2×2 ∥ Q3×4 ∥ Q4×2 ∥ Q5  (11)
+        ∥ U1×2 ∥ U2×2 ∥ U3                 (5)
+        ∥ D1×2 ∥ D2 ∥ D3                   (4)   ≈ 28 lectores, cero conflictos
+      └─> F2  1 verificador/ficha, agrupado por pista (kill-rate ≥40%)
+           └─> F3  lotes desacoplados en worktrees; merge secuencial
+                   orden: S-P0 → D-falsos → Q-tests → U → Q-restos → plumbing
+                └─> F4 (1 agente) re-baseline F0.3 + GATE-C/D globales +
+                     actualización ledger/memoria + backlog residual v2
 ```
 
-Presupuesto orientativo: F1 ≈ 29 agentes de lectura; F2 ≈ 30-60 verificadores
-cortos; F3 ≈ 6-10 lotes; F4 = 1. Criterio de parada por fase: F1/F2 se cierran
-por lista completa, no por tiempo; F3 se corta cuando el lote siguiente no
-justifica su GATE-A (~15 min de suite por lote).
+Criterios de parada: F1/F2 por lista completa; F3 se corta cuando el
+siguiente lote no justifica su GATE-A (~15 min de suite); las fichas S-P0
+NUNCA se cortan por presupuesto — se aparcan explícitamente en el ledger si
+no caben.
 
-## 10. Qué NO es este plan
+## 10. Métricas de éxito (alineadas con la meta)
 
-- No es una campaña de renombrados, reformateos ni "DRY" especulativo.
-- No es una campaña de capacidades: los bugs de comportamiento que aparezcan
-  se catalogan y se atacan con el proceso de auto-mejora normal.
-- No borra dead code de dominio: lo convierte en backlog de universalidad.
-- No introduce dependencias nuevas (herramientas: las del repo + rg/tokei).
+- **S**: 0 wrong answers reproducibles abiertos al cierre; inventario de
+  gates con su clase (exacto/conservador) publicado; suite never-confirm
+  ampliada y en CI.
+- **D**: 0 pasos falsos en el muestreo ciego final (N=30 nuevo); detector de
+  pasos vacíos integrado al harness del Frente E.
+- **U**: backlog priorizado único (residuales + capacidad a medio cablear +
+  paridad de formas) con ROI estimado — el alimento de los próximos ciclos
+  de auto-mejora.
+- **Q**: ≥15 contratos pineados con test; memos unificados sobre
+  `instance_tag`; plan de partición de los 4 monstruos aprobado o ejecutado;
+  GATE-A vacío en todos los lotes Q/U/D.
+- **Global**: GATE-B sin regresión; huella idéntica salvo fichas S-P0
+  documentadas.
 
-## 11. Métricas de éxito del audit completo
+## 11. Qué NO es este plan
 
-- Contratos: N invariantes pineados con test nuevo (objetivo: ≥15).
-- Duplicación: familias de primitivos unificadas (objetivo: memos → 1 molde
-  sobre `Context::instance_tag`; holds documentados como 2-por-diseño o
-  unificados).
-- Tamaño: ningún archivo nuevo >5k líneas; orchestrator.rs particionado o
-  con plan aprobado.
-- Conducta: GATE-A vacío en TODOS los lotes (cero cambios de resultado).
-- Perf: GATE-B sin regresión; la cola L8 alimenta la campaña 3ª.
-- Universalidad: catálogo L3b de capacidad a medio cablear entregado como
-  backlog priorizado.
+- No es renombrado/reformateo/DRY especulativo (un gusto no es un defecto).
+- No es una campaña de capacidades nuevas: U produce el BACKLOG; los cierres
+  de familia siguen el proceso de auto-mejora habitual.
+- No borra dead code de dominio; lo convierte en mapa de capacidad.
+- No introduce dependencias nuevas.
+- No corrige comportamiento fuera del carril S-P0 (R7).
