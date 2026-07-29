@@ -343,17 +343,40 @@ Cadencia que conserva todas las garantías y quita casi toda la espera:
 3. **Puerta de commit** — la cadena entera, UNA vez. Si quieres señal temprana,
    el workspace sin las cuatro suites pesadas son ~7 min.
 
+**Para un cambio TRANSVERSAL, la primera corrida va con `--no-fail-fast`.**
+`cargo test` se para en el primer TARGET rojo, así que un cambio de presentación
+o de canon que toque N suites se descubre en N corridas de ~30 min, arreglando
+una por vuelta. Medido 2026-07-29: tres vueltas (hora y media) antes de caer en
+ello; la cuarta, con `--no-fail-fast`, listó de golpe los 22 pins repartidos en
+tres suites. Si el cambio puede tocar contratos en más de un sitio, `--no-fail-fast`
+desde el principio.
+
+**Los pins medidos se aplican por CASO, nunca por sustitución de cadena.** El
+informe de una lane da pares `expected → got`; parece que basta con reemplazar.
+No basta, por dos motivos medidos el 2026-07-29: (1) **sobre-aplica** — el par
+`pi^(1/2)` → `sqrt(pi)`, sacado de un caso que fallaba, mutó también uno que NO
+fallaba y que debía conservar la potencia; (2) **el orden importa** — los
+literales LARGOS primero, o un par corto mutila al largo que lo contiene y el
+largo «desaparece» de la búsqueda.
+
 **Prohibido paralelizar con otro `cargo` o `make` a la vez.** No es prudencia
 abstracta, son dos fallos MEDIDOS y recurrentes:
-- **Contención → rojos falsos.** Los harnesses de huella marcan `fail` cuando
-  el motor emite un `WARN phase_timeout` bajo carga. En la sesión del
-  2026-07-28 pasó **siete veces**, siempre con algo corriendo en paralelo, y
-  siempre verde al re-correr en exclusiva. El discriminante barato está en el
-  propio caso problemático: `error_kind = stderr_fragility` es contención;
-  cualquier otro `error_kind` es tuyo. **Léelo ANTES de construir una
-  reproducción** — un probe por CLI puede dar las mismas subcadenas ausentes en
-  HEAD (donde el harness pasa) y con cambios (donde falla), o sea ser inútil
-  como oráculo.
+- **Contención → rojos falsos.** Los harnesses de huella pueden marcar `fail`
+  bajo carga. En la sesión del 2026-07-28 pasó siete veces, siempre con algo
+  corriendo en paralelo, y siempre verde al re-correr en exclusiva.
+  ⚠️ **El discriminante que esta skill daba por bueno era FALSO y costó tres
+  ciclos** (2026-07-29): decía «`error_kind = stderr_fragility` es contención;
+  cualquier otro es tuyo», y con eso descarté el mismo rojo tres veces sin
+  aislar el caso. Al aislarlo: **3 de 8 corridas fallaban EN EL MISMO HEAD**, sin
+  tocar el motor. No era contención, era **misclasificación del gate** — el
+  predicado metía `WARN` a secas junto a `SIGSEGV`, y dos de los siete WARN del
+  motor dependen del RELOJ (`phase_timeout_*`, presupuesto de pared por fase).
+  Arreglado en `scripts/engine_command_matrix_observability.py`.
+  **La regla que queda**: ningún `error_kind` es prueba de contención. Para
+  discriminar hay que **aislar el caso y CONTAR corridas** (`--case X` en las
+  lanes de matriz), en HEAD y con los cambios. Un probe por CLI NO sirve de
+  oráculo: el WARN lo provoca la carga de la propia lane, así que el probe da
+  verde en los dos lados.
 - **Editar durante una corrida la invalida.** El test compila del árbol al
   arrancar cada crate: una edición a mitad hace que reporte fallos de la
   versión ANTERIOR (o que muera sin salida). Si editas, la corrida no cuenta.
@@ -536,7 +559,32 @@ repitas en bucle).
   ahí las siguientes. Un exit no-cero UNIFORME en toda la cadena («could not
   find Cargo.toml» ×6) es la firma de un cwd equivocado, no de una regresión —
   cuesta una corrida entera descubrirlo. Lanza la cadena con la ruta del repo
-  explícita o con un `pwd` delante.
+  explícita o con un `pwd` delante. *(Reincidencia 2026-07-29: un `cd scripts`
+  para correr un unittest dejó ahí las diez llamadas siguientes.)*
+
+- **Un cambio puede ser correcto, barato para el USUARIO y carísimo para el
+  GATE — hay que medir las dos cosas.** Canonicalizar `cbrt(x) = x^(1/3)`
+  (2026-07-29) arreglaba una asimetría real y dejaba el `eval` del usuario en
+  0,4 s… y llevaba el gate de sombra de claims de 68 s a más de 240 s, porque
+  cada `cbrt` pasa a emitir un paso crudo más que ese gate verifica. Se rechazó
+  con el número. La latencia que decide no es la de un `eval` suelto.
+- **«El harness va lento» es una hipótesis, y el scorecard tiene el número para
+  falsificarla**: la huella declara `process_elapsed_seconds` por suite. Una
+  suite de 85 s que lleva 48 minutos no es una máquina cargada, es una
+  regresión. Y en `ps`, el padre `cargo` al 0 % no dice nada: el trabajo está en
+  el binario HIJO — mirar los hijos antes de diagnosticar «bloqueado».
+- **Un tope de iteraciones FIJO sobre datos de tamaño variable es un
+  truncamiento con otro nombre.** El convertidor LaTeX→texto tenía `< 10` en
+  cinco bucles: a partir de la undécima fracción o raíz, el borrado ciego de
+  llaves destrozaba el resto y producía texto que no re-parsea JUNTO a hermanas
+  bien convertidas. Si el bucle converge, el tope se calcula del dato; si no
+  converge, el tope oculta el bug en vez de acotarlo.
+- **Al meter una superficie nueva en un contrato, distinguir forma INTERNA de
+  presentación.** Varios tests imprimen el resultado con `DisplayExpr` crudo
+  (forma interna) y otros leen `wire["result"]` (presentación). Un cambio de
+  canonicalización mueve el primero y no el segundo; un cambio de display, al
+  revés. Aserta sobre la superficie cuya propiedad quieres fijar y dilo en el
+  comentario.
 
 ## Meta-mantenimiento: revisiones periódicas (docs y esta skill)
 
@@ -585,4 +633,18 @@ de `stderr_fragility` por contención y dos corridas invalidadas por editar a
 mitad— y con el discriminante `error_kind` para no confundir contención con
 regresión. La lección de fondo: una cadena de validación cara se convierte, sin
 que nadie lo decida, en el bucle de iteración, y entonces el coste no se paga
-una vez por ciclo sino una por intento.)*
+una vez por ciclo sino una por intento.
+**2026-07-29: pasada B disparada por el caso más incómodo — esta skill contenía
+una guía FALSA y la seguí tres ciclos.** El discriminante «`stderr_fragility` es
+contención» venía de la pasada anterior, era una generalización razonable de
+siete observaciones… y al aislar el caso resultó ser misclasificación del gate:
+3 de 8 corridas fallaban en el MISMO HEAD. La guía está corregida y el arreglo
+del predicado commiteado. Lo que hay que retener del episodio no es el caso sino
+la forma del error: **una heurística de diagnóstico escrita aquí se convierte en
+la explicación por defecto, y a partir de ese momento nadie mide.** Una guía que
+dice «esto es X» sin decir cómo COMPROBAR que es X es una invitación a no
+comprobarlo — por eso la versión nueva da el procedimiento (aislar el caso y
+contar corridas) en vez de la conclusión. Entraron además cuatro lecciones
+medidas de la misma tanda: `--no-fail-fast` para cambios transversales, parchear
+pins por CASO y no por cadena, medir el coste de un cambio en el GATE y no solo
+en el `eval`, y que un tope de iteraciones fijo es un truncamiento.)*
