@@ -5141,7 +5141,7 @@ fn test_eval_inhomogeneous_linear_trig_uses_auxiliary_angle() {
     // outer factor by the inner coefficient (it used to discard the `√2`). `R = √(1+8) = 3`.
     assert_eq!(
         r("solve(sin(x) + 2*sqrt(2)*cos(x) = 3, x)"),
-        "{ 1/2·pi - arctan(4·2^(-1/2)) + k·2·pi : k ∈ ℤ }"
+        "{ 1/2·pi - arctan(2·sqrt(2)) + k·2·pi : k ∈ ℤ }"
     );
     // Controls: the homogeneous `c = 0` is the tangent reduction (and its compound-coefficient case is
     // now correct too, thanks to the same `classify_linear_trig_leaf` fix).
@@ -6002,7 +6002,7 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
     assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, cbrt(1/2))");
     assert_eq!(r("solve(1/x > 2, x)"), "(0, 1/2)");
     // KEEP: the EQUATION form is untouched (op gate) — both valley roots are found.
-    assert_eq!(r("solve(x^(2/3) = 8, x)"), "{ -64·2^(-3/2), 64·2^(-3/2) }");
+    assert_eq!(r("solve(x^(2/3) = 8, x)"), "{ -16·sqrt(2), 16·sqrt(2) }");
 }
 
 #[test]
@@ -7819,7 +7819,7 @@ fn test_eval_rational_constant_inequality_sign_split() {
         ("1/x^3 >= -1", "(-infinity, -1] U (0, infinity)"),
         ("2/x^4 >= 2", "[-1, 0) U (0, 1]"),
         // Quadratic-surd / golden-ratio endpoints, compared exactly during verification.
-        ("5/x^2 > 1/4", "(-10·5^(-1/2), 0) U (0, 10·5^(-1/2))"),
+        ("5/x^2 > 1/4", "(-2·sqrt(5), 0) U (0, 2·sqrt(5))"),
         (
             "(1+x)/x^2 <= 1",
             "(-infinity, 1/2·(1 - sqrt(5))] U [phi, infinity)",

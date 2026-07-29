@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 764 (newest first)
+Active entries: 765 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
@@ -124,6 +124,7 @@ Active entries: 764 (newest first)
 - 2026-07-29 | `retained` | `scripts/engine_command_matrix_observability.py` (`stderr_fragility_error` ju... | MEDIDA (el gate no determinista): `WARN` metía el presupuesto de fase en la misma bolsa que `SIGSEGV`
 - 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`apply_rational_power_rule` cae a `provable_con... | CAPACIDAD (límite de potencia con exponente constante irracional): la decisión era de SIGNO y la capa exacta ya existía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (`split_improper_fractional_exponent`... | PRESENTACIÓN (extracción del radical impropio + el eco llega al LaTeX de conjuntos): decisión delegada por el usuario, resuelta con la canónica que el motor ya tenía
+- 2026-07-29 | `retained` | `cas_math/power_product_support.rs` (`try_fold_numeric_coefficient_valuation`... | CANON (valuación b-ádica del coeficiente): `solve(x²=8)` y `sqrt(8)` decían el mismo número en dos idiomas
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22781,3 +22782,20 @@ Active entries: 764 (newest first)
   - **Antes de elegir una convención de presentación, buscar si el motor ya tiene una canónica para el caso numérico** — `sqrt(125)` → `5·√5` decidió el diseño entero: la pregunta no era «¿qué forma es más bonita?» sino «¿por qué la misma cantidad tiene dos formas?».
   - **Un no-op de presentación nuevo aparece en cada capa que muestre ese par**: la extracción convirtió una fusión real en invisible y el patrón de resolución fue el MISMO que con Canonicalize Roots (podar + eximir por id con porqué). Cuando un ciclo de display convierta un rewrite en fixed-point visible, buscar el gate que lo pineaba ANTES de que lo encuentre la cadena.
   - **Una exención de gate se declara sobre la CAUSA, no sobre el síntoma**: `no_web_steps` y `no_web_substeps` son dos síntomas del mismo hecho (el caso ya no tiene nada visible que narrar); eximir solo el primero deja el amarillo encendido por el segundo.
+
+## 2026-07-29 - CANON (valuación b-ádica del coeficiente): `solve(x²=8)` y `sqrt(8)` decían el mismo número en dos idiomas
+
+- area: `cas_math/power_product_support.rs` (`try_fold_numeric_coefficient_valuation`, brazo `CoefficientValuation` en los dos órdenes de operandos) + desc en `power_rules.rs`/`simplification.rs` + 3 tests unitarios estructurales. 4 pins de contrato actualizados.
+- status: `retained`. Cierra el residual medido en el ciclo de extracción.
+- capture:
+  - **EL DEFECTO**: el pliegue vecino (`BaseAndPower`) solo casa `c == b`, así que `2·2^(-1/2)` → `√2` pero `4·2^(-1/2)` (= 2√2) y `6·3^(-1/2)` (= 2√3) quedaban como recíprocos sin plegar — `solve(x²=8)` daba `{ -4·2^(-1/2), 4·2^(-1/2) }` mientras `sqrt(8)` daba `2·√2`: el MISMO número por dos caminos, en dos formas.
+  - **EL BRAZO**: `c = m·bᵏ` por valuación b-ádica exacta (numerador y denominador, acotada a 128); `c·b^e = (m·b^⌊k+e⌋)·b^frac` con `frac ∈ (0,1)` SIEMPRE propio — el punto fijo compartido con «Expand Odd Half Power», que es la razón de ser del guard `should_combine` vecino (este brazo lo satisface por construcción). Alcance DECLARADO: `k ≥ 1 && e < 0`, o `e > 1`; con `k=0` y `e<0` NO racionaliza (`1/√2`, `5/√2` son de otro dueño) y con `0<e<1` no se reconstruye a sí mismo.
+  - **DOS CAZAS EN CICLO**: (1) el primer guard que escribí era más ancho que el diseño (`k≥1 || e>1`) y con `4·2^(1/2)` reconstruía la expresión IDÉNTICA — un rewrite que dispara sin cambiar nada; el diseño decía `e<0` y lo perdí al teclear. (2) Los tests unitarios con `parse()` crudo medían OTRA cosa: el brazo vecino dispara antes sobre `Neg(Div(5,2))` porque su `should_combine` no ve números en un Neg-nodo y su default es `true` — los tests se reescribieron con nodos canónicos, que es la forma con la que el pipeline llega a la regla.
+- observed:
+  - **Barrido adversarial: 378 casos** (coeficientes 0/±1/potencias exactas/compuestos/racionales × bases 2,3 × 9 formas de exponente), oráculo numérico float: **0 wrong**. Corpus 219: **0 cambios** (no ejercita la familia). 4 pins de contrato, todos mejoras: `arctan(4·2^(-1/2))`→`arctan(2√2)`, `(-10·5^(-1/2),0)`→`(-2√5,0)`, `1+3i·3^(-1/2)`→`1+i√3`, `64·2^(-3/2)`→`16√2`.
+  - workspace failed:0 (381 suites, 13794 tests), clippy 0, lanes verdes, huella **0 deltas de contador**.
+- decision: retener.
+- retained learning:
+  - **La forma canónica de un valor numérico es un contrato transversal, y cada camino que lo produce debe converger a ella**: `sqrt(N)`, `solve(x²=N)` y la aritmética directa producían el mismo surd por tres rutas; solo una lo dejaba bonito. El pliegue por valuación es el chokepoint que las une.
+  - **Un guard «más ancho que el diseño» es un bug aunque todo pase**: la versión ancha reconstruía expresiones idénticas — invisible en probes (el interning devuelve el mismo id) y carga inútil en cada pasada. Al escribir un guard, copiar la CONDICIÓN del diseño, no una que la implique.
+  - **Un test unitario sobre el árbol del parser puede medir al VECINO**: en crudo, otro brazo con default permisivo dispara antes; el pipeline canonicaliza y llega al brazo correcto. Los tests de reglas que compiten por la misma forma se escriben con los nodos CANÓNICOS que la regla ve en producción.

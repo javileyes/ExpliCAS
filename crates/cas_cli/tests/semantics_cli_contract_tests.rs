@@ -10702,7 +10702,7 @@ fn complex_mode_computes_general_powers_and_gaussian_sqrt() {
     // Owners keep their exact forms — the polar route must NOT degrade them.
     for (src, expected) in [
         // Migrated by C1 (cartesian display order): real part first.
-        ("(-8)^(1/3)", "1 + 3·i·3^(-1/2)"),
+        ("(-8)^(1/3)", "1 + i·sqrt(3)"),
         ("sqrt(-4)", "2·i"),
         ("(2+i)^2", "3 + 4·i"),
         ("2^(1/2)", "sqrt(2)"),

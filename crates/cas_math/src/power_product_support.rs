@@ -47,6 +47,7 @@ pub enum PowerProductRewriteKind {
     ExpPowerOverExp,
     AllFactorsCancelled,
     SameBaseNary,
+    CoefficientValuation,
 }
 
 /// The magnitude of a NEGATIVE numeric literal, as an expression.
@@ -63,6 +64,123 @@ fn negative_number_magnitude(ctx: &mut Context, factor: ExprId) -> Option<ExprId
     }
     let magnitude = num_traits::Signed::abs(n);
     Some(ctx.add(Expr::Number(magnitude)))
+}
+
+/// `c·b^(p/q)` con el coeficiente NUMÉRICO plegado por valuación b-ádica.
+///
+/// El pliegue vecino (`BaseAndPower`) solo casa `c == b`, así que `4·2^(-1/2)`
+/// (= 2√2) y `6·3^(-1/2)` (= 2√3) quedaban en pantalla como recíprocos sin
+/// plegar mientras `sqrt(8)`/`sqrt(12)` — el MISMO valor por otro camino — ya
+/// salían extraídos: `solve(x²=8)` y `sqrt(8)` daban dos formas distintas del
+/// mismo número. Aquí `c = m·bᵏ` (k = valuación exacta de c en b) y
+/// `c·b^e = (m·b^⌊k+e⌋)·b^{frac}` con `frac ∈ (0,1)` SIEMPRE propio: es el punto
+/// fijo compartido con «Expand Odd Half Power» — producir un exponente impropio
+/// re-dispararía esa regla y oscilaría, que es la razón de ser del guard
+/// `should_combine` de los brazos vecinos (este brazo lo satisface por
+/// construcción en vez de consultarlo).
+///
+/// Alcance DECLARADO, no accidental: solo actúa si `k ≥ 1` (el coeficiente
+/// contiene de verdad una potencia de la base) o si `e > 1` (la potencia trae su
+/// propia parte entera). Con `k = 0` y `e < 0` NO racionaliza — `1/√2` y
+/// `3/(4·√2)` son formas con dueño propio (racionalización) y moverlas aquí
+/// cambiaría media huella de contratos.
+fn try_fold_numeric_coefficient_valuation(
+    ctx: &mut Context,
+    coefficient: ExprId,
+    base: ExprId,
+    exponent: ExprId,
+) -> Option<ExprId> {
+    let Expr::Number(base_value) = ctx.get(base) else {
+        return None;
+    };
+    if !base_value.is_integer() || base_value.to_integer() < 2.into() {
+        return None;
+    }
+    let base_int = base_value.to_integer();
+
+    // `as_rational_const`, no `Expr::Number`: en el árbol CRUDO el exponente
+    // llega como `Neg(Div(1, 2))` y el coeficiente como `Neg(4)` — casar solo
+    // literales dejaría el brazo ciego fuera del pipeline canonicalizado.
+    let exp_value = crate::numeric_eval::as_rational_const(ctx, exponent)?;
+    if exp_value.is_integer() {
+        return None;
+    }
+
+    let coeff_value = crate::numeric_eval::as_rational_const(ctx, coefficient)?;
+    if coeff_value.is_zero() {
+        return None;
+    }
+    let is_negative = coeff_value.is_negative();
+    let magnitude = num_traits::Signed::abs(&coeff_value);
+
+    // Valuación b-ádica exacta de |c| (numerador menos denominador), acotada.
+    let mut numer = magnitude.numer().clone();
+    let mut denom = magnitude.denom().clone();
+    let mut valuation: i64 = 0;
+    for _ in 0..128 {
+        let (q, r) = numer.div_rem(&base_int);
+        if !r.is_zero() || q.is_zero() {
+            break;
+        }
+        numer = q;
+        valuation += 1;
+    }
+    if valuation == 0 {
+        for _ in 0..128 {
+            let (q, r) = denom.div_rem(&base_int);
+            if !r.is_zero() || q.is_zero() {
+                break;
+            }
+            denom = q;
+            valuation -= 1;
+        }
+    }
+
+    // Actuar SOLO cuando hay movimiento garantizado: exponente negativo con
+    // valuación positiva (la forma recíproca fea) o exponente impropio. Con
+    // `0 < e < 1` la forma YA es canónica (`4·√2`) y reconstruirla devolvería la
+    // expresión idéntica — un rewrite que "dispara" sin cambiar nada.
+    let one = BigRational::one();
+    let acts = (valuation >= 1 && exp_value.is_negative()) || exp_value > one;
+    if !acts {
+        return None;
+    }
+
+    let residue = BigRational::new(numer, denom);
+    let total = BigRational::from_integer(valuation.into()) + &exp_value;
+    let whole = total.floor();
+    let fractional = &total - &whole;
+    debug_assert!(fractional > BigRational::zero() && fractional < one);
+
+    // m·b^⌊total⌋ exacto; el exponente entero está acotado por la valuación y
+    // por el propio exponente de entrada, ambos pequeños tras el gate de 128.
+    let whole_int: i64 = whole.to_integer().try_into().ok()?;
+    if whole_int.abs() > 128 {
+        return None;
+    }
+    let base_rat = BigRational::from_integer(base_int);
+    let mut coeff_out = residue;
+    for _ in 0..whole_int.abs() {
+        if whole_int >= 0 {
+            coeff_out *= &base_rat;
+        } else {
+            coeff_out /= &base_rat;
+        }
+    }
+
+    let frac_exponent = ctx.add(Expr::Number(fractional));
+    let power = ctx.add(Expr::Pow(base, frac_exponent));
+    let folded = if coeff_out.is_one() {
+        power
+    } else {
+        let coeff_node = ctx.add(Expr::Number(coeff_out));
+        mul2_raw(ctx, coeff_node, power)
+    };
+    Some(if is_negative {
+        ctx.add(Expr::Neg(folded))
+    } else {
+        folded
+    })
 }
 
 /// Try product-of-powers rewrites:
@@ -149,6 +267,24 @@ pub fn try_rewrite_product_power_expr(
                         });
                     }
                 }
+            }
+            // El coeficiente que CONTIENE una potencia de la base sin serlo:
+            // `4·2^(-1/2)` (= 2√2), `6·3^(-1/2)` (= 2√3). Ver el helper.
+            if let Some(rewritten) = try_fold_numeric_coefficient_valuation(ctx, lhs, base2, exp2) {
+                return Some(PowerProductRewrite {
+                    rewritten,
+                    kind: PowerProductRewriteKind::CoefficientValuation,
+                });
+            }
+        }
+
+        if let Some((base1, exp1)) = lhs_pow {
+            // Orden simétrico (potencia primero, coeficiente después).
+            if let Some(rewritten) = try_fold_numeric_coefficient_valuation(ctx, rhs, base1, exp1) {
+                return Some(PowerProductRewrite {
+                    rewritten,
+                    kind: PowerProductRewriteKind::CoefficientValuation,
+                });
             }
         }
 
@@ -841,16 +977,122 @@ mod tests {
         try_rewrite_exp_quotient_expr, try_rewrite_mul_nary_combine_powers_expr,
         try_rewrite_power_product_distribution_expr, try_rewrite_power_quotient_expr,
         try_rewrite_product_power_expr, try_rewrite_product_same_exponent_expr,
-        try_rewrite_quotient_same_exponent_expr,
+        try_rewrite_quotient_same_exponent_expr, PowerProductRewriteKind,
     };
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
     use cas_parser::parse;
+    use num_rational::BigRational;
+    use num_traits::One;
 
     #[test]
     fn rewrites_product_power_same_base() {
         let mut ctx = Context::new();
         let expr = parse("x^2 * x^3", &mut ctx).expect("parse");
         assert!(try_rewrite_product_power_expr(&mut ctx, expr).is_some());
+    }
+
+    /// `(coeficiente, base, exponente)` de un `c·b^(p/q)` (o `b^(p/q)` pelado,
+    /// coeficiente 1), leyendo los números vía `as_rational_const` para no
+    /// depender de la forma exacta de los nodos.
+    fn destructure_coeff_power(
+        ctx: &Context,
+        id: cas_ast::ExprId,
+    ) -> Option<(BigRational, BigRational, BigRational)> {
+        use crate::expr_destructure::{as_mul, as_pow};
+        let (coeff, pow) = match as_mul(ctx, id) {
+            Some((lhs, rhs)) => (crate::numeric_eval::as_rational_const(ctx, lhs)?, rhs),
+            None => (BigRational::one(), id),
+        };
+        let (base, exp) = as_pow(ctx, pow)?;
+        Some((
+            coeff,
+            crate::numeric_eval::as_rational_const(ctx, base)?,
+            crate::numeric_eval::as_rational_const(ctx, exp)?,
+        ))
+    }
+
+    fn rational(n: i64, d: i64) -> BigRational {
+        BigRational::new(n.into(), d.into())
+    }
+
+    #[test]
+    fn coefficient_valuation_folds_base_powers_out_of_the_coefficient() {
+        // La canónica de sqrt(N): `4·2^(-1/2)` es 2√2 y `solve(x²=8)` debe decir
+        // lo mismo que `sqrt(8)`. El resultado lleva SIEMPRE exponente propio
+        // (punto fijo compartido con «Expand Odd Half Power»).
+        // Nodos CANÓNICOS (exponente como `Number`), que es la forma con la que
+        // el pipeline llega a la regla: sobre el árbol crudo del parser
+        // (`Neg(Div(5,2))`) el brazo vecino dispara antes con su default.
+        let mut ctx = Context::new();
+        for ((cn, cd), b, (en, ed), coeff, exp) in [
+            ((4, 1), 2, (-1, 2), rational(2, 1), rational(1, 2)),
+            ((6, 1), 3, (-1, 2), rational(2, 1), rational(1, 2)),
+            ((9, 1), 3, (-1, 2), rational(3, 1), rational(1, 2)),
+            // El exponente impropio trae su propia parte entera (k=0 vale).
+            ((4, 1), 2, (3, 2), rational(8, 1), rational(1, 2)),
+            ((3, 1), 2, (5, 2), rational(12, 1), rational(1, 2)),
+            // Impropio negativo y total ≤ 0: el floor hace el trabajo.
+            ((4, 1), 2, (-3, 2), rational(1, 1), rational(1, 2)),
+            ((2, 1), 2, (-5, 2), rational(1, 4), rational(1, 2)),
+            // Coeficiente racional: la valuación vive en el numerador.
+            ((4, 3), 2, (-1, 2), rational(2, 3), rational(1, 2)),
+        ] {
+            let label = format!("({cn}/{cd}) * {b}^({en}/{ed})");
+            let coeff_node = ctx.rational(cn, cd);
+            let base_node = ctx.num(b);
+            let exp_node = ctx.rational(en, ed);
+            let pow = ctx.add(Expr::Pow(base_node, exp_node));
+            let expr = ctx.add(Expr::Mul(coeff_node, pow));
+            let rewrite = try_rewrite_product_power_expr(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("{label} should fold"));
+            assert_eq!(
+                rewrite.kind,
+                PowerProductRewriteKind::CoefficientValuation,
+                "{label} kind"
+            );
+            let (got_coeff, got_base, got_exp) = destructure_coeff_power(&ctx, rewrite.rewritten)
+                .unwrap_or_else(|| panic!("{label}: unexpected shape"));
+            assert_eq!(got_coeff, coeff, "{label} coeff");
+            assert_eq!(got_base, rational(b, 1), "{label} base");
+            assert_eq!(got_exp, exp, "{label} exp");
+        }
+    }
+
+    #[test]
+    fn coefficient_valuation_carries_the_sign_out() {
+        let mut ctx = Context::new();
+        let expr = parse("(-4) * 2^(-1/2)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_product_power_expr(&mut ctx, expr).expect("fold");
+        let Expr::Neg(inner) = ctx.get(rewrite.rewritten) else {
+            panic!("expected Neg wrapper");
+        };
+        let (coeff, base, exp) = destructure_coeff_power(&ctx, *inner).expect("inner shape");
+        assert_eq!(coeff, rational(2, 1));
+        assert_eq!(base, rational(2, 1));
+        assert_eq!(exp, rational(1, 2));
+    }
+
+    #[test]
+    fn coefficient_valuation_declines_out_of_scope_shapes() {
+        // El alcance es DECLARADO: k=0 con exponente negativo NO racionaliza
+        // (1/√2 y 5/√2 son formas con dueño propio), la forma ya canónica
+        // (0<e<1) no se reconstruye a sí misma, y las bases no enteras o
+        // simbólicas no entran.
+        let mut ctx = Context::new();
+        for src in [
+            "5 * 2^(-1/2)",
+            "(3/4) * 2^(-1/2)",
+            "4 * 2^(1/2)",
+            "4 * x^(-1/2)",
+            "4 * (3/2)^(-1/2)",
+            "4 * 1^(-1/2)",
+        ] {
+            let expr = parse(src, &mut ctx).expect("parse");
+            let folded = try_rewrite_product_power_expr(&mut ctx, expr)
+                .map(|r| r.kind == PowerProductRewriteKind::CoefficientValuation)
+                .unwrap_or(false);
+            assert!(!folded, "{src} must not enter the valuation arm");
+        }
     }
 
     #[test]

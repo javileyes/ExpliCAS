@@ -71,6 +71,9 @@ fn format_power_product_desc(
         cas_math::power_product_support::PowerProductRewriteKind::QuotientSameExponent => {
             "a^n / b^n = (a/b)^n"
         }
+        cas_math::power_product_support::PowerProductRewriteKind::CoefficientValuation => {
+            "Fold a base-power factor out of the numeric coefficient"
+        }
         _ => "Power product rewrite",
     }
 }
