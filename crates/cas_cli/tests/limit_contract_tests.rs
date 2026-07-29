@@ -1725,10 +1725,11 @@ fn test_eval_finite_integer_power_composition_limits_json() {
         ("limit((abs(x)+1)^2, x, -2)", "9"),
         ("limit((sqrt(x^2 + 1))^2, x, -2)", "5"),
         // El texto del resultado ECOA la notación del input (2026-07-29) y aquí el
-        // usuario escribió `sqrt`. `5^(3/2)` pasa a `sqrt(5^3)`, que es la MISMA forma
-        // que su LaTeX lleva imprimiendo desde siempre (`\sqrt{5^3}`) — el texto deja
-        // de contradecirlo.
-        ("limit((sqrt(x^2 + 1))^3, x, -2)", "sqrt(5^3)"),
+        // usuario escribió `sqrt`. Con la extracción del radical impropio,
+        // `5^(3/2)` se presenta `5·sqrt(5)` — la MISMA canónica que el motor ya
+        // usaba para `sqrt(125)`, así que la cantidad idéntica ya no sale en dos
+        // formas según qué camino la produjera.
+        ("limit((sqrt(x^2 + 1))^3, x, -2)", "5·sqrt(5)"),
         ("limit((abs(x)+1)^(-2), x, -2)", "1/9"),
         ("limit((sqrt(x^2 + 1))^(-1), x, -2)", "1 / sqrt(5)"),
         ("limit((sqrt(x^2 + 1))^(-2), x, -2)", "1/5"),

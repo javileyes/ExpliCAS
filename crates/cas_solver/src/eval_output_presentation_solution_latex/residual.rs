@@ -1,10 +1,15 @@
 use cas_ast::{Context, Expr, ExprId};
-use cas_formatter::LaTeXExpr;
+use cas_formatter::{LaTeXExprStyled, StylePreferences};
 
-pub(super) fn render_residual_solution(ctx: &Context, expr: ExprId) -> String {
-    let expr_latex = LaTeXExpr {
+pub(super) fn render_residual_solution(
+    ctx: &Context,
+    expr: ExprId,
+    style: &StylePreferences,
+) -> String {
+    let expr_latex = LaTeXExprStyled {
         context: ctx,
         id: expr,
+        style_prefs: style,
     }
     .to_latex();
     // Scout cycle-3 honesty contract: a residual that is itself a

@@ -452,7 +452,7 @@ No audit flags emitted.
 | `merge_mixed_root_and_symbolic_power` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_fractional_powers` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_fractional_powers_to_integer` | `power_merge` | 1 | 0 | none |
-| `merge_same_base_integer_and_fractional_power` | `power_merge` | 1 | 0 | none |
+| `merge_same_base_integer_and_fractional_power` | `power_merge` | 0 | 0 | none |
 | `merge_same_base_integer_and_symbolic_power` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_symbolic_powers` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_symbolic_quotient_powers` | `power_merge` | 1 | 2 | none |
@@ -5421,7 +5421,7 @@ Result: sqrt(x) * |x|^(2)
 ### Web / JSON Steps
 
 1. `Extraer potencia par de la raíz`
-   - before: `sqrt(x^5)`
+   - before: `x^2 · sqrt(x)`
    - after: `sqrt(x) · |x|^2`
    - substeps:
      1. `Separar el radicando en una potencia par y un factor`
@@ -5487,7 +5487,7 @@ Result: sqrt(y) * |y|^(3)
 ### Web / JSON Steps
 
 1. `Extraer potencia par de la raíz`
-   - before: `sqrt(y^7)`
+   - before: `y^3 · sqrt(y)`
    - after: `sqrt(y) · |y|^3`
    - substeps:
      1. `Separar el radicando en una potencia par y un factor`
@@ -6596,7 +6596,7 @@ Result: sqrt(x) * |x|
 ### Web / JSON Steps
 
 1. `Extraer potencia par de la raíz`
-   - before: `sqrt(x^3)`
+   - before: `x · sqrt(x)`
    - after: `sqrt(x) · |x|`
    - substeps:
      1. `Separar el radicando en una potencia par y un factor`
@@ -13590,8 +13590,8 @@ Target: x^2 + a
 Strategy: combine powers
 Steps (Aggressive Mode):
 1. Combine powers with same base (n-ary)  [Sumar exponentes de la misma base]
-   Before: sqrt(x) * sqrt(x^3) + a
-   Cambio local: sqrt(x) * sqrt(x^3) + a -> x^(2) + a
+   Before: sqrt(x) * x * sqrt(x) + a
+   Cambio local: sqrt(x) * x * sqrt(x) + a -> x^(2) + a
    After: x^2 + a
 Result: x^(2) + a
 ℹ️ Requires:
@@ -13601,7 +13601,7 @@ Result: x^(2) + a
 ### Web / JSON Steps
 
 1. `Sumar exponentes de la misma base`
-   - before: `sqrt(x) · sqrt(x^3) + a`
+   - before: `sqrt(x) · x · sqrt(x) + a`
    - after: `x^2 + a`
    - substeps: none
 
@@ -13666,7 +13666,7 @@ Result: x^(7 / 6)
 
 1. `Sumar exponentes de la misma base`
    - before: `sqrt(x) · cbrt(x^2)`
-   - after: `root(x^7, 6)`
+   - after: `x · root(x, 6)`
    - substeps: none
 
 ## merge_same_base_fractional_powers_to_integer (power_merge)
@@ -13706,7 +13706,7 @@ Result: x
 - Source: `x*x^(1/3)`
 - Target: `x^(4/3)`
 - Result: `x^(4 / 3)`
-- Web step count: `1`
+- Web step count: `0`
 - Web substep count: `0`
 - Flags: none
 
@@ -13726,10 +13726,6 @@ Result: x^(4 / 3)
 
 ### Web / JSON Steps
 
-1. `Sumar exponentes de la misma base`
-   - before: `x · cbrt(x)`
-   - after: `cbrt(x^4)`
-   - substeps: none
 
 ## merge_same_base_integer_and_symbolic_power (power_merge)
 
@@ -14530,8 +14526,8 @@ Target: sqrt(x) + x + 1
 Strategy: rationalize
 Steps (Aggressive Mode):
 1. Polynomial division with opaque substitution  [Reconocer un cociente notable]
-   Before: (sqrt(x^3) - 1) / (sqrt(x) - 1)
-   Cambio local: (sqrt(x^3) - 1) / (sqrt(x) - 1) -> sqrt(x) + sqrt(x)^(2) + 1
+   Before: (x * sqrt(x) - 1) / (sqrt(x) - 1)
+   Cambio local: (x * sqrt(x) - 1) / (sqrt(x) - 1) -> sqrt(x) + sqrt(x)^(2) + 1
    After: sqrt(x) + x + 1
 Result: sqrt(x) + x + 1
 ℹ️ Requires:
@@ -14542,7 +14538,7 @@ Result: sqrt(x) + x + 1
 ### Web / JSON Steps
 
 1. `Reconocer un cociente notable`
-   - before: `(sqrt(x^3) - 1)/(sqrt(x) - 1)`
+   - before: `(x · sqrt(x) - 1)/(sqrt(x) - 1)`
    - after: `sqrt(x) + x + 1`
    - substeps: none
 

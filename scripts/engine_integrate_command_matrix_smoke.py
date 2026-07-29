@@ -3845,7 +3845,7 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
     IntegrateCommandMatrixCase(
         name="linear_radical_scaled_radicand",
         expr="integrate(x*sqrt(2*x-1), x)",
-        expected_result="1/30·(3·sqrt((2·x - 1)^5) + 5·sqrt((2·x - 1)^3))",
+        expected_result="1/30·(3·(2·x - 1)^2·sqrt(2·x - 1) + 5·(2·x - 1)·sqrt(2·x - 1))",
         expected_derivative_equivalent_to="x*sqrt(2*x-1)",
         expected_direct_diff_integrate_equivalent_to="x*sqrt(2*x-1)",
         expected_direct_diff_integrate_required_display=("x ≥ 1/2",),

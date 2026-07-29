@@ -48,8 +48,13 @@ pub(crate) fn finalize_solution_set_output(
         };
 
     let result_str = format_output_solution_set(render_ctx, render_set);
-    // El LaTeX conserva su propio camino (resuelve el estilo por señales dentro).
-    let result_latex = solution_set_to_output_latex(ctx, solution_set);
+    // El LaTeX recibe el MISMO estilo de eco que acaba de decidir el texto: sin
+    // enhebrarlo, este camino renderizaba con el default (radical incondicional)
+    // y las dos superficies del mismo conjunto divergían.
+    let style = cas_formatter::StylePreferences::with_root_style(
+        crate::eval_output_latex_style::result_root_style(&shared.style_signals),
+    );
+    let result_latex = solution_set_to_output_latex(ctx, solution_set, &style);
     let steps_count = shared.primary_steps_count();
     build_eval_output(
         build_nonexpr_result_payload(result_str, Some(result_latex)),

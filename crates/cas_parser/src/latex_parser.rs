@@ -539,9 +539,12 @@ mod tests {
     fn test_parse_sqrt_power_minus() {
         // V2.14.40: Fractional powers now render as sqrt by default
         // Simplified version of timeline step 5
+        // El Pow interno 17/12 es IMPROPIO: desde 2026-07-29 se presenta con la
+        // parte entera extraída (`x·¹²√(x⁵)`), la forma simplificada del radical.
+        // El término 17/24 es propio y conserva la forma de siempre.
         assert_eq!(
             test_parse("\\sqrt{{x}^{\\frac{17}{12}}} - {x}^{\\frac{17}{24}}"),
-            "\\sqrt{\\sqrt[12]{{x}^{17}}} - \\sqrt[24]{{x}^{17}}"
+            "\\sqrt{x\\cdot \\sqrt[12]{{x}^{5}}} - \\sqrt[24]{{x}^{17}}"
         );
     }
 

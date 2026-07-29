@@ -50,7 +50,8 @@ pub use path::{
 };
 pub use periodic::{
     display_periodic_family, display_periodic_interval_union, latex_periodic_family,
-    latex_periodic_interval_union,
+    latex_periodic_family_styled, latex_periodic_interval_union,
+    latex_periodic_interval_union_styled,
 };
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 pub use rule_scope::render_with_rule_scope;

@@ -75,20 +75,31 @@ impl<'a> DisplayExprStyled<'a> {
                         }
                     };
 
-                    if let Some((numer, denom)) = get_frac_parts(*exp) {
-                        if denom > 1 {
-                            if numer == 1 {
-                                // Print as root: √(base)
-                                write!(f, "{}(", unicode_root_prefix(denom as u64))?;
-                                self.fmt_internal(f, *base)?;
-                                return write!(f, ")");
-                            } else if numer != 1 {
-                                // Print as k-th power under d-th root: ∜(base^k)
-                                write!(f, "{}(", unicode_root_prefix(denom as u64))?;
-                                self.fmt_internal(f, *base)?;
-                                write!(f, "^{})", numer)?;
-                                return Ok(());
+                    // Misma partición que el LaTeX y la reescritura de texto
+                    // (`split_improper_fractional_exponent`): fracción propia
+                    // dentro de la raíz, parte entera EXTRAÍDA (`x^(7/2)` →
+                    // `x³·√x`, `5^(3/2)` → `5·√5`). Sin numerador positivo o con
+                    // base numérica negativa se cae a la potencia de abajo.
+                    if let Some((k, r, q)) = get_frac_parts(*exp).and_then(|(numer, denom)| {
+                        crate::root_display_rewrite::split_improper_fractional_exponent(
+                            numer, denom,
+                        )
+                    }) {
+                        let negative_literal_base = matches!(
+                            self.context.get(*base),
+                            Expr::Number(n) if num_traits::Signed::is_negative(n)
+                        );
+                        if k == 0 || !negative_literal_base {
+                            if k > 0 {
+                                self.fmt_extracted_factor(f, *base, k)?;
+                                write!(f, "{}", mul_symbol())?;
                             }
+                            write!(f, "{}(", unicode_root_prefix(q as u64))?;
+                            self.fmt_internal(f, *base)?;
+                            if r != 1 {
+                                write!(f, "^{}", r)?;
+                            }
+                            return write!(f, ")");
                         }
                     }
                 }
@@ -340,6 +351,42 @@ impl<'a> DisplayExprStyled<'a> {
             // Hold is transparent for display - render inner directly
             Expr::Hold(inner) => self.fmt_internal(f, *inner),
         }
+    }
+
+    /// El factor extraído de un radical impropio: `base^k`, con la base numérica
+    /// positiva PLEGADA (`2^(5/2)` → `4·√2`, no `2^2·√2`) y los mismos criterios
+    /// de paréntesis y superíndice que `fmt_power`.
+    fn fmt_extracted_factor(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        base: ExprId,
+        k: i64,
+    ) -> fmt::Result {
+        if let Expr::Number(n) = self.context.get(base) {
+            if let Some(folded) = crate::root_display_rewrite::fold_positive_rational_power(n, k) {
+                return write!(f, "{}", folded);
+            }
+        }
+
+        let base_prec = precedence(self.context, base);
+        let (base_is_negative, _, _) = check_negative(self.context, base);
+        let base_is_fraction_number =
+            matches!(self.context.get(base), Expr::Number(n) if !n.is_integer());
+        if base_prec < 3 || base_is_negative || base_is_fraction_number {
+            write!(f, "(")?;
+            self.fmt_internal(f, base)?;
+            write!(f, ")")?;
+        } else {
+            self.fmt_internal(f, base)?;
+        }
+
+        if k == 1 {
+            return Ok(());
+        }
+        if is_pretty_output() && (0..=99).contains(&k) {
+            return write!(f, "{}", number_to_superscript(k as u64));
+        }
+        write!(f, "^({})", k)
     }
 
     fn fmt_power(&self, f: &mut fmt::Formatter<'_>, base: ExprId, exp: ExprId) -> fmt::Result {

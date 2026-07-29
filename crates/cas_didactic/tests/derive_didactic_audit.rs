@@ -578,7 +578,24 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
     )
 }
 
+/// Casos cuya transformación quedó como NO-OP de presentación: la forma extraída
+/// del radical impropio (2026-07-29) hace que `x^(4/3)` se muestre `x·∛x`, así
+/// que la fusión `x·∛x → x^(4/3)` no produce ningún cambio que el alumno pueda
+/// ver y la poda didáctica la elimina — igual que pasó con «Canonicalize Roots».
+/// La lista es POR ID a propósito: cada entrada nombra su porqué, y un caso nuevo
+/// sin pasos sigue siendo un flag salvo decisión explícita aquí.
+fn case_may_have_zero_steps(case: &DeriveCase) -> bool {
+    matches!(
+        case.id.as_str(),
+        "merge_same_base_integer_and_fractional_power"
+    )
+}
+
 fn case_may_have_zero_substeps(case: &DeriveCase, json_steps: &[Value]) -> bool {
+    // Un caso al que se le permite no tener PASOS no puede deber subpasos.
+    if case_may_have_zero_steps(case) {
+        return true;
+    }
     if case.family == "fraction_combine" {
         return true;
     }
@@ -650,7 +667,7 @@ fn audit_case(case: &DeriveCase) -> AuditArtifact {
         })
         .sum();
     let mut flags = Vec::new();
-    if step_count == 0 {
+    if step_count == 0 && !case_may_have_zero_steps(case) {
         flags.push("no web steps emitted".to_string());
     }
     if case.expected_status == "derived"
@@ -4209,7 +4226,6 @@ fn derive_didactic_representative_direct_power_merge_cases_keep_merge_narrative(
     let cases = [
         "merge_same_base_fractional_powers",
         "merge_same_base_fractional_powers_to_integer",
-        "merge_same_base_integer_and_fractional_power",
         "merge_same_base_integer_and_symbolic_power",
     ];
 
@@ -4222,6 +4238,25 @@ fn derive_didactic_representative_direct_power_merge_cases_keep_merge_narrative(
             "expected no template substeps for {case_id}, got {titles:?}"
         );
     }
+
+    // `x·x^(1/3) → x^(4/3)` dejó de narrar A PROPÓSITO (extracción del radical
+    // impropio, 2026-07-29): la forma extraída de `x^(4/3)` ES `x·∛x`, así que
+    // el paso de fusión mostraría `x·∛x → x·∛x` — un no-op visible que la poda
+    // didáctica elimina, igual que pasó con «Canonicalize Roots». La fusión
+    // sigue ocurriendo por dentro (el RESULTADO es la potencia única); lo que ya
+    // no existe es un cambio que el alumno pueda ver.
+    let artifact = audit_case(&derive_case_by_id(
+        "merge_same_base_integer_and_fractional_power",
+    ));
+    assert!(
+        artifact.json_steps.is_empty(),
+        "the extracted display makes this merge a visible no-op; expected no steps, got {:?}",
+        artifact
+            .json_steps
+            .iter()
+            .filter_map(|step| step.get("rule").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]

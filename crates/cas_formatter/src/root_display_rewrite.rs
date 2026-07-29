@@ -11,9 +11,61 @@
 //! siendo la potencia. Reproduce EXACTAMENTE las condiciones de `render_as_root`
 //! del renderizador LaTeX (`latex_core`), que es lo que hace que las dos
 //! superficies digan lo mismo; si esas condiciones cambian, cambian las dos.
+//!
+//! Con exponente IMPROPIO (p > q) se extrae la parte entera: `√(x³)` → `x·√x`,
+//! `√(5³)` → `5·√5`. Es la «forma simplificada del radical» que enseña la escuela
+//! (sacar factores de la raíz) y la MISMA canónica que el motor ya aplica a los
+//! surds numéricos (`sqrt(125)` → `5·√5`): sin la extracción, la cantidad idéntica
+//! salía en dos formas según qué camino la produjera. La partición vive en
+//! [`split_improper_fractional_exponent`], compartida con el LaTeX.
 
 use crate::{Context, Expr, ExprId};
 use num_traits::ToPrimitive;
+
+/// Reduce `p/q` por su gcd y devuelve `(k, r, q)` con `p/q = k + r/q`, `0 ≤ r < q`.
+///
+/// `None` cuando la fracción no es un exponente de raíz utilizable: `p ≤ 0`
+/// (los negativos se quedan como potencia, igual que en LaTeX) o `q ≤ 1` tras
+/// reducir (exponente entero disfrazado, p.ej. un `Div(6, 2)` sin plegar — que
+/// además NO debe presentarse como `√(x⁶)`: esa forma es par-en-el-radicando y
+/// vale `|x³|`, no `x³`).
+pub(crate) fn split_improper_fractional_exponent(
+    numerator: i64,
+    denominator: i64,
+) -> Option<(i64, i64, i64)> {
+    if numerator <= 0 || denominator <= 1 {
+        return None;
+    }
+    let gcd = {
+        let (mut a, mut b) = (numerator, denominator);
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        a
+    };
+    let (p, q) = (numerator / gcd, denominator / gcd);
+    if q <= 1 {
+        return None;
+    }
+    Some((p / q, p % q, q))
+}
+
+/// `n^k` exacto para el pliegue del factor extraído con base NUMÉRICA positiva
+/// (`2^(5/2)` → `4·√2`, no `2^2·√2`). El tope de `k` es una red anti-explosión:
+/// más allá se deja la potencia simbólica, que sigue siendo correcta.
+pub(crate) fn fold_positive_rational_power(
+    n: &num_rational::BigRational,
+    k: i64,
+) -> Option<num_rational::BigRational> {
+    if !(2..=64).contains(&k) || !num_traits::Signed::is_positive(n) {
+        return None;
+    }
+    let mut acc = n.clone();
+    for _ in 1..k {
+        acc *= n;
+    }
+    Some(acc)
+}
 
 /// `(numerador, denominador)` de un exponente literal fraccionario, en las MISMAS
 /// dos formas que acepta el renderizador LaTeX: `Number` no entero y `Div` de dos
@@ -74,20 +126,60 @@ pub fn rewrite_fractional_powers_as_roots(ctx: &mut Context, id: ExprId) -> Expr
     match expr {
         Expr::Pow(base, exponent) => {
             let new_base = rewrite_fractional_powers_as_roots(ctx, base);
-            match fractional_exponent_parts(ctx, exponent) {
-                Some((numerator, denominator)) if denominator > 1 && numerator > 0 => {
-                    let radicand = if numerator == 1 {
+            let split = fractional_exponent_parts(ctx, exponent)
+                .and_then(|(p, q)| split_improper_fractional_exponent(p, q));
+            match split {
+                // Fracción propia: la raíz tal cual (`x^(2/3)` → `∛(x²)`).
+                Some((0, r, q)) => {
+                    let radicand = if r == 1 {
                         new_base
                     } else {
-                        let power = ctx.num(numerator);
+                        let power = ctx.num(r);
                         ctx.add_raw(Expr::Pow(new_base, power))
                     };
-                    radical_call(ctx, radicand, denominator)
+                    radical_call(ctx, radicand, q)
                 }
-                // Exponente no fraccionario, o numerador NEGATIVO: el LaTeX tampoco
-                // los presenta como raíz (`x^(-1/2)` no se vuelve raíz de recíproco).
-                _ if new_base == base => id,
-                _ => ctx.add_raw(Expr::Pow(new_base, exponent)),
+                // Impropia: extraer la parte entera (`x^(7/2)` → `x³·√x`), salvo
+                // base numérica NEGATIVA (la extracción movería el signo fuera de
+                // la raíz y cambiaría cómo se agrupa; se queda en potencia).
+                Some((k, r, q)) => {
+                    let base_is_negative_literal = matches!(
+                        ctx.get(new_base),
+                        Expr::Number(n) if num_traits::Signed::is_negative(n)
+                    );
+                    if base_is_negative_literal {
+                        if new_base == base {
+                            return id;
+                        }
+                        return ctx.add_raw(Expr::Pow(new_base, exponent));
+                    }
+                    let factor = if let Expr::Number(n) = ctx.get(new_base) {
+                        fold_positive_rational_power(&n.clone(), k).map(Expr::Number)
+                    } else {
+                        None
+                    };
+                    let factor = match factor {
+                        Some(folded) => ctx.add_raw(folded),
+                        None if k == 1 => new_base,
+                        None => {
+                            let power = ctx.num(k);
+                            ctx.add_raw(Expr::Pow(new_base, power))
+                        }
+                    };
+                    let radicand = if r == 1 {
+                        new_base
+                    } else {
+                        let power = ctx.num(r);
+                        ctx.add_raw(Expr::Pow(new_base, power))
+                    };
+                    let radical = radical_call(ctx, radicand, q);
+                    ctx.add_raw(Expr::Mul(factor, radical))
+                }
+                // Exponente no fraccionario, entero disfrazado, o numerador
+                // NEGATIVO: el LaTeX tampoco los presenta como raíz
+                // (`x^(-1/2)` no se vuelve raíz de recíproco).
+                None if new_base == base => id,
+                None => ctx.add_raw(Expr::Pow(new_base, exponent)),
             }
         }
         Expr::Add(lhs, rhs) => map_binary(ctx, id, lhs, rhs, Expr::Add),
@@ -180,7 +272,44 @@ mod tests {
         assert_eq!(rendered("x^(1/3)"), "cbrt(x)");
         assert_eq!(rendered("(x + 1)^(1/3)"), "cbrt(x + 1)");
         assert_eq!(rendered("x^(2/3)"), "cbrt(x^2)");
-        assert_eq!(rendered("x^(7/6)"), "root(x^7, 6)");
+    }
+
+    #[test]
+    fn improper_exponents_extract_the_whole_part() {
+        // «Sacar factores de la raíz», la forma simplificada escolar — y la misma
+        // canónica que el motor ya aplica a los surds numéricos
+        // (`sqrt(125)` → `5·sqrt(5)`).
+        assert_eq!(rendered("x^(3/2)"), "x * sqrt(x)");
+        assert_eq!(rendered("x^(7/2)"), "x^3 * sqrt(x)");
+        assert_eq!(rendered("x^(5/3)"), "x * cbrt(x^2)");
+        assert_eq!(rendered("x^(7/6)"), "x * root(x, 6)");
+        assert_eq!(rendered("(x + 1)^(5/2)"), "(x + 1)^2 * sqrt(x + 1)");
+        // Base numérica positiva: el factor se PLIEGA.
+        assert_eq!(rendered("5^(3/2)"), "5 * sqrt(5)");
+        assert_eq!(rendered("2^(5/2)"), "4 * sqrt(2)");
+        assert_eq!(rendered("2^(7/2)"), "8 * sqrt(2)");
+    }
+
+    #[test]
+    fn negative_literal_base_with_whole_part_stays_a_power() {
+        // Extraer movería el signo fuera de la raíz y cambiaría la agrupación.
+        let mut ctx = Context::new();
+        let minus_two = ctx.num(-2);
+        let exponent = ctx.rational(5, 3);
+        let pow = ctx.add_raw(Expr::Pow(minus_two, exponent));
+        assert_eq!(rewrite_fractional_powers_as_roots(&mut ctx, pow), pow);
+    }
+
+    #[test]
+    fn disguised_integer_exponent_is_not_presented_as_a_radical() {
+        // `Div(6, 2)` sin plegar: `√(x⁶)` valdría `|x³|`, no `x³` — potencia.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let six = ctx.num(6);
+        let two = ctx.num(2);
+        let exponent = ctx.add_raw(Expr::Div(six, two));
+        let pow = ctx.add_raw(Expr::Pow(x, exponent));
+        assert_eq!(rewrite_fractional_powers_as_roots(&mut ctx, pow), pow);
     }
 
     #[test]

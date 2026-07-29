@@ -3,7 +3,8 @@
 //! single family (`{ k·pi : k ∈ ℤ }`); several bases share the period
 //! (`{ pi/6 + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }`).
 
-use crate::{DisplayExpr, LaTeXExpr};
+use crate::root_style::StylePreferences;
+use crate::{DisplayExpr, LaTeXExprStyled};
 use cas_ast::{Context, Expr, ExprId};
 
 fn base_is_zero(ctx: &Context, base: ExprId) -> bool {
@@ -45,13 +46,19 @@ pub fn display_periodic_family(ctx: &Context, bases: &[ExprId], period: ExprId) 
 }
 
 /// One family term in LaTeX form.
-fn latex_family_term(ctx: &Context, base: ExprId, period_term: &str) -> String {
+fn latex_family_term(
+    ctx: &Context,
+    base: ExprId,
+    period_term: &str,
+    style: &StylePreferences,
+) -> String {
     if base_is_zero(ctx, base) {
         period_term.to_string()
     } else {
-        let base_s = LaTeXExpr {
+        let base_s = LaTeXExprStyled {
             context: ctx,
             id: base,
+            style_prefs: style,
         }
         .to_latex();
         format!("{base_s} + {period_term}")
@@ -60,17 +67,31 @@ fn latex_family_term(ctx: &Context, base: ExprId, period_term: &str) -> String {
 
 /// LaTeX form of a periodic set: `\left\{ k\pi : k \in \mathbb{Z} \right\}` etc.
 pub fn latex_periodic_family(ctx: &Context, bases: &[ExprId], period: ExprId) -> String {
+    latex_periodic_family_styled(ctx, bases, period, &StylePreferences::default())
+}
+
+/// Como [`latex_periodic_family`], con la notación de raíz del llamante: las bases
+/// de una familia trig pueden llevar potencias fraccionarias
+/// (`arcsin(root(1/4, 4)) + k·2·pi`) y el conjunto solución debe ecoar la
+/// notación del input igual que su texto.
+pub fn latex_periodic_family_styled(
+    ctx: &Context,
+    bases: &[ExprId],
+    period: ExprId,
+    style: &StylePreferences,
+) -> String {
     let period_term = format!(
         "k{}",
-        LaTeXExpr {
+        LaTeXExprStyled {
             context: ctx,
-            id: period
+            id: period,
+            style_prefs: style,
         }
         .to_latex()
     );
     let families: Vec<String> = bases
         .iter()
-        .map(|&b| latex_family_term(ctx, b, &period_term))
+        .map(|&b| latex_family_term(ctx, b, &period_term, style))
         .collect();
     format!(
         r"\left\{{ {} : k \in \mathbb{{Z}} \right\}}",
@@ -118,7 +139,12 @@ pub fn display_periodic_interval_union(
 }
 
 /// One window in LaTeX form (per-endpoint brackets via `\left(`/`\right]`…).
-fn latex_window(ctx: &Context, window: &cas_ast::Interval, period_term: &str) -> String {
+fn latex_window(
+    ctx: &Context,
+    window: &cas_ast::Interval,
+    period_term: &str,
+    style: &StylePreferences,
+) -> String {
     let open = match window.min_type {
         cas_ast::BoundType::Open => r"\left(",
         cas_ast::BoundType::Closed => r"\left[",
@@ -127,8 +153,8 @@ fn latex_window(ctx: &Context, window: &cas_ast::Interval, period_term: &str) ->
         cas_ast::BoundType::Open => r"\right)",
         cas_ast::BoundType::Closed => r"\right]",
     };
-    let lo = latex_family_term(ctx, window.min, period_term);
-    let hi = latex_family_term(ctx, window.max, period_term);
+    let lo = latex_family_term(ctx, window.min, period_term, style);
+    let hi = latex_family_term(ctx, window.max, period_term, style);
     format!("{open} {lo}, {hi} {close}")
 }
 
@@ -139,17 +165,28 @@ pub fn latex_periodic_interval_union(
     windows: &[cas_ast::Interval],
     period: ExprId,
 ) -> String {
+    latex_periodic_interval_union_styled(ctx, windows, period, &StylePreferences::default())
+}
+
+/// Como [`latex_periodic_interval_union`], con la notación de raíz del llamante.
+pub fn latex_periodic_interval_union_styled(
+    ctx: &Context,
+    windows: &[cas_ast::Interval],
+    period: ExprId,
+    style: &StylePreferences,
+) -> String {
     let period_term = format!(
         "k{}",
-        LaTeXExpr {
+        LaTeXExprStyled {
             context: ctx,
-            id: period
+            id: period,
+            style_prefs: style,
         }
         .to_latex()
     );
     let parts: Vec<String> = windows
         .iter()
-        .map(|w| latex_window(ctx, w, &period_term))
+        .map(|w| latex_window(ctx, w, &period_term, style))
         .collect();
     format!(
         r"\left\{{ {} : k \in \mathbb{{Z}} \right\}}",

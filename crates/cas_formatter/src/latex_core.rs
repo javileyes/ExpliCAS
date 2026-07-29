@@ -180,6 +180,93 @@ fn peel_unit_factors_for_latex(ctx: &Context, id: ExprId) -> ExprId {
 /// Implementors provide context access and optional hooks for
 /// highlighting and display hints. The trait provides default
 /// implementations for all expression rendering.
+/// Radical LaTeX de `x^(p/q)` con la MISMA partición que la reescritura de texto
+/// ([`crate::root_display_rewrite::split_improper_fractional_exponent`]): fracción
+/// propia dentro de la raíz (`∛(x²)`), parte entera EXTRAÍDA como factor
+/// (`√(x³)` → `x·√x`, `5^(3/2)` → `5·√5` — la canónica que el motor ya aplica a
+/// los surds numéricos: `sqrt(125)` → `5·√5`). Los dos renderizadores LaTeX y el
+/// texto comparten la partición para que las superficies no diverjan.
+///
+/// `None` ⇒ el llamante renderiza como potencia: numerador ≤ 0, entero
+/// disfrazado (`Div(6,2)` — que además NO debe ser `√(x⁶)`: esa forma vale
+/// `|x³|`, no `x³`), o base numérica NEGATIVA con parte entera (extraer movería
+/// el signo fuera de la raíz).
+/// Un `Pow` fraccionario impropio se presenta EXTRAÍDO como producto (`x³·√x`):
+/// usado como BASE de otra potencia necesita paréntesis, o el exponente parecería
+/// pegado solo al último factor. (En estilo exponencial el paréntesis sobra pero
+/// no estorba; el caso doble-potencia apenas sobrevive al simplify.)
+fn pow_extracts_to_latex_product(ctx: &Context, id: ExprId) -> bool {
+    use num_traits::ToPrimitive;
+    let Expr::Pow(base, exp) = ctx.get(id) else {
+        return false;
+    };
+    let parts = match ctx.get(*exp) {
+        Expr::Number(n) if !n.is_integer() => n.numer().to_i64().zip(n.denom().to_i64()),
+        Expr::Div(num, den) => match (ctx.get(*num), ctx.get(*den)) {
+            (Expr::Number(a), Expr::Number(b)) if a.is_integer() && b.is_integer() => {
+                a.numer().to_i64().zip(b.numer().to_i64())
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let Some((p, q)) = parts else {
+        return false;
+    };
+    matches!(
+        crate::root_display_rewrite::split_improper_fractional_exponent(p, q),
+        Some((k, _, _)) if k >= 1
+    ) && !matches!(ctx.get(*base), Expr::Number(n) if n.is_negative())
+}
+
+fn radical_latex_with_extraction(
+    ctx: &Context,
+    base: ExprId,
+    numer: i64,
+    denom: i64,
+    base_plain: &str,
+    base_factor: &str,
+) -> Option<String> {
+    let (k, r, q) = crate::root_display_rewrite::split_improper_fractional_exponent(numer, denom)?;
+
+    let radical = if r == 1 {
+        if q == 2 {
+            format!("\\sqrt{{{}}}", base_plain)
+        } else {
+            format!("\\sqrt[{}]{{{}}}", q, base_plain)
+        }
+    } else if q == 2 {
+        format!("\\sqrt{{{{{}}}^{{{}}}}}", base_plain, r)
+    } else {
+        format!("\\sqrt[{}]{{{{{}}}^{{{}}}}}", q, base_plain, r)
+    };
+    if k == 0 {
+        return Some(radical);
+    }
+
+    let factor = if let Expr::Number(n) = ctx.get(base) {
+        if n.is_negative() {
+            return None;
+        }
+        match crate::root_display_rewrite::fold_positive_rational_power(n, k) {
+            Some(folded) => {
+                if folded.is_integer() {
+                    folded.numer().to_string()
+                } else {
+                    format!("\\frac{{{}}}{{{}}}", folded.numer(), folded.denom())
+                }
+            }
+            None if k == 1 => base_factor.to_string(),
+            None => format!("{{{}}}^{{{}}}", base_factor, k),
+        }
+    } else if k == 1 {
+        base_factor.to_string()
+    } else {
+        format!("{{{}}}^{{{}}}", base_factor, k)
+    };
+    Some(format!("{}\\cdot {}", factor, radical))
+}
+
 pub trait LaTeXRenderer {
     /// Get the expression context
     fn context(&self) -> &Context;
@@ -822,24 +909,20 @@ pub trait LaTeXRenderer {
 
         // Helper to render as root
         let render_as_root = |this: &Self, numer: i64, denom: i64| -> String {
-            let base_str = this.expr_to_latex(base, false);
-            if numer == 1 {
-                // Simple root: x^(1/n) -> \sqrt[n]{x}
-                if denom == 2 {
-                    format!("\\sqrt{{{}}}", base_str)
-                } else {
-                    format!("\\sqrt[{}]{{{}}}", denom, base_str)
-                }
-            } else if numer > 0 {
-                // Fractional power: x^(k/n) -> \sqrt[n]{x^k}
-                if denom == 2 {
-                    format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer)
-                } else {
-                    format!("\\sqrt[{}]{{{{{}}}^{{{}}}}}", denom, base_str, numer)
-                }
-            } else {
-                // Negative numerators: fall through to power
-                render_as_power(this)
+            let base_plain = this.expr_to_latex(base, false);
+            let base_factor = this.expr_to_latex_base(base);
+            match radical_latex_with_extraction(
+                this.context(),
+                base,
+                numer,
+                denom,
+                &base_plain,
+                &base_factor,
+            ) {
+                Some(rendered) => rendered,
+                // Numerador negativo, entero disfrazado o base numérica negativa
+                // con parte entera: potencia.
+                None => render_as_power(this),
             }
         };
 
@@ -1079,6 +1162,10 @@ pub trait LaTeXRenderer {
             }
             // Negative numbers also need parentheses: (-1)^2 not -1^2
             Expr::Number(n) if n.is_negative() => {
+                format!("({})", self.expr_to_latex(id, false))
+            }
+            // Un Pow impropio extraído renderiza como producto (`x³·√x`): parens.
+            Expr::Pow(_, _) if pow_extracts_to_latex_product(self.context(), display_id) => {
                 format!("({})", self.expr_to_latex(id, false))
             }
             // A non-integer rational renders as `\frac{p}{q}`, unambiguous in rich LaTeX but de-LaTeXing
@@ -2439,22 +2526,20 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
 
             // Helper to render as root
             let render_root = || {
-                let base_str = self.render_with_path(base, false, &self.child_path(path, 0));
-                if numer == 1 {
-                    if denom == 2 {
-                        format!("\\sqrt{{{}}}", base_str)
-                    } else {
-                        format!("\\sqrt[{}]{{{}}}", denom, base_str)
-                    }
-                } else if numer > 0 {
-                    if denom == 2 {
-                        format!("\\sqrt{{{{{}}}^{{{}}}}}", base_str, numer)
-                    } else {
-                        format!("\\sqrt[{}]{{{{{}}}^{{{}}}}}", denom, base_str, numer)
-                    }
-                } else {
-                    // Negative numerator: fall to power
-                    render_power()
+                let base_plain = self.render_with_path(base, false, &self.child_path(path, 0));
+                let base_factor = self.render_base(base, &self.child_path(path, 0));
+                match radical_latex_with_extraction(
+                    self.context,
+                    base,
+                    numer,
+                    denom,
+                    &base_plain,
+                    &base_factor,
+                ) {
+                    Some(rendered) => rendered,
+                    // Numerador negativo, entero disfrazado o base numérica
+                    // negativa con parte entera: potencia.
+                    None => render_power(),
                 }
             };
 
@@ -2498,6 +2583,10 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             }
             // Negative numbers also need parentheses: (-1)^2 not -1^2
             Expr::Number(n) if n.is_negative() => {
+                format!("({})", self.render_with_path(id, false, path))
+            }
+            // Un Pow impropio extraído renderiza como producto (`x³·√x`): parens.
+            Expr::Pow(_, _) if pow_extracts_to_latex_product(self.context, id) => {
                 format!("({})", self.render_with_path(id, false, path))
             }
             // A non-integer rational de-LaTeXes to a bare `p/q`; parenthesize so the plain-text power
