@@ -820,7 +820,7 @@ fn test_eval_abs_of_quadratic_equals_variable_splits_and_verifies() {
         // a provably-negative surd is non-real) and dropped, instead of leaking `±√(1−√2)` (imaginary).
         (
             "abs(x^2 - 1) = sqrt(2)",
-            "{ (sqrt(2) + 1)^(1/2), -((sqrt(2) + 1)^(1/2)) }",
+            "{ sqrt(sqrt(2) + 1), -sqrt(sqrt(2) + 1) }",
         ),
         // `|E| = 0 ⟺ E = 0`: the FULL zero-set of a factored product (the abs isolation dropped all but
         // the first factor, `|x·(x−2)| = 0 → {0}`).
@@ -837,7 +837,7 @@ fn test_eval_abs_of_quadratic_equals_variable_splits_and_verifies() {
         ("abs(x^2 - 1) = -x - 5", "No solution"),
         // Controls: linear `|f|` and constant-RHS quadratic keep their existing handlers.
         ("abs(x - 3) = 2*x", "{ 1 }"),
-        ("abs(x^2 - 4) = 3", "{ sqrt(7), -(sqrt(7)), 1, -1 }"),
+        ("abs(x^2 - 4) = 3", "{ sqrt(7), -sqrt(7), 1, -1 }"),
     ] {
         let output = cli()
             .args(["eval", input, "--format", "json"])
@@ -871,11 +871,11 @@ fn test_eval_symbolic_quadratic_with_negative_constant_discriminant_is_empty() {
     // quadratic is untouched (sign undecidable ⇒ kept).
     assert_eq!(
         r("solve(x^2 = sqrt(2)-1, x)"),
-        "{ -((sqrt(2) - 1)^(1/2)), (sqrt(2) - 1)^(1/2) }"
+        "{ -sqrt(sqrt(2) - 1), sqrt(sqrt(2) - 1) }"
     );
     assert_eq!(
         r("solve(a*x^2+b*x+c=0, x)"),
-        "{ (-(b^2 - 4·a·c)^(1/2) - b) / (2·a), ((b^2 - 4·a·c)^(1/2) - b) / (2·a) }"
+        "{ (-sqrt(b^2 - 4·a·c) - b) / (2·a), (sqrt(b^2 - 4·a·c) - b) / (2·a) }"
     );
 }
 
@@ -1086,9 +1086,9 @@ fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
         let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
         wire["result"].as_str().unwrap_or("").to_string()
     };
-    assert_eq!(r("solve(1/(x+sqrt(2))>0, x)"), "(-(sqrt(2)), infinity)");
+    assert_eq!(r("solve(1/(x+sqrt(2))>0, x)"), "(-sqrt(2), infinity)");
     assert_eq!(r("solve(-1/(x-sqrt(2))>0, x)"), "(-infinity, sqrt(2))");
-    assert_eq!(r("solve(2/(x+sqrt(3))>=0, x)"), "(-(sqrt(3)), infinity)");
+    assert_eq!(r("solve(2/(x+sqrt(3))>=0, x)"), "(-sqrt(3), infinity)");
     assert_eq!(r("solve(1/(2*x+sqrt(2))>0, x)"), "(-(2^(-1/2)), infinity)");
     assert_eq!(r("solve(1/(x+2^(1/3))>0, x)"), "(-(2^(1/3)), infinity)");
     assert_eq!(r("solve(1/(1+sqrt(2)-x)>0, x)"), "(-infinity, sqrt(2) + 1)");
@@ -1106,13 +1106,13 @@ fn test_eval_const_over_surd_affine_denominator_keeps_true_pole_only() {
     // malformed residual.
     // El extremo negativo imprimía `-2·2^(-1/2)`, la forma sin plegar que el
     // hermano positivo sí plegaba: la corrección del signo en la combinación de
-    // potencias (2026-07-28) lo deja en `-(sqrt(2))`, el MISMO número y la
+    // potencias (2026-07-28) lo deja en `-sqrt(2)`, el MISMO número y la
     // misma forma que usa el resto de la expresión. El extremo `1 - sqrt(2)`
     // no cambia, que es la señal de que solo se normalizó la presentación.
-    assert_eq!(r("solve(1/(x+sqrt(2))>1, x)"), "(-(sqrt(2)), 1 - sqrt(2))");
+    assert_eq!(r("solve(1/(x+sqrt(2))>1, x)"), "(-sqrt(2), 1 - sqrt(2))");
     assert_eq!(
         r("solve(1/(x+sqrt(2))<1, x)"),
-        "(-infinity, -(sqrt(2))) U (1 - sqrt(2), infinity)"
+        "(-infinity, -sqrt(2)) U (1 - sqrt(2), infinity)"
     );
     assert_eq!(r("solve(1/(x+sqrt(2))=1, x)"), "{ 1 - sqrt(2) }");
     assert_eq!(r("solve(2/(x-sqrt(3))<=-1, x)"), "[sqrt(3) - 2, sqrt(3))");
@@ -1165,7 +1165,7 @@ fn test_eval_rational_exponent_constants_are_sign_decidable() {
     // Quadratic with a provably-negative transcendental-power constant.
     assert_eq!(r("solve(x^2 = 1-e^(1/3), x)"), "No solution");
     // Control: positive threshold still squares (the sound branch).
-    assert_eq!(r("solve(sqrt(x) > e^(1/3), x)"), "(e^(2/3), infinity)");
+    assert_eq!(r("solve(sqrt(x) > e^(1/3), x)"), "(cbrt(e^2), infinity)");
 }
 
 #[test]
@@ -1919,7 +1919,7 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
         // A single discrete real root expressed by radicals: `{ … }`, not a residual `Solve:`/`if`.
         assert!(
             result.starts_with("{ ")
-                && result.contains("^(1/3)")
+                && result.contains("cbrt(")
                 && !result.contains("Solve")
                 && !result.contains(" if "),
             "{input} -> {result}"
@@ -1945,7 +1945,7 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
         // no duplicate `0`.
         assert!(
             result.starts_with("{ 0, ")
-                && result.contains("^(1/3)")
+                && result.contains("cbrt(")
                 && !result.contains("0, 0")
                 && !result.contains("Solve")
                 && !result.contains(" if "),
@@ -1956,7 +1956,7 @@ fn test_eval_irreducible_cubic_single_real_root_by_cardano() {
     for (input, expected) in [
         ("solve(x^3-1=0, x)", "{ 1 }"),
         ("solve(x^3-6*x^2+11*x-6=0, x)", "{ 1, 2, 3 }"),
-        ("solve(x^3-2=0, x)", "{ 2^(1/3) }"),
+        ("solve(x^3-2=0, x)", "{ cbrt(2) }"),
         ("solve(x^3+3*x^2+3*x+1=0, x)", "{ -1 }"),
         ("solve(x^3-3*x+2=0, x)", "{ -2, 1 }"),
     ] {
@@ -2071,7 +2071,7 @@ fn test_eval_fraction_base_power_is_parenthesized() {
     let cwire: Value = serde_json::from_slice(&cardano.stdout).expect("Invalid wire output");
     let cresult = cwire["result"].as_str().unwrap_or("");
     assert!(
-        cresult.contains("(17161/2)^(1/3)"),
+        cresult.contains("cbrt(17161/2)"),
         "cardano fraction radicand -> {cresult}"
     );
 }
@@ -5354,7 +5354,7 @@ fn test_eval_even_power_and_abs_trig_equation_keeps_family() {
     // An n-th-root RHS (not a quadratic surd) now also emits the full family.
     assert_eq!(
         r("solve(sin(x)^4=1/4, x)"),
-        "{ arcsin((1/4)^(1/4)) + k·2·pi, pi - arcsin((1/4)^(1/4)) + k·2·pi, -arcsin((1/4)^(1/4)) + k·2·pi, arcsin((1/4)^(1/4)) + pi + k·2·pi : k ∈ ℤ }"
+        "{ arcsin(root(1/4, 4)) + k·2·pi, pi - arcsin(root(1/4, 4)) + k·2·pi, -arcsin(root(1/4, 4)) + k·2·pi, arcsin(root(1/4, 4)) + pi + k·2·pi : k ∈ ℤ }"
     );
     // SOUNDNESS: an out-of-range RHS has NO real solution (no spurious arcsin(>1)).
     assert_eq!(r("solve(sin(x)^4=4, x)"), "No solution");
@@ -5427,18 +5427,21 @@ fn test_eval_reciprocal_power_inequality_keeps_pole_sign_split() {
     };
     assert_eq!(
         r("solve(2/x^3 > -1, x)"),
-        "(-infinity, -(2^(1/3))) U (0, infinity)"
+        "(-infinity, -cbrt(2)) U (0, infinity)"
     );
-    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, (1/2)^(1/3))");
+    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, cbrt(1/2))");
     assert_eq!(
         r("solve(1/x^3 < 2, x)"),
-        "(-infinity, 0) U ((1/2)^(1/3), infinity)"
+        "(-infinity, 0) U (cbrt(1/2), infinity)"
     );
-    assert_eq!(r("solve(1/x^5 > 2, x)"), "(0, (1/2)^(1/5))");
-    assert_eq!(r("solve(3/x^3 > 1, x)"), "(0, 3^(1/3))");
-    assert_eq!(r("solve(2/x^3 < -1, x)"), "(-(2^(1/3)), 0)");
+    assert_eq!(r("solve(1/x^5 > 2, x)"), "(0, root(1/2, 5))");
+    assert_eq!(r("solve(3/x^3 > 1, x)"), "(0, cbrt(3))");
+    assert_eq!(r("solve(2/x^3 < -1, x)"), "(-cbrt(2), 0)");
     // Surd-border even power: the pole at 0 must be EXCLUDED (punctured union, not a single interval).
-    assert_eq!(r("solve(1/x^4 > 1/4, x)"), "(-(4^(1/4)), 0) U (0, 4^(1/4))");
+    assert_eq!(
+        r("solve(1/x^4 > 1/4, x)"),
+        "(-root(4, 4), 0) U (0, root(4, 4))"
+    );
     // Controls that must stay correct: rational-border even power and linear denominator.
     assert_eq!(r("solve(1/x^2 > 1, x)"), "(-1, 0) U (0, 1)");
     assert_eq!(r("solve(1/x > 2, x)"), "(0, 1/2)");
@@ -5852,8 +5855,8 @@ fn test_eval_high_degree_polynomial_inequality_with_rational_root() {
     assert_eq!(r("solve(1/x^9 > 1, x)"), "(0, 1)");
     assert_eq!(r("solve(1/x^7 < 1, x)"), "(-infinity, 0) U (1, infinity)");
     // Surd-boundary and lower-degree controls remain correct.
-    assert_eq!(r("solve(x^5 > 2, x)"), "(2^(1/5), infinity)");
-    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, (1/2)^(1/3))");
+    assert_eq!(r("solve(x^5 > 2, x)"), "(root(2, 5), infinity)");
+    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, cbrt(1/2))");
     assert_eq!(r("solve(x^3 - x > 0, x)"), "(-1, 0) U (1, infinity)");
 }
 
@@ -5874,14 +5877,14 @@ fn test_eval_squared_irrational_quadratic_factor_keeps_its_roots() {
         wire["result"].as_str().unwrap_or("").to_string()
     };
     // The in-core biquadratic residual solver now owns these (2026-07-14): same set,
-    // cleaner `-(sqrt(3))` render (was the quartic-factor owner's `-3·3^(-1/2)`).
+    // cleaner `-sqrt(3)` render (was the quartic-factor owner's `-3·3^(-1/2)`).
     assert_eq!(
         r("solve((x^2-3)^2*(x-1) = 0, x)"),
-        "{ 1, -(sqrt(3)), sqrt(3) }"
+        "{ 1, -sqrt(3), sqrt(3) }"
     );
     assert_eq!(
         r("solve((x^2-7)^2*(x-3) = 0, x)"),
-        "{ 3, -(sqrt(7)), sqrt(7) }"
+        "{ 3, -sqrt(7), sqrt(7) }"
     );
     // A general (non-symmetric) irreducible quadratic, squared: roots (3±√5)/2.
     assert_eq!(
@@ -5891,23 +5894,23 @@ fn test_eval_squared_irrational_quadratic_factor_keeps_its_roots() {
     // The bug survives full expansion (same quintic, factored back internally).
     assert_eq!(
         r("solve(x^5 - x^4 - 6*x^3 + 6*x^2 + 9*x - 9 = 0, x)"),
-        "{ 1, -(sqrt(3)), sqrt(3) }"
+        "{ 1, -sqrt(3), sqrt(3) }"
     );
     // Degree-6 with two rational cofactor roots; the squared factor still contributes ±√3.
     assert_eq!(
         r("solve((x^2-3)^2*(x^2-4) = 0, x)"),
-        "{ -2, 2, -(sqrt(3)), sqrt(3) }"
+        "{ -2, 2, -sqrt(3), sqrt(3) }"
     );
     // Controls: the DISTINCT-quadratic-factor case and a plain quadratic are unchanged.
     // The negative root used to print `-5·5^(-1/2)` — the very form the comment
     // at the top of this test calls the OLD owner's ugly render. It stayed here
-    // because the fold that produces `-(sqrt(5))` only fired for a POSITIVE
+    // because the fold that produces `-sqrt(5)` only fired for a POSITIVE
     // coefficient: `5·5^(-1/2)` combined, `(-5)·5^(-1/2)` did not, so the two
     // roots of one equation printed in two different shapes. Fixed 2026-07-28
     // by peeling the sign before comparing bases.
     assert_eq!(
         r("solve(x^5-5*x^3+x^2-5 = 0, x)"),
-        "{ -1, sqrt(5), -(sqrt(5)) }"
+        "{ -1, sqrt(5), -sqrt(5) }"
     );
     assert_eq!(r("solve(x^2-5*x+6 = 0, x)"), "{ 2, 3 }");
 }
@@ -5931,32 +5934,32 @@ fn test_eval_content_scaled_squared_quadratic_factor_keeps_roots() {
     // Outer scalar content.
     assert_eq!(
         r("solve(2*(x^2-3)^2*(x-1) = 0, x)"),
-        "{ 1, -(sqrt(3)), sqrt(3) }"
+        "{ 1, -sqrt(3), sqrt(3) }"
     );
     // Content folded INTO the squared factor (`(2x²-6)² = 4·(x²-3)²`).
     assert_eq!(
         r("solve((2*x^2-6)^2*(x-1) = 0, x)"),
-        "{ 1, -(sqrt(3)), sqrt(3) }"
+        "{ 1, -sqrt(3), sqrt(3) }"
     );
     // A different scalar and root.
     assert_eq!(
         r("solve(3*(x^2-5)^2*(x-2) = 0, x)"),
-        "{ 2, -(sqrt(5)), sqrt(5) }"
+        "{ 2, -sqrt(5), sqrt(5) }"
     );
     // NEGATIVE content (leading coefficient < 0) normalizes the same way.
     assert_eq!(
         r("solve(-2*(x^2-3)^2*(x-1) = 0, x)"),
-        "{ 1, -(sqrt(3)), sqrt(3) }"
+        "{ 1, -sqrt(3), sqrt(3) }"
     );
     // Content on a non-repeated quartic (distinct factors) stays correct.
     assert_eq!(
         r("solve(2*x^4 - 10*x^2 + 12 = 0, x)"),
-        "{ -(sqrt(2)), -(sqrt(3)), sqrt(2), sqrt(3) }"
+        "{ -sqrt(2), -sqrt(3), sqrt(2), sqrt(3) }"
     );
     // Control: the monic case is unchanged.
     assert_eq!(
         r("solve((x^2-3)^2*(x-1) = 0, x)"),
-        "{ 1, -(sqrt(3)), sqrt(3) }"
+        "{ 1, -sqrt(3), sqrt(3) }"
     );
 }
 
@@ -5996,7 +5999,7 @@ fn test_eval_unsound_power_monomial_inequality_declines_to_residual() {
     assert_eq!(r("solve(x^(3/2) > 2, x)"), "(2^(2/3), infinity)");
     assert_eq!(r("solve(x^(5/3) > 2, x)"), "(2^(3/5), infinity)");
     // KEEP: integer-exponent reciprocals are owned by the rational-constant path (Class B).
-    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, (1/2)^(1/3))");
+    assert_eq!(r("solve(1/x^3 > 2, x)"), "(0, cbrt(1/2))");
     assert_eq!(r("solve(1/x > 2, x)"), "(0, 1/2)");
     // KEEP: the EQUATION form is untouched (op gate) — both valley roots are found.
     assert_eq!(r("solve(x^(2/3) = 8, x)"), "{ -64·2^(-3/2), 64·2^(-3/2) }");
@@ -6367,7 +6370,7 @@ fn test_eval_variable_base_log_inequality_declines() {
     }
     let plain = |input: &str| run(input).1;
     // EQ-safety: equations still solve.
-    assert_eq!(plain("log(x,2)=3"), "{ 2^(1/3) }");
+    assert_eq!(plain("log(x,2)=3"), "{ cbrt(2) }");
     // Constant-base log (monotonic) is unaffected.
     assert_eq!(plain("log(2,x)>3"), "(8, infinity)");
     assert_eq!(plain("log(2,x)<3"), "(0, 8)");
@@ -7227,7 +7230,7 @@ fn test_eval_reducible_quartic_factor_roots() {
     assert_eq!(r("x^4-3*x^2-4>0"), "(-infinity, -2) U (2, infinity)");
     // Controls: biquadratics and lower-degree solves are unchanged.
     assert_eq!(r("solve(x^4-5*x^2+4=0, x)"), "{ -2, -1, 1, 2 }");
-    assert_eq!(r("solve(x^3-2=0, x)"), "{ 2^(1/3) }");
+    assert_eq!(r("solve(x^3-2=0, x)"), "{ cbrt(2) }");
 }
 
 #[test]
@@ -7386,7 +7389,7 @@ fn test_eval_irreducible_polynomial_inequality_sign_analysis() {
     // Controls: factorable inequalities and the underlying equation are unchanged.
     assert_eq!(r("x^2-1>0"), "(-infinity, -1) U (1, infinity)");
     assert_eq!(r("x^2-1<0"), "(-1, 1)");
-    assert_eq!(r("x^3-2=0"), "{ 2^(1/3) }");
+    assert_eq!(r("x^3-2=0"), "{ cbrt(2) }");
 }
 
 #[test]

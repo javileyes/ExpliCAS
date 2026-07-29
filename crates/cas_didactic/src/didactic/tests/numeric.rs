@@ -90,26 +90,26 @@ fn test_latex_to_plain_text_converts_indexed_roots() {
     // ∛x + 1 (otra expresión) y no vuelve a parsear.
     assert_eq!(
         latex_to_plain_text(r"\sqrt[3]{x + 1}"),
-        "root(x + 1, 3)",
+        "cbrt(x + 1)",
         "radicando compuesto sin agrupar"
     );
-    assert_eq!(latex_to_plain_text(r"\sqrt[3]{x}"), "root(x, 3)");
+    assert_eq!(latex_to_plain_text(r"\sqrt[3]{x}"), "cbrt(x)");
     // Índice 2 explícito habla la lengua del índice-menos: `sqrt(x)`.
     assert_eq!(latex_to_plain_text(r"\sqrt[2]{x}"), "sqrt(x)");
     // Potencia bajo la raíz: el paso de exponentes sigue corriendo después.
-    assert_eq!(latex_to_plain_text(r"\sqrt[3]{{x}^{2}}"), "root(x^2, 3)");
+    assert_eq!(latex_to_plain_text(r"\sqrt[3]{{x}^{2}}"), "cbrt(x^2)");
     // Anidamiento en ambos sentidos.
     assert_eq!(
         latex_to_plain_text(r"\sqrt{\sqrt[3]{x}}"),
-        "sqrt(root(x, 3))"
+        "sqrt(cbrt(x))"
     );
     assert_eq!(
         latex_to_plain_text(r"\sqrt[3]{\sqrt{x}}"),
-        "root(sqrt(x), 3)"
+        "cbrt(sqrt(x))"
     );
     // Ni rastro de la forma cruda.
     let mixed = latex_to_plain_text(r"\sqrt[4]{y} + \sqrt[3]{x + 1}");
-    assert_eq!(mixed, "root(y, 4) + root(x + 1, 3)", "got {mixed}");
+    assert_eq!(mixed, "root(y, 4) + cbrt(x + 1)", "got {mixed}");
 }
 
 #[test]

@@ -16,6 +16,17 @@ pub struct Interval {
 }
 
 impl Interval {
+    /// Reconstruye el intervalo aplicando `f` a sus dos extremos (los tipos de
+    /// borde no dependen de la expresión). Ver `SolutionSet::map_exprs`.
+    pub fn map_exprs(&self, f: &mut impl FnMut(ExprId) -> ExprId) -> Interval {
+        Interval {
+            min: f(self.min),
+            min_type: self.min_type.clone(),
+            max: f(self.max),
+            max_type: self.max_type.clone(),
+        }
+    }
+
     pub fn closed(a: ExprId, b: ExprId) -> Self {
         Interval {
             min: a,
@@ -406,7 +417,98 @@ pub enum SolutionSet {
     },
 }
 
+impl Case {
+    /// Ver `SolutionSet::map_exprs`: mapea tanto las condiciones del caso como su
+    /// resultado (que puede anidar otro conjunto y su residual).
+    pub fn map_exprs(&self, f: &mut impl FnMut(ExprId) -> ExprId) -> Case {
+        Case {
+            when: self.when.map_exprs(f),
+            then: Box::new(self.then.map_exprs(f)),
+        }
+    }
+}
+
+impl SolveResult {
+    /// Ver `SolutionSet::map_exprs`.
+    pub fn map_exprs(&self, f: &mut impl FnMut(ExprId) -> ExprId) -> SolveResult {
+        SolveResult {
+            solutions: self.solutions.map_exprs(f),
+            residual: self.residual.map(&mut *f),
+        }
+    }
+}
+
+impl ConditionSet {
+    /// Ver `SolutionSet::map_exprs`.
+    pub fn map_exprs(&self, f: &mut impl FnMut(ExprId) -> ExprId) -> ConditionSet {
+        ConditionSet::from_predicates(self.predicates.iter().map(|p| p.map_exprs(f)).collect())
+    }
+}
+
+impl ConditionPredicate {
+    /// Ver `SolutionSet::map_exprs`.
+    pub fn map_exprs(&self, f: &mut impl FnMut(ExprId) -> ExprId) -> ConditionPredicate {
+        match self {
+            ConditionPredicate::NonZero(e) => ConditionPredicate::NonZero(f(*e)),
+            ConditionPredicate::Positive(e) => ConditionPredicate::Positive(f(*e)),
+            ConditionPredicate::NonNegative(e) => ConditionPredicate::NonNegative(f(*e)),
+            ConditionPredicate::LowerBound { expr, lower } => ConditionPredicate::LowerBound {
+                expr: f(*expr),
+                lower: lower.clone(),
+            },
+            ConditionPredicate::Defined(e) => ConditionPredicate::Defined(f(*e)),
+            ConditionPredicate::InvTrigPrincipalRange { func, arg } => {
+                ConditionPredicate::InvTrigPrincipalRange { func, arg: f(*arg) }
+            }
+            ConditionPredicate::PrincipalBranch { func, arg } => {
+                ConditionPredicate::PrincipalBranch { func, arg: f(*arg) }
+            }
+            ConditionPredicate::EqZero(e) => ConditionPredicate::EqZero(f(*e)),
+            ConditionPredicate::EqOne(e) => ConditionPredicate::EqOne(f(*e)),
+        }
+    }
+}
+
 impl SolutionSet {
+    /// Reconstruye el conjunto aplicando `f` a CADA expresión que contiene
+    /// (soluciones, extremos de intervalo, periodos, residuales y los argumentos
+    /// de las condiciones de cada caso).
+    ///
+    /// Existe para las transformaciones de PRESENTACIÓN sobre un contexto de
+    /// scratch — reescribir potencias fraccionarias a raíces, por ejemplo — donde
+    /// hay que tocar todos los `ExprId` sin re-derivar la estructura. Vive junto al
+    /// tipo, y no en el renderizador, precisamente para que el compilador obligue a
+    /// cubrir cualquier variante que se añada: una que se olvide aquí se imprimiría
+    /// con una notación distinta a la de sus hermanas, que es el defecto que este
+    /// mapeo existe para evitar.
+    pub fn map_exprs(&self, f: &mut impl FnMut(ExprId) -> ExprId) -> SolutionSet {
+        match self {
+            SolutionSet::Discrete(exprs) => {
+                SolutionSet::Discrete(exprs.iter().map(|e| f(*e)).collect())
+            }
+            SolutionSet::Continuous(interval) => SolutionSet::Continuous(interval.map_exprs(f)),
+            SolutionSet::Union(intervals) => {
+                SolutionSet::Union(intervals.iter().map(|i| i.map_exprs(f)).collect())
+            }
+            SolutionSet::Empty => SolutionSet::Empty,
+            SolutionSet::AllReals => SolutionSet::AllReals,
+            SolutionSet::Residual(expr) => SolutionSet::Residual(f(*expr)),
+            SolutionSet::Conditional(cases) => {
+                SolutionSet::Conditional(cases.iter().map(|c| c.map_exprs(f)).collect())
+            }
+            SolutionSet::Periodic { bases, period } => SolutionSet::Periodic {
+                bases: bases.iter().map(|e| f(*e)).collect(),
+                period: f(*period),
+            },
+            SolutionSet::PeriodicIntervalUnion { windows, period } => {
+                SolutionSet::PeriodicIntervalUnion {
+                    windows: windows.iter().map(|w| w.map_exprs(f)).collect(),
+                    period: f(*period),
+                }
+            }
+        }
+    }
+
     /// V2.0 Phase 2D: Flatten nested Conditional solutions
     ///
     /// Transforms nested structures like:
@@ -521,5 +623,85 @@ impl SolutionSet {
             }
             other => other,
         }
+    }
+}
+
+#[cfg(test)]
+mod map_exprs_tests {
+    use super::*;
+    use crate::expression::Context;
+
+    /// `map_exprs` debe alcanzar TODA expresión del conjunto. El test recorre las
+    /// nueve variantes con un contador: si una variante nueva se olvida de mapear
+    /// algún hijo, ese hijo se imprimiría con otra notación que sus hermanos — el
+    /// defecto exacto que este mapeo existe para evitar.
+    fn count_visits(set: &SolutionSet) -> usize {
+        let mut seen = 0usize;
+        set.map_exprs(&mut |id| {
+            seen += 1;
+            id
+        });
+        seen
+    }
+
+    #[test]
+    fn map_exprs_reaches_every_expression_of_every_variant() {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(3);
+        let interval = Interval::closed(a, b);
+
+        assert_eq!(count_visits(&SolutionSet::Discrete(vec![a, b, c])), 3);
+        assert_eq!(count_visits(&SolutionSet::Continuous(interval.clone())), 2);
+        assert_eq!(
+            count_visits(&SolutionSet::Union(vec![
+                interval.clone(),
+                interval.clone()
+            ])),
+            4
+        );
+        assert_eq!(count_visits(&SolutionSet::Empty), 0);
+        assert_eq!(count_visits(&SolutionSet::AllReals), 0);
+        assert_eq!(count_visits(&SolutionSet::Residual(a)), 1);
+        assert_eq!(
+            count_visits(&SolutionSet::Periodic {
+                bases: vec![a, b],
+                period: c,
+            }),
+            3
+        );
+        assert_eq!(
+            count_visits(&SolutionSet::PeriodicIntervalUnion {
+                windows: vec![interval.clone()],
+                period: c,
+            }),
+            3
+        );
+
+        // Conditional anida condiciones + un SolveResult con su propio residual.
+        let case = Case {
+            when: ConditionSet::from_predicates(vec![
+                ConditionPredicate::Positive(a),
+                ConditionPredicate::NonZero(b),
+            ]),
+            then: Box::new(SolveResult {
+                solutions: SolutionSet::Discrete(vec![c]),
+                residual: Some(a),
+            }),
+        };
+        assert_eq!(count_visits(&SolutionSet::Conditional(vec![case])), 4);
+    }
+
+    #[test]
+    fn map_exprs_rebuilds_with_the_mapped_ids() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let set = SolutionSet::Discrete(vec![one]);
+        let mapped = set.map_exprs(&mut |_| two);
+        assert_eq!(mapped, SolutionSet::Discrete(vec![two]));
+        // Y la identidad no reconstruye a otra cosa.
+        assert_eq!(set.map_exprs(&mut |id| id), set);
     }
 }

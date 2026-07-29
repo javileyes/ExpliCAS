@@ -62,5 +62,5 @@ fn rational_affine_principal_convention_is_preserved() {
 #[test]
 fn globally_invertible_inverses_still_handle_nonaffine_args() {
     assert_eq!(solve("ln(x^2)=4"), "{ e^2, -(e^2) }");
-    assert_eq!(solve("e^(x^2)=2"), "{ -(ln(2)^(1/2)), ln(2)^(1/2) }");
+    assert_eq!(solve("e^(x^2)=2"), "{ -sqrt(ln(2)), sqrt(ln(2)) }");
 }

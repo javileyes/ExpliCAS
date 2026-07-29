@@ -40,14 +40,27 @@ fn fractional_exponent_parts(ctx: &Context, exponent: ExprId) -> Option<(i64, i6
     }
 }
 
+/// La llamada de raíz con la ORTOGRAFÍA que el motor ya usa en sus resultados:
+/// `sqrt` para índice 2 y `cbrt` para índice 3 (ambas `BuiltinFn`; `cbrt` aparece
+/// por ejemplo en `integrate(1/(x^3-2), x)`), `root(r, n)` para el resto. Emitir
+/// `root(r, 3)` habría metido una SEGUNDA ortografía para la raíz cúbica, que es
+/// justo la clase de defecto que este frente persigue.
 fn radical_call(ctx: &mut Context, radicand: ExprId, index: i64) -> ExprId {
-    if index == 2 {
-        let name = ctx.intern_symbol("sqrt");
-        return ctx.add_raw(Expr::Function(name, vec![radicand]));
+    match index {
+        2 => {
+            let name = ctx.intern_symbol("sqrt");
+            ctx.add_raw(Expr::Function(name, vec![radicand]))
+        }
+        3 => {
+            let name = ctx.intern_symbol("cbrt");
+            ctx.add_raw(Expr::Function(name, vec![radicand]))
+        }
+        _ => {
+            let name = ctx.intern_symbol("root");
+            let index_node = ctx.num(index);
+            ctx.add_raw(Expr::Function(name, vec![radicand, index_node]))
+        }
     }
-    let name = ctx.intern_symbol("root");
-    let index_node = ctx.num(index);
-    ctx.add_raw(Expr::Function(name, vec![radicand, index_node]))
 }
 
 /// Reescribe cada `Pow(base, p/q)` del árbol como la llamada de raíz equivalente.
@@ -164,9 +177,9 @@ mod tests {
     #[test]
     fn fractional_powers_become_radical_calls() {
         assert_eq!(rendered("x^(1/2)"), "sqrt(x)");
-        assert_eq!(rendered("x^(1/3)"), "root(x, 3)");
-        assert_eq!(rendered("(x + 1)^(1/3)"), "root(x + 1, 3)");
-        assert_eq!(rendered("x^(2/3)"), "root(x^2, 3)");
+        assert_eq!(rendered("x^(1/3)"), "cbrt(x)");
+        assert_eq!(rendered("(x + 1)^(1/3)"), "cbrt(x + 1)");
+        assert_eq!(rendered("x^(2/3)"), "cbrt(x^2)");
         assert_eq!(rendered("x^(7/6)"), "root(x^7, 6)");
     }
 
@@ -184,7 +197,8 @@ mod tests {
     #[test]
     fn rewrite_reaches_nested_positions() {
         assert_eq!(rendered("sin(x^(1/2))"), "sin(sqrt(x))");
-        assert_eq!(rendered("1/(x^(1/3) + 1)"), "1 / (root(x, 3) + 1)");
+        assert_eq!(rendered("1/(x^(1/3) + 1)"), "1 / (cbrt(x) + 1)");
+        assert_eq!(rendered("x^(1/5)"), "root(x, 5)");
         // El ORDEN de los sumandos no lo decide esta reescritura: `DisplayExpr`
         // ordena los términos por su propio criterio al imprimir. Se fija aquí
         // para que quede dicho que la reescritura no lo toca ni lo puede tocar.

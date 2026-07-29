@@ -36,10 +36,13 @@ pub(super) fn replace_last_indexed_sqrt(value: &str) -> Option<String> {
     let (radicand, radicand_end) = find_balanced_braces(rest)?;
     let total_end = index_start + index_len + 1 + radicand_end + 1;
 
-    let replacement = if index == "2" {
-        format!("sqrt({})", radicand)
-    } else {
-        format!("root({}, {})", radicand, index)
+    // Misma ortografía que el resto del motor: `sqrt`/`cbrt` son `BuiltinFn` y ya
+    // aparecen en resultados (`integrate(1/(x^3-2), x)` imprime `cbrt(2)`); usar
+    // `root(r, 3)` metería una segunda ortografía para la raíz cúbica.
+    let replacement = match index.as_str() {
+        "2" => format!("sqrt({})", radicand),
+        "3" => format!("cbrt({})", radicand),
+        _ => format!("root({}, {})", radicand, index),
     };
     Some(format!(
         "{}{}{}",

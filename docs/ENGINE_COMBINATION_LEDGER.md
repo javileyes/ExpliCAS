@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 759 (newest first)
+Active entries: 760 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
+- 2026-07-29 | `retained` | `cas_ast/domain.rs` (`map_exprs` en `SolutionSet`/`Interval`/`Case`/`SolveRes... | PRESENTACIÓN (los conjuntos solución hablan la misma notación) + la ortografía de la raíz cúbica ya existía
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22688,3 +22689,21 @@ Active entries: 759 (newest first)
   - **`--no-fail-fast` es la herramienta correcta para un cambio transversal de presentación.** `cargo test` se para en el primer TARGET rojo, así que un cambio que toca N suites se descubre en N corridas de ~30 min. Tres vueltas costaron hora y media antes de caer en ello; la cuarta, con `--no-fail-fast`, listó todo lo que quedaba de una vez.
   - **Aplicar pares `expected→got` medidos como sustitución de cadena SOBRE-APLICA.** El par `pi^(1/2)` → `sqrt(pi)`, medido en un caso que fallaba, mutó también `integrate(x^(3/2)·e^(-x),…)` — que NO fallaba y que debe seguir en potencia porque su input escribe `^(3/2)` y ninguna raíz. Y el orden importa: los literales LARGOS primero, o un par corto mutila al largo que lo contiene y el largo «desaparece». La forma segura es parchear por CASO, no por cadena.
   - **Un barrido de corpus mide su corpus, no el cambio.** 2 filas de 219 frente a 58 pins reales: el corpus de examples no ejercita `norm`, `gradient`, `abs` de vector ni los residuales de las matrices. Sirve para probar ausencia de daño donde mira; el alcance lo dice la cadena.
+
+## 2026-07-29 - PRESENTACIÓN (los conjuntos solución hablan la misma notación) + la ortografía de la raíz cúbica ya existía
+
+- area: `cas_ast/domain.rs` (`map_exprs` en `SolutionSet`/`Interval`/`Case`/`SolveResult`/`ConditionSet`/`ConditionPredicate` + tests), `cas_solver/eval_output_finalize_nonexpr.rs` (el conjunto se reescribe entero sobre scratch), `cas_formatter/root_display_rewrite.rs` y `cas_didactic/latex_plain_text/sqrt.rs` (índice 3 → `cbrt`). 19 pins de contrato.
+- status: `retained`. Cierra el residual (1) del ciclo anterior.
+- capture:
+  - **EL MAPEO VIVE JUNTO AL TIPO, NO JUNTO AL RENDERIZADOR**, y a propósito: `SolutionSet` tiene 9 variantes y anida `Case`→`SolveResult`→otro conjunto, más las condiciones de cada caso. Con el `match` exhaustivo en `cas_ast`, una variante nueva que se olvide de mapear **no compila**; con la reescritura hecha a mano en el renderizador, se habría impreso con otra notación que sus hermanas — el defecto exacto que el mapeo existe para evitar. El test cuenta visitas por variante.
+  - **LA ORTOGRAFÍA CORRECTA YA ESTABA EN EL MOTOR**: iba a emitir `root(x, 3)` y el sondeo mostró que `integrate(1/(x^3-2), x)` imprime `cbrt(2)` — `cbrt` es `BuiltinFn`. Emitir `root(_, 3)` habría metido una SEGUNDA ortografía para la raíz cúbica en el mismo canal. Unificado a `sqrt`/`cbrt`/`root(_, n)` en los DOS convertidores (la reescritura de árbol y el LaTeX→texto del ciclo previo).
+  - **De regalo, paréntesis que sobraban**: `{ -(sqrt(2)), sqrt(2) }` pasa a `{ -sqrt(2), sqrt(2) }`. Una llamada a función es autodelimitada, así que como átomo no necesita los paréntesis que sí necesitaba la potencia. 13 pins del corpus de contratos llevaban la forma con paréntesis.
+- observed:
+  - Barrido sobre 219: **2 cambios en `result`, 0 en el resto** — la fórmula cuadrática (`{ (-sqrt(b^2 - 4·a·c) - b) / (2·a), … }`) y `solve(ln(x)+ln(x-3)=1,x)`.
+  - workspace failed:0 (367 suites, 12928 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes. Huella: **0 deltas de contador** en ambos perfiles.
+  - **Discriminación de contención hecha con el método correcto**: la lane de integrate falló dos veces con `error_kind = stderr_fragility` en el MISMO caso (`…sinh_reciprocal_fourth_substitution`), que ya había fallado igual durante la cadena del ciclo anterior — cuya corrida final fue verde. Tercera corrida en exclusiva: todas las lanes verdes.
+- decision: retener. Siguiente peldaño medido: **`cbrt(x)` renderiza `\text{cbrt}(x)` en LaTeX** — el mismo fallo de la tabla de funciones que `root(a, n)` tenía en la cabecera, ahora más visible porque el texto sí lo escribe.
+- retained learning:
+  - **Un mapeo exhaustivo sobre el tipo es una garantía; uno sobre el renderizador es una promesa.** Poner `map_exprs` en `cas_ast` convierte «olvidarse de una variante» en un error de compilación. Es el mismo argumento que «dos caminos, un predicado», aplicado a la estructura en vez de al flujo.
+  - **Antes de inventar una ortografía, buscar la que el motor ya imprime.** `cbrt` estaba en `BuiltinFn` y en resultados de integrate; `root(_, 3)` habría sido correcto, re-parseable… y una segunda forma para lo mismo dentro del mismo canal.
+  - **`stderr_fragility` se discrimina RE-CORRIENDO LA LANE, no con un probe por CLI.** El probe directo dio 0 WARNs en 5 corridas tanto aquí como (previsiblemente) en HEAD: no distingue nada, porque el WARN lo provoca la CARGA de la propia lane. La señal útil fue el historial — el mismo caso ya había fallado así en un ciclo cuya corrida final salió verde.
