@@ -1679,6 +1679,19 @@ const DEFAULT_SIMPLIFY_FULL_PROBE_BUDGET: u32 = 24;
 thread_local! {
     static DEFAULT_SIMPLIFY_PROBES_LEFT: std::cell::Cell<Option<u32>> =
         const { std::cell::Cell::new(None) };
+    // Probe results memo, keyed by (Context::instance_tag, ExprId). The
+    // speculative probes ask for the same handful of subtrees hundreds of
+    // times per solve (`solve(e^x+e^(-x)=4,x)` measured 522 calls over 13
+    // distinct inputs); a hit replays the earlier result without consuming
+    // budget or nesting. The instance tag makes cross-Context replay
+    // impossible (pipelines over FRESH or CLONED arenas share this thread
+    // local; a bare-ExprId key served foreign ids and crashed `Context::get`).
+    // Within one arena the Context is append-only, so a hit never goes stale;
+    // refusals (budget exhausted / nesting cap) are NOT cached. Entries stay
+    // across pipelines ON PURPOSE (the solver re-probes the same subtrees from
+    // dozens of pipelines); memory is bounded by a size cap at arming time.
+    static DEFAULT_SIMPLIFY_PROBE_MEMO: std::cell::RefCell<rustc_hash::FxHashMap<(u64, cas_ast::ExprId), cas_ast::ExprId>> =
+        std::cell::RefCell::new(rustc_hash::FxHashMap::default());
 }
 
 pub(crate) struct DefaultSimplifyProbeBudgetScope {
@@ -1704,6 +1717,12 @@ pub(crate) fn enter_default_simplify_probe_budget_scope() -> DefaultSimplifyProb
     if default_simplify_nesting_depth() == 0 {
         let saved = DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.get());
         DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.set(Some(DEFAULT_SIMPLIFY_PROBE_BUDGET)));
+        DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| {
+            let mut memo = memo.borrow_mut();
+            if memo.len() > 4096 {
+                memo.clear();
+            }
+        });
         DefaultSimplifyProbeBudgetScope { saved: Some(saved) }
     } else {
         DefaultSimplifyProbeBudgetScope { saved: None }
@@ -1743,6 +1762,16 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
     // simplify here; past the per-pipeline budget they fall back to
     // the syntactic fast path. Outside an armed pipeline scope (unit
     // contexts) the budget is inactive.
+    // Memo hit: replay the earlier probe result without consuming budget or
+    // nesting (each expr is served the strength of its FIRST probe, which the
+    // decaying budget makes the strongest one it would ever get).
+    let memo_key = (ctx.instance_tag(), expr);
+    if let Some(cached) =
+        DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| memo.borrow().get(&memo_key).copied())
+    {
+        return cached;
+    }
+
     let mut force_local = false;
     match DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.get()) {
         Some(0) => return expr,
@@ -1782,6 +1811,7 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
             post
         });
         std::mem::swap(&mut simplifier.context, ctx);
+        DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| memo.borrow_mut().insert(memo_key, rewritten));
         return rewritten;
     }
 
@@ -1796,6 +1826,7 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
         },
     );
     std::mem::swap(&mut simplifier.context, ctx);
+    DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| memo.borrow_mut().insert(memo_key, rewritten));
     rewritten
 }
 

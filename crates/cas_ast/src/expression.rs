@@ -133,7 +133,6 @@ pub struct ContextStats {
     pub nodes_created: u64,
 }
 
-#[derive(Clone)]
 pub struct Context {
     pub nodes: Vec<Expr>,
     /// Interner: maps hash to bucket of ExprIds with that hash.
@@ -144,6 +143,30 @@ pub struct Context {
     pub symbols: SymbolTable,
     /// Statistics for budget tracking
     stats: ContextStats,
+    /// Process-unique identity of this arena instance. `ExprId`s are only
+    /// meaningful relative to one instance; caches keyed by `ExprId` that can
+    /// outlive a Context (thread-locals) must key by `(instance_tag, ExprId)`
+    /// so an id from another arena can never be replayed. Cloning yields a NEW
+    /// tag: the moment either side appends, the two id-spaces diverge.
+    instance_tag: u64,
+}
+
+static CONTEXT_INSTANCE_TAG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn fresh_instance_tag() -> u64 {
+    CONTEXT_INSTANCE_TAG.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Self {
+            nodes: self.nodes.clone(),
+            interner: self.interner.clone(),
+            symbols: self.symbols.clone(),
+            stats: self.stats,
+            instance_tag: fresh_instance_tag(),
+        }
+    }
 }
 
 impl Default for Context {
@@ -251,7 +274,14 @@ impl Context {
             interner,
             symbols: SymbolTable::with_capacity(extra_symbol_capacity),
             stats: ContextStats::default(),
+            instance_tag: fresh_instance_tag(),
         }
+    }
+
+    /// Process-unique identity of this arena instance (see the field docs).
+    #[inline]
+    pub fn instance_tag(&self) -> u64 {
+        self.instance_tag
     }
 
     /// Create a context sized for snapshot restore.
@@ -268,6 +298,7 @@ impl Context {
             interner,
             symbols: SymbolTable::with_capacity(extra_symbol_capacity),
             stats: ContextStats::default(),
+            instance_tag: fresh_instance_tag(),
         }
     }
 

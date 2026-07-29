@@ -219,31 +219,69 @@ fn nth_root_bounds(q: &BigRational, n: u32) -> Option<(BigRational, BigRational)
 
 /// Tight rational bounds `(lo, hi)` with `lo <= ln(m) <= hi` for `m >= 1`, via the
 /// inverse-hyperbolic-tangent series `ln(m) = 2·Σ_{k>=0} y^(2k+1)/(2k+1)` with
-/// `y = (m-1)/(m+1) ∈ [0,1)`. The partial sum `2·S_N` is a LOWER bound (every
-/// omitted term is positive); the tail `R_N = 2·Σ_{k>N} y^(2k+1)/(2k+1)` is bounded
-/// above by `2·y^(2N+3) / ((2N+3)·(1-y²))`, an exact rational, giving the UPPER bound.
+/// `y = (m-1)/(m+1) ∈ [0,1)`. A down-rounded partial sum is a LOWER bound (every
+/// term is positive); the up-rounded partial sum plus the tail bound
+/// `R_k = 2·Σ_{j>=k} y^(2j+1)/(2j+1) <= 2·y^(2k+1) / ((2k+1)·(1-y²))` is the
+/// UPPER bound.
+///
+/// Every intermediate is snapped OUTWARD to a fixed `1/10^50` lattice, exactly
+/// like the sqrt/nth-root Newton loops above. The argument can arrive with a
+/// ~40-digit arbitrary denominator (it is an interval endpoint produced by those
+/// same root bounds); the raw series then builds `y^(2k+1)` as exact rationals
+/// thousands of digits wide and every `Ratio` reduce becomes a giant-BigUint gcd
+/// — this was ~90% of the wall-clock of `solve(e^x+e^(-x)=4,x)`. Directed
+/// rounding caps all operands at lattice size while the bracket stays SOUND by
+/// construction (down-rounding a lower bound / up-rounding an upper bound only
+/// widens it); the measured width stays < 1e-44, far inside the 1e-40 tightness
+/// contract of `ln_bounds`.
 fn atanh_ln_bounds(m: &BigRational) -> (BigRational, BigRational) {
     if m.is_one() {
         return (zero(), zero());
     }
     let two = BigRational::from_integer(BigInt::from(2));
-    let y = (m - one()) / (m + one()); // ∈ (0, 1) for m > 1
-    let y2 = &y * &y;
-    // N chosen so the tail < 1e-50 even at the worst reduced argument (y = 1/3,
-    // i.e. m = 2): (1/3)^(2N+3) < 1e-50  =>  N >= 52. Use 60 for margin.
-    const N: i64 = 60;
-    let mut term = y.clone(); // y^(2k+1), starts at k=0 (y^1)
-    let mut sum = zero();
+    let precision = BigInt::from(10).pow(50);
+    // ln is monotone increasing, and so is y(m) = (m-1)/(m+1): bracket the
+    // argument on the lattice first, then run one down-rounded series (lower
+    // bound) and one up-rounded series (upper bound).
+    let m_dn = round_down(m, &precision);
+    let m_up = round_up(m, &precision);
+    let y_dn = round_down(&((&m_dn - one()) / (&m_dn + one())), &precision);
+    let y_up = round_up(&((&m_up - one()) / (&m_up + one())), &precision);
+    let y2_dn = round_down(&(&y_dn * &y_dn), &precision);
+    let y2_up = round_up(&(&y_up * &y_up), &precision);
+
+    // Stop once the tail bound drops below 1e-45: arguments near 1 (the common
+    // case after the power-of-two range reduction) exit within a handful of
+    // terms; the worst reduced argument (y ~ 1/3, i.e. m = 2) needs ~46.
+    let tail_eps = BigRational::new(BigInt::one(), BigInt::from(10).pow(45));
+    const MAX_TERMS: i64 = 80;
+
+    let mut t_dn = y_dn; // y^(2k+1), starts at k=0 (y^1)
+    let mut t_up = y_up;
+    let mut sum_dn = zero();
+    let mut sum_up = zero();
+    let mut tail = zero();
     let mut k: i64 = 0;
-    while k <= N {
-        sum = &sum + &term / BigRational::from_integer(BigInt::from(2 * k + 1));
-        term = &term * &y2; // advance to y^(2(k+1)+1)
+    while k < MAX_TERMS {
+        let odd = BigRational::from_integer(BigInt::from(2 * k + 1));
+        sum_dn += round_down(&(&t_dn / &odd), &precision);
+        sum_up += round_up(&(&t_up / &odd), &precision);
+        t_dn = round_down(&(&t_dn * &y2_dn), &precision);
+        t_up = round_up(&(&t_up * &y2_up), &precision);
         k += 1;
+        // Dropped terms start at exponent 2k+1 and `t_up >= y^(2k+1)`;
+        // `1 - y2_up <= 1 - y²` makes the geometric-tail bound only larger.
+        tail = round_up(
+            &(&two * &t_up
+                / (BigRational::from_integer(BigInt::from(2 * k + 1)) * (one() - &y2_up))),
+            &precision,
+        );
+        if tail < tail_eps {
+            break;
+        }
     }
-    // `term` is now y^(2N+3).
-    let lo = &two * &sum;
-    let rem = &two * &term / (BigRational::from_integer(BigInt::from(2 * N + 3)) * (one() - &y2));
-    let hi = &lo + rem;
+    let lo = &two * &sum_dn;
+    let hi = &two * &sum_up + tail;
     (lo, hi)
 }
 
