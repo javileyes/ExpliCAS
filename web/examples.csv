@@ -4,6 +4,8 @@
 "Álgebra y simplificación","1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)","Fracción continua que se simplifica a 0"
 "Álgebra y simplificación","(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)","Producto polinómico con cancelación telescópica → x⁶-1"
 "Álgebra y simplificación","factor(x^6-1)","Factorización sobre Q (factores ciclotómicos)"
+"Álgebra y simplificación","expand((x+1)^5)","Teorema del binomio: expansión con los coeficientes 1, 5, 10, 10, 5, 1 del triángulo de Pascal"
+"Álgebra y simplificación","expand(3*(2+pi))","Distributiva sobre constantes → 6 + 3·π: el resultado respeta el expand pedido (no se re-factoriza)"
 "Álgebra y simplificación","apart(x^3/(x^2-1))","Fracciones parciales con parte polinómica"
 "Álgebra y simplificación","sqrt(5+2*sqrt(6))","Desanidado de un radical anidado → √2+√3"
 "Álgebra y simplificación","simplify((e^x - e^(-x))/(e^x + e^(-x)))","Reconocimiento de la función hiperbólica tanh(x)"
