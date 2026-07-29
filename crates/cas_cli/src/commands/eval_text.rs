@@ -34,5 +34,13 @@ pub(crate) fn render(args: &EvalArgs) -> Result<CommandOutput, String> {
     if let Some(warning) = save_warning {
         output.push_stderr_line(warning);
     }
+    // Perf attribution surface: same section report the corpus example
+    // binaries print, gated by the same env var (zero cost when unset).
+    if std::env::var("CAS_PROFILE_ORCHESTRATOR_SHORTCUTS").is_ok() {
+        eprintln!(
+            "{}",
+            cas_solver::runtime::orchestrator_shortcut_profile_report()
+        );
+    }
     Ok(output)
 }

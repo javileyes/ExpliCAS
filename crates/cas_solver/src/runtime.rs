@@ -13,6 +13,7 @@ pub use cas_engine::rules;
 pub use cas_engine::{
     Engine, Orchestrator, ParentContext, Rewrite, Rule, RuleProfiler, SimpleRule, Simplifier,
 };
+pub use cas_engine::orchestrator_shortcut_profile_report;
 pub use cas_solver_core::assume_scope::AssumeScope;
 pub use cas_solver_core::branch_policy::BranchPolicy;
 pub use cas_solver_core::budget_model::{Budget, BudgetExceeded, Metric, Operation, PassStats};

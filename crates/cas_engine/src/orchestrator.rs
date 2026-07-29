@@ -14066,12 +14066,62 @@ fn isolated_simplify_expr_if_changed(
     (compare_expr(ctx, rewritten, expr) != Ordering::Equal).then_some(rewritten)
 }
 
+thread_local! {
+    // Exact-zero probe memo, keyed by (Context::instance_tag, options
+    // fingerprint, expr, target). The root shortcuts re-ask the same
+    // "does this subtree simplify to that target?" question from every
+    // pipeline the solver runs: measured 54 calls over 7 distinct probes
+    // on the cubic rational-root solve, and 1211 over 47 on the abs-split
+    // solve. Each miss is a FULL fresh pipeline, so a hit pays for the
+    // whole scheme immediately. The options fingerprint keeps answers
+    // computed under different semantic axes (SolvePrepass vs Eval,
+    // domain/value modes, ...) apart; nesting-guard refusals are NOT
+    // cached; sized-capped, never cleared (tag keys cannot go stale).
+    static ISOLATED_SIMPLIFY_PROBE_MEMO: std::cell::RefCell<
+        rustc_hash::FxHashMap<(u64, u64, ExprId, ExprId), bool>,
+    > = std::cell::RefCell::new(rustc_hash::FxHashMap::default());
+}
+
+/// Fingerprint of every `SimplifyOptions` axis that can change a probe's
+/// simplification outcome. Payload-free enums without `Hash` go through
+/// `std::mem::discriminant`; time/phase budgets are deliberately excluded
+/// (stable within an eval, and a budget-weakened `false` is the same
+/// conservative answer the repeated probe would produce today).
+fn isolated_probe_options_fingerprint(options: &crate::phase::SimplifyOptions) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = rustc_hash::FxHasher::default();
+    options.enable_transform.hash(&mut hasher);
+    options.expand_mode.hash(&mut hasher);
+    options.goal.hash(&mut hasher);
+    std::mem::discriminant(&options.simplify_purpose).hash(&mut hasher);
+    std::mem::discriminant(&options.rationalize.auto_level).hash(&mut hasher);
+    options.shared.semantics.hash(&mut hasher);
+    options.shared.context_mode.hash(&mut hasher);
+    std::mem::discriminant(&options.shared.expand_policy).hash(&mut hasher);
+    std::mem::discriminant(&options.shared.log_expand_policy).hash(&mut hasher);
+    std::mem::discriminant(&options.shared.autoexpand_binomials).hash(&mut hasher);
+    std::mem::discriminant(&options.shared.heuristic_poly).hash(&mut hasher);
+    hasher.finish()
+}
+
 fn isolated_simplify_rewrites_to_target(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     target: ExprId,
 ) -> bool {
+    let memo_key = (
+        ctx.instance_tag(),
+        isolated_probe_options_fingerprint(options),
+        expr,
+        target,
+    );
+    if let Some(cached) =
+        ISOLATED_SIMPLIFY_PROBE_MEMO.with(|memo| memo.borrow().get(&memo_key).copied())
+    {
+        return cached;
+    }
+
     let Some(_nesting_guard) = enter_isolated_simplify_probe() else {
         return false;
     };
@@ -14085,7 +14135,16 @@ fn isolated_simplify_rewrites_to_target(
     };
     let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
     std::mem::swap(&mut simplifier.context, ctx);
-    compare_expr(ctx, rewritten, target) == Ordering::Equal
+    let reaches_target = compare_expr(ctx, rewritten, target) == Ordering::Equal;
+
+    ISOLATED_SIMPLIFY_PROBE_MEMO.with(|memo| {
+        let mut memo = memo.borrow_mut();
+        if memo.len() > 8192 {
+            memo.clear();
+        }
+        memo.insert(memo_key, reaches_target);
+    });
+    reaches_target
 }
 
 fn isolated_simplify_rewrites_to_zero(
@@ -22496,10 +22555,26 @@ fn try_standard_direct_small_zero_additive_combination_shortcut(
         return None;
     }
 
-    let term_count = AddView::from_expr(ctx, expr).terms.len();
+    let view = AddView::from_expr(ctx, expr);
+    let term_count = view.terms.len();
     if term_count < 4
         || term_count > direct_small_zero_additive_combination_max_terms_root(ctx, expr)
     {
+        return None;
+    }
+
+    // Rational-constant sums are Core constant folding's job (instant); every
+    // probe below hunts STRUCTURED cancellations (trig products, surd pairs,
+    // chunked partitions), and none of them can beat the fold. The solver's
+    // rational-root screening pipes candidate evaluations like
+    // `1^3 - 6·1^2 + 11·1 - 6` through here as root expressions — measured
+    // ~2-3 ms of probe cost per candidate. Surd/transcendental terms make
+    // `as_rational_const` bail, so the sums the probes exist for still enter.
+    let all_rational_const_terms = view
+        .terms
+        .iter()
+        .all(|(term, _)| cas_ast::views::as_rational_const(ctx, *term, 8).is_some());
+    if all_rational_const_terms {
         return None;
     }
 
