@@ -263,7 +263,8 @@ impl ParseStyleSignals {
         // variable llamada `root` no cuenta como raíz.
         signals.saw_sqrt_token = input.matches("sqrt").count()
             + input.matches('√').count()
-            + input.matches("root(").count();
+            + input.matches("root(").count()
+            + input.matches("cbrt(").count();
 
         // Exponentes FRACCIONARIOS escritos por el usuario: `^(1/2)`, `^(2/3)`.
         // Contaba cualquier `^(`, y el campo se llama *caret_fraction*: `e^(-x^2)`

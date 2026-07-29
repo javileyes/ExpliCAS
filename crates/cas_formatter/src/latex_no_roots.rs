@@ -94,6 +94,10 @@ impl<'a> LatexNoRoots<'a> {
                         let arg = self.expr_to_latex(args[0], false);
                         format!("\\sqrt{{{}}}", arg)
                     }
+                    "cbrt" if args.len() == 1 => {
+                        let arg = self.expr_to_latex(args[0], false);
+                        format!("\\sqrt[3]{{{}}}", arg)
+                    }
                     "sqrt" | "root" if args.len() == 2 => {
                         let radicand = self.expr_to_latex(args[0], false);
                         let index = self.expr_to_latex(args[1], false);

@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 760 (newest first)
+Active entries: 761 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
 - 2026-07-29 | `retained` | `cas_ast/domain.rs` (`map_exprs` en `SolutionSet`/`Interval`/`Case`/`SolveRes... | PRESENTACIÓN (los conjuntos solución hablan la misma notación) + la ortografía de la raíz cúbica ya existía
+- 2026-07-29 | `retained` | `cas_formatter/{latex_core,latex_no_roots}.rs` (brazo `cbrt` en los 3 renderi... | PRESENTACIÓN de `cbrt` (retenida) + canonicalización de `cbrt` RECHAZADA por coste medido, + truncamiento silencioso del convertidor
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22707,3 +22708,22 @@ Active entries: 760 (newest first)
   - **Un mapeo exhaustivo sobre el tipo es una garantía; uno sobre el renderizador es una promesa.** Poner `map_exprs` en `cas_ast` convierte «olvidarse de una variante» en un error de compilación. Es el mismo argumento que «dos caminos, un predicado», aplicado a la estructura en vez de al flujo.
   - **Antes de inventar una ortografía, buscar la que el motor ya imprime.** `cbrt` estaba en `BuiltinFn` y en resultados de integrate; `root(_, 3)` habría sido correcto, re-parseable… y una segunda forma para lo mismo dentro del mismo canal.
   - **`stderr_fragility` se discrimina RE-CORRIENDO LA LANE, no con un probe por CLI.** El probe directo dio 0 WARNs en 5 corridas tanto aquí como (previsiblemente) en HEAD: no distingue nada, porque el WARN lo provoca la CARGA de la propia lane. La señal útil fue el historial — el mismo caso ya había fallado así en un ciclo cuya corrida final salió verde.
+
+## 2026-07-29 - PRESENTACIÓN de `cbrt` (retenida) + canonicalización de `cbrt` RECHAZADA por coste medido, + truncamiento silencioso del convertidor
+
+- area: `cas_formatter/{latex_core,latex_no_roots}.rs` (brazo `cbrt` en los 3 renderizadores), `root_style.rs` (`cbrt(` cuenta como token de raíz), `cas_didactic/latex_plain_text.rs` (`convert_while_present`), contrato CLI nuevo.
+- status: `retained` en su mitad de presentación; **`rejected` la canonicalización `cbrt(x) = x^(1/3)`**, con el número que la rechaza.
+- capture:
+  - **EL AGUJERO DE PRESENTACIÓN era el mismo de `root(a, n)`**: `cbrt(x)` caía al `\text{…}` genérico de la tabla de funciones y salía `\text{cbrt}(x)` en cabecera Y resultado. Un brazo por renderizador lo cierra.
+  - **EL TRUNCAMIENTO SILENCIOSO**: los bucles del convertidor LaTeX→texto tenían tope 10 FIJO, que no es una red sino un truncamiento. Con más de diez fracciones o raíces en una expresión, las sobrantes las destrozaba el borrado ciego de llaves — `sqrt[3]2`, texto que no re-parsea, JUNTO a hermanas ya convertidas en la misma línea. Llevaba latente desde siempre; lo destapó tener más raíces por expresión. Sustituido por un tope calculado sobre las ocurrencias REALES, con test a 14.
+  - **LA CANONICALIZACIÓN ERA CORRECTA Y SE RECHAZA IGUAL.** `cbrt` no se canonicaliza y por eso es ciudadano de segunda: `cbrt(x)^3` no pliega a `x` (su sinónimo `root(x,3)^3` sí) y `cbrt(x)/root(x,3)` —que es 1— sale `cbrt(x)·cbrt(x^2)/x`, porque dos ortografías de lo mismo no se cancelan. Añadir el brazo lo arregla todo… y **triplica largo el gate de sombra de claims: 68 s → más de 240 s** (timeout). Revertida.
+- observed:
+  - Bisect por partes, no por sospecha: HEAD 68 s / ciclo-3 sin la canonicalización 67 s / ciclo-3 completo >240 s. El culpable es el brazo nuevo, no el bucle del convertidor (que además escala lineal en un micro-bench).
+  - **El motor NO se vuelve lento para el usuario**: `integrate(1/(x^3-2), x)` 0,40 s, su versión definida 0,08 s, `cbrt(x)+cbrt(y)` 0,06 s. Lo que explota es el NÚMERO de pasos crudos que el gate verifica, porque cada `cbrt` pasa a emitir su paso de canonicalización.
+  - Tras revertir: shadow-run 66 s (baseline 68 s). Cadena: workspace failed:0 (381 suites, 13785 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes, huella **0 deltas de contador**.
+- decision: retener la presentación; **rechazar la canonicalización** y dejarla como peldaño CON SU NÚMERO (68 s → >240 s), no como olvido. El ciclo que la retome tiene que atacar el coste del gate (¿verificar claims por paso es lineal en pasos y los pasos de notación no aportan claim?), no volver a añadir el brazo.
+- retained learning:
+  - **«El harness va lento» es una hipótesis, y hay que falsificarla con el baseline del propio scorecard.** La suite declara 85 s en la huella; iba por 48 minutos al 100 % de CPU. Sin ese número a mano, el síntoma se lee como «hoy la máquina está cargada» — que es exactamente lo que llevaba tres ciclos diciéndome sobre otro caso.
+  - **Un `ps` que muestra 0 % de CPU en el padre no dice nada: el trabajo está en el hijo.** `cargo` aparecía al 0 % y parecía colgado; su binario de test estaba al 100 %. Mirar los HIJOS antes de diagnosticar «bloqueado».
+  - **Un cambio puede ser correcto, barato para el usuario y caro para el gate.** La medida que decide no es la latencia de un `eval` sino la del harness que lo protege — y aquí divergían por dos órdenes de magnitud. Medir las dos.
+  - **Un tope de iteraciones fijo sobre datos de tamaño variable es un truncamiento con otro nombre.** Si el bucle es convergente, el tope se calcula del dato; si no lo es, el tope oculta el bug en vez de acotarlo.

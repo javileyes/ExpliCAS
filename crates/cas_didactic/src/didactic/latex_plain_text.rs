@@ -13,52 +13,13 @@ pub(crate) fn latex_to_plain_text(s: &str) -> String {
     // `beginbmatrix` garbage in matrix/vector step before/after fields.
     result = convert_matrix_environments(result);
 
-    let mut iterations = 0;
-    while result.contains("\\frac{") && iterations < 10 {
-        iterations += 1;
-        let Some(next_result) = frac::replace_last_fraction(&result) else {
-            break;
-        };
-        result = next_result;
-    }
-
-    let mut sqrt_iterations = 0;
-    while result.contains("\\sqrt{") && sqrt_iterations < 10 {
-        sqrt_iterations += 1;
-        let Some(next_result) = sqrt::replace_last_sqrt(&result) else {
-            break;
-        };
-        result = next_result;
-    }
-
-    // La raíz CON índice tiene su propio prefijo (`\sqrt[n]{…}`): sin este bucle
-    // no la ve nadie y el borrado ciego de llaves de más abajo la parte en dos.
-    let mut indexed_sqrt_iterations = 0;
-    while result.contains("\\sqrt[") && indexed_sqrt_iterations < 10 {
-        indexed_sqrt_iterations += 1;
-        let Some(next_result) = sqrt::replace_last_indexed_sqrt(&result) else {
-            break;
-        };
-        result = next_result;
-    }
-
-    let mut power_iterations = 0;
-    while result.contains("}^{") && power_iterations < 10 {
-        power_iterations += 1;
-        let Some(next_result) = replace_next_parenthesized_power_base(&result) else {
-            break;
-        };
-        result = next_result;
-    }
-
-    let mut grouped_exponent_iterations = 0;
-    while result.contains("^{") && grouped_exponent_iterations < 10 {
-        grouped_exponent_iterations += 1;
-        let Some(next_result) = replace_next_grouped_exponent(&result) else {
-            break;
-        };
-        result = next_result;
-    }
+    result = convert_while_present(result, "\\frac{", frac::replace_last_fraction);
+    result = convert_while_present(result, "\\sqrt{", sqrt::replace_last_sqrt);
+    // La raíz CON índice tiene su propio prefijo (`\sqrt[n]{…}`): sin este paso no
+    // la ve nadie y el borrado ciego de llaves de más abajo la parte en dos.
+    result = convert_while_present(result, "\\sqrt[", sqrt::replace_last_indexed_sqrt);
+    result = convert_while_present(result, "}^{", replace_next_parenthesized_power_base);
+    result = convert_while_present(result, "^{", replace_next_grouped_exponent);
 
     result = result.replace("\\cdot", " · ");
     result = result.replace("\\left", "");
@@ -71,6 +32,35 @@ pub(crate) fn latex_to_plain_text(s: &str) -> String {
     result = humanize_even_literal_squares(&result);
 
     result.replace("\\", "")
+}
+
+/// Aplica `convert` mientras quede una ocurrencia de `marker`.
+///
+/// Cada aplicación con éxito consume una ocurrencia, así que el bucle termina; el
+/// tope existe solo como red por si un `convert` futuro deja de progresar sin
+/// devolver `None`, y se calcula a partir de las ocurrencias REALES.
+///
+/// El tope era 10 FIJO, y eso no es una red: es un truncamiento silencioso. Con
+/// `cbrt` renderizando `\sqrt[3]{…}` (2026-07-29), `integrate(1/(x^3-2), x, 2, 3)`
+/// pasó a tener una docena de raíces en un solo paso; las diez primeras se
+/// convertían y **el resto lo destrozaba el borrado ciego de llaves**, dejando
+/// `sqrt[3]2` —texto que no re-parsea— dentro de una expresión donde sus hermanas
+/// decían `cbrt(2)`. El defecto llevaba latente desde siempre para cualquier
+/// expresión con más de diez fracciones o raíces.
+fn convert_while_present(
+    mut value: String,
+    marker: &str,
+    convert: impl Fn(&str) -> Option<String>,
+) -> String {
+    let mut remaining = value.matches(marker).count() + 1;
+    while value.contains(marker) && remaining > 0 {
+        remaining -= 1;
+        let Some(next) = convert(&value) else {
+            break;
+        };
+        value = next;
+    }
+    value
 }
 
 /// Rewrite `\begin{bmatrix}…\end{bmatrix}` (and `pmatrix`/`vmatrix`) into the engine's plain

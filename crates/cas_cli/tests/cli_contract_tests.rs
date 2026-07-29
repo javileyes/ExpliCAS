@@ -10363,3 +10363,31 @@ fn solve_system_parametric_nxn_s7_contract() {
     let degen = r("solve([a*x+y+z+w=1, a*x+y+z+w=2, x-y=0, y-z=0], [x, y, z, w])");
     assert!(degen.contains("System has no solution"), "{degen}");
 }
+
+/// `cbrt(x)` es la raíz cúbica y su LaTeX salía como `\text{cbrt}(x)`: el mismo
+/// agujero de la tabla de funciones que tenía `root(a, n)` en la cabecera.
+///
+/// El álgebra sigue SIN unificarse: `cbrt(x)^3` no pliega a `x` y
+/// `cbrt(x)/root(x,3)` —que es 1— no se cancela, porque `cbrt` no se canonicaliza
+/// a `x^(1/3)` como sí hace su sinónimo. Canonicalizarla se probó y se MIDIÓ en el
+/// mismo ciclo: el gate de sombra de claims pasa de 68 s a más de 240 s (el motor
+/// NO se vuelve lento para el usuario — `integrate(1/(x^3-2), x)` sigue en 0,4 s —,
+/// lo que explota es el número de pasos crudos que ese gate verifica). Queda como
+/// peldaño con su número, no como olvido.
+#[test]
+fn test_eval_cbrt_renders_as_a_radical_on_both_surfaces() {
+    let wire = |input: &str| -> Value {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        serde_json::from_slice(&out.stdout).expect("Invalid wire output")
+    };
+
+    assert_eq!(wire("cbrt(x + 1)")["result"], "cbrt(x + 1)");
+    assert_eq!(wire("cbrt(x + 1)")["result_latex"], "\\sqrt[3]{x + 1}");
+    assert_eq!(wire("cbrt(x + 1)")["input_latex"], "\\sqrt[3]{x + 1}");
+    // Y el numérico se pliega igual que su sinónimo.
+    assert_eq!(wire("cbrt(8)")["result"], "2");
+    assert_eq!(wire("root(8,3)")["result"], "2");
+}

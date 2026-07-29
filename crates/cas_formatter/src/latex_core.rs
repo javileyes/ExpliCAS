@@ -915,6 +915,11 @@ pub trait LaTeXRenderer {
             "sqrt" if args.len() == 1 => {
                 format!("\\sqrt{{{}}}", self.expr_to_latex(args[0], false))
             }
+            // `cbrt(x)` es la raíz cúbica, no una función con nombre: sin este brazo
+            // caía al `\text{…}` genérico igual que le pasaba a `root(a, n)`.
+            "cbrt" if args.len() == 1 => {
+                format!("\\sqrt[3]{{{}}}", self.expr_to_latex(args[0], false))
+            }
             // `root(a, n)` es la MISMA función que `sqrt(a, n)` para el lector
             // (ambas son `BuiltinFn` distintas por dentro, pero la notación de
             // un alumno es una sola): sin este brazo la cabecera de `root(x, 3)`
@@ -2540,6 +2545,12 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             "sqrt" if args.len() == 1 => {
                 format!(
                     "\\sqrt{{{}}}",
+                    self.render_with_path(args[0], false, &self.child_path(path, 0))
+                )
+            }
+            "cbrt" if args.len() == 1 => {
+                format!(
+                    "\\sqrt[3]{{{}}}",
                     self.render_with_path(args[0], false, &self.child_path(path, 0))
                 )
             }

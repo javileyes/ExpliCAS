@@ -99,17 +99,39 @@ fn test_latex_to_plain_text_converts_indexed_roots() {
     // Potencia bajo la raíz: el paso de exponentes sigue corriendo después.
     assert_eq!(latex_to_plain_text(r"\sqrt[3]{{x}^{2}}"), "cbrt(x^2)");
     // Anidamiento en ambos sentidos.
-    assert_eq!(
-        latex_to_plain_text(r"\sqrt{\sqrt[3]{x}}"),
-        "sqrt(cbrt(x))"
-    );
-    assert_eq!(
-        latex_to_plain_text(r"\sqrt[3]{\sqrt{x}}"),
-        "cbrt(sqrt(x))"
-    );
+    assert_eq!(latex_to_plain_text(r"\sqrt{\sqrt[3]{x}}"), "sqrt(cbrt(x))");
+    assert_eq!(latex_to_plain_text(r"\sqrt[3]{\sqrt{x}}"), "cbrt(sqrt(x))");
     // Ni rastro de la forma cruda.
     let mixed = latex_to_plain_text(r"\sqrt[4]{y} + \sqrt[3]{x + 1}");
     assert_eq!(mixed, "root(y, 4) + cbrt(x + 1)", "got {mixed}");
+}
+
+#[test]
+fn test_latex_to_plain_text_converts_more_than_ten_occurrences() {
+    // El tope de iteraciones era 10 FIJO, o sea un truncamiento silencioso: a partir
+    // de la undécima raíz el borrado ciego de llaves dejaba `sqrt[3]2` —texto que no
+    // re-parsea— junto a hermanas ya convertidas. Salió a la luz cuando `cbrt` pasó
+    // a renderizar `\sqrt[3]{…}` y una integral definida juntó una docena en un paso.
+    let many_roots = (0..14)
+        .map(|i| format!("\\sqrt[3]{{{i}}}"))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let converted = latex_to_plain_text(&many_roots);
+    assert!(
+        !converted.contains("sqrt["),
+        "raíz sin convertir a partir del tope: {converted}"
+    );
+    assert_eq!(converted.matches("cbrt(").count(), 14);
+
+    let many_fracs = (1..14)
+        .map(|i| format!("\\frac{{1}}{{{i}}}"))
+        .collect::<Vec<_>>()
+        .join(" + ");
+    let converted_fracs = latex_to_plain_text(&many_fracs);
+    assert!(
+        !converted_fracs.contains("frac"),
+        "fracción sin convertir a partir del tope: {converted_fracs}"
+    );
 }
 
 #[test]
