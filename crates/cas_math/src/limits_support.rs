@@ -9942,6 +9942,9 @@ pub(crate) fn try_limit_rules_at_infinity(
     if let Some(r) = apply_same_base_power_quotient_rule(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) = exp_sum_top_level_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
     if let Some(r) = apply_reciprocal_power_rule(ctx, expr, var) {
         return Some(r);
     }
@@ -10127,6 +10130,40 @@ fn general_exp_vs_polynomial_dominance_at_infinity(
         return Some(ctx.num(0));
     }
     None
+}
+
+/// La SUMA de exponenciales de base racional a NIVEL RAÍZ en `+∞`, decidida por
+/// la base dominante. La maquinaria (`exp_sum_dominant_sign`) existía y solo se
+/// consumía DENTRO de cocientes: `limit(3^x − 2^x, x, ∞)` declinaba a pesar de
+/// que la misma suma como denominador ya se decidía. Guardas: dos o más
+/// términos (el término único tiene dueño propio y robarlo movería sus pasos),
+/// solo `+∞` (en `−∞` las bases >1 decaen y ese camino ya funciona), y las
+/// bases e/π quedan para la generalización nombrada de `collect_rational_exp_terms`
+/// a pares provables. `2^x − 2^x` (dominante con suma cero) declina honesto.
+fn exp_sum_top_level_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if approach != InfSign::Pos {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol).to_string();
+
+    let mut terms: Vec<(BigRational, BigRational)> = Vec::new();
+    collect_rational_exp_terms(ctx, expr, &var_name, &rational_one(), &mut terms)?;
+    if terms.len() < 2 {
+        return None;
+    }
+    let sign = exp_sum_dominant_sign(ctx, expr, &var_name)?;
+    Some(mk_infinity(
+        ctx,
+        if sign > 0 { InfSign::Pos } else { InfSign::Neg },
+    ))
 }
 
 /// The sign of the dominant term of a sum of rational-base exponentials at
@@ -18793,6 +18830,47 @@ mod tests {
         assert!(apply_rational_power_rule(&mut ctx, symbolic, x, InfSign::Pos).is_none());
         let irrational = parse_expr(&mut ctx, "x^(pi - 3)");
         assert!(apply_rational_power_rule(&mut ctx, irrational, x, InfSign::Neg).is_none());
+    }
+
+    #[test]
+    fn exp_sum_top_level_decides_by_dominant_base() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        for (src, positive) in [
+            ("3^x - 2^x", true),
+            ("2^x - 3^x", false),
+            ("2^x + 3^x - 4^x", false),
+            ("5 * 2^x - 3^x", false),
+        ] {
+            let expr = parse_expr(&mut ctx, src);
+            let out = exp_sum_top_level_limit_at_infinity(&mut ctx, expr, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("{src} should resolve"));
+            if positive {
+                assert!(
+                    matches!(ctx.get(out), Expr::Constant(Constant::Infinity)),
+                    "{src}"
+                );
+            } else {
+                assert!(matches!(ctx.get(out), Expr::Neg(_)), "{src}");
+            }
+        }
+
+        // Declines: dominante con suma CERO (2^x − 2^x), término único (dueño
+        // propio), −∞ (ese camino ya funciona por decaimiento), y bases no
+        // racionales (pi/e quedan para la generalización a pares provables).
+        let zero_dominant = parse_expr(&mut ctx, "2^x - 2^x");
+        assert!(
+            exp_sum_top_level_limit_at_infinity(&mut ctx, zero_dominant, x, InfSign::Pos).is_none()
+        );
+        let single = parse_expr(&mut ctx, "3^x");
+        assert!(exp_sum_top_level_limit_at_infinity(&mut ctx, single, x, InfSign::Pos).is_none());
+        let diff = parse_expr(&mut ctx, "3^x - 2^x");
+        assert!(exp_sum_top_level_limit_at_infinity(&mut ctx, diff, x, InfSign::Neg).is_none());
+        let transcendental = parse_expr(&mut ctx, "pi^x - e^x");
+        assert!(
+            exp_sum_top_level_limit_at_infinity(&mut ctx, transcendental, x, InfSign::Pos)
+                .is_none()
+        );
     }
 
     #[test]

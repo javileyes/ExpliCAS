@@ -4926,6 +4926,26 @@ fn test_eval_power_limit_with_decidable_irrational_exponent() {
         assert_eq!(wire["result"], expected, "{input}");
     }
 
+    // La SUMA de exponenciales de base racional se decide por la base dominante
+    // (la maquinaria existía y solo se consumía dentro de cocientes).
+    for (input, expected) in [
+        ("limit(3^x - 2^x, x, infinity)", "infinity"),
+        ("limit(2^x - 3^x, x, infinity)", "-infinity"),
+        ("limit(2^x + 3^x - 4^x, x, infinity)", "-infinity"),
+        ("limit(3^x - 2^x, x, -infinity)", "0"),
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["result"], expected, "{input}");
+    }
+    // `pi^x - e^x` sigue residual HONESTO: las bases trascendentales esperan la
+    // generalización de la colecta a comparación por pares provables.
+    let (success, stdout) = run_eval("limit(pi^x - e^x, x, infinity)", "json");
+    assert!(success);
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert!(wire["result"].as_str().unwrap_or("").starts_with("limit("));
+
     // Declina honesto donde debe: exponente de signo indecidible, `x -> -∞`
     // (una potencia no entera de una magnitud negativa no es real — también en
     // la forma de cociente, donde reducir ampliaría el dominio), y exponente

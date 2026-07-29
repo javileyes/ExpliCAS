@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 766 (newest first)
+Active entries: 767 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
@@ -126,6 +126,7 @@ Active entries: 766 (newest first)
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (`split_improper_fractional_exponent`... | PRESENTACIÓN (extracción del radical impropio + el eco llega al LaTeX de conjuntos): decisión delegada por el usuario, resuelta con la canónica que el motor ya tenía
 - 2026-07-29 | `retained` | `cas_math/power_product_support.rs` (`try_fold_numeric_coefficient_valuation`... | CANON (valuación b-ádica del coeficiente): `solve(x²=8)` y `sqrt(8)` decían el mismo número en dos idiomas
 - 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`apply_same_base_power_quotient_rule`, cableada... | CAPACIDAD (límite del cociente de la misma base): reduce-a-canónico con un wrong-answer propio cazado por el probe de −∞
+- 2026-07-29 | `retained` | `cas_math/limits_support.rs` (`exp_sum_top_level_limit_at_infinity`, cableada... | CAPACIDAD (suma de exponenciales a nivel raíz): la maquinaria existía y solo se consumía dentro de cocientes
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22815,3 +22816,17 @@ Active entries: 766 (newest first)
 - retained learning:
   - **Una reducción sintácticamente correcta puede AMPLIAR el dominio, y el límite es exactamente el contexto donde eso fabrica respuestas**: `x^(5/2)/x^(3/2) = x` vale donde AMBOS lados existen; en −∞ el lado izquierdo no existe. Toda regla de límites que reduzca formas debe preguntarse dónde vivía la forma ORIGINAL, no la reducida — y el probe direccional (±∞) es el test barato que lo destapa.
   - **Delegar convierte la regla nueva en solo-su-matcher** (7ª instancia del molde): la regla no sabe de signos ni paridades — reduce y delega, y hereda gratis la capa de constante decidible del ciclo anterior.
+
+## 2026-07-29 - CAPACIDAD (suma de exponenciales a nivel raíz): la maquinaria existía y solo se consumía dentro de cocientes
+
+- area: `cas_math/limits_support.rs` (`exp_sum_top_level_limit_at_infinity`, cableada tras el cociente de misma base) + test unitario + contrato CLI.
+- status: `retained`. Cierra parcialmente el residual (e) de [[limits-narration-done-capability-residual]] — la mitad RACIONAL; la trascendental queda nombrada.
+- capture:
+  - **EL GAP**: `limit(3^x − 2^x, x, ∞)` declinaba a pesar de que `exp_sum_dominant_sign` — que decide EXACTAMENTE eso por base dominante — llevaba tiempo en el repo, consumida solo dentro de los cocientes (`poly/exp-sum`, `exp-sum/exp-sum`). A nivel raíz nadie la llamaba. El ciclo es un WRAPPER de ~30 líneas: colecta, exige ≥2 términos y delega.
+  - **Guardas declaradas**: término único → dueño propio (robarlo movería sus pasos); solo `+∞` (en `−∞` las bases >1 decaen y ese camino ya funcionaba); dominante con suma CERO (`2^x − 2^x`) declina honesto; bases e/π declinan — su cierre es la generalización nombrada de `collect_rational_exp_terms` a comparación por pares provables (~150 líneas, residual (a) de la memoria), no un caso más aquí.
+- observed:
+  - `3^x−2^x` → ∞, `2^x−3^x` → −∞, `2^x+3^x−4^x` → −∞, `5·2^x−3^x` → −∞; `pi^x−e^x` residual honesto CON contrato que lo fija; `−∞` → 0 intacto; `3^x+x` sigue con su regla de dominancia. Corpus 219: **0 cambios**. workspace failed:0 (381 suites, 13796 tests), clippy 0, lanes verdes, huella **0 deltas**.
+- decision: retener.
+- retained learning:
+  - **Antes de escribir capacidad nueva, buscar el decisor que ya existe y mirar QUIÉN lo consume**: el gap no era de matemática sino de cableado — la función correcta estaba a 100 líneas del dispatcher que nunca la llamaba. El grep barato es «¿quién llama a X?» sobre los decisores de la familia.
+  - **Fijar el residual honesto EN EL CONTRATO cuando se cierra a su hermano**: `pi^x−e^x` queda pineado como residual con test — si un ciclo futuro lo resuelve, el test le exigirá actualizar el contrato a capacidad; si lo rompe a wrong-answer, lo caza.
