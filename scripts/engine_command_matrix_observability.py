@@ -15,6 +15,33 @@ FRAGILE_STDERR_SUBSTRINGS = (
     "SIGSEGV",
 )
 
+# Los DOS avisos del motor que dependen del RELOJ, no de la entrada: el
+# simplificador tiene un presupuesto de pared por fase y lo anuncia al agotarlo.
+# Un caso pegado a ese presupuesto los emite o no según la carga de la máquina, y
+# con `WARN` en la lista de arriba eso convierte la lane en un gate no
+# determinista: medido en el mismo HEAD, un caso de integrate fallaba 3 de 8
+# corridas sin que nada cambiara en el motor. El resto de WARN del motor
+# (`cycle_detected`, `depth_overflow`, `expand() aborted`, `poly_mul_modp
+# aborted`, `Budget limit reached`) son deterministas —dependen de la expresión,
+# no del reloj— y siguen siendo fragilidad dura.
+#
+# Que un caso agote su presupuesto NO se pierde: su `stderr` se publica verbatim
+# en el registro del caso, y su coste ya aparece en las listas de tiempos de la
+# lane. Lo que deja de hacer es TUMBAR la corrida cuando el resultado sigue
+# siendo el esperado — que es la comprobación que de verdad detecta degradación.
+# Y no se añade contador al resumen a propósito: sería no determinista y
+# convertiría cada comparación de huella en un delta falso.
+PHASE_TIMEOUT_MARKERS = (
+    "phase_timeout_before_iteration",
+    "phase_timeout_after_pass",
+)
+
+
+def _line_is_only_phase_timeout_warning(line: str) -> bool:
+    return "WARN" in line and any(
+        marker in line for marker in PHASE_TIMEOUT_MARKERS
+    )
+
 
 def stderr_fragility_error(
     stderr: str,
@@ -25,8 +52,17 @@ def stderr_fragility_error(
     """Return an error when stderr contains high-signal fragility markers."""
 
     for fragment in (*FRAGILE_STDERR_SUBSTRINGS, *forbidden_substrings):
-        if fragment and fragment in stderr:
-            return f"{label} fragile substring found: {fragment!r}"
+        if not fragment:
+            continue
+        if fragment != "WARN":
+            if fragment in stderr:
+                return f"{label} fragile substring found: {fragment!r}"
+            continue
+        # `WARN` se juzga LÍNEA a línea: un aviso de presupuesto de fase no es
+        # fragilidad, cualquier otro sí.
+        for line in stderr.splitlines():
+            if "WARN" in line and not _line_is_only_phase_timeout_warning(line):
+                return f"{label} fragile substring found: {fragment!r}"
     return None
 
 

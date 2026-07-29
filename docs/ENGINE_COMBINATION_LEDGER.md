@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 761 (newest first)
+Active entries: 762 (newest first)
 
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
 - 2026-07-29 | `retained` | `cas_ast/domain.rs` (`map_exprs` en `SolutionSet`/`Interval`/`Case`/`SolveRes... | PRESENTACIÓN (los conjuntos solución hablan la misma notación) + la ortografía de la raíz cúbica ya existía
 - 2026-07-29 | `retained` | `cas_formatter/{latex_core,latex_no_roots}.rs` (brazo `cbrt` en los 3 renderi... | PRESENTACIÓN de `cbrt` (retenida) + canonicalización de `cbrt` RECHAZADA por coste medido, + truncamiento silencioso del convertidor
+- 2026-07-29 | `retained` | `scripts/engine_command_matrix_observability.py` (`stderr_fragility_error` ju... | MEDIDA (el gate no determinista): `WARN` metía el presupuesto de fase en la misma bolsa que `SIGSEGV`
 - 2026-07-28 | `retained` | `cas_didactic` — `types/substep/schema.rs` (6 filas orientadas de ángulo mita... | VERACIDAD (migración de ángulo mitad): el molde de migración tenía DOS puertas y solo una estaba escrita — el barrido leyó «0 diffs» y el trace del emisor separó ceguera-de-corpus de poda-río-abajo
 - 2026-07-28 | `retained` | `cas_didactic` — `visible_rule_names.rs` (fila es + fila es→en de la regla, q... | VERACIDAD (Split Log Exponents): el nombre de la regla mentía sobre su matemática — y publicaba su identificador interno en inglés en mitad de una traza en español
 - 2026-07-28 | `retained` | `cas_didactic/visible_rule_names.rs` (31 filas es + 30 es→en; `Rationalize Si... | VERACIDAD (fugas de nombre de regla): 31 de 166 nombres visibles eran el IDENTIFICADOR INTERNO del motor — y dos de ellos llevaban tanto tiempo ahí que la matriz los fijaba como contrato
@@ -22727,3 +22728,20 @@ Active entries: 761 (newest first)
   - **Un `ps` que muestra 0 % de CPU en el padre no dice nada: el trabajo está en el hijo.** `cargo` aparecía al 0 % y parecía colgado; su binario de test estaba al 100 %. Mirar los HIJOS antes de diagnosticar «bloqueado».
   - **Un cambio puede ser correcto, barato para el usuario y caro para el gate.** La medida que decide no es la latencia de un `eval` sino la del harness que lo protege — y aquí divergían por dos órdenes de magnitud. Medir las dos.
   - **Un tope de iteraciones fijo sobre datos de tamaño variable es un truncamiento con otro nombre.** Si el bucle es convergente, el tope se calcula del dato; si no lo es, el tope oculta el bug en vez de acotarlo.
+
+## 2026-07-29 - MEDIDA (el gate no determinista): `WARN` metía el presupuesto de fase en la misma bolsa que `SIGSEGV`
+
+- area: `scripts/engine_command_matrix_observability.py` (`stderr_fragility_error` juzga `WARN` línea a línea) + `scripts/test_engine_command_matrix_observability.py` (5 tests). Afecta a las 6 lanes de command-matrix que comparten el predicado.
+- status: `retained`.
+- capture:
+  - **EL DEFECTO ERA DEL GATE, NO DEL MOTOR**: `FRAGILE_STDERR_SUBSTRINGS` incluye `"WARN"` a secas, junto a `panicked`, `SIGSEGV` y `depth_overflow`. Pero de los siete WARN que el motor emite, **dos dependen del RELOJ** (`phase_timeout_before_iteration`, `phase_timeout_after_pass`: el simplificador tiene presupuesto de pared por fase). Un caso pegado a ese presupuesto los emite o no según la carga, así que la lane fallaba de forma no determinista.
+  - **MEDIDO, no supuesto**: `symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution` falla **3 de 8 corridas EN EL MISMO HEAD**, sin cambiar una línea del motor. Llevaba tres ciclos apareciendo y las tres veces lo atribuí a contención sin aislar el caso — la explicación cómoda y equivocada.
+  - **EL RESTO DE WARN SIGUE SIENDO FRAGILIDAD DURA** porque dependen de la EXPRESIÓN, no del reloj: `cycle_detected` (oscilación de reglas), `depth_overflow`, `expand() aborted`, `poly_mul_modp aborted`, `Budget limit reached` (límites por conteo). El predicado juzga `WARN` línea a línea, así que un aviso de presupuesto **no enmascara** a uno real si aparecen juntos — hay test para eso.
+  - **NO se añade contador al resumen, a propósito**: sería no determinista por construcción y convertiría cada comparación de huella en un delta falso. La observación no se pierde — el `stderr` del caso se publica verbatim en su registro y el coste ya sale en las listas de tiempos de la lane.
+- observed:
+  - El caso flaky: **3/8 fallos antes → 10/10 pass después**. Cadena: workspace failed:0 (381 suites, 13785 tests), clippy 0, engine-fast/scorecard/pressure/wasm verdes, 5/5 en el unittest nuevo. Huella: **0 deltas de contador**.
+- decision: retener.
+- retained learning:
+  - **Un gate que falla un tercio de las veces no es un gate: es un impuesto.** Y el coste no se ve en la corrida que falla sino en las tres siguientes, porque enseña a leer el rojo como ruido — que es exactamente lo que hice tres ciclos seguidos.
+  - **Antes de clasificar un aviso como fragilidad, preguntar de qué depende.** Los siete WARN del motor se parten limpio en dos clases: los que dependen de la EXPRESIÓN (deterministas, son defectos) y los que dependen del RELOJ (presupuesto, son coste). Meterlos en la misma lista de subcadenas es lo que hace el gate no determinista.
+  - **La disciplina «re-corre en exclusiva» tapa el problema en vez de resolverlo.** El ledger llevaba diez instancias documentadas de `stderr_fragility` tratadas como contención. La contención era real en algunas, pero la clasificación de fondo estaba mal, y ninguna re-corrida iba a descubrirlo: hacía falta aislar el caso y contar.
