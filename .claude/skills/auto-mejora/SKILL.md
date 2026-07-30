@@ -122,10 +122,22 @@ de la fuente 7 chocan, **gana P0/soundness**.
   índice — el csv se reordena). Residuales nombrados en
   [[frente-e-calidad-educativa]] (memoria): dueños trace-negativos de
   `|afín|⋚c`/`|f|<|g|`, `x^(2/3)>c`, E2b precisión path global, F 44.
+- **Auditoría integral 2026-07-30 (REMEDIACIÓN COMPLETA en sus P0 nombrados,
+  21 ciclos `7ec1c0388`→`96c36c7f9`, 0 rechazos)**: C1 (floats en drop/keep),
+  C2 (eje value-domain a sondas/matchers/extract/equiv + perfil complejo del
+  gate), C3 (texto didáctico con precedencia), C4 (paridad de guards:
+  certificado racional del TCF, familia periódica con coeficiente), C5
+  (parser acotado), U1a/U1b núcleos. **La cola P0 VIVA está en el
+  frontier-audit 2026-07-14, re-verificada 2026-07-30**: F4 (`sec²>2` →
+  «No solution», el peor abierto), F5 (abs anidado pierde raíces), F10
+  (raíz espuria en `sqrt(a−x)=x`); + las 110 fichas sin verificar del
+  informe integral (SOLO con pase adversarial previo) y sus P2 catalogados.
 - **De dónde sale la capacidad nueva HOY** (en orden): (1) peldaños
   nombrados de frentes cerrados (ledger + memoria — acotados y de bajo
   riesgo, PERO se pudren igual que los docs: el peldaño «3×3 paramétrico»
-  llevaba graduado en secreto por S6/S7 — sondear el CLI antes de elegir);
+  llevaba graduado en secreto por S6/S7, y la pasada A del 2026-07-30 cazó
+  TRES graduaciones silenciosas más (F3 taylor, F11 hang de racionalización,
+  F12 cuadrática compleja) — sondear el CLI antes de elegir);
   (2) los inventarios del harness de consistencia
   (`cas_cli/tests/steps_divergence_gate_tests.rs`): cada eje mide una clase
   con reproducción exacta — el eje steps-off/on quedó a CERO (tandas
@@ -579,6 +591,31 @@ repitas en bucle).
   llaves destrozaba el resto y producía texto que no re-parsea JUNTO a hermanas
   bien convertidas. Si el bucle converge, el tope se calcula del dato; si no
   converge, el tope oculta el bug en vez de acotarlo.
+- **El vehículo del eje semántico para firmas legacy es el ambiente armado
+  por pipeline** (5 instancias 2026-07-30: sondas especulativas, matchers
+  zero-identity, fases locales, equiv, canonicalizador de pares): thread-local
+  o sticky con save/restore armado en el entry top-level, default NEUTRO
+  (RealOnly) ⟹ todo camino no armado queda byte-idéntico, y el memo que cachee
+  resultados DEBE llevar el eje en la clave. Al añadir un eje nuevo, la
+  pregunta no es solo «¿las reglas lo miran?» sino «¿los PROBADORES internos
+  (isolated simplify, oráculos de equivalencia, expand interno) lo heredan?» —
+  un oráculo con opciones default es un traductor de dominios encubierto.
+- **Un inventario de auditoría lista LLAMANTES; un ciclo de cierre clasifica
+  USOS**: reescritura publicada ⟹ gate; detector de forma (kind sintáctico) ⟹
+  comentario «deliberately domain-neutral» con referencia del audit; ya
+  aguas-abajo de un gate ⟹ nada. Los tres desenlaces son entregables y el
+  comentario evita que el siguiente barrido re-pague la investigación.
+- **El display engaña; el árbol decide** (2 instancias: `(1·2)/cos²` era
+  `Mul(2, Div(1, cos²))` — coeficiente FUERA de la división; y la atribución
+  de ruta de U1b era falsa): antes de arreglar un matcher que «no casa», un
+  dump recursivo de 15 líneas del árbol REAL en el call-site invalida
+  hipótesis — incluidas las de la propia ficha — más barato que cualquier
+  teoría.
+- **El candidato heredado se sondea aunque venga del informe de AYER** (2
+  cazas intra-sesión: S5-003 y el peldaño 3×3): fixes con otros objetivos
+  gradúan repros en secreto; el valor del ciclo puede estar en lo que el
+  sondeo NO ve (el probador nuevo con el patrón viejo) y en convertir el
+  accidente en contrato con pins.
 - **Al meter una superficie nueva en un contrato, distinguir forma INTERNA de
   presentación.** Varios tests imprimen el resultado con `DisplayExpr` crudo
   (forma interna) y otros leen `wire["result"]` (presentación). Un cambio de
@@ -647,4 +684,17 @@ comprobarlo — por eso la versión nueva da el procedimiento (aislar el caso y
 contar corridas) en vez de la conclusión. Entraron además cuatro lecciones
 medidas de la misma tanda: `--no-fail-fast` para cambios transversales, parchear
 pins por CASO y no por cadena, medir el coste de un cambio en el GATE y no solo
-en el `eval`, y que un tope de iteraciones fijo es un truncamiento.)*
+en el `eval`, y que un tope de iteraciones fijo es un truncamiento.
+**2026-07-30: pasada A+B tras la remediación integral completa (21 ciclos, 0
+rechazos).** La pasada A re-verificó los 9 checkbox abiertos del
+frontier-audit 2026-07-14 contra el CLI vivo: TRES graduaciones silenciosas
+estampadas (F3 taylor-por-singularidad-evitable EXACTO; F11 el cuelgue de
+racionalización surd muerto y el valor MATCH contra oráculo; F12 cuadrática
+compleja exacta) y CINCO re-verificaciones con nota afilada — el hallazgo
+gordo es que la cola P0 viva no estaba vacía sino en el OTRO audit: F4
+(`sec²>2` → «No solution» con conjunto infinito), F5 (abs anidado pierde
+x=1/2), F10 (raíz espuria siempre-negativa publicada sin condición, subida a
+wrong-answer efectivo). La pasada B metió el estado post-remediación como
+fuente de candidatos y 4 lecciones recurrentes de la sesión (vehículo del eje
+ambiente, inventario-vs-usos, display-vs-árbol, sondear-lo-heredado). Docs-only,
+sin huella.)*
