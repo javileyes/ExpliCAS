@@ -416,7 +416,15 @@ impl Simplifier {
                     if let Some(z) =
                         cas_math::eval_complex(&self.context, result_expr, &complex_map)
                     {
-                        if !cas_solver_core::equivalence::is_numeric_equiv_zero(z.abs()) {
+                        // Same finiteness rule as the f64 probe above (ficha
+                        // S5-003): a NaN/∞ modulus is ABSENCE of value at the
+                        // probe point (a pole, an unsupported arm), never a
+                        // counterexample — only a finite, clearly nonzero
+                        // modulus refutes.
+                        let modulus = z.abs();
+                        if modulus.is_finite()
+                            && !cas_solver_core::equivalence::is_numeric_equiv_zero(modulus)
+                        {
                             return EquivalenceResult::False;
                         }
                     }
@@ -465,6 +473,21 @@ mod complex_refute_tests {
         assert!(!matches!(
             extended("ln(-1)", "i*pi", true),
             EquivalenceResult::False
+        ));
+    }
+
+    #[test]
+    fn nonfinite_complex_modulus_is_not_a_counterexample() {
+        // SOUNDNESS (ficha S5-003, cierre): the COMPLEX refute net had the
+        // same hole its f64 sibling was cured of — `z.abs()` of an
+        // overflowed/undefined probe is ∞/NaN, `!is_numeric_equiv_zero(∞)` is
+        // true, and the net published False from an evaluation that produced
+        // NO value. `e^(x²·10⁶)` overflows DETERMINISTICALLY at the probe
+        // point in both evaluators, so the only "evidence" is non-finite:
+        // the honest verdict is Unknown, never a refutation.
+        assert!(matches!(
+            extended("e^(x^2*10^6) + 1", "1", true),
+            EquivalenceResult::Unknown
         ));
     }
 

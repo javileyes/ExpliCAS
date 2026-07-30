@@ -30,6 +30,16 @@ fn residual_for_false_equivalence(
     }
 
     let residual = simplified_equivalence_residual_expr(simplifier, lhs, rhs);
+    // A residual that folds to `undefined`/`infinity` is ABSENCE of value, not
+    // evidence — printing it under a False verdict read as «the counterexample
+    // is undefined» (ficha S5-003, aceptación (3)). The verdict line stands on
+    // its own; only a meaningful residual is worth showing.
+    if matches!(
+        simplifier.context.get(residual),
+        cas_ast::Expr::Constant(cas_ast::Constant::Undefined | cas_ast::Constant::Infinity)
+    ) {
+        return None;
+    }
     Some(
         DisplayExpr {
             context: &simplifier.context,
