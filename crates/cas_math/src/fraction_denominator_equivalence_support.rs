@@ -42,7 +42,10 @@ where
 
     let diff = ctx.add(Expr::Sub(d1, d2));
     let diff_exp = expand(ctx, diff);
-    crate::numeric_eval::numeric_poly_zero_check(ctx, diff_exp)
+    // Structural variant ON PURPOSE: the full opaque/Pythagorean closure made
+    // this grouping stronger than the rules downstream were built around and
+    // reordered the combine flow (see numeric_poly_zero_check_structural).
+    crate::numeric_eval::numeric_poly_zero_check_structural(ctx, diff_exp)
 }
 
 #[cfg(test)]

@@ -280,24 +280,29 @@ fn is_one_half(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Probabilistic polynomial zero check via numeric evaluation.
+/// Exact polynomial zero check: probes may REFUTE, only algebra CONFIRMS.
 ///
-/// Tests whether an expression is identically zero by substituting several
-/// random rational values for each variable and evaluating. If ALL evaluations
-/// yield 0, the expression is extremely likely to be identically zero.
+/// Decides whether an expression is identically zero. Handles cases where
+/// `expand()` produces raw unsimplified AST (e.g., `u·u + u·1 - u² - u`)
+/// that structural comparison can't match.
 ///
-/// This handles cases where `expand()` produces raw unsimplified AST (e.g.,
-/// `u·u + u·1 - u² - u`) that structural comparison can't match.
+/// Contract (R2: soundness gates are exact, never probabilistic):
+/// - Exact rational probe evaluations can only return `false` (a nonzero
+///   value at an exact rational point PROVES non-zero). They are a fast
+///   pre-filter, never a source of `true`.
+/// - `true` comes exclusively from exact polynomial normalization
+///   (`poly_compare::poly_is_zero`, BigRational coefficients, budgeted).
+/// - Anything the normalizer can't express (surds, π/e, trig, |·|,
+///   oversized) yields a conservative `false`: "cannot prove zero".
 ///
-/// Uses 3 independent probe points. For a non-zero polynomial of degree d in
-/// n variables, the probability of a false positive is at most d/|S| per
-/// probe, where |S| is the evaluation domain size. With rational probes
-/// chosen from {2/3, 3/5, 5/7, 7/11, 11/13, ...}, false positives are
-/// astronomically unlikely.
-///
-/// Returns `true` if the expression evaluates to 0 at all probe points.
-/// Returns `false` if any evaluation is non-zero or evaluation fails.
-pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
+/// History (auditoría 2026-07-30, fichas S2a-001/002/003, S2b-002, Q1b-001):
+/// the previous version CONFIRMED zero from 3 FIXED public probes — any
+/// nonzero polynomial vanishing at x=2/3, 3/5, 5/3 collapsed to 0
+/// (`((x-2/3)·(x-3/5)·(x-5/3)+1)/y - 1/y` → `0`) — rationalized π→355/113
+/// (`pi*x/y - (355/113)*x/y` → `0`) and kept an f64 `1e-10` gate for
+/// surd/transcendental forms (`(sin(x/10^11)+1)/y - 1/y` → `0`). All three
+/// confirmation channels are gone; only the refutation power remains.
+pub(crate) fn numeric_poly_zero_check(ctx: &mut Context, expr: ExprId) -> bool {
     use num_rational::BigRational;
     use num_traits::Zero;
 
@@ -327,8 +332,79 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
     }
 
     // Probe points: distinct rationals unlikely to be roots of spurious polynomials
-    let probes: Vec<Vec<BigRational>> = vec![
-        // Probe 1: small primes/coprime rationals
+    let probes: Vec<Vec<BigRational>> = zero_probe_sets();
+
+    let var_list: Vec<String> = vars.into_iter().collect();
+
+    // Exact BigRational probes: REFUTATION-ONLY fast path. A nonzero value at
+    // an exact rational point proves non-zero; an all-zeros run proves
+    // nothing (any polynomial with those probes among its roots vanishes on
+    // every probe set — that was the S2a-001 exploit).
+    for probe_set in &probes {
+        match eval_with_substitution(ctx, expr, &var_list, probe_set) {
+            Some(val) => {
+                if !val.is_zero() {
+                    return false; // Non-zero at this point => not identically zero
+                }
+            }
+            // Not exactly evaluable (surd/π/function): the probes can't
+            // refute; confirmation below decides.
+            None => break,
+        }
+    }
+
+    // CONFIRMATION: exact polynomial normalization or nothing. Opaque atoms
+    // (e^x, sin(u), π…) become independent indeterminates — sound for
+    // confirming, useless for refuting, which is exactly the split we need.
+    crate::poly_compare::poly_is_zero_opaque(ctx, expr)
+}
+
+/// Weaker sibling for DENOMINATOR-equivalence grouping: exact probes refute,
+/// plain rational-polynomial normalization confirms, and the opaque-atom /
+/// Pythagorean closure is deliberately NOT applied. Making the grouping
+/// STRONGER than it historically was reorders the fraction-combine flow and
+/// breaks downstream pattern rules (R5: rewrite eligibility is order): with
+/// the full closure, `1 − tanh²` and `1/cosh²` suddenly group as equal
+/// denominators and the engine's own hyperbolic-Pythagoras rules never see
+/// their expected shapes (the tanh⁴/⁶/⁸ verification residues stopped
+/// closing). Equivalence here answers "may these fractions merge?", and the
+/// honest answer set must stay what the rules were built around.
+pub(crate) fn numeric_poly_zero_check_structural(ctx: &Context, expr: ExprId) -> bool {
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.is_empty() {
+        if let Some(v) = as_rational_const(ctx, expr) {
+            return v.is_zero();
+        }
+        return matches!(
+            crate::const_sign::provable_const_sign(ctx, expr),
+            Some(crate::const_sign::ConstSign::Zero)
+        );
+    }
+    if vars.len() > 5 {
+        return false;
+    }
+    let probes: Vec<Vec<BigRational>> = zero_probe_sets();
+    let var_list: Vec<String> = vars.into_iter().collect();
+    for probe_set in &probes {
+        match eval_with_substitution(ctx, expr, &var_list, probe_set) {
+            Some(val) => {
+                if !val.is_zero() {
+                    return false;
+                }
+            }
+            None => break,
+        }
+    }
+    crate::poly_compare::poly_is_zero(ctx, expr)
+}
+
+/// Shared exact probe grid for the zero-check pair (full + structural).
+fn zero_probe_sets() -> Vec<Vec<num_rational::BigRational>> {
+    use num_rational::BigRational;
+    vec![
         vec![
             BigRational::new(2.into(), 3.into()),
             BigRational::new(5.into(), 7.into()),
@@ -336,7 +412,6 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
             BigRational::new(7.into(), 13.into()),
             BigRational::new(11.into(), 17.into()),
         ],
-        // Probe 2: different values
         vec![
             BigRational::new(3.into(), 5.into()),
             BigRational::new(7.into(), 11.into()),
@@ -344,7 +419,6 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
             BigRational::new(13.into(), 17.into()),
             BigRational::new(17.into(), 19.into()),
         ],
-        // Probe 3: yet another set
         vec![
             BigRational::new(5.into(), 3.into()),
             BigRational::new(11.into(), 7.into()),
@@ -352,71 +426,7 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
             BigRational::new(17.into(), 13.into()),
             BigRational::new(19.into(), 17.into()),
         ],
-    ];
-
-    let var_list: Vec<String> = vars.into_iter().collect();
-
-    // Try exact BigRational evaluation first
-    let mut exact_failed = false;
-    for probe_set in &probes {
-        let result = eval_with_substitution(ctx, expr, &var_list, probe_set);
-        match result {
-            Some(val) => {
-                if !val.is_zero() {
-                    return false; // Non-zero at this point => not identically zero
-                }
-            }
-            None => {
-                exact_failed = true;
-                break;
-            }
-        }
-    }
-
-    if !exact_failed {
-        return true; // Zero at all probe points (exact)
-    }
-
-    if contains_variable_dependent_abs(ctx, expr) {
-        return false;
-    }
-
-    // Fallback: f64 evaluation for expressions with surds/fractional exponents
-    let f64_probes: Vec<Vec<f64>> = vec![
-        vec![2.0 / 3.0, 5.0 / 7.0, 3.0 / 11.0, 7.0 / 13.0, 11.0 / 17.0],
-        vec![3.0 / 5.0, 7.0 / 11.0, 11.0 / 13.0, 13.0 / 17.0, 17.0 / 19.0],
-        vec![5.0 / 3.0, 11.0 / 7.0, 13.0 / 11.0, 17.0 / 13.0, 19.0 / 17.0],
-    ];
-
-    for probe_set in &f64_probes {
-        let result = eval_f64_with_substitution(ctx, expr, &var_list, probe_set);
-        match result {
-            Some(val) => {
-                if val.abs() > 1e-10 {
-                    return false; // Non-zero at this point
-                }
-            }
-            None => return false, // Evaluation failed
-        }
-    }
-
-    true // Near-zero at all probe points
-}
-
-fn contains_variable_dependent_abs(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) => args
-            .iter()
-            .any(|arg| !cas_ast::collect_variables(ctx, *arg).is_empty()),
-        Expr::Function(_, args) => args
-            .iter()
-            .any(|arg| contains_variable_dependent_abs(ctx, *arg)),
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            contains_variable_dependent_abs(ctx, *l) || contains_variable_dependent_abs(ctx, *r)
-        }
-        Expr::Neg(inner) | Expr::Hold(inner) => contains_variable_dependent_abs(ctx, *inner),
-        _ => false,
-    }
+    ]
 }
 
 /// Evaluate an expression by substituting rational values for variables.
@@ -442,14 +452,11 @@ fn eval_with_substitution(
                 .and_then(|idx| values.get(idx).cloned())
         }
 
-        Expr::Constant(c) => {
-            // Use approximate rational value for constants
-            match c {
-                cas_ast::Constant::Pi => Some(BigRational::new(355.into(), 113.into())),
-                cas_ast::Constant::E => Some(BigRational::new(193.into(), 71.into())),
-                _ => None, // I, Infinity, Undefined, Phi: can't evaluate rationally
-            }
-        }
+        // NO constant gets a rational stand-in. π→355/113 / e→193/71 made
+        // `pi*x/y - (355/113)*x/y` evaluate to exactly 0 at every probe and
+        // collapse to 0 (auditoría 2026-07-30, ficha S2a-002). An exact
+        // evaluator that silently rationalizes a transcendental is not exact.
+        Expr::Constant(_) => None,
 
         Expr::Add(l, r) => {
             let lv = eval_with_substitution(ctx, *l, var_names, values)?;
@@ -781,7 +788,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("a + 1 - abs(a + 1)", &mut ctx).expect("parse");
 
-        assert!(!numeric_poly_zero_check(&ctx, expr));
+        assert!(!numeric_poly_zero_check(&mut ctx, expr));
     }
 
     #[test]
@@ -793,16 +800,124 @@ mod tests {
         let mut ctx = Context::new();
         let near = parse("log(2)/log(3) - 0.6309297535714574", &mut ctx).expect("parse");
         assert!(
-            !numeric_poly_zero_check(&ctx, near),
+            !numeric_poly_zero_check(&mut ctx, near),
             "f64-close transcendental must not be deemed exactly zero"
         );
 
         // Still detects EXACT zeros (rational + perfect-square surd via the exact
         // sign oracle), so the fix does not lose sound zero-detection.
         let rat = parse("1/2 - 0.5", &mut ctx).expect("parse");
-        assert!(numeric_poly_zero_check(&ctx, rat));
+        assert!(numeric_poly_zero_check(&mut ctx, rat));
         let surd = parse("sqrt(4) - 2", &mut ctx).expect("parse");
-        assert!(numeric_poly_zero_check(&ctx, surd));
+        assert!(numeric_poly_zero_check(&mut ctx, surd));
+    }
+
+    #[test]
+    fn probes_never_confirm_polynomial_vanishing_on_all_probe_points() {
+        // SOUNDNESS (auditoría 2026-07-30, ficha S2a-001): the probe values are
+        // fixed and public; a nonzero polynomial with all of them among its
+        // roots evaluates to 0 on every probe set. The old version CONFIRMED
+        // zero from exactly that ("((x-2/3)*(x-3/5)*(x-5/3)+1)/y - 1/y" → 0).
+        // Probes may refute; only the exact normalizer may confirm.
+        let mut ctx = Context::new();
+        let poison = parse("(x-2/3)*(x-3/5)*(x-5/3)", &mut ctx).expect("parse");
+        assert!(
+            !numeric_poly_zero_check(&mut ctx, poison),
+            "polynomial vanishing on the probe grid must not be deemed zero"
+        );
+    }
+
+    #[test]
+    fn pi_is_not_355_over_113() {
+        // SOUNDNESS (ficha S2a-002): the exact evaluator rationalized π→355/113
+        // and e→193/71, so `pi*x - (355/113)*x` probed to exact 0 everywhere
+        // and collapsed (`pi*x/y - (355/113)*x/y` → 0 at the CLI).
+        let mut ctx = Context::new();
+        let pi_diff = parse("pi*x - (355/113)*x", &mut ctx).expect("parse");
+        assert!(!numeric_poly_zero_check(&mut ctx, pi_diff));
+        let e_diff = parse("e*x - (193/71)*x", &mut ctx).expect("parse");
+        assert!(!numeric_poly_zero_check(&mut ctx, e_diff));
+    }
+
+    #[test]
+    fn f64_near_zero_with_variables_is_not_zero() {
+        // SOUNDNESS (fichas S2a-003 / S2b-002 / Q1b-001): the f64 fallback
+        // declared zero anything under 1e-10 on 3 probes —
+        // `(sin(x/10^11)+1)/y - 1/y` → 0. The fallback is gone; forms the
+        // exact machinery can't express yield a conservative `false`.
+        let mut ctx = Context::new();
+        let tiny = parse("sin(x/100000000000)", &mut ctx).expect("parse");
+        assert!(!numeric_poly_zero_check(&mut ctx, tiny));
+    }
+
+    #[test]
+    fn rational_zero_with_embedded_divisions_confirms() {
+        // Capability pin (Bernoulli-IVP Gate 1, dsolve `y(0)=2`): the
+        // semi-combined verification numerator carries embedded fractions AND
+        // mixes e^x with e^(2x)/(e^x)². Zero is only visible through (a) the
+        // rational normalization num/den and (b) the faithful fold
+        // e^(k·g) = (e^g)^k. The old f64 fallback confirmed this unsoundly;
+        // the exact channel must keep the capability.
+        let mut ctx = Context::new();
+        let gate1 =
+            parse("(2-e^x)^2 * (2*e^x/(2-e^x)^2 + 2/(2-e^x)) - 4", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&mut ctx, gate1));
+
+        // e^(2x) vs (e^x)^2: same identity spelled with an explicit product
+        // exponent.
+        let fold = parse("e^(2*x) - (e^x)^2", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&mut ctx, fold));
+
+        // And the refutation direction stays exact: a NON-zero rational
+        // function with embedded divisions must not confirm.
+        let nonzero =
+            parse("(2-e^x)^2 * (2*e^x/(2-e^x)^2 + 2/(2-e^x)) - 5", &mut ctx).expect("parse");
+        assert!(!numeric_poly_zero_check(&mut ctx, nonzero));
+    }
+
+    #[test]
+    fn affine_related_radicals_close_via_defining_relations() {
+        // Capability pin (diff(arccos(1/√(x+1))) / arccot(√(4/x)) residues):
+        // radicals over ALGEBRAICALLY RELATED bases (x and x+1; 4/x) need the
+        // defining relations s_B^d = B and the gated product/quotient split —
+        // and the exponent extractor must see through Neg(Div(3,2)) shapes
+        // (as_rational_const, not bare Number matching).
+        let mut ctx = Context::new();
+        let e = parse(
+            "(x/(x+1))^(-1/2) * (x+1)^(-3/2) * (sqrt(x) + x*sqrt(x)) - 1",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(
+            numeric_poly_zero_check(&mut ctx, e),
+            "affine-related radicals"
+        );
+
+        // Refutation stays exact: perturbed sibling must NOT confirm.
+        let bad = parse(
+            "(x/(x+1))^(-1/2) * (x+1)^(-3/2) * (sqrt(x) + x*sqrt(x)) - 2",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(!numeric_poly_zero_check(&mut ctx, bad));
+    }
+
+    #[test]
+    fn exact_confirmation_still_covers_the_expand_clientele() {
+        // The function's raison d'être (raw expand() output) must keep
+        // confirming — now via exact normalization instead of probes.
+        let mut ctx = Context::new();
+        let raw = parse("u*u + u*1 - u^2 - u", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&mut ctx, raw));
+
+        // Unexpanded products within budget are confirmed directly.
+        let prod = parse("(x+1)*(x-1) - (x^2 - 1)", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&mut ctx, prod));
+
+        // Degree above compare_budget's 10 but within the zero-check budget:
+        // documents why poly_is_zero carries its own (wider) caps.
+        let deg12 = parse("2*x^12*y - x^12*y - y*x^12", &mut ctx).expect("parse");
+        assert!(numeric_poly_zero_check(&mut ctx, deg12));
     }
 
     #[test]

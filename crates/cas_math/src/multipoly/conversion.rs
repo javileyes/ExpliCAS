@@ -41,6 +41,117 @@ pub fn multipoly_from_expr(
     from_expr_recursive(ctx, expr, &vars, budget, &mut memo)
 }
 
+/// Convert an expression to a RATIONAL-FUNCTION pair `(num, den)` with
+/// `expr ≡ num/den` (as functions, wherever defined) and both parts sharing
+/// the same variable list. Unlike [`multipoly_from_expr`], `Div` by a
+/// non-constant is supported by tracking the denominator instead of erroring.
+///
+/// Consumer: the exact zero-decider (`poly_compare::poly_is_zero_opaque`) —
+/// a semi-combined fraction numerator with embedded `Div` nodes is zero iff
+/// `num ≡ 0 ∧ den ≢ 0`. The denominators are multiplied blindly (no gcd), so
+/// the pair is NOT canonical; only the zero verdict is meaningful.
+pub(crate) fn rational_multipoly_from_expr(
+    ctx: &Context,
+    expr: ExprId,
+    budget: &PolyBudget,
+) -> Result<(MultiPoly, MultiPoly), PolyError> {
+    let vars_set = collect_poly_vars(ctx, expr);
+    let vars: Vec<String> = vars_set.into_iter().collect();
+    let mut memo: rustc_hash::FxHashMap<ExprId, Result<MultiPoly, PolyError>> =
+        rustc_hash::FxHashMap::default();
+    rational_from_expr_recursive(ctx, expr, &vars, budget, &mut memo)
+}
+
+/// Like [`multipoly_from_expr`] but over a CALLER-SUPPLIED variable list
+/// (needed to align polynomials produced from different expressions, e.g.
+/// the radical-atom defining relations of the zero-decider).
+pub(crate) fn multipoly_from_expr_with_vars(
+    ctx: &Context,
+    expr: ExprId,
+    vars: &[String],
+    budget: &PolyBudget,
+) -> Result<MultiPoly, PolyError> {
+    let mut memo: rustc_hash::FxHashMap<ExprId, Result<MultiPoly, PolyError>> =
+        rustc_hash::FxHashMap::default();
+    from_expr_recursive(ctx, expr, vars, budget, &mut memo)
+}
+
+fn rational_from_expr_recursive(
+    ctx: &Context,
+    expr: ExprId,
+    vars: &[String],
+    budget: &PolyBudget,
+    memo: &mut rustc_hash::FxHashMap<ExprId, Result<MultiPoly, PolyError>>,
+) -> Result<(MultiPoly, MultiPoly), PolyError> {
+    let one = || MultiPoly::one(vars.to_vec());
+    match ctx.get(expr) {
+        Expr::Add(a, b) | Expr::Sub(a, b) => {
+            let (na, da) = rational_from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let (nb, db) = rational_from_expr_recursive(ctx, *b, vars, budget, memo)?;
+            let lhs = na.mul(&db, budget)?;
+            let rhs = nb.mul(&da, budget)?;
+            let num = if matches!(ctx.get(expr), Expr::Add(..)) {
+                lhs.add(&rhs)?
+            } else {
+                lhs.sub(&rhs)?
+            };
+            let den = da.mul(&db, budget)?;
+            check_budget(&num, budget)?;
+            Ok((num, den))
+        }
+        Expr::Mul(a, b) => {
+            let (na, da) = rational_from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let (nb, db) = rational_from_expr_recursive(ctx, *b, vars, budget, memo)?;
+            Ok((na.mul(&nb, budget)?, da.mul(&db, budget)?))
+        }
+        Expr::Div(a, b) => {
+            let (na, da) = rational_from_expr_recursive(ctx, *a, vars, budget, memo)?;
+            let (nb, db) = rational_from_expr_recursive(ctx, *b, vars, budget, memo)?;
+            // Division by an identically-zero denominator: nothing to decide.
+            if nb.is_zero() {
+                return Err(PolyError::NonPolynomial);
+            }
+            Ok((na.mul(&db, budget)?, da.mul(&nb, budget)?))
+        }
+        Expr::Neg(inner) => {
+            let (n, d) = rational_from_expr_recursive(ctx, *inner, vars, budget, memo)?;
+            Ok((n.neg(), d))
+        }
+        Expr::Pow(base, exp) => {
+            // Canonical foldable-form extractor: `x^(-3/2)` arrives as
+            // Pow(x, Neg(Div(3,2))); matching bare Number misses it.
+            let exp_num = crate::numeric_eval::as_rational_const(ctx, *exp);
+            if let Some(n) = exp_num {
+                if n.is_integer() {
+                    let (nb, db) = rational_from_expr_recursive(ctx, *base, vars, budget, memo)?;
+                    let mag: u32 = num_traits::Signed::abs(&n.to_integer())
+                        .try_into()
+                        .map_err(|_| PolyError::BadExponent)?;
+                    if mag > budget.max_pow_exp && matches!(ctx.get(*base), Expr::Add(_, _)) {
+                        return Err(PolyError::BudgetExceeded);
+                    }
+                    let np = pow_poly(&nb, mag, budget)?;
+                    let dp = pow_poly(&db, mag, budget)?;
+                    if n >= BigRational::zero() {
+                        return Ok((np, dp));
+                    }
+                    // Negative exponent: swap, requiring the new denominator
+                    // to be nonzero as a polynomial.
+                    if np.is_zero() {
+                        return Err(PolyError::NonPolynomial);
+                    }
+                    return Ok((dp, np));
+                }
+            }
+            // Non-integer exponent: fall back to the polynomial converter
+            // (which will error; callers atomize such subtrees beforehand).
+            from_expr_recursive(ctx, expr, vars, budget, memo).map(|p| (p, one()))
+        }
+        // Leaves and anything else: the polynomial converter decides.
+        _ => from_expr_recursive(ctx, expr, vars, budget, memo).map(|p| (p, one())),
+    }
+}
+
 fn from_expr_recursive(
     ctx: &Context,
     expr: ExprId,

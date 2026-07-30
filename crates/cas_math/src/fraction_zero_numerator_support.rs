@@ -11,14 +11,20 @@ pub(crate) fn numerator_simplifies_to_zero_with<FExpand>(
 where
     FExpand: FnMut(&mut Context, ExprId) -> ExprId,
 {
-    let pass1 = expand(ctx, numerator);
-    let pass2 = expand(ctx, pass1);
-    if crate::numeric_eval::numeric_poly_zero_check(ctx, pass2) {
+    // RAW shape first: expand() rewrites sinh(√x−b) by the addition formula,
+    // splitting one atom into four spellings that the exact closure treats as
+    // independent — the un-expanded numerator keeps its atoms consistent and
+    // is where the sqrt-chain verification residues actually close. Then the
+    // expanded passes (the historical clientele: raw expand() polynomials).
+    if crate::numeric_eval::numeric_poly_zero_check(ctx, numerator) {
         return true;
     }
-
-    let zero = ctx.num(0);
-    crate::poly_compare::poly_eq(ctx, pass2, zero)
+    let pass1 = expand(ctx, numerator);
+    let pass2 = expand(ctx, pass1);
+    // Single source of truth: probes refute fast, `poly_is_zero` confirms
+    // exactly (the old trailing `poly_eq` fallback is subsumed — the check
+    // now ends in the same normalization with a wider zero-check budget).
+    crate::numeric_eval::numeric_poly_zero_check(ctx, pass2)
 }
 
 /// Build canonical `0` or `0/den` expression depending on variable presence in denominator.

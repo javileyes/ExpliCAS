@@ -162,7 +162,7 @@ fn rational_pow_u32(x: &BigRational, n: u32) -> BigRational {
 
 /// Exact rational n-th root of `q >= 0` when it is rational (both numerator and
 /// denominator of the reduced fraction are perfect n-th powers), else `None`.
-fn exact_nth_root(q: &BigRational, n: u32) -> Option<BigRational> {
+pub(crate) fn exact_nth_root(q: &BigRational, n: u32) -> Option<BigRational> {
     let rn = q.numer().nth_root(n);
     let rd = q.denom().nth_root(n);
     let pow_back = |b: &BigInt| -> BigInt {

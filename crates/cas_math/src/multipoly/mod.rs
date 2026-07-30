@@ -20,6 +20,8 @@ use std::collections::BTreeMap;
 
 // Re-export public API so `crate::multipoly::X` continues to work
 pub(crate) use conversion::collect_poly_vars;
+pub(crate) use conversion::multipoly_from_expr_with_vars;
+pub(crate) use conversion::rational_multipoly_from_expr;
 pub use conversion::{multipoly_from_expr, multipoly_to_expr};
 pub(crate) use gcd::gcd_multivar_layer2;
 pub use gcd::{gcd_multivar_layer25, GcdBudget, GcdLayer, Layer25Budget};
