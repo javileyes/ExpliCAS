@@ -6249,6 +6249,48 @@ fn try_solve_product_inequality_sign_split(
     {
         return None;
     }
+    // SOUNDNESS gate (audit 2026-07-30, U1b-001): the interval algebra below
+    // resolves min/max with `compare_values`, whose last resort is STRUCTURAL
+    // order. With free-parameter endpoints (`a`, `b`) that order is invented —
+    // `solve((x-a)*(x-b)<0)` published `(a, b)` unconditionally (false for
+    // a ≥ b, and the `(x-a)^2*(x-b)` variant silently collapsed the `x ≠ a`
+    // puncture). If ANY pair of finite endpoints across the four branch sets
+    // has no exact value order, DECLINE — the expanded spelling of the same
+    // inequality already declines honestly, and this route must not do worse.
+    // Pairs a real oracle decides (numeric, surds, constant differences like
+    // `a−3` vs `a+3`) pass through and keep their exact assembly.
+    {
+        let mut endpoints: Vec<cas_ast::ExprId> = Vec::new();
+        for set in [&f_pos, &f_neg, &g_pos, &g_neg] {
+            let intervals: &[cas_ast::Interval] = match set {
+                SolutionSet::Continuous(interval) => std::slice::from_ref(interval),
+                SolutionSet::Union(intervals) => intervals,
+                _ => continue,
+            };
+            for interval in intervals {
+                for bound in [interval.min, interval.max] {
+                    if !cas_solver_core::solution_set::is_infinity(&simplifier.context, bound)
+                        && !cas_solver_core::solution_set::is_neg_infinity(
+                            &simplifier.context,
+                            bound,
+                        )
+                        && !endpoints.contains(&bound)
+                    {
+                        endpoints.push(bound);
+                    }
+                }
+            }
+        }
+        for (i, &low) in endpoints.iter().enumerate() {
+            for &high in &endpoints[i + 1..] {
+                cas_solver_core::solution_set::try_compare_values(
+                    &simplifier.context,
+                    low,
+                    high,
+                )?;
+            }
+        }
+    }
     let want_positive = matches!(op, RelOp::Gt | RelOp::Geq);
     let (case_a, case_b) = if want_positive {
         (

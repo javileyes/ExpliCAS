@@ -11572,3 +11572,47 @@ fn eval_atom_substitution_narrates_the_u_polynomial_without_leaking_the_syntheti
         );
     }
 }
+
+#[test]
+fn parametric_product_inequality_declines_instead_of_inventing_order() {
+    // SOUNDNESS (auditoría 2026-07-30, ficha U1b-001 / F9): la ruta factorizada
+    // publicaba `(a, b)` SIN condición — el orden salía del comparador
+    // ESTRUCTURAL, no del valor (falso para a ≥ b; con a=2,b=1 el intervalo es
+    // vacío). La forma EXPANDIDA de la misma inecuación declina honesta; la
+    // factorizada debe alcanzar el mismo decline, nunca afirmar de más.
+    for expr in [
+        "solve((x-a)*(x-b)<0, x)",
+        "solve((x-a)*(x-b)>0, x)",
+        "solve((x-a)*(x-b)<=0, x)",
+        "solve((x-a)*(x-b)>=0, x)",
+        "solve((x-z)*(x-a)<0, x)",
+        "solve((x-a)*(x-b)*(x-c)<0, x)",
+    ] {
+        let (output, _code) = run_cli(&["eval", expr, "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["ok"], false, "{expr} must decline, got: {output}");
+        assert_eq!(wire["kind"], "SolverError", "{expr}: {output}");
+    }
+}
+
+#[test]
+fn parametric_endpoints_with_decidable_difference_order_exactly() {
+    // El gemelo DECIDIBLE (misma ficha): los extremos `a−3` / `a+3` difieren en
+    // la constante 6, así que el oráculo de diferencia polinómica los ordena
+    // para TODO valor de `a` y el intervalo sale exacto e incondicional —
+    // graduado, no declinado. Los vecinos numéricos/surds/mixtos siguen
+    // resolviendo, y los moldes abs quedan intactos (F7).
+    for (expr, expected) in [
+        ("solve((x-(a-3))*(x-(a+3))<=0, x)", "[a - 3, a + 3]"),
+        ("solve((x-2)*(x-1)<0, x)", "(1, 2)"),
+        ("solve((x-sqrt(2))*(x-sqrt(3))<0, x)", "(sqrt(2), sqrt(3))"),
+        ("solve((e^x-1)*(x-2)<0, x)", "(0, 2)"),
+        ("solve(abs(x)<b, x)", "(-b, b) if b > 0"),
+        ("solve(abs(x-a)<=3, x)", "[a - 3, a + 3]"),
+    ] {
+        let (output, _code) = run_cli(&["eval", expr, "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["ok"], true, "{expr} must solve, got: {output}");
+        assert_eq!(wire["result"], expected, "{expr}: {output}");
+    }
+}

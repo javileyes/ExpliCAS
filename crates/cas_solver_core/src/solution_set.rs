@@ -101,8 +101,52 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
         }
     }
 
+    // Symbolic endpoints whose DIFFERENCE is a rational constant (`a+3` vs
+    // `a−3`): the value order is uniform in the shared variable. Without this,
+    // `solve((x-(a-3))*(x-(a+3))<=0)` fell to the structural fallback and
+    // published the INVERTED interval `[a+3, a−3]` (audit 2026-07-30, U1b-001).
+    if let Some(ord) = compare_by_constant_polynomial_difference(ctx, a, b) {
+        return ord;
+    }
+
     // Fallback: Use structural comparison if we can't compare values
     cas_ast::ordering::compare_expr(ctx, a, b)
+}
+
+/// Value order of two symbolic expressions decided by their DIFFERENCE being a
+/// rational constant: both sides parse as rational-coefficient polynomials in
+/// the SAME single variable and every non-constant coefficient cancels
+/// (`a + 3` vs `a − 3` ⟹ difference 6 ⟹ `Greater`, for EVERY value of `a`).
+/// Returns `None` when the difference depends on the variable or either side
+/// is not such a polynomial — never guesses.
+fn compare_by_constant_polynomial_difference(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+) -> Option<Ordering> {
+    use cas_math::polynomial::Polynomial;
+    let mut vars = cas_ast::traversal::collect_variables(ctx, a);
+    vars.extend(cas_ast::traversal::collect_variables(ctx, b));
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.into_iter().next()?;
+    let pa = Polynomial::from_expr(ctx, a, &var).ok()?;
+    let pb = Polynomial::from_expr(ctx, b, &var).ok()?;
+    let len = pa.coeffs.len().max(pb.coeffs.len());
+    let zero = BigRational::from_integer(0.into());
+    let mut constant_diff = zero.clone();
+    for i in 0..len {
+        let ca = pa.coeffs.get(i).unwrap_or(&zero);
+        let cb = pb.coeffs.get(i).unwrap_or(&zero);
+        let diff = ca - cb;
+        if i == 0 {
+            constant_diff = diff;
+        } else if !diff.is_zero() {
+            return None;
+        }
+    }
+    Some(constant_diff.cmp(&zero))
 }
 
 /// Fallible value comparison: the oracle chain of [`compare_values`]
@@ -159,6 +203,9 @@ pub fn try_compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Option<Orderin
         if a_lo > b_hi {
             return Some(Ordering::Greater);
         }
+    }
+    if let Some(ord) = compare_by_constant_polynomial_difference(ctx, a, b) {
+        return Some(ord);
     }
     if cas_ast::ordering::compare_expr(ctx, a, b) == Ordering::Equal {
         return Some(Ordering::Equal);
@@ -280,6 +327,7 @@ fn compare_nth_root_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Orderin
 
 /// Order two expression ids so the first is `<=` the second under `compare_values`.
 pub(crate) fn order_pair_by_value(ctx: &Context, a: ExprId, b: ExprId) -> (ExprId, ExprId) {
+    eprintln!("ORDER-PAIR-BY-VALUE called");
     if compare_values(ctx, a, b) == Ordering::Greater {
         (b, a)
     } else {
@@ -957,6 +1005,29 @@ fn assemble_intervals_and_points(
 mod tests {
     use super::*;
     use cas_ast::Context;
+
+    /// Audit 2026-07-30 (U1b-001): `a−3` vs `a+3` fell to the STRUCTURAL
+    /// fallback and `solve((x-(a-3))*(x-(a+3))<=0)` published the inverted
+    /// `[a+3, a−3]`. A constant polynomial difference orders the pair for
+    /// every value of the shared parameter; distinct parameters stay `None`.
+    #[test]
+    fn constant_polynomial_difference_orders_shifted_parameters() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let three = ctx.num(3);
+        let a_minus = ctx.add(Expr::Sub(a, three));
+        let a_plus = ctx.add(Expr::Add(a, three));
+        assert_eq!(compare_values(&ctx, a_minus, a_plus), Ordering::Less);
+        assert_eq!(
+            try_compare_values(&ctx, a_plus, a_minus),
+            Some(Ordering::Greater)
+        );
+        let b = ctx.var("b");
+        assert_eq!(try_compare_values(&ctx, a, b), None);
+        let five = ctx.num(5);
+        let two_a = ctx.add(Expr::Mul(five, a));
+        assert_eq!(try_compare_values(&ctx, two_a, a), None);
+    }
 
     #[test]
     fn union_absorbs_degenerate_points_bridging_open_intervals() {
