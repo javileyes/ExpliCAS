@@ -10417,6 +10417,15 @@ fn matches_direct_sqrt_perfect_square_abs_zero_identity_root(
     ctx: &mut Context,
     expr: ExprId,
 ) -> bool {
+    // REAL-ONLY (mirrors SimplifySquareRootRule): the blessed pair is
+    // `√(X²) ≡ |X|`, false over ℂ (`√(i²) = i ≠ 1 = |i|`). The matcher
+    // signature predates the value-domain axis; the ambient pipeline domain
+    // carries it here (audit 2026-07-30, ficha S4-001).
+    if crate::rules::arithmetic::ambient_pipeline_value_domain()
+        != crate::semantics::ValueDomain::RealOnly
+    {
+        return false;
+    }
     let view = AddView::from_expr(ctx, expr);
     if !(2..=4).contains(&view.terms.len()) {
         return false;
@@ -11249,6 +11258,14 @@ fn matches_direct_log_difference_squares_split_zero_identity_root(
 }
 
 fn matches_direct_ln_abs_product_split_zero_identity_root(ctx: &mut Context, expr: ExprId) -> bool {
+    // REAL-ONLY: `ln|X·Y| ≡ ln|X| + ln|Y|` and `ln(X²) ≡ 2·ln|X|` are
+    // real-domain identities (over ℂ, ln(i²) = iπ ≠ 0 = 2·ln|i|); ambient
+    // axis, same rationale as the sqrt-abs matcher (ficha S4-001).
+    if crate::rules::arithmetic::ambient_pipeline_value_domain()
+        != crate::semantics::ValueDomain::RealOnly
+    {
+        return false;
+    }
     let view = AddView::from_expr(ctx, expr);
     if view.terms.len() != 3 {
         return false;
@@ -26498,7 +26515,9 @@ impl Orchestrator {
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         self.initialize_deadline_if_needed();
         let _probe_budget_scope =
-            crate::rules::arithmetic::enter_default_simplify_probe_budget_scope();
+            crate::rules::arithmetic::enter_default_simplify_probe_budget_scope(
+                self.options.shared.semantics.value_domain,
+            );
 
         if self.time_budget_exceeded() {
             return self.finish_timed_out_pipeline(

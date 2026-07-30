@@ -11616,3 +11616,49 @@ fn parametric_endpoints_with_decidable_difference_order_exactly() {
         assert_eq!(wire["result"], expected, "{expr}: {output}");
     }
 }
+
+#[test]
+fn complex_value_domain_declines_real_only_zero_identities() {
+    // SOUNDNESS (auditoría 2026-07-30, ficha S4-001): los atajos zero-identity
+    // colapsaban a 0 identidades SOLO-ℝ bajo --value-domain complex
+    // (`sqrt(x^2)-abs(x)` → 0 con required_display=[] mientras el MISMO motor
+    // declina `sqrt(x^2)` suelto por real-only — autocontradicción). Tres
+    // fugas del eje: las sondas especulativas corrían con
+    // SimplifyOptions::default() (RealOnly), los matchers estructurales del
+    // par no podían consultar el eje, y LogPerfectSquareRule no lo miraba.
+    // En ℂ: sqrt(i²) = i ≠ 1 = |i|; ln(i²) = iπ ≠ 0 = 2·ln|i|.
+    for expr in [
+        "sqrt(x^2)-abs(x)",
+        "abs(x)-sqrt(x^2)",
+        "sqrt(x^4)-x^2",
+        "sqrt(x^2*y^2)-abs(x*y)",
+        "sqrt((x-1)^2)-abs(x-1)",
+        "sqrt((x+2)^2)-abs(x+2)",
+        "sqrt(4*x^2)-2*abs(x)",
+        "sqrt(9*x^2)-3*abs(x)",
+        "2*ln(abs(x))-ln(x^2)",
+        "ln(x^2)-2*ln(abs(x))",
+    ] {
+        let (output, _code) = run_cli(&[
+            "eval",
+            expr,
+            "--value-domain",
+            "complex",
+            "--format",
+            "json",
+        ]);
+        let wire = parse_wire(&output);
+        assert_ne!(
+            wire["result"], "0",
+            "{expr} must NOT collapse to 0 under complex: {output}"
+        );
+        // The real-domain twin keeps its exact collapse (byte-identical
+        // real-mode behavior is the fix's contract).
+        let (real_output, _code) = run_cli(&["eval", expr, "--format", "json"]);
+        let real_wire = parse_wire(&real_output);
+        assert_eq!(
+            real_wire["result"], "0",
+            "{expr} must still collapse in real mode: {real_output}"
+        );
+    }
+}

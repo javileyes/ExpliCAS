@@ -1690,12 +1690,34 @@ thread_local! {
     // refusals (budget exhausted / nesting cap) are NOT cached. Entries stay
     // across pipelines ON PURPOSE (the solver re-probes the same subtrees from
     // dozens of pipelines); memory is bounded by a size cap at arming time.
-    static DEFAULT_SIMPLIFY_PROBE_MEMO: std::cell::RefCell<rustc_hash::FxHashMap<(u64, cas_ast::ExprId), cas_ast::ExprId>> =
+    static DEFAULT_SIMPLIFY_PROBE_MEMO: std::cell::RefCell<rustc_hash::FxHashMap<(u64, cas_ast::ExprId, crate::semantics::ValueDomain), cas_ast::ExprId>> =
         std::cell::RefCell::new(rustc_hash::FxHashMap::default());
+    // Ambient VALUE DOMAIN for the speculative probe pipelines, armed by the
+    // top-level pipeline alongside the probe budget. Without it every probe
+    // ran with `SimplifyOptions::default()` (= RealOnly), so real-only
+    // identities (`√(x²) ≡ |x|`) proved "equivalences" that the OUTER
+    // complex-mode session then adopted — `sqrt(9x²) − 3|x| → 0` under
+    // `--value-domain complex` (audit 2026-07-30, ficha S4-001). RealOnly
+    // default keeps every real-mode caller byte-identical (the sticky
+    // value-domain precedent of the solve backend).
+    static DEFAULT_SIMPLIFY_PROBE_VALUE_DOMAIN: std::cell::Cell<crate::semantics::ValueDomain> =
+        const { std::cell::Cell::new(crate::semantics::ValueDomain::RealOnly) };
+}
+
+/// The value domain of the ENCLOSING top-level pipeline (armed in
+/// `simplify_pipeline_inner` alongside the probe budget; RealOnly outside any
+/// armed pipeline, e.g. unit contexts). Speculative probe pipelines AND the
+/// structural real-only zero-identity matchers consult it — the matcher
+/// signatures (`(ctx, expr) -> bool`, ~45 fns) predate the value-domain axis,
+/// and this ambient carries the axis to them without rewriting every helper
+/// (audit 2026-07-30, causa C2).
+pub(crate) fn ambient_pipeline_value_domain() -> crate::semantics::ValueDomain {
+    DEFAULT_SIMPLIFY_PROBE_VALUE_DOMAIN.with(|vd| vd.get())
 }
 
 pub(crate) struct DefaultSimplifyProbeBudgetScope {
     saved: Option<Option<u32>>,
+    saved_value_domain: Option<crate::semantics::ValueDomain>,
 }
 
 impl Drop for DefaultSimplifyProbeBudgetScope {
@@ -1706,26 +1728,42 @@ impl Drop for DefaultSimplifyProbeBudgetScope {
         if let Some(saved) = self.saved {
             DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.set(saved));
         }
+        if let Some(saved) = self.saved_value_domain {
+            DEFAULT_SIMPLIFY_PROBE_VALUE_DOMAIN.with(|vd| vd.set(saved));
+        }
     }
 }
 
-/// Arm the per-pipeline probe budget for a TOP-LEVEL simplify pipeline
-/// (nested probe pipelines run with nesting > 0 and must not re-arm
-/// it). The returned guard restores the previous budget state when the
-/// pipeline exits.
-pub(crate) fn enter_default_simplify_probe_budget_scope() -> DefaultSimplifyProbeBudgetScope {
+/// Arm the per-pipeline probe budget and ambient probe value domain for a
+/// TOP-LEVEL simplify pipeline (nested probe pipelines run with nesting > 0
+/// and must not re-arm them). The returned guard restores the previous state
+/// when the pipeline exits.
+pub(crate) fn enter_default_simplify_probe_budget_scope(
+    value_domain: crate::semantics::ValueDomain,
+) -> DefaultSimplifyProbeBudgetScope {
     if default_simplify_nesting_depth() == 0 {
         let saved = DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.get());
         DEFAULT_SIMPLIFY_PROBES_LEFT.with(|left| left.set(Some(DEFAULT_SIMPLIFY_PROBE_BUDGET)));
+        let saved_value_domain = DEFAULT_SIMPLIFY_PROBE_VALUE_DOMAIN.with(|vd| {
+            let previous = vd.get();
+            vd.set(value_domain);
+            previous
+        });
         DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| {
             let mut memo = memo.borrow_mut();
             if memo.len() > 4096 {
                 memo.clear();
             }
         });
-        DefaultSimplifyProbeBudgetScope { saved: Some(saved) }
+        DefaultSimplifyProbeBudgetScope {
+            saved: Some(saved),
+            saved_value_domain: Some(saved_value_domain),
+        }
     } else {
-        DefaultSimplifyProbeBudgetScope { saved: None }
+        DefaultSimplifyProbeBudgetScope {
+            saved: None,
+            saved_value_domain: None,
+        }
     }
 }
 
@@ -1765,7 +1803,8 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
     // Memo hit: replay the earlier probe result without consuming budget or
     // nesting (each expr is served the strength of its FIRST probe, which the
     // decaying budget makes the strongest one it would ever get).
-    let memo_key = (ctx.instance_tag(), expr);
+    let probe_value_domain = ambient_pipeline_value_domain();
+    let memo_key = (ctx.instance_tag(), expr, probe_value_domain);
     if let Some(cached) =
         DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| memo.borrow().get(&memo_key).copied())
     {
@@ -1790,6 +1829,7 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
     if nesting > 0 || force_local {
         let mut simplifier = crate::Simplifier::with_default_rules();
         simplifier.set_collect_steps(false);
+        simplifier.set_sticky_value_domain(probe_value_domain);
         std::mem::swap(&mut simplifier.context, ctx);
         let pattern_marks = crate::pattern_marks::PatternMarks::new();
         let rewritten = crate::with_suppressed_depth_overflow_warnings(|| {
@@ -1817,14 +1857,14 @@ fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> ca
 
     let mut simplifier = crate::Simplifier::with_default_rules();
     simplifier.set_collect_steps(false);
+    simplifier.set_sticky_value_domain(probe_value_domain);
     std::mem::swap(&mut simplifier.context, ctx);
-    let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(
-        expr,
-        crate::SimplifyOptions {
-            suppress_depth_overflow_warnings: true,
-            ..crate::SimplifyOptions::default()
-        },
-    );
+    let mut probe_options = crate::SimplifyOptions {
+        suppress_depth_overflow_warnings: true,
+        ..crate::SimplifyOptions::default()
+    };
+    probe_options.shared.semantics.value_domain = probe_value_domain;
+    let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(expr, probe_options);
     std::mem::swap(&mut simplifier.context, ctx);
     DEFAULT_SIMPLIFY_PROBE_MEMO.with(|memo| memo.borrow_mut().insert(memo_key, rewritten));
     rewritten

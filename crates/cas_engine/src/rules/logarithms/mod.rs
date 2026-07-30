@@ -216,7 +216,13 @@ define_rule!(
     LogPerfectSquareRule,
     "Factor Perfect Square in Logarithm",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        // REAL-ONLY (mirrors SqrtPerfectSquareRule): every arm emits a
+        // `2·ln(|f|)` form — a real-domain identity. Over ℂ,
+        // ln(i²) = iπ ≠ 0 = 2·ln(|i|) (audit 2026-07-30, ficha S4-001).
+        if parent_ctx.value_domain() != crate::semantics::ValueDomain::RealOnly {
+            return None;
+        }
         let rewrite = try_rewrite_log_perfect_square_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }

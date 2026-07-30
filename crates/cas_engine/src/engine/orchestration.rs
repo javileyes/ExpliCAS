@@ -68,9 +68,15 @@ impl Simplifier {
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>) {
-        // Create initial ParentContext with pattern marks
+        // Create initial ParentContext with pattern marks. It carries the
+        // simplifier's sticky value domain (RealOnly default keeps every
+        // non-sticky caller byte-identical): local phases run real-only
+        // rules like `√(x²) → |x|` through the same parent-context gate as
+        // the full pipeline, so a probe armed for ComplexEnabled cannot
+        // prove real-only identities here (audit 2026-07-30, S4-001).
         let shared_marks = std::rc::Rc::new(pattern_marks.clone());
-        let initial_parent_ctx = crate::parent_context::ParentContext::with_marks_rc(shared_marks);
+        let initial_parent_ctx = crate::parent_context::ParentContext::with_marks_rc(shared_marks)
+            .with_value_domain(self.sticky_value_domain);
         let profile_fast_path = self.using_profile_fast_path().then(|| {
             std::sync::Arc::clone(
                 self.profile
