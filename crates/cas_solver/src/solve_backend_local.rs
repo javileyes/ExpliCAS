@@ -15,7 +15,6 @@ use cas_math::root_forms::sign_of_linear_surd as linear_surd_sign;
 // Canonical exact surd/nth-root comparators (were private copies; chokepoint A part 2).
 use cas_math::root_forms::{cmp_rational_to_nth_root, cmp_rational_to_quadratic_surd};
 use cas_solver_core::domain_condition::ImplicitCondition;
-use std::collections::HashMap;
 
 use crate::solve_backend_contract::{CoreSolverOptions, SolveBackend};
 
@@ -190,7 +189,7 @@ fn solution_contains_nonfinite(ctx: &Context, expr: ExprId) -> bool {
 
 /// Classification of a candidate root by back-substitution into the original
 /// equation, evaluated numerically over the reals.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RootCheck {
     /// Both sides evaluate to the same finite real — a genuine solution.
     Verified,
@@ -205,39 +204,38 @@ enum RootCheck {
 /// case-split solver returns without verification (e.g. `solve(|x| = x-1)`
 /// returns `1/2`, but `|1/2| = 1/2 ≠ 1/2 - 1 = -1/2`).
 ///
-/// CONSERVATIVE: only ever reports `Extraneous` for a small RATIONAL root with a
-/// well-scaled numeric residual. Irrational roots (e.g. `500000 - 127·sqrt(...)`,
-/// the small root of `x^2 - 1000000·x + 1`) evaluate via `f64` with catastrophic
-/// cancellation, so back-substitution there is unreliable — those stay `Unknown`
-/// (kept). Likewise large-magnitude values, where `f64` loses precision.
-fn check_root(ctx: &Context, eq: &Equation, var: &str, root: ExprId) -> RootCheck {
-    use cas_math::evaluator_f64::eval_f64;
-    use num_traits::ToPrimitive;
+/// EXACT (R2, auditoría 2026-07-30 fichas S2b-001/S3-002/Q3c-001): the old
+/// f64 back-substitution dropped EXACT rational roots because its tolerance
+/// scaled with the RESULT while the rounding error scales with the
+/// COEFFICIENTS (`solve((585738843·x − 85131377)·(x−2) = 0)` published the
+/// PARTIAL set `{2}` with empty warnings; the `(x+2^k)²`-family flipped to
+/// "No solution" exactly at 54 bits), and its confirming direction published
+/// spurious roots the exact oracle refutes (`sqrt(x) + 10^(-10) = 0` →
+/// `{10^(-20)}`). Now: substitute the rational candidate and decide the sign
+/// of `lhs − rhs` with the exact constant oracle (interval arithmetic with
+/// directed rounding; rationals, surds, abs, π/e, Taylor-bounded trig).
+/// `Zero` ⟹ Verified, `Positive`/`Negative` ⟹ Extraneous, undecidable ⟹
+/// Unknown (kept — a probe never confirms, and here not even refutes,
+/// beyond what is PROVEN). No magnitude cap: exact arithmetic does not
+/// cancel catastrophically.
+fn check_root(ctx: &mut Context, eq: &Equation, var: &str, root: ExprId) -> RootCheck {
+    use cas_math::const_sign::{provable_const_sign, ConstSign};
+    use cas_solver_core::substitution::substitute_named_var;
 
-    // Only a rational root is reliably checkable by float back-substitution.
-    let Some(root_q) = cas_math::numeric_eval::as_rational_const(ctx, root) else {
-        return RootCheck::Unknown;
-    };
-    let Some(rv) = root_q.to_f64() else {
-        return RootCheck::Unknown;
-    };
-    // Keep large-magnitude roots conservatively: `f64` back-substitution there
-    // (e.g. `(10^15)^2`) cancels catastrophically and could drop a valid root.
-    if !rv.is_finite() || rv.abs() > 1e6 {
+    // Contract unchanged: only rational candidates are back-checked;
+    // symbolic/irrational roots stay Unknown (kept).
+    if cas_math::numeric_eval::as_rational_const(ctx, root).is_none() {
         return RootCheck::Unknown;
     }
-    let mut map = HashMap::new();
-    map.insert(var.to_string(), rv);
-    match (eval_f64(ctx, eq.lhs, &map), eval_f64(ctx, eq.rhs, &map)) {
-        (Some(l), Some(r)) if l.is_finite() && r.is_finite() && l.abs() < 1e9 && r.abs() < 1e9 => {
-            let tol = 1e-9 * (1.0 + l.abs() + r.abs());
-            if (l - r).abs() <= tol {
-                RootCheck::Verified
-            } else {
-                RootCheck::Extraneous
-            }
-        }
-        _ => RootCheck::Unknown,
+    let lhs_at = substitute_named_var(ctx, eq.lhs, var, root);
+    let rhs_at = substitute_named_var(ctx, eq.rhs, var, root);
+    let diff = ctx.add(Expr::Sub(lhs_at, rhs_at));
+    match provable_const_sign(ctx, diff) {
+        Some(ConstSign::Zero) => RootCheck::Verified,
+        Some(ConstSign::Positive) | Some(ConstSign::Negative) => RootCheck::Extraneous,
+        // Includes undefined at the candidate (e.g. a vanishing denominator):
+        // the domain-condition filters own that classification.
+        None => RootCheck::Unknown,
     }
 }
 
@@ -13122,6 +13120,53 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn check_root_is_exact_not_f64() {
+        // SOUNDNESS (auditoría 2026-07-30, fichas S2b-001/S3-002/Q3c-001):
+        // the old f64 back-substitution (a) DROPPED exact rational roots
+        // because its tolerance scaled with the result while the rounding
+        // error scales with the coefficients, and (b) CONFIRMED spurious
+        // roots whose residual sat under the 1e-9 tolerance.
+        use super::{check_root, RootCheck};
+        use cas_ast::Equation;
+        use cas_parser::parse;
+        let mut ctx = Context::new();
+        let eq_of = |ctx: &mut Context, l: &str, r: &str| Equation {
+            lhs: parse(l, ctx).expect("lhs"),
+            rhs: parse(r, ctx).expect("rhs"),
+            op: cas_ast::RelOp::Eq,
+        };
+
+        // (a) 9-digit-coefficient linear: the exact root must VERIFY (the old
+        // gate refuted it — f64 residual ≈ 1e-8 > tol ≈ 1e-9).
+        let eq = eq_of(&mut ctx, "(585738843*x - 85131377)*(x-2)", "0");
+        let root = parse("85131377/585738843", &mut ctx).expect("root");
+        assert_eq!(check_root(&mut ctx, &eq, "x", root), RootCheck::Verified);
+
+        // (a') the 54-bit flip family: (x+2^40)² − 2^80 − 2^41·x = 1/4 at
+        // x = 1/2 — unrepresentable in f64, exact in BigRational.
+        let eq = eq_of(&mut ctx, "(x+2^40)^2 - 2^80 - 2^41*x", "1/4");
+        let half = parse("1/2", &mut ctx).expect("half");
+        assert_eq!(check_root(&mut ctx, &eq, "x", half), RootCheck::Verified);
+
+        // (b) spurious root under the old tolerance: sqrt(10^-20) + 10^-10 =
+        // 2·10^-10 > 0, PROVABLY nonzero — must be Extraneous.
+        let eq = eq_of(&mut ctx, "sqrt(x) + 10^(-10)", "0");
+        let tiny = parse("1/100000000000000000000", &mut ctx).expect("tiny");
+        assert_eq!(check_root(&mut ctx, &eq, "x", tiny), RootCheck::Extraneous);
+
+        // Motivating case preserved: |1/2| ≠ 1/2 − 1 (needs the new exact
+        // Abs interval arm in const_sign).
+        let eq = eq_of(&mut ctx, "abs(x)", "x - 1");
+        let half = parse("1/2", &mut ctx).expect("half");
+        assert_eq!(check_root(&mut ctx, &eq, "x", half), RootCheck::Extraneous);
+
+        // Irrational candidates keep the historical contract: Unknown (kept).
+        let eq = eq_of(&mut ctx, "x^2", "2");
+        let surd = parse("sqrt(2)", &mut ctx).expect("surd");
+        assert_eq!(check_root(&mut ctx, &eq, "x", surd), RootCheck::Unknown);
+    }
 
     #[test]
     fn symbolic_poly_degree_in_var_measures_and_rejects_nonpoly() {

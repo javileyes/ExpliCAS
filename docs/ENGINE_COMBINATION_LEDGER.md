@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 770 (newest first)
+Active entries: 771 (newest first)
 
 - 2026-07-30 | `retained` | `scripts/sound_probe.py` (nuevo, oráculo exacto R11), `scripts/corpus_behavio... | ARQUITECTURA/GATES (ciclo 0 de la remediación del informe integral): los gates del plan pasan de prosa a ejecutables
 - 2026-07-30 | `retained` | `cas_math/numeric_eval.rs` (`numeric_poly_zero_check` + variante `_structural... | SOUNDNESS (ciclo 1 de la remediación: el decisor de cero exacto): las 3 vías insonoras de numeric_poly_zero_check muertas, con paridad de capacidad por 9 familias de identidad exacta
+- 2026-07-30 | `retained` | `cas_solver/solve_backend_local.rs` (`check_root`: sustitución con `substitut... | SOUNDNESS (ciclo 2 de la remediación: check_root exacto): la sustitución-atrás de raíces deja el f64 y decide con el oráculo de intervalos
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
@@ -22886,3 +22887,23 @@ Active entries: 770 (newest first)
   - **5ª reaparición del matcher de exponentes**: `Pow(x, Neg(Div(3,2)))` es invisible para todo match de `Number` desnudo — `as_rational_const` es el extractor canónico TAMBIÉN para exponentes. Dos horas de depuración para reencontrar la lección que el ledger ya tenía escrita.
   - **En un decisor de cero, «indefinido en un solo lado» y «átomo partido por expand» son la misma clase de trampa**: la preparación (expand, fórmulas de adición) puede destruir la estructura que la decisión necesita — decidir sobre la forma CRUDA primero es gratis y estrictamente más completo.
   - **Instrumentar el call-site resolvió cada impasse en una corrida** (4 veces en este ciclo): el veredicto por consumidor con la forma literal (`ZC_NUM false num=...`) convierte «no sé por qué no cierra» en «le falta exactamente esta relación».
+
+## 2026-07-30 - SOUNDNESS (ciclo 2 de la remediación: check_root exacto): la sustitución-atrás de raíces deja el f64 y decide con el oráculo de intervalos
+
+- area: `cas_solver/solve_backend_local.rs` (`check_root`: sustitución con `substitute_named_var` + signo por `provable_const_sign`; sin cap de magnitud; test pin de 5 brazos), `cas_math/const_sign.rs` (brazo `Abs` de intervalo exacto; potencia EXACTA de intervalo degenerado — `2^80` excedía el cap 64 del interval_pow y toda la consulta caía a Unknown; guarda por CRECIMIENTO DE BITS del resultado en vez de por exponente). Fichas S2b-001, S3-002, Q3c-001 de `docs/AUDITORIA_INTEGRAL_2026-07-30.md`.
+- status: `retained`. Los wrong answers del audit, con reproducción antes/después:
+  - `solve((585738843·x − 85131377)·(x−2) = 0)` publicaba el conjunto PARCIAL `{2}` con warnings vacíos (la tolerancia escalaba con el RESULTADO y el error de redondeo con los COEFICIENTES) → ahora `{85131377/585738843, 2}`;
+  - la familia discriminante `(x+2^k)² − 2^(2k) − 2^(k+1)x = 1/4` volteaba a «No solution» exactamente en 54 bits → k=26 y k=40 dan `{−1/2, 1/2}`;
+  - `solve(sqrt(x) + 10^(−10) = 0)` publicaba la raíz ESPURIA `{10^(−20)}` (residuo 2·10^(−10) bajo la tolerancia) → «No solution».
+  Casos motivadores preservados: `|x| = x−1` → No solution (vía el brazo Abs nuevo), `|x| = x+1` → `{−1/2}`; candidatas irracionales siguen Unknown (contrato histórico).
+- capture:
+  - **Contrato nuevo**: candidata racional ⟹ construir `lhs(root) − rhs(root)` por sustitución estructural y decidir el SIGNO con el oráculo exacto (intervalos con redondeo dirigido; racionales, surds, abs, π/e, trig con resto de Taylor). `Zero`⟹Verified, `Positive/Negative`⟹Extraneous, indecidible⟹Unknown (se conserva). El cap de |raíz|≤1e6 desaparece: la aritmética exacta no cancela catastróficamente.
+  - **La reutilización pagó** (lección del ciclo 1 aplicada): cero maquinaria nueva — sustitución de solver_core + oráculo de const_sign; el ciclo entero son 3 archivos y las dos extensiones del oráculo benefician a TODOS sus consumidores.
+  - Bisección de una sorpresa: el pin `2^80` daba Unknown pese al camino «trivial» — el cap de exponente 64 de `interval_pow` es correcto para intervalos anchos (anti-blowup del bucle de ensanchado) pero un intervalo DEGENERADO es una potencia racional única; la guarda correcta acota los BITS del resultado (numer/denom·exp ≤ 2^20), no el exponente.
+- observed:
+  - Cadena completa VERDE: workspace `--no-fail-fast` 359 suites/0 fallos; clippy 0; engine-fast/scorecard/pressure/wasm OK. GATE-A: corpus **0/221**. GATE-B: total 1.76–1.79s vs base 1.79s en 3 corridas; ofensores por fila de identidad NO repetible (jitter sobre el suelo de 1 ms — el suelo es marginal para filas de ~2 ms; candidato Q: mediana-de-5 o suelo 1.5 ms en `corpus_timing.py`). GATE-C: huella estructural **0 y 0** campos distintos (guardrail y pressure).
+  - Pin nuevo `check_root_is_exact_not_f64` (5 brazos: lineal 9 dígitos Verified, 2^80 Verified, espuria Extraneous, |x| Extraneous, surd Unknown). 2177 verdes en cas_math, 1196 en cas_solver lib.
+- decision: retener. Quedan de la misma ficha-familia (Q3c-005) los gates f64 de la bicuadrática y el factor cuártico — MISMO patrón de remedio (sustituir y preguntar al oráculo), candidato directo del próximo ciclo si el barrido lo confirma vivo.
+- retained learning:
+  - **«Sustituir y preguntar al oráculo» es el molde entero del carril C1**: donde un gate f64 decide drop/keep sobre un CANDIDATO CONCRETO, el remedio es siempre construir la expresión constante y decidir con `provable_const_sign` — sin tolerancias, sin caps de magnitud, y con Unknown como salida honesta. El ciclo 1 costó una tarde por construir el sustituto; este costó una hora por reutilizarlo.
+  - **Un cap correcto para el caso general puede ser el bug del caso degenerado**: el exponente-64 protege el bucle de ensanchado de intervalos; para el intervalo-punto la métrica de peligro son los bits del RESULTADO. Clasificar la guarda por lo que de verdad acota, no por el parámetro más fácil de medir.

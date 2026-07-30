@@ -548,6 +548,19 @@ fn const_value_bounds_depth(
                 let num = ln_interval_bounds(bounds(args[1])?)?;
                 let den = interval_recip(ln_interval_bounds(bounds(args[0])?)?)?;
                 Some(interval_mul(num, den))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Abs) && args.len() == 1 {
+                // |a|: exact interval absolute value. Needed by the exact
+                // root back-substitution of solve (`|x| = x − 1` candidates).
+                let (al, ah) = bounds(args[0])?;
+                if !al.is_negative() {
+                    Some((al, ah))
+                } else if !ah.is_positive() {
+                    Some((-ah, -al))
+                } else {
+                    let neg_al = -al;
+                    let hi = if ah >= neg_al { ah } else { neg_al };
+                    Some((BigRational::zero(), hi))
+                }
             } else if ctx.is_builtin_call(expr, BuiltinFn::Sin) && args.len() == 1 {
                 // Rational point arg: direct Taylor (any |c| <= 100). Non-degenerate
                 // interval (an irrational arg like `sqrt(2)` or `pi/7`): bounded only
@@ -614,6 +627,24 @@ fn interval_pow(
     let n = exp.to_integer();
     // Bound the magnitude of the exponent to avoid blow-up.
     let abs_n = n.abs();
+    // DEGENERATE point interval: the power is a single exact rational — no
+    // widening loop, so a far larger exponent stays cheap. (`2^80` in the
+    // exact root back-substitution of solve exceeded the interval cap of 64
+    // and the whole sign query fell to Unknown.) The bit-growth guard bounds
+    // the result size instead of the exponent.
+    if base.0 == base.1 {
+        if let Some(times) = abs_n.to_u32() {
+            let bits = base.0.numer().bits().max(base.0.denom().bits());
+            if times <= 4096 && bits.saturating_mul(times as u64) <= 1 << 20 {
+                let v = rational_pow_u32(&base.0, times);
+                return if n.is_negative() {
+                    interval_recip((v.clone(), v))
+                } else {
+                    Some((v.clone(), v))
+                };
+            }
+        }
+    }
     if abs_n > BigInt::from(64) {
         return None;
     }
