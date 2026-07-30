@@ -1898,3 +1898,99 @@ fn difference_of_squares_cancel_substeps_publish_true_reparseable_pairs() {
         );
     }
 }
+
+#[test]
+fn telescopic_product_substeps_publish_true_reparseable_texts() {
+    // SOUNDNESS del texto (auditoría 2026-07-30, ficha D2-003): el emisor del
+    // producto telescópico publicaba tres falsedades — `1 + 2^2` (=5) donde el
+    // LaTeX decía `(1+2)^2` (=9), el numerador telescopado sin agrupar
+    // («(2 - 1 · n + 1) / (2 · n)», que re-parsea a (2-n)/(2n)), y el par
+    // LaTeX del primer substep INVERTIDO respecto a la firma de
+    // formula_substep. El contrato: cada fragmento parseable del texto debe
+    // re-parsear a una expresión EQUIVALENTE a lo que el paso afirma
+    // (equivalencia exacta, no assert de cadena).
+    for (expr, first_two_factors, closed_form) in [
+        (
+            "product(1 - 1/k^2, k, 2, n)",
+            "(1 - 1/2^2) * (1 - 1/(2+1)^2)",
+            "((2 - 1) * (n + 1)) / (2 * n)",
+        ),
+        (
+            "product(1 - 1/k^2, k, 5, n)",
+            "(1 - 1/5^2) * (1 - 1/(5+1)^2)",
+            "((5 - 1) * (n + 1)) / (5 * n)",
+        ),
+        (
+            "product(1 - 1/k^2, k, m, n)",
+            "(1 - 1/m^2) * (1 - 1/(m+1)^2)",
+            "((m - 1) * (n + 1)) / (m * n)",
+        ),
+    ] {
+        let steps = step_payloads_on_for(expr);
+        let mut engine = Engine::new();
+        let mut saw_factorize = false;
+        let mut saw_cancel = false;
+        for step in &steps {
+            for sub in &step.substeps {
+                if sub.title.starts_with("Usar (u^2 - 1)") {
+                    saw_factorize = true;
+                    // La serie factorizada lleva puntos suspensivos: sus dos
+                    // trozos parseables (dos primeros factores / último) deben
+                    // valer lo que el producto vale ahí de verdad.
+                    let (head, tail) = sub
+                        .after
+                        .split_once(" · … · ")
+                        .unwrap_or_else(|| panic!("series must carry ellipsis: {}", sub.after));
+                    let head_id = cas_parser::parse(head, &mut engine.simplifier.context)
+                        .unwrap_or_else(|e| panic!("series head must re-parse ({expr}): {e}"));
+                    let head_expected =
+                        cas_parser::parse(first_two_factors, &mut engine.simplifier.context)
+                            .expect("parse");
+                    let tail_id = cas_parser::parse(tail, &mut engine.simplifier.context)
+                        .unwrap_or_else(|e| panic!("series tail must re-parse ({expr}): {e}"));
+                    let tail_expected =
+                        cas_parser::parse("1 - 1/n^2", &mut engine.simplifier.context)
+                            .expect("parse");
+                    let latex = sub.before_latex.as_deref().unwrap_or_default();
+                    assert!(
+                        latex.contains("\\prod"),
+                        "first substep before_latex must be the product ({expr}): {latex}"
+                    );
+                    let latex_after = sub.after_latex.as_deref().unwrap_or_default();
+                    assert!(
+                        latex_after.contains("\\cdots"),
+                        "first substep after_latex must be the series ({expr}): {latex_after}"
+                    );
+                    assert!(
+                        engine.simplifier.are_equivalent(head_id, head_expected),
+                        "series head must be true ({expr}): {head}"
+                    );
+                    assert!(
+                        engine.simplifier.are_equivalent(tail_id, tail_expected),
+                        "series tail must be true ({expr}): {tail}"
+                    );
+                } else if sub.title.contains("telescópicamente") {
+                    saw_cancel = true;
+                    let telescoped = cas_parser::parse(&sub.after, &mut engine.simplifier.context)
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "telescoped text must re-parse ({expr}): {:?} :: {e}",
+                                sub.after
+                            )
+                        });
+                    let expected = cas_parser::parse(closed_form, &mut engine.simplifier.context)
+                        .expect("parse");
+                    assert!(
+                        engine.simplifier.are_equivalent(telescoped, expected),
+                        "telescoped text must equal the closed form ({expr}): {:?}",
+                        sub.after
+                    );
+                }
+            }
+        }
+        assert!(
+            saw_factorize && saw_cancel,
+            "both substeps must survive pruning for {expr}"
+        );
+    }
+}

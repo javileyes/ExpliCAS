@@ -4134,12 +4134,28 @@ fn generate_factorized_finite_product_substeps(ctx: &Context, step: &Step) -> Ve
         ),
     );
     let telescoped_plain = render_fraction_plain(
-        &format!("{first_minus_one_plain} · {last_plus_one_plain}"),
-        &format!("{first_plain} · {last_plain}"),
+        &format!(
+            "{} · {}",
+            group_factor_plain(&first_minus_one_plain),
+            group_factor_plain(&last_plus_one_plain)
+        ),
+        &format!(
+            "{} · {}",
+            group_factor_plain(&first_plain),
+            group_factor_plain(&last_plain)
+        ),
     );
     let telescoped_latex = render_fraction_latex(
-        &format!("{first_minus_one_latex}\\cdot {last_plus_one_latex}"),
-        &format!("{first_latex}\\cdot {last_latex}"),
+        &format!(
+            "{}\\cdot {}",
+            group_factor_latex(&first_minus_one_latex),
+            group_factor_latex(&last_plus_one_latex)
+        ),
+        &format!(
+            "{}\\cdot {}",
+            group_factor_latex(&first_latex),
+            group_factor_latex(&last_latex)
+        ),
     );
     let after_plain = human_expr(ctx, after);
     let after_latex = latex_expr(ctx, after);
@@ -4149,8 +4165,8 @@ fn generate_factorized_finite_product_substeps(ctx: &Context, step: &Step) -> Ve
             "Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2",
             &human_expr(ctx, before),
             &factorized_series_plain,
-            &factorized_series_latex,
             &latex_expr(ctx, before),
+            &factorized_series_latex,
         ),
         formula_substep(
             "Los factores (u + 1) y (u - 1) se cancelan telescópicamente",
@@ -8701,8 +8717,34 @@ fn render_fraction_latex(numerator: &str, denominator: &str) -> String {
     format!("\\frac{{{numerator}}}{{{denominator}}}")
 }
 
+/// True when the rendered fragment can sit next to `·` or under `^` without
+/// parentheses. Operates on already-rendered text, so the decision is by
+/// character class — the same operator set that `needs_parenthesized_power_base`
+/// uses in latex_plain_text.rs; anything in it means the fragment is composite.
+fn is_atomic_rendered_factor(fragment: &str) -> bool {
+    !fragment
+        .chars()
+        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/' | '^' | '*'))
+}
+
+fn group_factor_plain(fragment: &str) -> String {
+    if is_atomic_rendered_factor(fragment) {
+        fragment.to_string()
+    } else {
+        format!("({fragment})")
+    }
+}
+
+fn group_factor_latex(fragment: &str) -> String {
+    if is_atomic_rendered_factor(fragment) {
+        fragment.to_string()
+    } else {
+        format!("\\left({fragment}\\right)")
+    }
+}
+
 fn render_power2_plain(base: &str) -> String {
-    format!("{base}^2")
+    format!("{}^2", group_factor_plain(base))
 }
 
 fn render_power2_latex(base: &str) -> String {
@@ -25924,5 +25966,30 @@ mod common_denominator_numerator_tests {
             "the 2x lie must not resurface: {}",
             first.after_expr
         );
+    }
+}
+
+#[cfg(test)]
+mod telescoping_render_tests {
+    use super::{group_factor_latex, group_factor_plain, render_power2_plain};
+
+    /// Audit 2026-07-30 ficha D2-003: `render_power2_plain("1 + 2")` published
+    /// `1 + 2^2` (= 5) while its LaTeX twin said `(1+2)^2` (= 9) in the same
+    /// substep. A composite base must be grouped before `^` is appended.
+    #[test]
+    fn power2_plain_groups_composite_bases_only() {
+        assert_eq!(render_power2_plain("1 + 2"), "(1 + 2)^2");
+        assert_eq!(render_power2_plain("m + 1"), "(m + 1)^2");
+        assert_eq!(render_power2_plain("k^2"), "(k^2)^2");
+        assert_eq!(render_power2_plain("n"), "n^2");
+        assert_eq!(render_power2_plain("2"), "2^2");
+    }
+
+    #[test]
+    fn factor_grouping_wraps_composites_and_leaves_atoms() {
+        assert_eq!(group_factor_plain("2 - 1"), "(2 - 1)");
+        assert_eq!(group_factor_plain("n"), "n");
+        assert_eq!(group_factor_latex("n + 1"), "\\left(n + 1\\right)");
+        assert_eq!(group_factor_latex("m"), "m");
     }
 }
