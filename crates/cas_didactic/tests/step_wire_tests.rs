@@ -1844,3 +1844,57 @@ fn step_wire_events_fallback_prunes_pure_root_notation_canonicalization() {
             .collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn difference_of_squares_cancel_substeps_publish_true_reparseable_pairs() {
+    // SOUNDNESS del texto (auditoría 2026-07-30, fichas D2-001/D3-001): la
+    // segunda rama del emisor interpolaba los factores SIN agrupar —
+    // «(x - 1 · x + 1) / (x - 1)» re-parseaba a `1/(x-1)` y el substep
+    // afirmaba `1/(x-1) = x+1`, en texto Y en el LaTeX que la web pinta.
+    // El contrato: cada substep de la regla debe publicar un par
+    // before/after cuyo TEXTO re-parsee a expresiones EQUIVALENTES
+    // (assert de parseo + equivalencia exacta, no de cadena — un assert de
+    // cadena fue lo que dejó entrar el bug).
+    for expr in [
+        "(x^2-1)/(x-1)",
+        "(x^2-y^2)/(x+y)",
+        "((2*x)^2-9)/((2*x)-3)",
+        "(sin(x)^2-1)/(sin(x)-1)",
+    ] {
+        let steps = step_payloads_on_for(expr);
+        let mut checked = 0usize;
+        let mut engine = Engine::new();
+        for step in &steps {
+            for sub in &step.substeps {
+                if !sub.title.contains("cancela") {
+                    continue;
+                }
+                let before = cas_parser::parse(&sub.before, &mut engine.simplifier.context)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "substep before must re-parse ({expr}): {:?} :: {e}",
+                            sub.before
+                        )
+                    });
+                let after = cas_parser::parse(&sub.after, &mut engine.simplifier.context)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "substep after must re-parse ({expr}): {:?} :: {e}",
+                            sub.after
+                        )
+                    });
+                assert!(
+                    engine.simplifier.are_equivalent(before, after),
+                    "substep pair must be a true identity ({expr}): {:?} -> {:?}",
+                    sub.before,
+                    sub.after
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "the cancel substep must survive pruning for {expr}"
+        );
+    }
+}

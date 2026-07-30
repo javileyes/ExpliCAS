@@ -347,7 +347,7 @@ Steps:
         ->
         (x + 1) ·  (x - 1)
       [Ahora se cancela el factor x - 1]
-        (x - 1  ·  x + 1)/(x - 1)
+        ((x - 1) ·  (x + 1))/(x - 1)
         ->
         x + 1
    After: x + 1
@@ -371,7 +371,7 @@ Steps:
         - before_latex: `{x}^{2} - {1}^{2}`
         - after_latex: `(x + 1)\cdot (x - 1)`
      2. `Ahora se cancela el factor x - 1`
-        - before_latex: `\frac{x - 1 \cdot x + 1}{x - 1}`
+        - before_latex: `\frac{\left(x - 1\right)\cdot \left(x + 1\right)}{x - 1}`
         - after_latex: `x + 1`
 
 ## pythagorean_identity (trig)

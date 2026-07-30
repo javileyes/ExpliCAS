@@ -10904,8 +10904,16 @@ fn generate_difference_of_squares_cancel_substeps(ctx: &Context, step: &Step) ->
                 "Ahora se cancela el factor {}",
                 display_expr(ctx, canceled_factor)
             ),
+            // Group EACH factor: the old `format!("({} · {}) / ({})", …)`
+            // interpolated compound factors ungrouped, so `(x - 1 · x + 1)`
+            // re-parsed to `1` and the substep asserted `1/(x-1) = x+1`
+            // (auditoría 2026-07-30, fichas D2-001/D3-001 — false in TEXT
+            // and in the LaTeX the web renders). The canceled factor stays
+            // FIRST on purpose: showing it adjacent to the denominator is
+            // the didactic content that distinguishes this substep from the
+            // step header (whose canonical order the prune compares against).
             format!(
-                "({} · {}) / ({})",
+                "(({}) · ({})) / ({})",
                 display_expr(ctx, canceled_factor),
                 display_expr(ctx, other_factor),
                 display_expr(ctx, *denominator),
@@ -10913,7 +10921,7 @@ fn generate_difference_of_squares_cancel_substeps(ctx: &Context, step: &Step) ->
             display_expr(ctx, after),
         )
         .with_before_latex(format!(
-            "\\frac{{{} \\cdot {}}}{{{}}}",
+            "\\frac{{\\left({}\\right)\\cdot \\left({}\\right)}}{{{}}}",
             latex_expr(ctx, canceled_factor),
             latex_expr(ctx, other_factor),
             latex_expr(ctx, *denominator),
