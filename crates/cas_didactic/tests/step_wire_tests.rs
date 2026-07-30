@@ -1900,6 +1900,64 @@ fn difference_of_squares_cancel_substeps_publish_true_reparseable_pairs() {
 }
 
 #[test]
+fn cubes_quotient_substeps_publish_true_reparseable_pairs() {
+    // SOUNDNESS del texto (auditoría 2026-07-30, ficha D2-004): el emisor del
+    // cociente de cubos interpolaba con `format!` sin precedencia — publicaba
+    // «a^3 - b^3 / a - b» (que re-parsea a a³ − b³/a − b), con bases compuestas
+    // «x + 1^3 - y - 2^3» en texto Y LaTeX, y el substep de la identidad
+    // mostraba before == after (paso vacío con título que promete una
+    // factorización). El contrato: cada substep publica un par before/after
+    // que re-parsea a expresiones EQUIVALENTES y ningún par es la identidad
+    // textual.
+    for expr in [
+        "(a^3-b^3)/(a-b) - (a^2 + a*b + b^2)",
+        "((x+1)^3-(y-2)^3)/((x+1)-(y-2)) - ((x+1)^2 + (x+1)*(y-2) + (y-2)^2)",
+        "(a^3+b^3)/(a+b) - (a^2 - a*b + b^2)",
+        "(a^3-1)/(a-1) - (a^2+a+1)",
+    ] {
+        let steps = step_payloads_on_for(expr);
+        let mut engine = Engine::new();
+        let mut checked = 0usize;
+        for step in &steps {
+            if step.rule != "Subtract Expanded Sum/Difference of Cubes Quotient" {
+                continue;
+            }
+            for sub in &step.substeps {
+                let before = cas_parser::parse(&sub.before, &mut engine.simplifier.context)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "substep before must re-parse ({expr}): {:?} :: {e}",
+                            sub.before
+                        )
+                    });
+                let after = cas_parser::parse(&sub.after, &mut engine.simplifier.context)
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "substep after must re-parse ({expr}): {:?} :: {e}",
+                            sub.after
+                        )
+                    });
+                assert!(
+                    engine.simplifier.are_equivalent(before, after),
+                    "substep pair must be a true identity ({expr}): {:?} -> {:?}",
+                    sub.before,
+                    sub.after
+                );
+                assert_ne!(
+                    sub.before, sub.after,
+                    "no substep may be an empty textual identity ({expr})"
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked >= 2,
+            "both cubes substeps must survive pruning for {expr}, got {checked}"
+        );
+    }
+}
+
+#[test]
 fn telescopic_product_substeps_publish_true_reparseable_texts() {
     // SOUNDNESS del texto (auditoría 2026-07-30, ficha D2-003): el emisor del
     // producto telescópico publicaba tres falsedades — `1 + 2^2` (=5) donde el

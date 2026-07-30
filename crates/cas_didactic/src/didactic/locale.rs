@@ -362,6 +362,7 @@ fn description_en_exact(es: &str) -> Option<&str> {
         "Usar que una potencia par elimina el signo" => "Use that an even power removes the sign",
         "Aquí arcsin(x) y arccos(x) suman pi/2" => "Here arcsin(x) and arccos(x) add up to pi/2",
         "Cancelar el factor común del numerador y del denominador" => "Cancel the common factor of numerator and denominator",
+        "Cancelar el factor común del numerador y el denominador" => "Cancel the common factor of numerator and denominator",
         "Detectar base cero con exponente variable" => "Detect a zero base with a variable exponent",
         "Detectar un polo dentro del intervalo de integración" => "Detect a pole inside the integration interval",
         "El exponente exterior cancela el ln del exponente interior" => "The outer exponent cancels the ln of the inner exponent",
@@ -558,6 +559,23 @@ mod tests {
     #[test]
     fn unknown_key_passes_through() {
         assert_eq!(translate("not.a.key", &[], Language::En), "not.a.key");
+    }
+
+    /// Audit 2026-07-30 ficha D2-004 (colateral i18n): the cubes-quotient
+    /// emitter's title used «y el denominador» while the table only listed
+    /// «y del denominador», so `--lang en` leaked the Spanish title.
+    #[test]
+    fn cubes_cancel_title_translates_in_both_spellings() {
+        for es in [
+            "Cancelar el factor común del numerador y el denominador",
+            "Cancelar el factor común del numerador y del denominador",
+        ] {
+            assert_eq!(
+                description_en_exact(es),
+                Some("Cancel the common factor of numerator and denominator"),
+                "missing translation for {es:?}"
+            );
+        }
     }
 
     #[test]

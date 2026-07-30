@@ -11801,41 +11801,52 @@ fn generate_subtract_expanded_cubes_quotient_substeps(ctx: &Context, step: &Step
     let base_right = plan.right_base;
     let kind = plan.kind;
 
-    let left_display = human_expr(ctx, base_left);
-    let right_display = human_expr(ctx, base_right);
-    let left_latex = latex_expr(ctx, base_left);
-    let right_latex = latex_expr(ctx, base_right);
     let identity_title = match kind {
         CubeIdentityKind::Sum => "Usar a^3 + b^3 = (a + b)(a^2 - ab + b^2)",
         CubeIdentityKind::Difference => "Usar a^3 - b^3 = (a - b)(a^2 + ab + b^2)",
     };
-    let numerator_display = match kind {
-        CubeIdentityKind::Sum => format!("{left_display}^3 + {right_display}^3"),
-        CubeIdentityKind::Difference => format!("{left_display}^3 - {right_display}^3"),
+    // Build the factored form and the quotient as raw TREES and let the real
+    // formatter parenthesize (audit 2026-07-30, ficha D2-004: hand-`format!`ed
+    // text published `a^3 - b^3 / a - b` and, with compound bases,
+    // `x + 1^3 - y - 2^3` — and the identity substep showed no factorization
+    // at all, so its before/after were identical).
+    let mut temp_ctx = ctx.clone();
+    let two = temp_ctx.num(2);
+    let left_sq = temp_ctx.add(Expr::Pow(base_left, two));
+    let right_sq = temp_ctx.add(Expr::Pow(base_right, two));
+    let cross = temp_ctx.add(Expr::Mul(base_left, base_right));
+    let (linear_factor, quadratic_factor) = match kind {
+        CubeIdentityKind::Sum => {
+            let linear = temp_ctx.add(Expr::Add(base_left, base_right));
+            let head = temp_ctx.add(Expr::Sub(left_sq, cross));
+            (linear, temp_ctx.add(Expr::Add(head, right_sq)))
+        }
+        CubeIdentityKind::Difference => {
+            let linear = temp_ctx.add(Expr::Sub(base_left, base_right));
+            let head = temp_ctx.add(Expr::Add(left_sq, cross));
+            (linear, temp_ctx.add(Expr::Add(head, right_sq)))
+        }
     };
-    let numerator_latex = match kind {
-        CubeIdentityKind::Sum => format!("{left_latex}^3 + {right_latex}^3"),
-        CubeIdentityKind::Difference => format!("{left_latex}^3 - {right_latex}^3"),
-    };
-    let factored_display = human_expr(ctx, numerator);
-    let factored_latex = latex_expr(ctx, numerator);
+    let factored = temp_ctx.add(Expr::Mul(linear_factor, quadratic_factor));
+    let quotient = temp_ctx.add(Expr::Div(factored, denominator));
+    let factored_plain = human_expr(&temp_ctx, factored);
+    let factored_latex = latex_expr(&temp_ctx, factored);
+    let quotient_plain = human_expr(&temp_ctx, quotient);
+    let quotient_latex = latex_expr(&temp_ctx, quotient);
 
     vec![
         formula_substep(
             identity_title,
-            &numerator_display,
-            &factored_display,
-            &numerator_latex,
+            &human_expr(ctx, numerator),
+            &factored_plain,
+            &latex_expr(ctx, numerator),
             &factored_latex,
         ),
         formula_substep(
             "Cancelar el factor común del numerador y el denominador",
-            &format!("{factored_display} / {}", human_expr(ctx, denominator)),
+            &quotient_plain,
             &human_expr(ctx, right),
-            &format!(
-                "\\frac{{{factored_latex}}}{{{}}}",
-                latex_expr(ctx, denominator)
-            ),
+            &quotient_latex,
             &latex_expr(ctx, right),
         ),
     ]
