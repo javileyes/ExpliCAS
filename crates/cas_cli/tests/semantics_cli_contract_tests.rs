@@ -11662,3 +11662,44 @@ fn complex_value_domain_declines_real_only_zero_identities() {
         );
     }
 }
+
+#[test]
+fn complex_literal_radicands_converge_across_steps_modes() {
+    // SOUNDNESS (auditoría 2026-07-30, ficha S4-002, clase literal): con
+    // --value-domain complex y steps=off, el atajo «Extract Perfect Square
+    // from Radicand» colapsaba radicandos con i LITERAL por razonamiento
+    // real-only: sqrt(16·i⁴) publicaba «4·i²» (= −4; el valor verdadero es 4,
+    // que steps=on SÍ daba plegando i⁴→1 primero). El gate declina el atajo
+    // cuando el radicando porta la unidad imaginaria y el pipeline
+    // complex-aware toma el relevo: ambos modos convergen al valor VERDADERO.
+    for (expr, expected) in [("sqrt(4*i^2)", "2 * i"), ("sqrt(16*i^4)", "4")] {
+        for steps in ["off", "on"] {
+            let (output, _code) = run_cli(&[
+                "eval",
+                expr,
+                "--value-domain",
+                "complex",
+                "--steps",
+                steps,
+                "--format",
+                "json",
+                "--no-pretty",
+            ]);
+            let wire = parse_wire(&output);
+            assert_eq!(wire["result"], expected, "{expr} steps={steps}: {output}");
+        }
+    }
+    // La extracción puramente numérica sigue viva en complejo (√ de escala
+    // real positiva es complex-válida).
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sqrt(8)",
+        "--value-domain",
+        "complex",
+        "--format",
+        "json",
+        "--no-pretty",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "2 * sqrt(2)", "{output}");
+}

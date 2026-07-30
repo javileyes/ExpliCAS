@@ -25365,11 +25365,55 @@ fn try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
     ))
 }
 
+/// True when `expr` carries the imaginary unit anywhere.
+fn expr_contains_imaginary_unit(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Constant(cas_ast::Constant::I) => return true,
+            Expr::Constant(_) | Expr::Number(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+        }
+    }
+    false
+}
+
+/// Complex-mode guard for the perfect-power extraction shortcuts: extraction
+/// of a positive real scale is complex-valid (`√18 → 3·√2` keeps working),
+/// but the shortcut's collapse of an `i`-bearing radicand runs real-only
+/// reasoning on a complex literal — `sqrt(16·i⁴)` published `4·i²` (= −4,
+/// true value 4) with steps=off while steps=on folded `i⁴ → 1` first and got
+/// `4` (audit 2026-07-30, ficha S4-002). Declining hands the literal to the
+/// pipeline's complex-aware power folding, so both modes converge. Symbolic
+/// radicands keep today's behavior (pinned under `assume_scope: real`).
+fn extract_shortcut_declines_for_value_domain(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &Context,
+    expr: ExprId,
+) -> bool {
+    options.shared.semantics.value_domain != crate::semantics::ValueDomain::RealOnly
+        && expr_contains_imaginary_unit(ctx, expr)
+}
+
 fn try_standard_extract_perfect_square_root_shortcut(
+    options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    if extract_shortcut_declines_for_value_domain(options, ctx, expr) {
+        return None;
+    }
     let canonical = try_rewrite_canonical_root_expr(ctx, expr)?;
     let extract = try_rewrite_extract_perfect_power_from_radicand_expr(ctx, canonical.rewritten)?;
 
@@ -29107,6 +29151,7 @@ impl Orchestrator {
                     collect_steps,
                 ));
                 return_root_shortcut_pair!(try_standard_extract_perfect_square_root_shortcut(
+                    &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
@@ -29114,24 +29159,30 @@ impl Orchestrator {
             }
 
             if pow_root {
-                if let Some(extract) = try_rewrite_extract_perfect_power_from_radicand_expr(
-                    &mut simplifier.context,
+                if !extract_shortcut_declines_for_value_domain(
+                    &self.options,
+                    &simplifier.context,
                     expr,
                 ) {
-                    let rewrite = crate::rule::Rewrite::new(extract.rewritten)
-                        .desc("Extract perfect square from under radical");
-                    let (result, shortcut_steps) = finish_standard_root_shortcut(
-                        &simplifier.context,
+                    if let Some(extract) = try_rewrite_extract_perfect_power_from_radicand_expr(
+                        &mut simplifier.context,
                         expr,
-                        rewrite,
-                        "Extract Perfect Square from Radicand",
-                        collect_steps,
-                    );
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
+                    ) {
+                        let rewrite = crate::rule::Rewrite::new(extract.rewritten)
+                            .desc("Extract perfect square from under radical");
+                        let (result, shortcut_steps) = finish_standard_root_shortcut(
+                            &simplifier.context,
+                            expr,
+                            rewrite,
+                            "Extract Perfect Square from Radicand",
+                            collect_steps,
+                        );
+                        return (
+                            result,
+                            shortcut_steps,
+                            crate::phase::PipelineStats::default(),
+                        );
+                    }
                 }
 
                 let parent_ctx =
