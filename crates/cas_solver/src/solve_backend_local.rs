@@ -355,6 +355,289 @@ fn required_conditions_are_contradictory(ctx: &Context, conds: &[ImplicitConditi
     false
 }
 
+/// Structural sign RANGE of a candidate-root expression under the root-filter
+/// premise. F10 (frontier-audit 2026-07-14): the constant oracles cannot read a
+/// SYMBOLIC-parameter root like `(−√(4a+1)−1)/2`, so the always-negative
+/// extraneous root of `√(a−x) = x` leaked unfiltered. This evaluator decides
+/// the sign structurally, treating a principal even root (and `|·|`) as `≥ 0`.
+///
+/// SOUNDNESS SCOPE — root-filter contexts ONLY: the assumption `√u ≥ 0` is
+/// valid here because the value being signed is the condition target AT a
+/// candidate real solution. For every parameter value where the candidate is a
+/// real number, its radicals are real and principal roots are nonnegative; for
+/// parameter values where a radicand goes negative, the candidate is not a
+/// real number at all and can never be a real solution, so dropping it is
+/// vacuously sound too. Do NOT reuse this for definedness decisions
+/// (`solve(√x ≥ 0)` must stay `[0, ∞)`, not ℝ — the shared `prove_sign` is
+/// deliberately not taught this assumption).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum RadicalSignRange {
+    Neg,
+    NonPos,
+    Zero,
+    NonNeg,
+    Pos,
+    Unknown,
+}
+
+/// Sign range of the AFFINE-over-radicals normal form `c₀ + Σ cᵢ·rᵢ`, where
+/// every `rᵢ` is a nonnegative atom (√u, u^(p/(2q)), |u|, u^(2m)) and every
+/// coefficient is rational — the shape of quadratic roots and their affine
+/// shifts even UNSIMPLIFIED (`(1−√(4a−3))/2 − 1` never distributes before the
+/// filter sees it, so the recursive range walk alone reads `1−√u` as Unknown).
+/// Neg iff c₀ < 0 ∧ ∀cᵢ ≤ 0 (each rᵢ ≥ 0 can only push further negative);
+/// Pos symmetric; `None` when the tree has any other shape.
+fn radical_affine_sign_range(ctx: &Context, e: ExprId) -> Option<RadicalSignRange> {
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+
+    /// `Some(radicand)` for `√u` / `u^(1/2)` (the pairable shapes for the
+    /// dominance rule), `None` marker for the other nonnegative atoms.
+    fn nonneg_radical_atom(ctx: &Context, e: ExprId) -> Option<Option<ExprId>> {
+        use num_integer::Integer as _;
+        match ctx.get(e) {
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) {
+                    Some(Some(args[0]))
+                } else if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) {
+                    Some(None)
+                } else {
+                    None
+                }
+            }
+            Expr::Pow(b, x) => match cas_math::numeric_eval::as_rational_const(ctx, *x) {
+                Some(q) if q == num_rational::BigRational::new(1.into(), 2.into()) => {
+                    Some(Some(*b))
+                }
+                Some(q) if !q.is_integer() && q.denom().is_even() => Some(None),
+                Some(q) if q.is_integer() && q.to_integer().is_even() => Some(None),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    struct Collect {
+        c0: BigRational,
+        radicals: Vec<(BigRational, Option<ExprId>)>,
+        sym: Option<(ExprId, BigRational)>,
+    }
+    fn walk(ctx: &Context, e: ExprId, scale: BigRational, acc: &mut Collect) -> bool {
+        if let Some(q) = cas_math::numeric_eval::as_rational_const(ctx, e) {
+            acc.c0 += scale * q;
+            return true;
+        }
+        if let Some(radicand) = nonneg_radical_atom(ctx, e) {
+            acc.radicals.push((scale, radicand));
+            return true;
+        }
+        match ctx.get(e) {
+            Expr::Neg(u) => walk(ctx, *u, -scale, acc),
+            Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
+                walk(ctx, l, scale.clone(), acc) && walk(ctx, r, scale, acc)
+            }
+            Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
+                walk(ctx, l, scale.clone(), acc) && walk(ctx, r, -scale, acc)
+            }
+            Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
+                if let Some(q) = cas_math::numeric_eval::as_rational_const(ctx, l) {
+                    walk(ctx, r, scale * q, acc)
+                } else if let Some(q) = cas_math::numeric_eval::as_rational_const(ctx, r) {
+                    walk(ctx, l, scale * q, acc)
+                } else {
+                    false
+                }
+            }
+            Expr::Div(n, d) => {
+                let (n, d) = (*n, *d);
+                match cas_math::numeric_eval::as_rational_const(ctx, d) {
+                    Some(q) if !q.is_zero() => walk(ctx, n, scale / q, acc),
+                    _ => false,
+                }
+            }
+            // A lone non-radical symbolic atom is admitted ONCE (the `v` of
+            // the dominance rule below); a second distinct one bails.
+            _ => match &mut acc.sym {
+                Some((v, s)) if *v == e => {
+                    *s += scale;
+                    true
+                }
+                Some(_) => false,
+                None => {
+                    acc.sym = Some((e, scale));
+                    true
+                }
+            },
+        }
+    }
+
+    let mut acc = Collect {
+        c0: BigRational::zero(),
+        radicals: Vec::new(),
+        sym: None,
+    };
+    if !walk(ctx, e, BigRational::one(), &mut acc) {
+        return None;
+    }
+    let zero = BigRational::zero();
+    let Collect { c0, radicals, sym } = acc;
+    if let Some((v, s)) = sym {
+        // DOMINANCE rule: `c₀ + s·v + t·√(q·v² + d)` with q > 0, d > 0 (no
+        // linear term) satisfies `√(q·v²+d) > √q·|v|`, so for t < 0 and
+        // q·t² ≥ s² the radical term outweighs the symbol term STRICTLY:
+        // s·v + t·√ < (|s| − |t|√q)·|v| ≤ 0, hence Neg when c₀ ≤ 0 (the
+        // always-extraneous root `(b − √(b²+4))/2` of `√(bx+1) = x`).
+        // Everything else with a symbol atom stays Unknown.
+        if s.is_zero() {
+            return None; // symbol cancelled; conservative (rare)
+        }
+        let [(t, Some(u))] = radicals.as_slice() else {
+            return None;
+        };
+        let Expr::Variable(vsym) = ctx.get(v) else {
+            return None;
+        };
+        let vname = ctx.sym_name(*vsym).to_string();
+        let u_poly = cas_math::polynomial::Polynomial::from_expr(ctx, *u, &vname).ok()?;
+        let coeffs = &u_poly.coeffs;
+        // Radicand must be exactly q·v² + d, q > 0, d > 0.
+        if coeffs.len() != 3 || !coeffs[1].is_zero() {
+            return None;
+        }
+        let (d, q) = (&coeffs[0], &coeffs[2]);
+        if *d <= zero || *q <= zero {
+            return None;
+        }
+        let dominates = q * t * t >= &s * &s;
+        return Some(if *t < zero && dominates && c0 <= zero {
+            RadicalSignRange::Neg
+        } else if *t > zero && dominates && c0 >= zero {
+            RadicalSignRange::Pos
+        } else {
+            RadicalSignRange::Unknown
+        });
+    }
+    Some(if c0 < zero && radicals.iter().all(|(c, _)| *c <= zero) {
+        RadicalSignRange::Neg
+    } else if c0 > zero && radicals.iter().all(|(c, _)| *c >= zero) {
+        RadicalSignRange::Pos
+    } else if c0.is_zero() && radicals.iter().all(|(c, _)| c.is_zero()) {
+        RadicalSignRange::Zero
+    } else if c0 <= zero && radicals.iter().all(|(c, _)| *c <= zero) {
+        RadicalSignRange::NonPos
+    } else if c0 >= zero && radicals.iter().all(|(c, _)| *c >= zero) {
+        RadicalSignRange::NonNeg
+    } else {
+        RadicalSignRange::Unknown
+    })
+}
+
+fn radical_real_sign_range(ctx: &Context, e: ExprId) -> RadicalSignRange {
+    use num_integer::Integer as _;
+    use num_traits::{Signed, Zero};
+    use RadicalSignRange::*;
+    let add = |a: RadicalSignRange, b: RadicalSignRange| -> RadicalSignRange {
+        match (a, b) {
+            (Zero, s) | (s, Zero) => s,
+            (Pos, Pos) | (Pos, NonNeg) | (NonNeg, Pos) => Pos,
+            (NonNeg, NonNeg) => NonNeg,
+            (Neg, Neg) | (Neg, NonPos) | (NonPos, Neg) => Neg,
+            (NonPos, NonPos) => NonPos,
+            _ => Unknown,
+        }
+    };
+    let neg = |s: RadicalSignRange| -> RadicalSignRange {
+        match s {
+            Pos => Neg,
+            NonNeg => NonPos,
+            Zero => Zero,
+            NonPos => NonNeg,
+            Neg => Pos,
+            Unknown => Unknown,
+        }
+    };
+    let mul = |a: RadicalSignRange, b: RadicalSignRange| -> RadicalSignRange {
+        match (a, b) {
+            // The whole expression is a real VALUE under the filter premise,
+            // so a zero factor annihilates even an undecided cofactor.
+            (Zero, _) | (_, Zero) => Zero,
+            (Unknown, _) | (_, Unknown) => Unknown,
+            (Pos, s) | (s, Pos) => s,
+            (Neg, s) | (s, Neg) => neg(s),
+            (NonNeg, NonNeg) | (NonPos, NonPos) => NonNeg,
+            (NonNeg, NonPos) | (NonPos, NonNeg) => NonPos,
+        }
+    };
+    match ctx.get(e) {
+        Expr::Number(q) => {
+            if q.is_zero() {
+                Zero
+            } else if q.is_positive() {
+                Pos
+            } else {
+                Neg
+            }
+        }
+        Expr::Constant(cas_ast::Constant::Pi | cas_ast::Constant::E) => Pos,
+        Expr::Neg(u) => neg(radical_real_sign_range(ctx, *u)),
+        Expr::Add(l, r) => add(
+            radical_real_sign_range(ctx, *l),
+            radical_real_sign_range(ctx, *r),
+        ),
+        Expr::Sub(l, r) => add(
+            radical_real_sign_range(ctx, *l),
+            neg(radical_real_sign_range(ctx, *r)),
+        ),
+        Expr::Mul(l, r) => mul(
+            radical_real_sign_range(ctx, *l),
+            radical_real_sign_range(ctx, *r),
+        ),
+        Expr::Div(n, d) => {
+            let ds = radical_real_sign_range(ctx, *d);
+            // Only a denominator of PROVEN strict sign divides safely (a
+            // NonNeg denominator could be 0 — the quotient would not be the
+            // real value the premise promises).
+            match ds {
+                Pos => radical_real_sign_range(ctx, *n),
+                Neg => neg(radical_real_sign_range(ctx, *n)),
+                _ => Unknown,
+            }
+        }
+        Expr::Pow(b, x) => {
+            let (b, x) = (*b, *x);
+            match cas_math::numeric_eval::as_rational_const(ctx, x) {
+                // Principal even root of a real value: ≥ 0 (premise).
+                Some(q) if !q.is_integer() && q.denom().is_even() => NonNeg,
+                Some(q) if q.is_integer() => {
+                    let bs = radical_real_sign_range(ctx, b);
+                    if q.to_integer().is_even() {
+                        match bs {
+                            Zero => Zero,
+                            Pos | Neg => Pos,
+                            _ => NonNeg,
+                        }
+                    } else {
+                        bs
+                    }
+                }
+                _ => Unknown,
+            }
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt)
+                || ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs)
+            {
+                NonNeg
+            } else {
+                Unknown
+            }
+        }
+        _ => Unknown,
+    }
+}
+
 /// True when `root` PROVABLY violates one of the equation's recorded real-domain
 /// conditions (`required_conditions`), making it an extraneous root the solver
 /// emitted without enforcing the domain it itself derived — e.g.
@@ -399,6 +682,25 @@ fn root_violates_required_condition(
                     Some(Ordering::Equal)
                 } else {
                     None // bounds straddle 0 — undecided, keep the root
+                }
+            })
+            .or_else(|| {
+                // F10: SYMBOLIC-parameter roots (`(−√(4a+1)−1)/2`) are beyond
+                // every constant oracle above. The affine-over-radicals
+                // collector (reads unsimplified shifts like `(1−√u)/2 − 1`)
+                // and the structural range walk decide them under the
+                // root-filter premise (radicals of a candidate real solution
+                // are real, principal roots ≥ 0) — still a proof, never an
+                // estimate; ranges that include 0 or stay undecided keep the
+                // root.
+                let range = radical_affine_sign_range(ctx, at)
+                    .filter(|r| !matches!(r, RadicalSignRange::Unknown))
+                    .unwrap_or_else(|| radical_real_sign_range(ctx, at));
+                match range {
+                    RadicalSignRange::Pos => Some(Ordering::Greater),
+                    RadicalSignRange::Neg => Some(Ordering::Less),
+                    RadicalSignRange::Zero => Some(Ordering::Equal),
+                    _ => None,
                 }
             })
     };
