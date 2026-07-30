@@ -184,8 +184,23 @@ fn clean_simple_subtractive_parens_in_place(result: &mut String) {
                 && !inner.contains("+ ")
                 && !inner.contains("- ")
         };
+        // The group must bind to the minus ALONE: if the closing paren is
+        // followed by an operator that binds TIGHTER than unary minus
+        // (`^`/superscript powers, factorial), stripping changes the value —
+        // `- (2·u)^2` is −4u², `- 2·u^2` is −2u² (auditoría 2026-07-30,
+        // ficha D2-001: the defect reached the REPL `Result:` line).
+        let bound_tighter_after = result[close + 1..]
+            .chars()
+            .find(|c| !c.is_whitespace())
+            .is_some_and(|c| {
+                matches!(c, '^' | '!')
+                    || matches!(
+                        c,
+                        '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '⁻'
+                    )
+            });
 
-        if is_simple {
+        if is_simple && !bound_tighter_after {
             result.replace_range(close..=close, "");
             result.replace_range(open..=open, "");
             cursor = open + inner_len;
@@ -349,6 +364,28 @@ mod tests {
     fn cleans_compact_sign_patterns_without_regex() {
         assert_eq!(clean_sign_patterns("x+-y".to_string()), "x-y");
         assert_eq!(clean_sign_patterns("x--y".to_string()), "x+y");
+    }
+
+    #[test]
+    fn keeps_parens_when_a_tighter_operator_follows() {
+        // SOUNDNESS (auditoría 2026-07-30, ficha D2-001): stripping the
+        // parens after a minus without looking PAST the closing paren turned
+        // `- (2 · u)^2` (−4u²) into `- 2 · u^2` (−2u²) — and the defect
+        // reached the REPL `Result:` line (a false final answer with steps
+        // off). Powers and factorials bind tighter than the minus: keep the
+        // group.
+        assert_eq!(
+            clean_display_string("sqrt(u)^2 - (2 · u)^2"),
+            "sqrt(u)^2 - (2 · u)^2"
+        );
+        assert_eq!(clean_display_string("-(2 * u)^2"), "-(2 * u)^2");
+        assert_eq!(
+            clean_display_string("a - (b · c)^3 + d"),
+            "a - (b · c)^3 + d"
+        );
+        assert_eq!(clean_display_string("a - (n)!"), "a - (n)!");
+        // The legitimate cleanup (nothing tighter after) still fires.
+        assert_eq!(clean_display_string("a - (b · c) + d"), "a - b · c + d");
     }
 
     #[test]

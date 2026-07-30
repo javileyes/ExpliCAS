@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 774 (newest first)
+Active entries: 775 (newest first)
 
 - 2026-07-30 | `retained` | `scripts/sound_probe.py` (nuevo, oráculo exacto R11), `scripts/corpus_behavio... | ARQUITECTURA/GATES (ciclo 0 de la remediación del informe integral): los gates del plan pasan de prosa a ejecutables
 - 2026-07-30 | `retained` | `cas_math/numeric_eval.rs` (`numeric_poly_zero_check` + variante `_structural... | SOUNDNESS (ciclo 1 de la remediación: el decisor de cero exacto): las 3 vías insonoras de numeric_poly_zero_check muertas, con paridad de capacidad por 9 familias de identidad exacta
@@ -122,6 +122,7 @@ Active entries: 774 (newest first)
 - 2026-07-30 | `retained` | `cas_engine/engine/equivalence.rs` (cola de `are_equivalent`: cadena exacta c... | SOUNDNESS (ciclo 3 de la remediación: equivalencia sin confirmación flotante en constantes): el residual constante decide exacto en ambas direcciones y NaN deja de ser contraejemplo
 - 2026-07-30 | `retained` | `cas_parser/parser.rs` — guarda thread-local en `parse_expr` (la ÚNICA re-ent... | ROBUSTEZ (ciclo A de la remediación: cota de profundidad del parser): el anidamiento hostil pasa de abortar el proceso a error de sintaxis con mensaje
 - 2026-07-30 | `retained` | `cas_solver/solve_backend_local.rs` — `try_solve_biquadratic` (disc por `BigR... | SOUNDNESS+CAPACIDAD (ciclo B de la remediación: rescates bicuadrática/cuártico exactos): el Empty fabricado muere y la rama compleja gradúa de residual a las 4 raíces
+- 2026-07-30 | `retained` | `cas_formatter/display_clean.rs` — `clean_simple_subtractive_parens_in_place`... | DIDÁCTICA/SOUNDNESS (ciclo C de la remediación: el limpiador de display deja de cambiar valores): quitar paréntesis tras un menos exige mirar qué sigue al cierre
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
@@ -22961,3 +22962,15 @@ Active entries: 774 (newest first)
 - retained learning:
   - **Una sonda sobre datos exactos de punta a punta no es defensa: es un canal de descarte de verdades.** Si la construcción es una identidad (fórmula cerrada sobre exactos), la sonda solo puede equivocarse en una dirección — y con `Empty` al final del bucle, esa dirección fabrica conjuntos. La pregunta correcta antes de «verificar» un candidato: ¿qué parte de su construcción NO es exacta? Si la respuesta es «ninguna», la verificación sobra y estorba.
   - **Un rescate gateado a Residual|Conditional invierte la carga de la prueba**: su salida SUSTITUYE una declinación honesta, así que su estándar de soundness es MÁS alto que el del camino normal, no más bajo — exactamente al revés de lo que sugiere la palabra «fallback».
+
+## 2026-07-30 - DIDÁCTICA/SOUNDNESS (ciclo C de la remediación: el limpiador de display deja de cambiar valores): quitar paréntesis tras un menos exige mirar qué sigue al cierre
+
+- area: `cas_formatter/display_clean.rs` — `clean_simple_subtractive_parens_in_place` gana la guarda `bound_tighter_after`: si el primer no-blanco tras el cierre es `^`, `!` o un superíndice, el grupo NO se despoja (liga más fuerte que el menos unario); pin de 5 brazos. Ficha D2-001 (carril C3) de `docs/AUDITORIA_INTEGRAL_2026-07-30.md`.
+- status: `retained`. Antes: `- (2·u)^2` (−4u²) se publicaba como `- 2·u^2` (−2u²) — texto FALSO que alcanzaba la línea `Result:` del REPL (respuesta final falsa con steps apagados) y los pasos de racionalización (`sqrt(u)^2 − (2·u)^2` mutilado a `sqrt(u)^2 − 2·u^2`). Ahora ambos publican el grupo intacto; la limpieza legítima (`a − (b·c) + d` → `a − b·c + d`) sigue disparando.
+- capture:
+  - **Un «limpiador» de strings es un reescritor de precedencia sin parser**: cada patrón que borra estructura necesita el contexto POSTERIOR además del anterior. El bug era exactamente el enunciado de la ficha — miraba el menos de delante y jamás el carácter de detrás del cierre.
+  - El arreglo en el chokepoint curó DOS fichas de una: D2-001 (Result del REPL) y la mitad clean-side de los pasos de racionalización (el `step.after` del conjugado ahora imprime `(2·u)^2`). Los hermanos del carril C3 que quedan vivos y sondados: `x^3^2` (D2-002, predicado de base de potencia sin `^`) y `(x − 1·x + 1)` (D1a-001, emisor del substep de diferencia de cuadrados) — el primero es el ciclo D.
+- observed: workspace `--no-fail-fast` 359 suites/0 fallos; clippy 0; engine-fast/scorecard/pressure/wasm verdes; corpus **0/221**; timing 1.78s vs base 1.79 (ofensores no repetibles = jitter contado); huella estructural limpia. 8/8 tests del formatter con el pin nuevo.
+- decision: retener. Ciclo D = D2-002 (una línea del predicado + pin).
+- retained learning:
+  - **La limpieza de presentación es código de SOUNDNESS cuando corre sobre la línea de resultado**: un string-rewriter que solo se prueba con casos donde acierta es un cambiador de valores esperando su forma. Todo patrón de borrado necesita el test del caso donde NO debe disparar (aquí: potencia/factorial tras el cierre) tanto como el de donde sí.
