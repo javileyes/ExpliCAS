@@ -12874,6 +12874,9 @@ fn reciprocal_quotient_polynomial_denominator_power_parts(
 fn expanded_square_denominator_base(ctx: &mut Context, den: ExprId, var: &str) -> Option<ExprId> {
     Polynomial::from_expr(ctx, den, var).ok()?;
 
+    // DETECTOR use, deliberately domain-neutral (audit 2026-07-30, S4-002
+    // corrección (c)): only the PerfectSquare KIND is consulted; the |·|
+    // rewrite is not published from here.
     let sqrt_den = ctx.call_builtin(BuiltinFn::Sqrt, vec![den]);
     let rewrite = try_rewrite_simplify_square_root_expr(ctx, sqrt_den)?;
     if rewrite.kind != SimplifySquareRootRewriteKind::PerfectSquare {

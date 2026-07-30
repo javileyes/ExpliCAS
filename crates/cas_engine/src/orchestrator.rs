@@ -16145,13 +16145,25 @@ fn try_standard_half_angle_square_factor_shortcut(
     None
 }
 
+/// Options for an ISOLATED simplify launched from a shortcut path: the
+/// defaults plus the ambient pipeline value domain. Without the axis, a
+/// default-armed isolated run is a covert domain translator — its RealOnly
+/// verdicts get adopted by a complex session (audit 2026-07-30, causa C2;
+/// same doctrine as `run_default_simplify`'s probe options).
+fn isolated_probe_options() -> crate::phase::SimplifyOptions {
+    let mut options = crate::phase::SimplifyOptions::default();
+    options.shared.semantics.value_domain =
+        crate::rules::arithmetic::ambient_pipeline_value_domain();
+    options
+}
+
 fn canonicalize_direct_pair_factor_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     if let Some(rewritten) = extract_special_angle_exact_value_root(ctx, expr) {
         return Some(rewritten);
     }
     if cas_ast::collect_variables(ctx, expr).is_empty() && cas_ast::count_nodes(ctx, expr) <= 16 {
         if let Some(rewritten) =
-            isolated_simplify_expr_if_changed(&crate::phase::SimplifyOptions::default(), ctx, expr)
+            isolated_simplify_expr_if_changed(&isolated_probe_options(), ctx, expr)
         {
             return Some(strip_multiplicative_one_root(ctx, rewritten));
         }
@@ -16223,8 +16235,17 @@ fn canonicalize_direct_pair_factor_root(ctx: &mut Context, expr: ExprId) -> Opti
     if let Some(factored) = cas_math::factor::factor_perfect_square_trinomial(ctx, expr) {
         return Some(factored);
     }
-    if let Some(rewrite) = try_rewrite_simplify_square_root_expr(ctx, expr) {
-        return Some(strip_multiplicative_one_root(ctx, rewrite.rewritten));
+    // REAL-ONLY (mirrors SimplifySquareRootRule): the helper emits |·| forms of
+    // symbolic squares (`√(x²) → |x|`), false over ℂ (`√(i²) = i ≠ |i|`). The
+    // canonicalizer's signature predates the value-domain axis; the ambient
+    // pipeline domain carries it here (audit 2026-07-30, corrección (c) del
+    // refutador de S4-002 — último consumidor publish-capaz sin guarda).
+    if crate::rules::arithmetic::ambient_pipeline_value_domain()
+        == crate::semantics::ValueDomain::RealOnly
+    {
+        if let Some(rewrite) = try_rewrite_simplify_square_root_expr(ctx, expr) {
+            return Some(strip_multiplicative_one_root(ctx, rewrite.rewritten));
+        }
     }
     if let Some(canonical) = try_rewrite_canonical_root_expr(ctx, expr) {
         if let Some(extract) =
@@ -17863,9 +17884,8 @@ fn try_standard_direct_scaled_half_angle_square_shortcut(
         return None;
     }
 
-    let canonical_arg =
-        isolated_simplify_expr_if_changed(&crate::phase::SimplifyOptions::default(), ctx, full_arg)
-            .unwrap_or(full_arg);
+    let canonical_arg = isolated_simplify_expr_if_changed(&isolated_probe_options(), ctx, full_arg)
+        .unwrap_or(full_arg);
     let rewritten = build_scaled_half_angle_target_root(ctx, trig_fn, canonical_arg);
     let rule_name = match trig_fn {
         BuiltinFn::Sin => "2·sin²(x/2) = 1 - cos(x)",
@@ -17892,9 +17912,8 @@ fn try_standard_rational_half_angle_target_passthrough_shortcut(
         return None;
     }
 
-    let canonical_arg =
-        isolated_simplify_expr_if_changed(&crate::phase::SimplifyOptions::default(), ctx, full_arg)
-            .unwrap_or(full_arg);
+    let canonical_arg = isolated_simplify_expr_if_changed(&isolated_probe_options(), ctx, full_arg)
+        .unwrap_or(full_arg);
     let rewritten = build_scaled_half_angle_target_root(ctx, trig_fn, canonical_arg);
     if compare_expr(ctx, rewritten, expr) == Ordering::Equal {
         return Some((expr, Vec::new()));
@@ -18385,7 +18404,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
                 )
             })
         } else {
-            isolated_simplify_expr_if_changed(&crate::phase::SimplifyOptions::default(), ctx, expr)
+            isolated_simplify_expr_if_changed(&isolated_probe_options(), ctx, expr)
         };
         isolated.map(|rewritten| strip_multiplicative_one_root(ctx, rewritten))
     }

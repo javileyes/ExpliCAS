@@ -4728,6 +4728,10 @@ fn has_perfect_square_sqrt_rewrite(ctx: &mut Context, expr: ExprId) -> bool {
         _ => return false,
     }
 
+    // DETECTOR use, deliberately domain-neutral (audit 2026-07-30, S4-002
+    // corrección (c)): only the PerfectSquare KIND is consulted — «is this
+    // expr a syntactic square?» holds in every value domain; the real-only
+    // |·| rewrite itself is never published from here.
     let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![expr]);
     try_rewrite_simplify_square_root_expr(ctx, sqrt_expr)
         .is_some_and(|rewrite| rewrite.kind == SimplifySquareRootRewriteKind::PerfectSquare)

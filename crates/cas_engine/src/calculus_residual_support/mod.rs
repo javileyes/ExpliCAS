@@ -8234,6 +8234,10 @@ fn diff_acosh_sqrt_abs_safe_diff_matches(
 
     let one_poly = Polynomial::one(call.var_name.clone());
     let radicand_minus_one = radicand_poly.sub(&one_poly).to_expr(ctx);
+    // MATCHER use, deliberately domain-neutral (audit 2026-07-30, S4-002
+    // corrección (c)): the |·|-carrying form is only used to RECOGNIZE an
+    // existing real-domain arcsec-family antiderivative, never published as
+    // a rewrite of the user's expression.
     let raw_sqrt_radicand_minus_one = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand_minus_one]);
     let sqrt_radicand_minus_one =
         try_rewrite_simplify_square_root_expr(ctx, raw_sqrt_radicand_minus_one)

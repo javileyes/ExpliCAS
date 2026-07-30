@@ -338,6 +338,9 @@ fn positive_perfect_square_base_from_sqrt_rewrite(
         _ => return None,
     }
 
+    // DETECTOR use, deliberately domain-neutral (audit 2026-07-30, S4-002
+    // corrección (c)): the PerfectSquare KIND plus the abs-argument VIEW feed
+    // real-domain condition derivation; no |·| rewrite is published.
     let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![expr]);
     let rewrite = try_rewrite_simplify_square_root_expr(ctx, sqrt_expr)?;
     (rewrite.kind == SimplifySquareRootRewriteKind::PerfectSquare)
