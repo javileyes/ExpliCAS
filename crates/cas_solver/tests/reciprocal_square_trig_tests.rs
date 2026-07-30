@@ -128,3 +128,60 @@ fn impossible_even_power_targets_are_empty_not_finite() {
     assert_eq!(solve_display("2*sec(x)^2", "-8"), "No solution");
     assert_eq!(solve_display("sec(x)^4", "-16"), "No solution");
 }
+
+#[test]
+fn odd_power_reduces_by_the_bijective_root() {
+    // F2 (frontier-audit 2026-07-14): la potencia IMPAR caía al inverso
+    // finito (`sec³ = 8` → `{π/3}`, perdiendo la familia). La raíz n-ésima
+    // impar es BIYECTIVA en ℝ (preserva signo, sin rama espuria):
+    // `trig^n = t ⟺ trig = t^(1/n)` incondicionalmente, y el solver
+    // periódico de potencia 1 emite la familia completa.
+    assert_eq!(
+        solve_display("sec(x)^3", "8"),
+        "{ 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("csc(x)^3", "8"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("sec(x)^5", "32"),
+        "{ 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // El signo se preserva: csc³ = −8 ⟺ sin = −1/2.
+    assert_eq!(
+        solve_display("csc(x)^3", "-8"),
+        "{ -1/6·pi + k·2·pi, 7/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    // Los spellings del matcher (coeficiente, dividido, Div crudo, argumento
+    // escalado) reducen igual; el periodo se divide con el argumento.
+    assert_eq!(
+        solve_display("2*sec(x)^3", "16"),
+        "{ 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("sec(x)^3/2", "4"),
+        "{ 1/3·pi + k·2·pi, 5/3·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("1/sin(x)^3", "8"),
+        "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("sec(2*x)^3", "8"),
+        "{ 1/6·pi + k·pi, 5/6·pi + k·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
+fn odd_power_non_perfect_target_delegates_the_surd_root() {
+    // Objetivo no-perfecto: la raíz surd se delega como expresión y el
+    // productor arccos simbólico emite la familia exacta (verificado contra
+    // el pipeline completo: cos(x) = cbrt(1/7)). Este harness imprime la
+    // forma INTERNA `(1/7)^(1/3)`; el wire del CLI la presenta como
+    // `cbrt(1/7)` — misma expresión, superficie distinta.
+    assert_eq!(
+        solve_display("sec(x)^3", "7"),
+        "{ arccos((1/7)^(1/3)) + k·2·pi, 2·pi - arccos((1/7)^(1/3)) + k·2·pi : k ∈ ℤ }"
+    );
+}

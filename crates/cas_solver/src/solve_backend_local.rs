@@ -9159,11 +9159,13 @@ fn try_solve_periodic_trig_equation_ungated(
                 return None;
             }
             let exp_int = exp_value.to_integer();
-            use num_integer::Integer as _;
-            if exp_int < 2.into() || !exp_int.is_even() {
+            // F2 2026-07-31: the parity gate is lifted — the FULL exponent
+            // `n ≥ 2` is returned and the reducer below branches on parity
+            // (even `2m` → square reduction; odd → bijective n-th root).
+            if exp_int < 2.into() {
                 return None;
             }
-            let m: u32 = (exp_int / num_bigint::BigInt::from(2)).try_into().ok()?;
+            let n: u32 = exp_int.try_into().ok()?;
             let Expr::Function(fn_id, args) = ctx.get(base) else {
                 return None;
             };
@@ -9171,7 +9173,7 @@ fn try_solve_periodic_trig_equation_ungated(
                 return None;
             }
             match ctx.builtin_of(*fn_id) {
-                Some(BuiltinFn::Sin | BuiltinFn::Cos) => Some((base, m, a_scale * a / den_scale)),
+                Some(BuiltinFn::Sin | BuiltinFn::Cos) => Some((base, n, a_scale * a / den_scale)),
                 _ => None,
             }
         };
@@ -9197,31 +9199,78 @@ fn try_solve_periodic_trig_equation_ungated(
             }
         }
         if shape_ok {
-            if let Some((base, m, a)) = sq {
+            if let Some((base, n, a)) = sq {
                 if !k.is_zero() {
-                    let target_2m = -a / k; // trig(g)^(2m) = target_2m
-                                            // Reduce the even power to the SQUARE the double-angle
-                                            // reducer owns: for m > 1, `trig^(2m) = t` ⟺
-                                            // `trig² = t^(1/m)` (the even power is non-negative, so
-                                            // only the positive real root exists). A negative `t` has
-                                            // the SAME (empty) solution set as `trig² = −1`, which
-                                            // the reducer already decides; a non-perfect m-th root
-                                            // declines honestly (irrational target: out of this
-                                            // reducer's exact scope).
-                    let target = if m == 1 {
-                        Some(target_2m)
-                    } else if target_2m < BigRational::zero() {
-                        Some(-BigRational::one())
+                    let target_n = -a / k; // trig(g)^n = target_n
+                    if n % 2 == 0 {
+                        let m = n / 2;
+                        // Reduce the even power to the SQUARE the double-angle
+                        // reducer owns: for m > 1, `trig^(2m) = t` ⟺
+                        // `trig² = t^(1/m)` (the even power is non-negative, so
+                        // only the positive real root exists). A negative `t` has
+                        // the SAME (empty) solution set as `trig² = −1`, which
+                        // the reducer already decides; a non-perfect m-th root
+                        // declines honestly (irrational target: out of this
+                        // reducer's exact scope).
+                        let target = if m == 1 {
+                            Some(target_n)
+                        } else if target_n < BigRational::zero() {
+                            Some(-BigRational::one())
+                        } else {
+                            exact_rational_mth_root(&target_n, m)
+                        };
+                        if let Some(target) = target {
+                            let two = simplifier.context.num(2);
+                            let pow = simplifier.context.add(Expr::Pow(base, two));
+                            let target_expr = simplifier.context.add(Expr::Number(target));
+                            let reduced = Equation {
+                                lhs: pow,
+                                rhs: target_expr,
+                                op: RelOp::Eq,
+                            };
+                            return try_solve_periodic_trig_equation_ungated(
+                                &reduced, var, simplifier, steps_out,
+                            );
+                        }
                     } else {
-                        exact_rational_mth_root(&target_2m, m)
-                    };
-                    if let Some(target) = target {
-                        let two = simplifier.context.num(2);
-                        let pow = simplifier.context.add(Expr::Pow(base, two));
-                        let target_expr = simplifier.context.add(Expr::Number(target));
+                        // F2 (frontier-audit 2026-07-14): ODD power. The n-th
+                        // root is a BIJECTION on ℝ — sign-preserving, no
+                        // extraneous branch — so `trig^n = t ⟺ trig = t^(1/n)`
+                        // unconditionally. A perfect rational root reduces
+                        // exactly (`sec³ = 8` → `cos = 1/2`); otherwise the
+                        // surd root delegates as an expression (the power-1
+                        // periodic solver emits the symbolic-arccos family:
+                        // `cos = cbrt(1/7)` verified live). Without this the
+                        // finite-inverse fallback asserted `{π/3}` as the
+                        // complete answer, dropping the whole family.
+                        let negative = target_n < BigRational::zero();
+                        let abs_target = if negative {
+                            -target_n.clone()
+                        } else {
+                            target_n.clone()
+                        };
+                        let r_expr = match exact_rational_mth_root(&abs_target, n) {
+                            Some(root) => {
+                                let root = if negative { -root } else { root };
+                                simplifier.context.add(Expr::Number(root))
+                            }
+                            None => {
+                                let t_expr = simplifier.context.add(Expr::Number(abs_target));
+                                let one = simplifier.context.num(1);
+                                let n_expr = simplifier.context.num(i64::from(n));
+                                let inv_n = simplifier.context.add(Expr::Div(one, n_expr));
+                                let root = simplifier.context.add(Expr::Pow(t_expr, inv_n));
+                                let root = if negative {
+                                    simplifier.context.add(Expr::Neg(root))
+                                } else {
+                                    root
+                                };
+                                simplifier.simplify(root).0
+                            }
+                        };
                         let reduced = Equation {
-                            lhs: pow,
-                            rhs: target_expr,
+                            lhs: base,
+                            rhs: r_expr,
                             op: RelOp::Eq,
                         };
                         return try_solve_periodic_trig_equation_ungated(
