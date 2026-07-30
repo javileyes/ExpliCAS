@@ -361,6 +361,62 @@ fn periods_match(simplifier: &mut Simplifier, p1: ExprId, p2: ExprId) -> bool {
         || try_order(simplifier, p1, p2) == Some(Ordering::Equal)
 }
 
+/// Express two window lists over ONE common period. Same period: pass
+/// through unchanged. Integer-ratio periods (`p_big = n·p_small`): replicate
+/// the smaller-period windows `n` times across the larger period — an EXACT
+/// rewrite of the same set (F4: the pole puncture `cos ≠ 0` arrives with
+/// period 2π while the double-angle windows carry period π). Any other
+/// ratio: `None` — the caller declines honestly.
+fn align_over_common_period(
+    simplifier: &mut Simplifier,
+    windows1: &[Interval],
+    period1: ExprId,
+    windows2: &[Interval],
+    period2: ExprId,
+) -> Option<(Vec<Interval>, Vec<Interval>, ExprId)> {
+    if periods_match(simplifier, period1, period2) {
+        return Some((windows1.to_vec(), windows2.to_vec(), period1));
+    }
+    fn replicate(
+        simplifier: &mut Simplifier,
+        wins: &[Interval],
+        small_period: ExprId,
+        n: i64,
+    ) -> Vec<Interval> {
+        let mut out = Vec::with_capacity(wins.len() * n as usize);
+        for k in 0..n {
+            for iv in wins {
+                out.push(Interval {
+                    min: shift_by_periods(simplifier, iv.min, small_period, k),
+                    min_type: iv.min_type.clone(),
+                    max: shift_by_periods(simplifier, iv.max, small_period, k),
+                    max_type: iv.max_type.clone(),
+                });
+            }
+        }
+        out
+    }
+    let ratio = try_exact_ratio(simplifier, period1, period2)?;
+    if ratio.is_zero() || ratio.is_negative() {
+        return None;
+    }
+    let one = BigRational::from_integer(1.into());
+    if ratio.is_integer() && ratio > one {
+        // period1 = n·period2: replicate the second list across period1.
+        let n = i64::try_from(&ratio.to_integer()).ok()?;
+        let reps = replicate(simplifier, windows2, period2, n);
+        return Some((windows1.to_vec(), reps, period1));
+    }
+    let inv = ratio.recip();
+    if inv.is_integer() && inv > one {
+        // period2 = n·period1: replicate the first list across period2.
+        let n = i64::try_from(&inv.to_integer()).ok()?;
+        let reps = replicate(simplifier, windows1, period1, n);
+        return Some((reps, windows2.to_vec(), period2));
+    }
+    None
+}
+
 /// Union of two same-period `PeriodicIntervalUnion` window lists.
 /// `None` ⇒ not exactly combinable — the caller must decline honestly.
 pub fn union_periodic_interval_unions_over_common_period(
@@ -370,9 +426,8 @@ pub fn union_periodic_interval_unions_over_common_period(
     windows2: &[Interval],
     period2: ExprId,
 ) -> Option<SolutionSet> {
-    if !periods_match(simplifier, period1, period2) {
-        return None;
-    }
+    let (windows1, windows2, period) =
+        align_over_common_period(simplifier, windows1, period1, windows2, period2)?;
     let anchor = windows1.first()?.min;
     let mut all: Vec<Win> = Vec::new();
     for iv in windows1.iter().chain(windows2.iter()) {
@@ -380,13 +435,13 @@ pub fn union_periodic_interval_unions_over_common_period(
             simplifier,
             &Win::from_interval(iv),
             anchor,
-            period1,
+            period,
         )?);
     }
     try_sort(simplifier, &mut all)?;
     let merged = linear_union(simplifier, all)?;
-    let reglued = reglue_at_seam(simplifier, merged, anchor, period1)?;
-    package(simplifier, reglued, period1)
+    let reglued = reglue_at_seam(simplifier, merged, anchor, period)?;
+    package(simplifier, reglued, period)
 }
 
 /// Intersection of two same-period `PeriodicIntervalUnion` window lists.
@@ -398,34 +453,33 @@ pub fn intersect_periodic_interval_unions_over_common_period(
     windows2: &[Interval],
     period2: ExprId,
 ) -> Option<SolutionSet> {
-    if !periods_match(simplifier, period1, period2) {
-        return None;
-    }
+    let (windows1, windows2, period) =
+        align_over_common_period(simplifier, windows1, period1, windows2, period2)?;
     let anchor = windows1.first()?.min;
     let mut a: Vec<Win> = Vec::new();
-    for iv in windows1 {
+    for iv in &windows1 {
         a.extend(normalize_window(
             simplifier,
             &Win::from_interval(iv),
             anchor,
-            period1,
+            period,
         )?);
     }
     let mut b: Vec<Win> = Vec::new();
-    for iv in windows2 {
+    for iv in &windows2 {
         b.extend(normalize_window(
             simplifier,
             &Win::from_interval(iv),
             anchor,
-            period1,
+            period,
         )?);
     }
     try_sort(simplifier, &mut a)?;
     try_sort(simplifier, &mut b)?;
     let clipped = linear_intersection(simplifier, &a, &b)?;
     let merged = linear_union(simplifier, clipped)?;
-    let reglued = reglue_at_seam(simplifier, merged, anchor, period1)?;
-    package(simplifier, reglued, period1)
+    let reglued = reglue_at_seam(simplifier, merged, anchor, period)?;
+    package(simplifier, reglued, period)
 }
 
 #[cfg(test)]

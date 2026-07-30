@@ -4256,8 +4256,11 @@ fn try_decline_variable_base_log_inequality(
     ))
 }
 
-/// True when `e` contains a `sin`/`cos`/`tan` whose ARGUMENT involves `var` (anywhere in the tree).
-/// `sin(2)·x` (constant trig) is false; `sin(2x)`, `x − cos(x)` are true.
+/// True when `e` contains a `sin`/`cos`/`tan` — or a reciprocal `sec`/`csc`/`cot` — whose ARGUMENT
+/// involves `var` (anywhere in the tree). `sin(2)·x` (constant trig) is false; `sin(2x)`,
+/// `x − cos(x)`, `sec(x)²` are true. The reciprocals are periodic too: without them, forms no
+/// handler matched (`sec(x)³ > 2`, `cot(x)² < 3`) fell past the decline gate into the monotonic
+/// inversion, which asserted grossly wrong finite sets (F4: `sec(x)² > 2` → «No solution»).
 fn contains_trig_of_var(ctx: &Context, e: ExprId, var: &str) -> bool {
     use cas_ast::BuiltinFn;
     match ctx.get(e) {
@@ -4265,7 +4268,14 @@ fn contains_trig_of_var(ctx: &Context, e: ExprId, var: &str) -> bool {
             let (fn_id, args) = (*fn_id, args.clone());
             if matches!(
                 ctx.builtin_of(fn_id),
-                Some(BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)
+                Some(
+                    BuiltinFn::Sin
+                        | BuiltinFn::Cos
+                        | BuiltinFn::Tan
+                        | BuiltinFn::Sec
+                        | BuiltinFn::Csc
+                        | BuiltinFn::Cot
+                )
             ) && args
                 .iter()
                 .any(|&a| cas_ast::collect_variables(ctx, a).contains(var))
@@ -7751,7 +7761,9 @@ fn try_solve_even_power_or_abs_trig_inequality(
             }
             (a, f, gg, sq, lhs, flip_inequality(eq.op.clone()))
         } else {
-            return None;
+            // Not a direct square/abs: try the reciprocal shapes (`sec²`,
+            // `csc²`, `A/trig²`, `|sec|`, `A/|trig|`) before giving up.
+            return try_solve_reciprocal_square_or_abs_trig_inequality(eq, var, simplifier);
         };
     let c_val = as_rational_const(&simplifier.context, c_expr)?;
 
@@ -7762,9 +7774,195 @@ fn try_solve_even_power_or_abs_trig_inequality(
     } else {
         op
     };
+    solve_trig_square_or_abs_rel(simplifier, trig_fn, g, is_square, op, t, var)
+}
 
-    // Reduce to `|trig| ⋚ r` with r ≥ 0. For the square, r = √t; the
-    // non-positive-threshold edges settle by the sign of a square / abs.
+/// F4 (frontier-audit 2026-07-14): reciprocal-square / reciprocal-abs trig
+/// inequalities — `sec(g)² ⋚ c`, `csc(g)² ⋚ c`, `A/trig(g)² ⋚ c`,
+/// `trig(g)^(−2) ⋚ c`, `|sec(g)| ⋚ c`, `A/|trig(g)| ⋚ c`, sin/cos bases only
+/// (the tan/cot pair keeps declining until cot gets its own window table,
+/// mirroring the power-1 reciprocal handler). Inverts `A/T ⋚ c` to relations
+/// on `T = trig²` (or `|trig|`) by the sign case split of the power-1
+/// handler; the definedness conjunct `T > 0` IS the pole puncture, solved
+/// through the existing punctured-line reduction (`trig > 0 ∪ trig < 0`), so
+/// `sec(x)² > 2` excludes the poles `π/2 + kπ` exactly.
+fn try_solve_reciprocal_square_or_abs_trig_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+    use num_traits::{One, Signed, Zero};
+
+    let lhs = eq.lhs;
+    let rhs = eq.rhs;
+
+    // `(sin|cos, arg)` of a direct sin/cos call (a reciprocal's DENOMINATOR)…
+    let sin_cos_of = |ctx_: &Context, e2: ExprId| -> Option<(BuiltinFn, ExprId)> {
+        if let Expr::Function(fn_id, args) = ctx_.get(e2) {
+            if args.len() == 1 && contains_var(ctx_, args[0], var) {
+                if let Some(f) = ctx_.builtin_of(*fn_id) {
+                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos) {
+                        return Some((f, args[0]));
+                    }
+                }
+            }
+        }
+        None
+    };
+    // …or of the refolded reciprocal call: `sec = 1/cos`, `csc = 1/sin`.
+    let recip_base_of = |ctx_: &Context, e2: ExprId| -> Option<(BuiltinFn, ExprId)> {
+        if let Expr::Function(fn_id, args) = ctx_.get(e2) {
+            if args.len() == 1 && contains_var(ctx_, args[0], var) {
+                match ctx_.builtin_of(*fn_id) {
+                    Some(BuiltinFn::Sec) => return Some((BuiltinFn::Cos, args[0])),
+                    Some(BuiltinFn::Csc) => return Some((BuiltinFn::Sin, args[0])),
+                    _ => {}
+                }
+            }
+        }
+        None
+    };
+    // Match `A · (1/T)` with T = trig(g)² (is_square = true) or |trig(g)|.
+    let detect_recip =
+        |ctx_: &Context, e: ExprId| -> Option<(BigRational, BuiltinFn, ExprId, bool)> {
+            let (coeff, core) = peel_rational_coefficient(ctx_, e);
+            if coeff.is_zero() {
+                return None;
+            }
+            let two = BigRational::from_integer(2.into());
+            match ctx_.get(core) {
+                Expr::Pow(base, exp) => {
+                    let (base, exp) = (*base, *exp);
+                    let ev = as_rational_const(ctx_, exp)?;
+                    if ev == two {
+                        // sec(g)² = 1/cos(g)², csc(g)² = 1/sin(g)².
+                        let (f, g) = recip_base_of(ctx_, base)?;
+                        Some((coeff, f, g, true))
+                    } else if ev == -two {
+                        // sin(g)^(−2) = 1/sin(g)².
+                        let (f, g) = sin_cos_of(ctx_, base)?;
+                        Some((coeff, f, g, true))
+                    } else {
+                        None
+                    }
+                }
+                Expr::Div(num, den) => {
+                    let (num, den) = (*num, *den);
+                    let a = as_rational_const(ctx_, num)?;
+                    if a.is_zero() {
+                        return None;
+                    }
+                    let (den_coeff, den_core) = peel_rational_coefficient(ctx_, den);
+                    if den_coeff.is_zero() {
+                        return None;
+                    }
+                    let scale = coeff * a / den_coeff;
+                    if let Expr::Pow(base, exp) = ctx_.get(den_core) {
+                        let (base, exp) = (*base, *exp);
+                        if as_rational_const(ctx_, exp)? == two {
+                            let (f, g) = sin_cos_of(ctx_, base)?;
+                            return Some((scale, f, g, true));
+                        }
+                        return None;
+                    }
+                    let inner = match_abs_argument(ctx_, den_core)?;
+                    let (f, g) = sin_cos_of(ctx_, inner)?;
+                    Some((scale, f, g, false))
+                }
+                _ => {
+                    // |sec(g)| = 1/|cos(g)|, |csc(g)| = 1/|sin(g)|.
+                    let inner = match_abs_argument(ctx_, core)?;
+                    let (f, g) = recip_base_of(ctx_, inner)?;
+                    Some((coeff, f, g, false))
+                }
+            }
+        };
+
+    let (a_coeff, trig_fn, g, is_square, c_expr, op) =
+        if let Some((a, f, gg, sq)) = detect_recip(&simplifier.context, lhs) {
+            if contains_var(&simplifier.context, rhs, var) {
+                return None;
+            }
+            (a, f, gg, sq, rhs, eq.op.clone())
+        } else if let Some((a, f, gg, sq)) = detect_recip(&simplifier.context, rhs) {
+            if contains_var(&simplifier.context, lhs, var) {
+                return None;
+            }
+            (a, f, gg, sq, lhs, flip_inequality(eq.op.clone()))
+        } else {
+            return None;
+        };
+    let c_val = as_rational_const(&simplifier.context, c_expr)?;
+
+    // A/T ⋚ c ⟺ 1/T ⋚' r with r = c/A (dividing by A flips for A < 0).
+    let r = c_val / &a_coeff;
+    let op = if a_coeff.is_negative() {
+        flip_inequality(op)
+    } else {
+        op
+    };
+
+    // Case split on `1/T ⋚ r`: T ≥ 0 always, and 1/T is defined ⟺ T > 0, so
+    // 1/T is positive everywhere it exists.
+    //   r > 0:  `>` ⟺ 0 < T < 1/r    `≥` ⟺ 0 < T ≤ 1/r
+    //           `<` ⟺ T > 1/r        `≤` ⟺ T ≥ 1/r
+    //   r ≤ 0:  `>`/`≥` ⟺ T > 0 (every defined point)   `<`/`≤` ⟺ ∅
+    let zero = BigRational::zero();
+    let parts: Vec<(RelOp, BigRational)> = if r.is_positive() {
+        let inv_r = BigRational::one() / &r;
+        match op {
+            RelOp::Gt => vec![(RelOp::Gt, zero), (RelOp::Lt, inv_r)],
+            RelOp::Geq => vec![(RelOp::Gt, zero), (RelOp::Leq, inv_r)],
+            RelOp::Lt => vec![(RelOp::Gt, inv_r)],
+            RelOp::Leq => vec![(RelOp::Geq, inv_r)],
+            _ => return None,
+        }
+    } else {
+        match op {
+            RelOp::Gt | RelOp::Geq => vec![(RelOp::Gt, zero)],
+            RelOp::Lt | RelOp::Leq => return Some(SolutionSet::Empty),
+            _ => return None,
+        }
+    };
+
+    // All multi-part splits above are conjunctions (0 < T ∧ T < 1/r).
+    let mut acc: Option<SolutionSet> = None;
+    for (sub_op, t) in parts {
+        let set = solve_trig_square_or_abs_rel(simplifier, trig_fn, g, is_square, sub_op, t, var)?;
+        acc = Some(match acc {
+            None => set,
+            Some(prev) => combine_piu_sets(simplifier, prev, set, true)?,
+        });
+    }
+    acc
+}
+
+/// Reduce `trig(g)² ⋚ t` (`is_square`) or `|trig(g)| ⋚ t` to window relations
+/// on `trig(g)` and combine with the circular same-period algebra. The square
+/// first takes the `|trig| ⋚ √t` route (exact when √t lands rational); when a
+/// surd bound makes the sub-solves decline, sin/cos squares fall back to the
+/// double-angle reduction — `sin² ⋚ t ⟺ cos(2g) ⋛ 1−2t` (flipped),
+/// `cos² ⋚ t ⟺ cos(2g) ⋚ 2t−1` (same) — whose threshold is rational again
+/// (the inequality mirror of the equation-path reciprocal-square reducer;
+/// before it, `sin(x)² < 1/3` and every `sec²`-derived part declined).
+fn solve_trig_square_or_abs_rel(
+    simplifier: &mut Simplifier,
+    trig_fn: cas_ast::BuiltinFn,
+    g: ExprId,
+    is_square: bool,
+    op: cas_ast::RelOp,
+    t: num_rational::BigRational,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use num_rational::BigRational;
+    use num_traits::{One, Zero};
+
+    // The non-positive-threshold edges settle by the sign of a square / abs.
     let zero = BigRational::zero();
     if t < zero {
         // trig² (or |trig|) ≥ 0 > t everywhere it is defined.
@@ -7795,13 +7993,61 @@ fn try_solve_even_power_or_abs_trig_inequality(
         }
     }
 
+    if let Some(set) =
+        trig_abs_threshold_window_split(simplifier, trig_fn, g, is_square, op.clone(), &t, var)
+    {
+        return Some(set);
+    }
+
+    // Double-angle fallback (squares of sin/cos only).
+    if !is_square {
+        return None;
+    }
+    let two = BigRational::from_integer(2.into());
+    let (sub_op, bound) = match trig_fn {
+        BuiltinFn::Sin => (flip_inequality(op), BigRational::one() - &two * &t),
+        BuiltinFn::Cos => (op, &two * &t - BigRational::one()),
+        _ => return None,
+    };
+    let bound_expr = rational_to_expr(&mut simplifier.context, &bound);
+    let two_expr = rational_to_expr(&mut simplifier.context, &two);
+    let doubled_raw = simplifier.context.add(Expr::Mul(two_expr, g));
+    let (doubled, _) = simplifier.simplify(doubled_raw);
+    let cos_call = simplifier
+        .context
+        .call_builtin(BuiltinFn::Cos, vec![doubled]);
+    let sub_eq = Equation {
+        lhs: cos_call,
+        rhs: bound_expr,
+        op: sub_op,
+    };
+    let (set, _) = crate::solver_entrypoints_solve::solve(&sub_eq, var, simplifier).ok()?;
+    if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
+        return None;
+    }
+    Some(set)
+}
+
+/// The `|trig(g)| ⋚ r` window split (r = √t for the square, r = t for the
+/// abs): sub-solve `trig ⋚ ±r` through the full pipeline and combine.
+fn trig_abs_threshold_window_split(
+    simplifier: &mut Simplifier,
+    trig_fn: cas_ast::BuiltinFn,
+    g: ExprId,
+    is_square: bool,
+    op: cas_ast::RelOp,
+    t: &num_rational::BigRational,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::RelOp;
+
     // r = √t for the square, r = t for the abs.
     let r_expr = if is_square {
-        let t_expr = rational_to_expr(&mut simplifier.context, &t);
+        let t_expr = rational_to_expr(&mut simplifier.context, t);
         let sqrt_call = simplifier.context.call("sqrt", vec![t_expr]);
         simplifier.simplify(sqrt_call).0
     } else {
-        rational_to_expr(&mut simplifier.context, &t)
+        rational_to_expr(&mut simplifier.context, t)
     };
     let neg_r_expr = {
         let neg = simplifier.context.add(Expr::Neg(r_expr));

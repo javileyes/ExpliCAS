@@ -392,7 +392,28 @@ pub(crate) fn combine_abs_branch_sets(
         RelOp::Eq | RelOp::Neq | RelOp::Gt | RelOp::Geq => {
             union_solution_sets(ctx, positive_branch, negative_branch)
         }
-        RelOp::Lt | RelOp::Leq => intersect_solution_sets(ctx, positive_branch, negative_branch),
+        RelOp::Lt | RelOp::Leq => {
+            // A declined (`Residual`) or guarded (`Conditional`) branch cannot be
+            // intersected: the core maps `Residual ∩ X` to `Empty`, which here
+            // FABRICATES «No solution» out of an unsolved fragment (F4:
+            // `|tanh(x)| < 1` splits into `tanh < 1` / `tanh > −1`, both branches
+            // decline, and the intersection reported wrong Empty — true set ℝ).
+            // Propagate the unsolved fragment instead, the same accepted
+            // best-effort the union arm of `union_solution_sets` applies.
+            if matches!(
+                positive_branch,
+                SolutionSet::Residual(_) | SolutionSet::Conditional(_)
+            ) {
+                return positive_branch;
+            }
+            if matches!(
+                negative_branch,
+                SolutionSet::Residual(_) | SolutionSet::Conditional(_)
+            ) {
+                return negative_branch;
+            }
+            intersect_solution_sets(ctx, positive_branch, negative_branch)
+        }
     }
 }
 
