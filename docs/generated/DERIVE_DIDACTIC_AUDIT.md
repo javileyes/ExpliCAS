@@ -14702,7 +14702,7 @@ Steps (Aggressive Mode):
    Before: 1 / (sqrt(x) - a)
    Cambio local: 1 / (sqrt(x) - a) -> (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
    After: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
-2.   [Deshacer raíz y potencia]
+2. (u^y)^(1/y) = u  [Deshacer raíz y potencia]
    Before: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
    Cambio local: sqrt(x)^(2) -> x
    After: (sqrt(x) + a) / (x - a^2)
@@ -14749,7 +14749,7 @@ Steps (Aggressive Mode):
    Before: 1 / (sqrt(y) - a)
    Cambio local: 1 / (sqrt(y) - a) -> (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
    After: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
-2.   [Deshacer raíz y potencia]
+2. (u^y)^(1/y) = u  [Deshacer raíz y potencia]
    Before: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
    Cambio local: sqrt(y)^(2) -> y
    After: (sqrt(y) + a) / (y - a^2)

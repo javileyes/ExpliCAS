@@ -1,0 +1,221 @@
+{"e": "cos(pi * log(sqrt(exp(1) * x^((2 * log((cos(y))^2 + (sin(y))^2)) / log(x)))))", "ok": true, "r": "0", "steps": 6, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}, {"kind": "Positive", "expr_display": "sin(y)^2 + cos(y)^2", "expr_canonical": "sin(y)^2 + cos(y)^2"}, {"kind": "Positive", "expr_display": "sqrt(e·x^(2·ln(sin(y)^2 + cos(y)^2) / ln(x)))", "expr_canonical": "sqrt(e·x^(2·ln(sin(y)^2 + cos(y)^2) / ln(x)))"}, {"kind": "Positive", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "(ln(x*sqrt(x)) + ln(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)", "ok": true, "r": "0", "steps": 14, "solve": 0, "subs": 13, "warnings": [{"rule": "Evaluate Logarithms", "assumption": "x > 0"}], "req": [{"kind": "NonZero", "expr_display": "x - y", "expr_canonical": "x - y"}, {"kind": "NonZero", "expr_display": "y - 1", "expr_canonical": "y - 1"}, {"kind": "Positive", "expr_display": "x", "expr_canonical": "x"}, {"kind": "Positive", "expr_display": "y", "expr_canonical": "y"}]}
+{"e": "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)", "ok": true, "r": "0", "steps": 5, "solve": 0, "subs": 4, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "1 / (1 / x + 1) + 1", "expr_canonical": "1 / (1 / x + 1) + 1"}, {"kind": "NonZero", "expr_display": "x + 1", "expr_canonical": "x + 1"}, {"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}, {"kind": "NonZero", "expr_display": "2·x + 1", "expr_canonical": "2·x + 1"}]}
+{"e": "(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)", "ok": true, "r": "x^6 - 1", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "factor(x^6-1)", "ok": true, "r": "(x - 1)·(x + 1)·(x^2 + x + 1)·(x^2 + 1 - x)", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "expand((x+1)^5)", "ok": true, "r": "x^5 + 5·x^4 + 10·x^3 + 10·x^2 + 5·x + 1", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "expand(3*(2+pi))", "ok": true, "r": "6 + 3·pi", "steps": 2, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "apart(x^3/(x^2-1))", "ok": true, "r": "1/2 / (x - 1) + 1/2 / (x + 1) + x", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x + 1", "expr_canonical": "x + 1"}, {"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}]}
+{"e": "sqrt(5+2*sqrt(6))", "ok": true, "r": "sqrt(2) + sqrt(3)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "simplify((e^x - e^(-x))/(e^x + e^(-x)))", "ok": true, "r": "tanh(x)", "steps": 5, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "simplify(sin(x)^2+cos(x)^2)", "ok": true, "r": "1", "steps": 2, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "(sqrt(5 + 2*sqrt(6))) + (1/(u*(u+2))) - ((sqrt(2) + sqrt(3)) + (1/(2*u) - 1/(2*(u+2))))", "ok": true, "r": "0", "steps": 7, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "u", "expr_canonical": "u"}, {"kind": "NonZero", "expr_display": "u + 2", "expr_canonical": "u + 2"}]}
+{"e": "approx(e^pi)", "ok": true, "r": "23.1406926328", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "approx(2^100)", "ok": true, "r": "1.26765060023×10^30", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "approx(1/2^100)", "ok": true, "r": "7.88860905221×10^(-31)", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "diff(arctan((1+x)/(1-x)), x)", "ok": true, "r": "1 / (x^2 + 1)", "steps": 6, "solve": 0, "subs": 5, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}]}
+{"e": "diff(x^x, x)", "ok": true, "r": "x^x·(ln(x) + 1)", "steps": 2, "solve": 0, "subs": 1, "warnings": [], "req": [{"kind": "Positive", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "diff(sin(e^(x^2)), x)", "ok": true, "r": "2·x·cos(e^(x^2))·e^(x^2)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "diff(ln((x-1)/(x+1)), x)", "ok": true, "r": "2 / (x^2 - 1)", "steps": 4, "solve": 0, "subs": 5, "warnings": [], "req": [{"kind": "Positive", "expr_display": "x^2 - 1", "expr_canonical": "x^2 - 1"}]}
+{"e": "diff(arctan(sqrt(x)), x)", "ok": true, "r": "1 / (2·sqrt(x)·(x + 1))", "steps": 2, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "Positive", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "diff(sin(x)/x, x)", "ok": true, "r": "(x·cos(x) - sin(x)) / x^2", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "diff(x^2*y, x, y)", "ok": true, "r": "2·x", "steps": 3, "solve": 0, "subs": 4, "warnings": [], "req": []}
+{"e": "diff(sin(x), x, 4)", "ok": true, "r": "sin(x)", "steps": 5, "solve": 0, "subs": 4, "warnings": [], "req": []}
+{"e": "diff(tanh(x), x)", "ok": true, "r": "1 / cosh(x)^2", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "diff(x^3 + 2*x^2 - 5*x + 1, x)", "ok": true, "r": "3·x^2 + 4·x - 5", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "integrate(e^(-x^2), x, -oo, oo)", "ok": true, "r": "sqrt(pi)", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "integrate(1/(x^2+1), x, 0, oo)", "ok": true, "r": "1/2·pi", "steps": 2, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "integrate(1/(x^4-1), x, 2, oo)", "ok": true, "r": "1/4·(ln(3) + 2·arctan(2)) - 1/4·pi", "steps": 8, "solve": 0, "subs": 4, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}, {"kind": "NonZero", "expr_display": "x + 1", "expr_canonical": "x + 1"}]}
+{"e": "integrate(1/(x^3-x), x)", "ok": true, "r": "1/2·ln(|x - 1|) + 1/2·ln(|x + 1|) - ln(|x|)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x + 1", "expr_canonical": "x + 1"}, {"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}, {"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "integrate(e^x*sin(x), x)", "ok": true, "r": "1/2·e^x·(sin(x) - cos(x))", "steps": 3, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "integrate(x^2 * sin(x), x)", "ok": true, "r": "2·x·sin(x) + (2 - x^2)·cos(x)", "steps": 1, "solve": 0, "subs": 9, "warnings": [], "req": []}
+{"e": "integrate((2*x+3)/(x^2+x+1), x)", "ok": true, "r": "ln(x^2 + x + 1) + 4·arctan((2·x + 1) / sqrt(3)) / sqrt(3)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "integrate(2*x/sqrt(4+x^4)+1, x)", "ok": true, "r": "asinh(x^2 / 2) + x", "steps": 1, "solve": 0, "subs": 5, "warnings": [], "req": []}
+{"e": "integrate(x*cos(x^2), x)", "ok": true, "r": "1/2·sin(x^2)", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "integrate(x^2, x)", "ok": true, "r": "1/3·x^3", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "integrate(1/(x^5-1), x)", "ok": true, "r": "1/5·ln(|x - 1|) + ln(x·(sqrt(5/4) + 1/2) + x^2 + 1)·(-1/10·sqrt(5/4) - 1/20) + ln(x·(1/2 - sqrt(5/4)) + x^2 + 1)·(1/10·sqrt(5/4) - 1/20) - 1/5·arctan((sqrt(5/4) + 2·x + 1/2) / sqrt(5/2 - sqrt(5/4)))·sqrt(5/2 - sqrt(5/4)) - 1/5·arctan((2·x + 1/2 - sqrt(5/4)) / sqrt(sqrt(5/4) + 5/2))·sqrt(sqrt(5/4) + 5/2)", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}, {"kind": "NonZero", "expr_display": "x^4 + x^3 + x^2 + x + 1", "expr_canonical": "x^4 + x^3 + x^2 + x + 1"}]}
+{"e": "integrate(1/(x^3-2), x)", "ok": true, "r": "-1/6·arctan((cbrt(2) + 2·x) / (sqrt(3)·cbrt(2)))·sqrt(3)·cbrt(2) - 1/12·ln(cbrt(2)^2 + x·cbrt(2) + x^2)·cbrt(2) + 1/6·ln(|x - cbrt(2)|)·cbrt(2)", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - cbrt(2)", "expr_canonical": "x - cbrt(2)"}, {"kind": "NonZero", "expr_display": "x^3 - 2", "expr_canonical": "x^3 - 2"}]}
+{"e": "integrate(1/(x^4-5), x)", "ok": true, "r": "-1/10·arctan(x / sqrt(1/2·sqrt(20)))·sqrt(1/2·sqrt(20)) + 1/20·sqrt(1/2·sqrt(20))·(ln(|x - sqrt(1/2·sqrt(20))|) - ln(|sqrt(1/2·sqrt(20)) + x|))", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "sqrt(1/2·sqrt(20)) + x", "expr_canonical": "sqrt(1/2·sqrt(20)) + x"}, {"kind": "NonZero", "expr_display": "x - sqrt(1/2·sqrt(20))", "expr_canonical": "x - sqrt(1/2·sqrt(20))"}, {"kind": "NonZero", "expr_display": "x^4 - 5", "expr_canonical": "x^4 - 5"}]}
+{"e": "integrate(1/(x^5-x-1), x)", "ok": true, "r": "root_sum(80·t^2 + 1 - 2869·t^5 - 160·t^3 - 15·t, t, t·ln(x - (183616/625·t^4 + 45904/625·t^3 + 21716/625·t^2 + 309/625·t + 256/625)))", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^5 - x - 1", "expr_canonical": "x^5 - x - 1"}]}
+{"e": "integrate(1/(x^7-1), x)", "ok": true, "r": "root_sum(-117649·t^6 - 16807·t^5 - 2401·t^4 - 343·t^3 - 49·t^2 - 7·t - 1, t, t·ln(x - 7·t)) + 1/7·ln(|x - 1|)", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}, {"kind": "NonZero", "expr_display": "x^6 + x^5 + x^4 + x^3 + x^2 + x + 1", "expr_canonical": "x^6 + x^5 + x^4 + x^3 + x^2 + x + 1"}]}
+{"e": "integrate(1/(x^5-2), x)", "ok": true, "r": "root_sum(1 - 50000·t^5, t, t·ln(x - 10·t))", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^5 - 2", "expr_canonical": "x^5 - 2"}]}
+{"e": "integrate(1/(x^5-x-1), x, 2, 3)", "ok": true, "r": "root_sum(80·t^2 + 1 - 2869·t^5 - 160·t^3 - 15·t, t, t·ln(3 - (183616/625·t^4 + 45904/625·t^3 + 21716/625·t^2 + 309/625·t + 256/625))) - root_sum(80·t^2 + 1 - 2869·t^5 - 160·t^3 - 15·t, t, t·ln(2 - (183616/625·t^4 + 45904/625·t^3 + 21716/625·t^2 + 309/625·t + 256/625)))", "steps": 1, "solve": 0, "subs": 4, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^5 - x - 1", "expr_canonical": "x^5 - x - 1"}]}
+{"e": "integrate(1/(x^3-x-1), x, 1, 2)", "ok": true, "r": "undefined", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^3 - x - 1", "expr_canonical": "x^3 - x - 1"}]}
+{"e": "integrate(x/(x^4+x+1), x)", "ok": true, "r": "root_sum(229·t^4 + 32·t^2 + t + 1, t, t·ln(x - (29312/1051·t^2 + 1940/1051 - 32976/1051·t^3 - 3921/1051·t)))", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^4 + x + 1", "expr_canonical": "x^4 + x + 1"}]}
+{"e": "integrate(1/(x^3-2), x, 2, 3)", "ok": true, "r": "-1/6·arctan((cbrt(2) + 2·3) / (sqrt(3)·cbrt(2)))·sqrt(3)·cbrt(2) - 1/12·ln(3^2 + cbrt(2)^2 + 3·cbrt(2))·cbrt(2) + 1/6·ln(|3 - cbrt(2)|)·cbrt(2) - (-1/6·arctan((cbrt(2) + 2·2) / (sqrt(3)·cbrt(2)))·sqrt(3)·cbrt(2) - 1/12·ln(2^2 + cbrt(2)^2 + 2·cbrt(2))·cbrt(2) + 1/6·ln(|2 - cbrt(2)|)·cbrt(2))", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^3 - 2", "expr_canonical": "x^3 - 2"}]}
+{"e": "integrate(1/(x^4-5), x, 1, 2)", "ok": true, "r": "undefined", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^4 - 5", "expr_canonical": "x^4 - 5"}]}
+{"e": "approx(integrate(1/(x^3-2), x, 2, 3))", "ok": true, "r": "0.0826140448044", "steps": 2, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^3 - 2", "expr_canonical": "x^3 - 2"}]}
+{"e": "limit((1+1/n)^n, n, infinity)", "ok": true, "r": "e", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "limit(sin(x)/x, x, 0)", "ok": true, "r": "1", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit((sin(x)-x)/x^3, x, 0)", "ok": true, "r": "-1/6", "steps": 1, "solve": 0, "subs": 4, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit((1-cos(x))/x^2, x, 0)", "ok": true, "r": "1/2", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit(sqrt(x^2+x)-x, x, infinity)", "ok": true, "r": "1/2", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "limit((1+2/x)^x, x, infinity)", "ok": true, "r": "e^2", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "limit((2^x-1)/x, x, 0)", "ok": true, "r": "ln(2)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit(x/ln(1-x), x, -infinity)", "ok": true, "r": "-infinity", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "limit((x^2+1)/(2*x^2-3), x, infinity)", "ok": true, "r": "1/2", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "limit(x^2/exp(2*x), x, infinity)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "limit(ln(x)/exp(x), x, infinity)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "limit(sqrt(x)*exp(-x), x, infinity)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "limit((x^2 + 3*x)/(2*x^2 - x), x, inf)", "ok": true, "r": "1/2", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "limit(1/x-1/sin(x), x, 0)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "sin(x)", "expr_canonical": "sin(x)"}, {"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit(1/tan(x)^2-1/x^2, x, 0)", "ok": true, "r": "-2/3", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "cos(x)", "expr_canonical": "cos(x)"}, {"kind": "NonZero", "expr_display": "sin(x)", "expr_canonical": "sin(x)"}, {"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit(e^x/pi^x, x, infinity)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "limit(sqrt(2)^x/e^x, x, infinity)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "limit(x^5/pi^x, x, infinity)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "limit((pi^x-1)/x, x, 0)", "ok": true, "r": "ln(pi)", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "limit((pi^x-1)/(e^x-1), x, 0)", "ok": true, "r": "ln(pi)", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "e^x - 1", "expr_canonical": "e^x - 1"}]}
+{"e": "limit((2^x-3^x)/(5^x-7^x), x, 0)", "ok": true, "r": "ln(2/3) / ln(5/7)", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "5^x - 7^x", "expr_canonical": "5^x - 7^x"}]}
+{"e": "limit((12^(2*x)-144^x)/x, x, 0)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "solve(a*x^2+b*x+c=0,x)", "ok": true, "r": "{ (-sqrt(b^2 - 4·a·c) - b) / (2·a), (sqrt(b^2 - 4·a·c) - b) / (2·a) }", "steps": 0, "solve": 1, "subs": 7, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "a", "expr_canonical": "a"}, {"kind": "NonNegative", "expr_display": "b^2 - 4·a·c", "expr_canonical": "b^2 - 4·a·c"}]}
+{"e": "solve(x^3-6*x^2+11*x-6=0,x)", "ok": true, "r": "{ 1, 2, 3 }", "steps": 0, "solve": 1, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(x^4-5*x^2+4=0,x)", "ok": true, "r": "{ -2, -1, 1, 2 }", "steps": 0, "solve": 1, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(sin(x)=1/2,x)", "ok": true, "r": "{ 1/6·pi + k·2·pi, 5/6·pi + k·2·pi : k ∈ ℤ }", "steps": 0, "solve": 4, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(cos(2*x)=1/2,x)", "ok": true, "r": "{ 1/6·pi + k·pi, 5/6·pi + k·pi : k ∈ ℤ }", "steps": 0, "solve": 2, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(2*cos(x)-sqrt(3)=0,x)", "ok": true, "r": "{ 1/6·pi + k·2·pi, 11/6·pi + k·2·pi : k ∈ ℤ }", "steps": 0, "solve": 5, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(sin(x)=cos(x),x)", "ok": true, "r": "{ 1/4·pi + k·pi : k ∈ ℤ }", "steps": 0, "solve": 3, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(sin(x)+sqrt(3)*cos(x)=1,x)", "ok": true, "r": "{ -1/6·pi + k·2·pi, 1/2·pi + k·2·pi : k ∈ ℤ }", "steps": 0, "solve": 3, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(e^(2*x)-3*e^x+2=0,x)", "ok": true, "r": "{ ln(2), 0 }", "steps": 0, "solve": 11, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(e^x+e^(-x)=4,x)", "ok": true, "r": "{ ln(2 - sqrt(3)), ln(sqrt(3) + 2) }", "steps": 0, "solve": 6, "subs": 6, "warnings": [], "req": []}
+{"e": "solve(4^x-9^x=0,x)", "ok": true, "r": "{ 0 }", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(ln(x)+ln(x-3)=1,x)", "ok": true, "r": "{ 1/2·(sqrt(9 + 4·e) + 3) }", "steps": 0, "solve": 2, "subs": 6, "warnings": [], "req": [{"kind": "Positive", "expr_display": "x - 3", "expr_canonical": "x - 3"}]}
+{"e": "solve(sqrt(x+5)-sqrt(x)=1,x)", "ok": true, "r": "{ 4 }", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonNegative", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "solve(abs(x^2-1)=x+1,x)", "ok": true, "r": "{ -1, 2, 0 }", "steps": 0, "solve": 2, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(x^2=1-sqrt(2),x)", "ok": true, "r": "No solution", "steps": 0, "solve": 1, "subs": 4, "warnings": [], "req": []}
+{"e": "solve(Q = Q0 * 2^(-t/T),t)", "ok": true, "r": "{ -(T·log(2, Q / Q0)) } if Q / Q0 > 0", "steps": 0, "solve": 4, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "T", "expr_canonical": "T"}]}
+{"e": "solve(tan(x)=tan(2*x), x)", "ok": true, "r": "{ k·pi : k ∈ ℤ }", "steps": 0, "solve": 2, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(x*abs(x)=4, x)", "ok": true, "r": "{ 2 }", "steps": 0, "solve": 2, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(cot(x)^2=3, x)", "ok": true, "r": "{ 1/6·pi + k·pi, 5/6·pi + k·pi : k ∈ ℤ }", "steps": 0, "solve": 2, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(x^2-2*x-3>0,x)", "ok": true, "r": "(-infinity, -1) U (3, infinity)", "steps": 0, "solve": 1, "subs": 6, "warnings": [], "req": []}
+{"e": "solve((x-1)*(x-2)*(x-3)>0,x)", "ok": true, "r": "(1, 2) U (3, infinity)", "steps": 0, "solve": 4, "subs": 12, "warnings": [], "req": []}
+{"e": "solve((x-1)/(x-2)<0,x)", "ok": true, "r": "(1, 2)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 2", "expr_canonical": "x - 2"}]}
+{"e": "solve(x+1/x>2,x)", "ok": true, "r": "(0, 1) U (1, infinity)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "solve((x+1)/(x-1)>=2,x)", "ok": true, "r": "(1, 3]", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - 1", "expr_canonical": "x - 1"}]}
+{"e": "solve(1/(x-sqrt(2))>0,x)", "ok": true, "r": "(sqrt(2), infinity)", "steps": 0, "solve": 1, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - sqrt(2)", "expr_canonical": "x - sqrt(2)"}]}
+{"e": "solve(sqrt(x)>2,x)", "ok": true, "r": "(4, infinity)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonNegative", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "solve(x^(2/3)>2,x)", "ok": true, "r": "(-infinity, -(2^(3/2))) U (2^(3/2), infinity)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(abs(x-2)>1,x)", "ok": true, "r": "(-infinity, 1) U (3, infinity)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(abs(x-1)<abs(x+2),x)", "ok": true, "r": "(-1/2, infinity)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(e^(2*x)-3*e^x+2<0,x)", "ok": true, "r": "(0, ln(2))", "steps": 0, "solve": 2, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(ln(x)^2-3*ln(x)+2<0,x)", "ok": true, "r": "(e, e^2)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "Positive", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "solve(2*sin(3*x)-1>0, x)", "ok": true, "r": "{ (1/18·pi + k·2/3·pi, 5/18·pi + k·2/3·pi) : k ∈ ℤ }", "steps": 0, "solve": 3, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(abs(x-a)<2, x)", "ok": true, "r": "(a - 2, a + 2)", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "solve_system(x+y=3; x-y=1; x; y)", "ok": true, "r": "{ x = 2, y = 1 }", "steps": 0, "solve": 6, "subs": 0, "warnings": [], "req": []}
+{"e": "solve_system(2*x+3*y=7; 3*x-y=5; x; y)", "ok": true, "r": "{ x = 2, y = 1 }", "steps": 0, "solve": 6, "subs": 0, "warnings": [], "req": []}
+{"e": "solve_system(x+y+z=6; x-y+z=2; 2*x+y-z=1; x; y; z)", "ok": true, "r": "{ x = 1, y = 2, z = 3 }", "steps": 0, "solve": 9, "subs": 0, "warnings": [], "req": []}
+{"e": "solve_system(a+b+c=1; a-b+c=3; a+b-c=-1; a; b; c)", "ok": true, "r": "{ a = 1, b = -1, c = 1 }", "steps": 0, "solve": 9, "subs": 0, "warnings": [], "req": []}
+{"e": "solve([x+y=3, x-y=1], [x, y])", "ok": true, "r": "{ x = 2, y = 1 }", "steps": 0, "solve": 6, "subs": 0, "warnings": [], "req": []}
+{"e": "solve([a*x+y=1, x-y=0], [x, y])", "ok": true, "r": "{ x = 1 / (a + 1), y = 1 / (a + 1) }\n  requires: a + 1 != 0", "steps": 0, "solve": 6, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "a + 1", "expr_canonical": "a + 1"}]}
+{"e": "solve([x^2+y^2=25, x+y=7], [x, y])", "ok": true, "r": "{ x = 3, y = 4 } or { x = 4, y = 3 }", "steps": 0, "solve": 5, "subs": 0, "warnings": [], "req": []}
+{"e": "solve([x*y=6, x+y=5], [x, y])", "ok": true, "r": "{ x = 2, y = 3 } or { x = 3, y = 2 }", "steps": 0, "solve": 5, "subs": 0, "warnings": [], "req": []}
+{"e": "sum(1/n^2, n, 1, oo)", "ok": true, "r": "1/6·pi^2", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "n", "expr_canonical": "n"}]}
+{"e": "sum(k^2, k, 1, n)", "ok": true, "r": "1/6·n·(n + 1)·(2·n + 1)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "sum(1/(n*(n+1)), n, 1, oo)", "ok": true, "r": "1", "steps": 3, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "n", "expr_canonical": "n"}, {"kind": "NonZero", "expr_display": "n + 1", "expr_canonical": "n + 1"}]}
+{"e": "sum(1/n, n, 1, oo)", "ok": true, "r": "infinity", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "n", "expr_canonical": "n"}]}
+{"e": "product(1 - 1/k^2, k, 2, n)", "ok": true, "r": "(n + 1) / (2·n)", "steps": 2, "solve": 0, "subs": 3, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "k", "expr_canonical": "k"}, {"kind": "NonZero", "expr_display": "n", "expr_canonical": "n"}]}
+{"e": "taylor(sin(x), x, 0, 5)", "ok": true, "r": "1/120·(x^5 + 120·x - 20·x^3)", "steps": 4, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "sum(k^3, k, 1, n)", "ok": true, "r": "(1/2·n·(n + 1))^2", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "sum(2^k, k, 0, n)", "ok": true, "r": "2^(n + 1) - 1", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "product(k, k, 1, n)", "ok": true, "r": "n!", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "sum(1/2^k, k, 0, oo)", "ok": true, "r": "2", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "totient(100)", "ok": true, "r": "40", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "fibonacci(50)", "ok": true, "r": "12586269025", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "gcd(x^2-1, x^2-2*x+1)", "ok": true, "r": "x - 1", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "isprime(561)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "nextprime(1000)", "ok": true, "r": "1009", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "choose(10,5)", "ok": true, "r": "252", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "factorial(n+2)/factorial(n)", "ok": true, "r": "(n + 1)·(n + 2)", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonNegative", "expr_display": "n", "expr_canonical": "n"}]}
+{"e": "divisors(60)", "ok": true, "r": "[1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60]", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "gcd(48,36,60)", "ok": true, "r": "12", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "[[1,2],[3,4]] * [[5,6],[7,8]]", "ok": true, "r": "[[19, 22], [43, 50]]", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "[[1,2],[3,4]]^(-1)", "ok": true, "r": "[[-2, 1], [3/2, -1/2]]", "steps": 2, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "det([[1,2,3],[4,5,6],[7,8,10]])", "ok": true, "r": "-3", "steps": 5, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "eigenvalues([[2,1],[1,2]])", "ok": true, "r": "[3, 1]", "steps": 2, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "rref([[1,2,3],[4,5,6],[7,8,9]])", "ok": true, "r": "[[1, 0, -1], [0, 1, 2], [0, 0, 0]]", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "[[1,1],[0,1]]^5", "ok": true, "r": "[[1, 5], [0, 1]]", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "det([[a,b],[c,d]])", "ok": true, "r": "a·d - b·c", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "transpose([[1,2,3],[4,5,6]])", "ok": true, "r": "[[1, 4], [2, 5], [3, 6]]", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "cross([1,0,0],[0,1,0])", "ok": true, "r": "[[0], [0], [1]]", "steps": 2, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "dot([1,2,3],[4,5,6])", "ok": true, "r": "32", "steps": 3, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "expr1:= (1 + 3*x1 + 5*x2 + 7*x3 + 9*x4 + 11*x5 + 13*x6 + 15*x7)^7 - 1", "ok": true, "r": "(3·x1 + 5·x2 + 7·x3 + 9·x4 + 11·x5 + 13·x6 + 15·x7 + 1)^7 - 1", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "expand(expr1)", "ok": true, "r": "expr1", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "f(x) := x + 1", "ok": true, "r": "x + 1", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "f(5)", "ok": false, "r": null, "steps": null, "solve": null, "subs": null, "warnings": [], "req": []}
+{"e": "g(x,y) := x^2 + y", "ok": true, "r": "x^2 + y", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "g(3,4)", "ok": false, "r": null, "steps": null, "solve": null, "subs": null, "warnings": [], "req": []}
+{"e": "h(x) := x^3 + sin(x)", "ok": true, "r": "sin(x) + x^3", "steps": 0, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "diff(h(x), x)", "ok": false, "r": null, "steps": null, "solve": null, "subs": null, "warnings": [], "req": []}
+{"e": "diff(integrate(2*x/sqrt(4+x^4)+1, x), x) - (2*x/sqrt(4+x^4)+1)", "ok": true, "r": "0", "steps": 6, "solve": 0, "subs": 6, "warnings": [], "req": []}
+{"e": "equiv(diff(integrate(2*x/sqrt(4+x^4)+1, x), x), 2*x/sqrt(4+x^4)+1)", "ok": true, "r": "true", "steps": 8, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "equiv(sin(x+y), sin(x)*cos(y) + cos(x)*sin(y))", "ok": true, "r": "true", "steps": 2, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "equiv(cos(2*x), 1-2*sin(x)^2)", "ok": true, "r": "true", "steps": 2, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "equiv((x^3+y^3)/(x+y), x^2-x*y+y^2)", "ok": true, "r": "true", "steps": 4, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x + y", "expr_canonical": "x + y"}]}
+{"e": "derive (x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1), x^6 - 1", "ok": true, "r": "x^6 - 1", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "diff(integrate(x*e^x, x), x) - x*e^x", "ok": true, "r": "0", "steps": 2, "solve": 0, "subs": 6, "warnings": [], "req": []}
+{"e": "equiv(log(x*y), log(x)+log(y))", "ok": true, "r": "true", "steps": 4, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "Positive", "expr_display": "x", "expr_canonical": "x"}, {"kind": "Positive", "expr_display": "y", "expr_canonical": "y"}]}
+{"e": "integrate(diff(x^3, x), x) - x^3", "ok": true, "r": "0", "steps": 2, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "equiv(tan(x), sin(x)/cos(x))", "ok": true, "r": "true", "steps": 3, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "cos(x)", "expr_canonical": "cos(x)"}]}
+{"e": "diff(integrate(1/(x^3-2), x), x) - 1/(x^3-2)", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x - cbrt(2)", "expr_canonical": "x - cbrt(2)"}, {"kind": "NonZero", "expr_display": "x^3 - 2", "expr_canonical": "x^3 - 2"}]}
+{"e": "gradient(x^2*y, [x,y])", "ok": true, "r": "[[2·x·y], [x^2]]", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "diff([x^2, sin(x)], x)", "ok": true, "r": "[[2·x], [cos(x)]]", "steps": 1, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "dot(gradient(x^2*y,[x,y]), [1,0])", "ok": true, "r": "2·x·y", "steps": 2, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "jacobian([x^2*y, x+y], [x,y])", "ok": true, "r": "[[2·x·y, x^2], [1, 1]]", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "det(hessian(x^2*y, [x,y]))", "ok": true, "r": "-4·x^2", "steps": 3, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "divergence([x^2, y^2], [x,y])", "ok": true, "r": "2·x + 2·y", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "laplacian(ln(x^2+y^2), [x,y])", "ok": true, "r": "0", "steps": 7, "solve": 0, "subs": 5, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}, {"kind": "NonZero", "expr_display": "y", "expr_canonical": "y"}]}
+{"e": "curl([y,-x,0], [x,y,z])", "ok": true, "r": "[[0], [0], [-2]]", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "curl(gradient(x*y*z,[x,y,z]), [x,y,z])", "ok": true, "r": "[[0], [0], [0]]", "steps": 2, "solve": 0, "subs": 4, "warnings": [], "req": []}
+{"e": "integrate([cos(x), e^x], x)", "ok": true, "r": "[[sin(x)], [e^x]]", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "abs([3,4])", "ok": true, "r": "5", "steps": 3, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "(3+4i)/(1-2i)", "ok": true, "r": "(3 + 4·i) / (1 - 2·i)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "(1+i)^2", "ok": true, "r": "(1 + i)^2", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "(2+i)^4", "ok": true, "r": "(2 + i)^4", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "(1+i)^(-1)", "ok": true, "r": "1 / (1 + i)", "steps": 1, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "abs(3+4i)", "ok": true, "r": "|3 + 4·i|", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "conjugate(3+4i)", "ok": true, "r": "conjugate(3 + 4·i)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "solve(x^2+1, x)", "ok": true, "r": "No solution", "steps": 0, "solve": 1, "subs": 4, "warnings": [], "req": []}
+{"e": "solve(x^3-1, x)", "ok": true, "r": "{ 1 }", "steps": 0, "solve": 1, "subs": 0, "warnings": [], "req": []}
+{"e": "e^(i*pi)", "ok": true, "r": "e^(pi·i)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "exp(i*x)", "ok": true, "r": "e^(i·x)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "ln(-1)", "ok": true, "r": "undefined", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "arg(1+i)", "ok": true, "r": "arg(1 + i)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "i^i", "ok": true, "r": "i^i", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "sqrt(3+4i)", "ok": true, "r": "sqrt(3 + 4·i)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "abs(e^(2*i))", "ok": true, "r": "e^(2·i)", "steps": 1, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "sin(i)", "ok": true, "r": "sin(i)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "approx(ln(i))", "ok": true, "r": "approx(ln(i))", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "equiv(e^(i*pi), -1)", "ok": true, "r": "false", "steps": 3, "solve": 0, "subs": 0, "warnings": [{"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "hessian(x^2*y, [x,y])", "ok": true, "r": "[[2·y, 2·x], [2·x, 0]]", "steps": 2, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "curl([y,-x], [x,y])", "ok": true, "r": "-2", "steps": 1, "solve": 0, "subs": 1, "warnings": [], "req": []}
+{"e": "diff([x^2, x^3], x, 2)", "ok": true, "r": "[[2], [6·x]]", "steps": 3, "solve": 0, "subs": 7, "warnings": [], "req": []}
+{"e": "subs(subs(diff(x^2*y,x), x, 1), y, 2)", "ok": true, "r": "4", "steps": 3, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "subs(subs(det(hessian(x^3+y^3-3*x*y,[x,y])), x, 1), y, 1)", "ok": true, "r": "27", "steps": 6, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "solve([diff(x^2+y^2-2*x-4*y, x)=0, diff(x^2+y^2-2*x-4*y, y)=0], [x,y])", "ok": true, "r": "{ x = 1, y = 2 }", "steps": 0, "solve": 6, "subs": 0, "warnings": [], "req": []}
+{"e": "taylor(sin(x)/x, x, 0, 4)", "ok": true, "r": "1/120·(x^4 + 120 - 20·x^2)", "steps": 4, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}]}
+{"e": "taylor(e^(x+y), [x,y], [0,0], 2)", "ok": true, "r": "1/2·(x^2 + y^2 + 2·x·y + 2·x + 2·y + 2)", "steps": 6, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "lineintegral([-y,x], [x,y], [cos(t),sin(t)], t, 0, 2*pi)", "ok": true, "r": "2·pi", "steps": 4, "solve": 0, "subs": 3, "warnings": [], "req": []}
+{"e": "lineintegral(x^2, [x,y], [cos(t),sin(t)], t, 0, pi)", "ok": true, "r": "1/2·pi", "steps": 8, "solve": 0, "subs": 4, "warnings": [], "req": []}
+{"e": "integrate([cos(t),sin(t)], t, 0, pi)", "ok": true, "r": "[[0], [2]]", "steps": 5, "solve": 0, "subs": 5, "warnings": [], "req": []}
+{"e": "integrate(1/(x^8+1), x)", "ok": true, "r": "1/16·sqrt(sqrt(2) + 2)·(ln(x·sqrt(sqrt(2) + 2) + x^2 + 1) - ln(-x·sqrt(sqrt(2) + 2) + x^2 + 1)) + 1/16·sqrt(2 - sqrt(2))·(ln(x·sqrt(2 - sqrt(2)) + x^2 + 1) - ln(-x·sqrt(2 - sqrt(2)) + x^2 + 1)) + 1/8·sqrt(sqrt(2) + 2)·(arctan((sqrt(2 - sqrt(2)) + 2·x) / sqrt(sqrt(2) + 2)) + arctan((2·x - sqrt(2 - sqrt(2))) / sqrt(sqrt(2) + 2))) + 1/8·sqrt(2 - sqrt(2))·(arctan((sqrt(sqrt(2) + 2) + 2·x) / sqrt(2 - sqrt(2))) + arctan((2·x - sqrt(sqrt(2) + 2)) / sqrt(2 - sqrt(2))))", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "integrate(1/(x^8+16), x)", "ok": true, "r": "1/256·sqrt(sqrt(8) + 4)·(ln(x·sqrt(sqrt(8) + 4) + x^2 + 2) - ln(-x·sqrt(sqrt(8) + 4) + x^2 + 2)) + 1/256·sqrt(4 - sqrt(8))·(ln(x·sqrt(4 - sqrt(8)) + x^2 + 2) - ln(-x·sqrt(4 - sqrt(8)) + x^2 + 2)) + 1/128·sqrt(sqrt(8) + 4)·(arctan((sqrt(4 - sqrt(8)) + 2·x) / sqrt(sqrt(8) + 4)) + arctan((2·x - sqrt(4 - sqrt(8))) / sqrt(sqrt(8) + 4))) + 1/128·sqrt(4 - sqrt(8))·(arctan((sqrt(sqrt(8) + 4) + 2·x) / sqrt(4 - sqrt(8))) + arctan((2·x - sqrt(sqrt(8) + 4)) / sqrt(4 - sqrt(8))))", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(sin(x)>1/2, x)", "ok": true, "r": "{ (1/6·pi + k·2·pi, 5/6·pi + k·2·pi) : k ∈ ℤ }", "steps": 0, "solve": 3, "subs": 0, "warnings": [], "req": []}
+{"e": "solve(tan(x)>1, x)", "ok": true, "r": "{ (1/4·pi + k·pi, 1/2·pi + k·pi) : k ∈ ℤ }", "steps": 0, "solve": 3, "subs": 0, "warnings": [], "req": []}
+{"e": "integrate(1/(x^3-x-1), x)", "ok": true, "r": "root_sum(1 - 23·t^3 - 3·t, t, t·ln(x - (46/9·t^2 + 23/9·t + 4/9)))", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^3 - x - 1", "expr_canonical": "x^3 - x - 1"}]}
+{"e": "surface_integral([x,y,0], [x,y,z], [cos(u),sin(u),v], [u,v], [0,2*pi], [0,1])", "ok": true, "r": "2·pi", "steps": 6, "solve": 0, "subs": 5, "warnings": [], "req": []}
+{"e": "surface_integral(1, [x,y,z], [u,v,u+v], [u,v], [0,1], [0,1])", "ok": true, "r": "sqrt(3)", "steps": 6, "solve": 0, "subs": 5, "warnings": [], "req": []}
+{"e": "potential([2*x*y, x^2], [x,y])", "ok": true, "r": "y·x^2", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": []}
+{"e": "potential(gradient(x^2*y + 3*x, [x,y]), [x,y])", "ok": true, "r": "y·x^2 + 3·x", "steps": 2, "solve": 0, "subs": 4, "warnings": [], "req": []}
+{"e": "limit(x*y/(x^2+y^2), [x,y], [1,1])", "ok": true, "r": "1/2", "steps": 1, "solve": 0, "subs": 0, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "x^2 + y^2", "expr_canonical": "x^2 + y^2"}]}
+{"e": "limit(x*y/(x^2+y^2), [x,y], [0,0])", "ok": true, "r": "undefined", "steps": 1, "solve": 0, "subs": 0, "warnings": [{"rule": "Multivariate Limit", "assumption": "el límite no existe: por y = 0 el límite es 0; por y = x es 1/2"}], "req": [{"kind": "NonZero", "expr_display": "x^2 + y^2", "expr_canonical": "x^2 + y^2"}]}
+{"e": "limit(sin(z)/z, z, 0)", "ok": true, "r": "1", "steps": 1, "solve": 0, "subs": 2, "warnings": [], "req": [{"kind": "NonZero", "expr_display": "z", "expr_canonical": "z"}]}
+{"e": "limit(exp(z), z, i*pi)", "ok": true, "r": "limit(e^z, z, pi·i)", "steps": 1, "solve": 0, "subs": 1, "warnings": [{"rule": "Limit Evaluation", "assumption": "Los puntos límite que contienen la unidad imaginaria no están soportados en el dominio de valores reales"}, {"rule": "Imaginary Usage Warning", "assumption": "Para usar aritmética compleja (i² = -1), ejecuta: semantics set value complex"}], "req": []}
+{"e": "limit(x^2*y/(x^2+y^2), [x,y], [0,0])", "ok": true, "r": "0", "steps": 1, "solve": 0, "subs": 0, "warnings": [{"rule": "Multivariate Limit", "assumption": "0 ≤ |f| ≤ C·r^1 con r² = x²+y² (cota polar: |x^a·y^b| ≤ r^(a+b)) — el límite es 0 por acotación"}], "req": [{"kind": "NonZero", "expr_display": "x^2 + y^2", "expr_canonical": "x^2 + y^2"}]}
+{"e": "dsolve(diff(y,x) = x*y, y, x)", "ok": true, "r": "y = C·e^(x^2 / 2)", "steps": 0, "solve": 5, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución general: C es una constante arbitraria"}, {"rule": "dsolve", "assumption": "El doble signo ± de e^C se absorbe en C (C ≠ 0); y = 0 es solución singular (descartada al dividir por g(y))"}], "req": []}
+{"e": "dsolve(diff(y,x) + y = x, y, x)", "ok": true, "r": "y = C / e^x + x - 1", "steps": 0, "solve": 6, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución general: C es una constante arbitraria"}], "req": []}
+{"e": "dsolve((2*x*y+1) + (x^2+2*y)*diff(y,x) = 0, y, x)", "ok": true, "r": "y·x^2 + y^2 + x = C", "steps": 0, "solve": 5, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución implícita: se emite φ(x,y) = C porque la EDO es exacta (φ es el potencial del campo (M, N))"}, {"rule": "dsolve", "assumption": "Solución general: C es una constante arbitraria"}], "req": []}
+{"e": "dsolve(diff(y,x) = -y, y, x, y(0) = 3)", "ok": true, "r": "y = 3 / e^x", "steps": 0, "solve": 7, "subs": 0, "warnings": [], "req": []}
+{"e": "dsolve(diff(y,x,2) + 4*y = 0, y, x)", "ok": true, "r": "y = C1·sin(2·x) + C2·cos(2·x)", "steps": 0, "solve": 5, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución general: C1 y C2 son constantes arbitrarias"}], "req": []}
+{"e": "dsolve(diff(y,x,2) + y = cos(x), y, x)", "ok": true, "r": "y = 1/2·x·sin(x) + C1·sin(x) + C2·cos(x)", "steps": 0, "solve": 6, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución general: C1 y C2 son constantes arbitrarias"}], "req": []}
+{"e": "dsolve(diff(y,x) + y = y^2, y, x)", "ok": true, "r": "y = 1 / (C·e^x + 1)", "steps": 0, "solve": 4, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución general: C es una constante arbitraria"}, {"rule": "dsolve", "assumption": "y = 0 es solución singular (descartada al dividir por y^n)"}], "req": [{"kind": "NonZero", "expr_display": "C·e^x + 1", "expr_canonical": "C·e^x + 1"}]}
+{"e": "dsolve([diff(x,t) = -y, diff(y,t) = x], [x,y], t)", "ok": true, "r": "{ x = -C1·cos(t) - C2·sin(t), y = C2·cos(t) - C1·sin(t) }", "steps": 0, "solve": 4, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "Solución general del sistema: C1 y C2 son constantes arbitrarias"}], "req": []}
+{"e": "dsolve(diff(y,x) = x^2 + y^2, y, x)", "ok": true, "r": "dsolve(diff(y, x) = x^2 + y^2, y, x)", "steps": 0, "solve": 0, "subs": 0, "warnings": [{"rule": "dsolve", "assumption": "La EDO de 1er orden no casa ningún método clásico (separable/lineal/exacta/factor integrante simple/Bernoulli/homogénea); Riccati y formas sin método clásico son residuales honestos permanentes"}], "req": []}

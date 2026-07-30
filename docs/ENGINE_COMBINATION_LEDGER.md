@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 768 (newest first)
+Active entries: 769 (newest first)
 
+- 2026-07-30 | `retained` | `scripts/sound_probe.py` (nuevo, oráculo exacto R11), `scripts/corpus_behavio... | ARQUITECTURA/GATES (ciclo 0 de la remediación del informe integral): los gates del plan pasan de prosa a ejecutables
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
@@ -22843,3 +22844,20 @@ Active entries: 768 (newest first)
 - decision: retener.
 - retained learning:
   - **La yuxtaposición LaTeX es un operador invisible y por eso peligroso**: `k` + `2\cdot \pi` compone un token nuevo para el lector. Todo `format!` que pegue un símbolo a LaTeX arbitrario debe preguntarse qué carácter viene primero — y la condición correcta es sobre el RENDER (empieza por dígito), no sobre el árbol.
+
+## 2026-07-30 - ARQUITECTURA/GATES (ciclo 0 de la remediación del informe integral): los gates del plan pasan de prosa a ejecutables
+
+- area: `scripts/sound_probe.py` (nuevo, oráculo exacto R11), `scripts/corpus_behavior_diff.py` (nuevo, GATE-A pata 2 con modo `--expect` para la excepción R7 de lotes S-P0), `scripts/corpus_timing.py` (nuevo, GATE-B mediana-de-3 con presupuesto ×1.25), `scripts/lint_no_unwrap_expect_prod.sh` (cobertura 4→14 crates), `docs/generated/quality_audit_baseline/` (baselines de comportamiento y timing del corpus 221), huella del scorecard regenerada.
+- status: `retained`. Ciclo 0 de la remediación dirigida por `docs/AUDITORIA_INTEGRAL_2026-07-30.md`; ningún cambio de comportamiento del motor (cero Rust tocado).
+- capture:
+  - **El plan §2 definía gates que no existían como artefactos**: `corpus_behavior_diff.py`, `corpus_timing.py` y `sound_probe.py` vivían (los dos primeros) en el scratchpad efímero de la sesión b5a0d3cf y (el tercero) en el de la sesión del informe. Portados a `scripts/` con contrato documentado; el diff ancla por EXPRESIÓN, no por índice (lección frente E), y `sound_probe` se niega a emitir veredicto ante tokens que no sabe traducir, con `DOMAIN_DIFF` («definido en un solo lado») como señal de condición perdida, no como ruido.
+  - **`make lint` estaba ROJO en HEAD** (ficha Q4a-004): `cas_engine` con 15 `expect(` de producción contra presupuesto 9, y el lint solo presupuestaba 4 de 14 crates (16% de la superficie). Decisión: ratchet desde la realidad — techos = medida exacta a hoy en los 14 crates (cas_engine unwrap APRETADO 17→3; expect 9→15 documentado con los 15 sitios remitidos a la ficha; pendiente ciclo Q de reducción), método de conteo idéntico al del script (descuenta `#[cfg(test)]`).
+  - **La huella publicada estaba 7 commits de código por detrás** (generada en `2fde3123d`): regenerada en HEAD. Delta estructural real: CERO cambios en passed/failed/state de las 21 suites; solo contadores de volumen (`steps_quality_gate` +2 filas/+3 hits; `filtered_out` 2286→2287) atribuibles a los commits de la campaña de perf 2ª y del contrato de expand que la huella vieja no cubría. Pressure: 0 campos distintos.
+- observed:
+  - Baseline verde REAL verificada antes de tocar nada: `cargo test --workspace` EXIT=0 (359 suites, todas failed:0, log crudo con `echo EXIT=$?`) y `cargo clippy --workspace --all-targets -- -D warnings` EXIT=0. El estado clippy era DESCONOCIDO (el audit tenía cargo prohibido durante los workflows); resultó limpio — el único rojo de `make lint` era el presupuesto de unwrap.
+  - Baselines capturadas con máquina quieta: comportamiento (221 filas, 0 errores de captura) y timing (mediana de 3). Debris de los agentes del audit (`VRF2`/`VS`/`VS1`, snapshots de REPL con las expresiones de las fichas) borrado del working tree.
+- decision: retener. Los tres ciclos siguientes (C1: `numeric_poly_zero_check`, `check_root`, `are_equivalent`) ya tienen criterio de aceptación mecánico: diff de corpus vacío o exactamente-las-filas-previstas, timing ≤ ×1.25, huella estructural idéntica salvo deltas declarados.
+- retained learning:
+  - **Un gate que vive en el scratchpad de una sesión no es un gate**: el plan lo citaba como disponible y nadie más que aquella sesión podía correrlo. La pata 2 del GATE-A era inverificable por construcción hasta este ciclo.
+  - **Un lint rojo que nadie mira entrena a ignorar el lint** (2ª instancia tras el CHECK 5 de duplicate_utils): el creep 9→15 de expect entró en tandas con `make ci` presuntamente verde — es decir, nadie corrió `make lint` completo en semanas. El ratchet-desde-la-realidad con remisión a ficha conserva la función del ratchet sin fingir que el pasado no ocurrió.
+  - **En el probe de identidades, «indefinido en un solo lado» es la señal, no ruido**: la primera versión de sound_probe saltaba esos puntos y era ciega exactamente a la clase de defecto (condición perdida) que la lente S4 buscaba.

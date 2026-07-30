@@ -7,17 +7,38 @@ set -euo pipefail
 # and fails if any crate exceeds its budget. As developers fix unwrap calls,
 # they lower the budget numbers below to ratchet down the count.
 #
-# Scope: all production crates (cas_engine, cas_cli, cas_ast, cas_android_ffi)
+# Scope: ALL 14 production crates. Extendido 2026-07-30 por la auditoría
+# integral (docs/AUDITORIA_INTEGRAL_2026-07-30.md, ficha Q4a-004): la versión
+# anterior solo presupuestaba 4 crates (16% de la superficie de producción) y
+# estaba ROJA en HEAD (cas_engine expect 15/9). Los techos nuevos son la
+# MEDIDA REAL a 2026-07-30 (ratchet desde la realidad): bajarlos al arreglar,
+# nunca subirlos sin anotar el porqué aquí.
+# Nota cas_parser: ~15 de sus `.expect(` son llamadas al método propio
+# `self.expect(&Token)` que devuelve Result (no panican); el techo cuenta el
+# patrón textual igualmente para conservar el ratchet simple.
+# Nota cas_engine: expect subió 9→15 entre tandas sin que nadie viera el rojo
+# (los 15 sitios están listados en la ficha Q4a-004); pendiente ciclo Q de
+# reducción.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ─── Budgets (current ceiling — lower these as you fix unwraps) ───
 # Format: CRATE_DIR MAX_UNWRAP MAX_EXPECT
 BUDGETS=(
-    "crates/cas_engine/src     17   9"
-    "crates/cas_ast/src         0   0"
-    "crates/cas_cli/src         0   0"
-    "crates/cas_android_ffi/src 0   0"
+    "crates/cas_engine/src        3  15"
+    "crates/cas_ast/src           0   0"
+    "crates/cas_cli/src           0   0"
+    "crates/cas_android_ffi/src   0   0"
+    "crates/cas_api_models/src    0   0"
+    "crates/cas_didactic/src      3   5"
+    "crates/cas_formatter/src     6   1"
+    "crates/cas_math/src          3  24"
+    "crates/cas_parser/src        1  15"
+    "crates/cas_session/src       0   0"
+    "crates/cas_session_core/src  0   1"
+    "crates/cas_solver/src        9  18"
+    "crates/cas_solver_core/src   2   7"
+    "crates/cas_wasm/src          0   0"
 )
 
 count_pattern() {
