@@ -1295,9 +1295,23 @@ pub(super) fn definite_integration_rewrite(
     // A Weierstrass-substitution antiderivative is DISCONTINUOUS at the poles of
     // its tan(k·x/2) even where the integrand is smooth; naive FTC across such a
     // jump is a wrong value, so decline unless every carrier is zero-free.
-    match combine_certificates(
+    let with_trig = combine_certificates(
         with_acosh,
         antiderivative_trig_pole_certificate(
+            ctx,
+            antiderivative,
+            &call.var_name,
+            &interval_low,
+            &interval_high,
+        ),
+    );
+    // The rational mirror of the same jump class: a substitution antiderivative
+    // (u = x − 1/x for `(a·x²+b)/(x⁴+1)`) carries the variable in denominators
+    // and log arguments, and FTC across their zeros published NEGATIVE values
+    // for positive integrands and raw `/ 0` leaks (audit 2026-07-30, U1a-001).
+    match combine_certificates(
+        with_trig,
+        antiderivative_rational_pole_certificate(
             ctx,
             antiderivative,
             &call.var_name,
@@ -2843,6 +2857,342 @@ fn antiderivative_trig_pole_certificate(
     IntervalCertificate::Certified
 }
 
+/// Collect the RATIONAL singularity carriers of an antiderivative: every `Div`
+/// denominator that depends on the integration variable (FTC substitutes the
+/// bounds into the antiderivative, so a vanishing denominator is a jump or a
+/// raw `/ 0`), and every `ln`/`log` argument (unwrapping `abs`): the
+/// antiderivative walks into `−∞` where its log argument vanishes even when
+/// the integrand is smooth there. Carriers containing trig calls are OWNED by
+/// `collect_trig_pole_carriers` and skipped here.
+fn collect_rational_pole_carriers(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    out: &mut Vec<ExprId>,
+) {
+    use cas_math::expr_predicates::contains_named_var;
+    fn contains_trig_call(ctx: &Context, expr: ExprId) -> bool {
+        match ctx.get(expr).clone() {
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => contains_trig_call(ctx, l) || contains_trig_call(ctx, r),
+            Expr::Neg(inner) | Expr::Hold(inner) => contains_trig_call(ctx, inner),
+            Expr::Function(fn_id, args) => {
+                matches!(
+                    ctx.builtin_of(fn_id),
+                    Some(
+                        cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Tan
+                    )
+                ) || args.iter().any(|arg| contains_trig_call(ctx, *arg))
+            }
+            _ => false,
+        }
+    }
+    let push = |ctx: &Context, carrier: ExprId, out: &mut Vec<ExprId>| {
+        if contains_named_var(ctx, carrier, var_name)
+            && !contains_trig_call(ctx, carrier)
+            && !out.contains(&carrier)
+        {
+            out.push(carrier);
+        }
+    };
+    match ctx.get(expr).clone() {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+            collect_rational_pole_carriers(ctx, l, var_name, out);
+            collect_rational_pole_carriers(ctx, r, var_name, out);
+        }
+        Expr::Div(num, den) => {
+            collect_rational_pole_carriers(ctx, num, var_name, out);
+            collect_rational_pole_carriers(ctx, den, var_name, out);
+            push(ctx, den, out);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_rational_pole_carriers(ctx, inner, var_name, out)
+        }
+        Expr::Function(fn_id, args) => {
+            // A `root_sum` binder is G1 territory: its `t·ln(x − w(t))` body
+            // ranges over the roots of the integrand's own denominator
+            // (Rioboo–Trager), whose interval freedom the integrand
+            // certificate already decides — and its bound variable would read
+            // here as an undecidable "constant" and veto a sound evaluation.
+            if ctx.sym_name(fn_id) == "root_sum" {
+                return;
+            }
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(fn_id),
+                    Some(cas_ast::BuiltinFn::Ln | cas_ast::BuiltinFn::Log)
+                )
+            {
+                // The log singularity sits at arg = 0; `|u|` vanishes with `u`,
+                // and a quotient argument vanishes with its numerator (its
+                // denominator is already a Div carrier of the walk below).
+                let mut log_arg = args[0];
+                loop {
+                    match ctx.get(log_arg) {
+                        Expr::Function(inner_id, inner_args)
+                            if inner_args.len() == 1
+                                && ctx.builtin_of(*inner_id) == Some(cas_ast::BuiltinFn::Abs) =>
+                        {
+                            log_arg = inner_args[0];
+                        }
+                        Expr::Div(num, _) => log_arg = *num,
+                        _ => break,
+                    }
+                }
+                let inner_log_arg = match ctx.get(log_arg).clone() {
+                    Expr::Function(inner_id, inner_args)
+                        if inner_args.len() == 1
+                            && matches!(
+                                ctx.builtin_of(inner_id),
+                                Some(cas_ast::BuiltinFn::Ln | cas_ast::BuiltinFn::Log)
+                            ) =>
+                    {
+                        Some(inner_args[0])
+                    }
+                    _ => None,
+                };
+                if let Some(mut inner) = inner_log_arg {
+                    // `ln(ln(u))`: the outer log's zero-set is `|u| = 1`, an
+                    // EXACT transform into polynomial-decidable carriers
+                    // (`∫ 1/(x·ln x)` has antiderivative `ln|ln x|`; over
+                    // [2,3] the shifts `x ∓ 1` certify where the raw carrier
+                    // `ln(x)` is undecidable). The inner log's own pole at
+                    // `u = 0` is collected by the recursive walk below.
+                    while let Expr::Function(abs_id, abs_args) = ctx.get(inner) {
+                        if abs_args.len() == 1
+                            && ctx.builtin_of(*abs_id) == Some(cas_ast::BuiltinFn::Abs)
+                        {
+                            inner = abs_args[0];
+                        } else {
+                            break;
+                        }
+                    }
+                    let one = ctx.num(1);
+                    let minus_one = ctx.add(Expr::Sub(inner, one));
+                    let plus_one = ctx.add(Expr::Add(inner, one));
+                    push(ctx, minus_one, out);
+                    push(ctx, plus_one, out);
+                } else {
+                    push(ctx, log_arg, out);
+                }
+            }
+            for arg in args {
+                collect_rational_pole_carriers(ctx, arg, var_name, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Decide `expr ≠ 0 on the closed interval` for the composite carriers the
+/// polynomial path cannot parse: a sum/difference of a RATIONAL function
+/// `p/q` (or a plain polynomial) and a variable-free constant `c`. Cross
+/// multiplying, the zeros are those of `p ± c·q`, a polynomial whose
+/// coefficients are `pᵢ ± c·qᵢ` — constant EXPRESSIONS the exact const-sign
+/// oracle can order. A quadratic with provably negative discriminant has no
+/// real zeros at all (the `ln((x²+1)/x ∓ √2)` arguments of the quartic
+/// symmetric antiderivative: `x² ∓ √2·x + 1`, disc = −2); a linear form
+/// normalizes to `x − root` and the exact constant-bounds oracle locates the
+/// algebraic root against the interval (the `2x − 1 ∓ √5` log arguments of
+/// `∫ 1/(x²−x−1)`).
+fn composite_rational_zero_free_on_interval(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> bool {
+    use cas_math::expr_predicates::contains_named_var;
+    // Flatten the top-level Add/Sub/Neg chain into signed terms; the composite
+    // is decidable when EXACTLY ONE term carries the variable (as `p/q` or a
+    // plain polynomial) and every other term is variable-free. Normalizing by
+    // the variable term's sign puts the zero-set in the form `r + C = 0`.
+    let mut terms: Vec<(ExprId, bool)> = Vec::new();
+    let mut stack = vec![(expr, true)];
+    while let Some((node, positive)) = stack.pop() {
+        match ctx.get(node).clone() {
+            Expr::Add(l, r) => {
+                stack.push((l, positive));
+                stack.push((r, positive));
+            }
+            Expr::Sub(l, r) => {
+                stack.push((l, positive));
+                stack.push((r, !positive));
+            }
+            Expr::Neg(inner) => stack.push((inner, !positive)),
+            _ => terms.push((node, positive)),
+        }
+    }
+    let (var_terms, const_terms): (Vec<_>, Vec<_>) = terms
+        .into_iter()
+        .partition(|(term, _)| contains_named_var(ctx, *term, var_name));
+    let [(rational_part, rational_positive)] = var_terms[..] else {
+        return false;
+    };
+    if const_terms.is_empty() {
+        return false;
+    }
+    let mut constant_part: Option<ExprId> = None;
+    for (term, positive) in const_terms {
+        let signed = if positive == rational_positive {
+            term
+        } else {
+            ctx.add(Expr::Neg(term))
+        };
+        constant_part = Some(match constant_part {
+            None => signed,
+            Some(acc) => ctx.add(Expr::Add(acc, signed)),
+        });
+    }
+    let Some(constant_part) = constant_part else {
+        return false;
+    };
+    let (p_expr, q_expr) = match ctx.get(rational_part).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => {
+            let one = ctx.num(1);
+            (rational_part, one)
+        }
+    };
+    let (Ok(p), Ok(q)) = (
+        Polynomial::from_expr(ctx, p_expr, var_name),
+        Polynomial::from_expr(ctx, q_expr, var_name),
+    ) else {
+        return false;
+    };
+    // r + C = 0 with r = p/q  ⟺  p + C·q = 0 (away from q's own zeros, which
+    // are separate Div carriers of the walk).
+    use cas_math::const_sign::{provable_const_sign, ConstSign};
+    let provably_nonzero = |ctx: &mut Context, e: ExprId| -> bool {
+        matches!(
+            provable_const_sign(ctx, e),
+            Some(ConstSign::Negative) | Some(ConstSign::Positive)
+        )
+    };
+    let degree = p.degree().max(q.degree());
+    if degree == 0 || degree > 2 {
+        return false;
+    }
+    // Combined coefficient `pᵢ + C·qᵢ`, folding the rational trivialities
+    // (qᵢ = 0 ⟹ pure Number, qᵢ = 1 ⟹ bare `C`) so the constant-bounds
+    // oracle sees the plainest possible tree.
+    let rational_coeff = |poly: &Polynomial, i: usize| -> BigRational {
+        poly.coeffs
+            .get(i)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    let mut combined = Vec::with_capacity(degree + 1);
+    for i in 0..=degree {
+        let p_i = rational_coeff(&p, i);
+        let q_i = rational_coeff(&q, i);
+        let expr_i = if q_i.is_zero() {
+            ctx.add(Expr::Number(p_i))
+        } else {
+            let scaled = if q_i == BigRational::from_integer(1.into()) {
+                constant_part
+            } else {
+                let q_expr = ctx.add(Expr::Number(q_i));
+                ctx.add(Expr::Mul(constant_part, q_expr))
+            };
+            if p_i.is_zero() {
+                scaled
+            } else {
+                let p_expr = ctx.add(Expr::Number(p_i));
+                ctx.add(Expr::Add(p_expr, scaled))
+            }
+        };
+        combined.push(expr_i);
+    }
+    if degree == 1 {
+        let (a0, a1) = (combined[0], combined[1]);
+        if !provably_nonzero(ctx, a1) {
+            return false;
+        }
+        // Normalize to `x − root` and let the exact constant-bounds oracle
+        // locate the algebraic root against the interval.
+        let neg_a0 = ctx.add(Expr::Neg(a0));
+        let root = if matches!(ctx.get(a1), Expr::Number(n) if *n == BigRational::from_integer(1.into()))
+        {
+            neg_a0
+        } else {
+            ctx.add(Expr::Div(neg_a0, a1))
+        };
+        let var = ctx.var(var_name);
+        let linear = ctx.add(Expr::Sub(var, root));
+        return matches!(
+            algebraic_linear_condition_certificate(
+                ctx,
+                linear,
+                var_name,
+                interval_low,
+                interval_high,
+            ),
+            Some(IntervalCertificate::Certified)
+        );
+    }
+    let (a0, a1, a2) = (combined[0], combined[1], combined[2]);
+    // Leading coefficient must be provably nonzero for the discriminant
+    // argument to cover the whole line.
+    if !provably_nonzero(ctx, a2) {
+        return false;
+    }
+    let b_sq = ctx.add(Expr::Mul(a1, a1));
+    let four = ctx.num(4);
+    let ac = ctx.add(Expr::Mul(a2, a0));
+    let four_ac = ctx.add(Expr::Mul(four, ac));
+    let disc = ctx.add(Expr::Sub(b_sq, four_ac));
+    matches!(provable_const_sign(ctx, disc), Some(ConstSign::Negative))
+}
+
+/// A partial-fractions / quartic-symmetric-substitution antiderivative is
+/// DISCONTINUOUS at the zeros of its own denominators (`u = x − 1/x` is
+/// singular at `x = 0`) even where the integrand is smooth: naive FTC across
+/// the jump published NEGATIVE values for strictly positive integrands and raw
+/// `/ 0` leaks (`∫ x²/(1+x⁴)` over `[−1,1]`; audit 2026-07-30, U1a-001).
+/// Certify the interval only when EVERY rational carrier is provably zero-free
+/// on it; anything else declines to an honest residual (`Unknown`), never
+/// `Undefined` — the jump is a representation artifact, the integral is finite.
+fn antiderivative_rational_pole_certificate(
+    ctx: &mut Context,
+    antiderivative: ExprId,
+    var_name: &str,
+    interval_low: &Endpoint,
+    interval_high: &Endpoint,
+) -> IntervalCertificate {
+    let mut carriers = Vec::new();
+    collect_rational_pole_carriers(ctx, antiderivative, var_name, &mut carriers);
+    let mut outcome = IntervalCertificate::Certified;
+    for carrier in carriers {
+        match nonzero_on_interval(ctx, carrier, var_name, interval_low, interval_high) {
+            IntervalCertificate::Certified => {}
+            // A zero exactly AT an endpoint stays in the improper machinery's
+            // jurisdiction: `∫₀¹ ln(x)` = −1 through the one-sided limit of
+            // `x·ln(x) − x`, and the same path either resolves the quartic
+            // antiderivative's boundary carrier or declines — it never
+            // substitutes the raw bound, so the `/ 0` leak is dead either way.
+            touch @ IntervalCertificate::BoundaryTouch { .. } => {
+                outcome = combine_certificates(outcome, touch);
+            }
+            _ => {
+                if !composite_rational_zero_free_on_interval(
+                    ctx,
+                    carrier,
+                    var_name,
+                    interval_low,
+                    interval_high,
+                ) {
+                    return IntervalCertificate::Unknown;
+                }
+            }
+        }
+    }
+    outcome
+}
+
 fn trig_nonzero_on_interval(
     ctx: &Context,
     expr: ExprId,
@@ -3259,6 +3609,47 @@ mod tests {
             "integrate(1/(2+cos(x)), x, 0, pi/2)",
             "integrate(1/(2+cos(x)), x, -pi/2, pi/2)",
             "integrate(1/(2+cos(x)), x, 0, 1)",
+        ] {
+            assert!(eval_definite(src).is_some(), "{src} should evaluate");
+        }
+    }
+
+    #[test]
+    fn rational_antiderivative_pole_in_interval_declines() {
+        // The quartic-symmetric antiderivative for `(a·x²+b)/(x⁴+1)` substitutes
+        // u = x ∓ 1/x, so it carries `x` in denominators and log arguments and
+        // JUMPS at x = 0 even though the integrand is smooth there. Naive FTC
+        // across the jump published values BELOW the elementary bound
+        // (∫₋₁¹ 1/(1+x⁴) ∈ [1,2], engine said 0.623), NEGATIVE values for
+        // strictly positive integrands, and raw `/ 0` leaks when a bound sits
+        // at the carrier zero (audit 2026-07-30, ficha U1a-001). Any rational
+        // carrier zero inside or AT an endpoint declines to an honest residual
+        // (None) — never a value, never `undefined`: the integral is finite.
+        for src in [
+            "integrate(1/(x^4+1), x, -1, 1)",
+            "integrate(1/(x^4+1), x, -2, 2)",
+            "integrate(1/(x^4+1), x, -1, 2)",
+            "integrate(1/(x^4+1), x, 0, 1)",
+            "integrate(x^2/(x^4+1), x, -1, 1)",
+            "integrate((x^2+1)/(x^4+1), x, -1, 1)",
+            "integrate((2*x^2+3)/(x^4+1), x, -1, 1)",
+            "integrate((x^2-1)/(x^4+1), x, 0, 1)",
+            // Accidentally-correct today (the two ln jumps cancel over the
+            // symmetric window): declining is the DECISION — certifying an
+            // accident would pin a fragile cancellation as a contract.
+            "integrate((x^2-1)/(x^4+1), x, -1, 1)",
+        ] {
+            assert!(eval_definite(src).is_none(), "{src} must stay residual");
+        }
+        // Zero-free windows keep evaluating through the same antiderivative:
+        // the polynomial carrier `x` certifies exactly, and the surd-quadratic
+        // log arguments (`x² ∓ √2·x + 1`, disc −2) certify via the exact
+        // const-sign oracle on the cross-multiplied discriminant.
+        for src in [
+            "integrate(1/(x^4+1), x, 1, 2)",
+            "integrate(1/(x^4+1), x, 1/2, 2)",
+            "integrate(x^2/(x^4+1), x, 1, 3)",
+            "integrate(1/(x^4+1), x, -2, -1)",
         ] {
             assert!(eval_definite(src).is_some(), "{src} should evaluate");
         }
