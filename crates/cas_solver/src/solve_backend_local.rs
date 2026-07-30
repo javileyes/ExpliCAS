@@ -12299,6 +12299,35 @@ fn solve_local_core_inner(
     // solve each as a full equation instead.
     let set = if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
         try_solve_abs_equality(simplifier, eq, var).unwrap_or(set)
+    } else if matches!(&set, SolutionSet::Discrete(_) | SolutionSet::Empty)
+        && count_abs_nodes(&simplifier.context, eq.lhs) >= 3
+    {
+        // F5 (frontier-audit 2026-07-14): NESTED multi-abs `|E| = c` with E a
+        // combination of ≥ 2 inner abs terms. The generic isolation recurses
+        // per-branch through the NARROW single-abs isolation, which silently
+        // drops one branch's roots (`||x|−|x−2|| = 1` returned `{3/2}`,
+        // losing `1/2`) or every root at once (`|2|x|−|x−1|| = 2` → wrong
+        // Empty, true roots {−3, 1} — the adversarial sweep's find) — a
+        // clean-looking but INCOMPLETE result the Residual-gated recovery
+        // above never saw. Re-solve both branches through the full solver
+        // and take the recovery only when it strictly completes the answer
+        // (more roots, or a ray/interval the narrow path could never
+        // produce). Single-inner-abs (`||x|−3| = 1`) and plain
+        // `|linear| = c` keep their correct isolation path (the ≥ 3 count
+        // includes the outer abs).
+        let current_len = match &set {
+            SolutionSet::Discrete(roots) => roots.len(),
+            _ => 0,
+        };
+        match try_solve_abs_equality(simplifier, eq, var) {
+            Some(SolutionSet::Discrete(recovered)) if recovered.len() > current_len => {
+                SolutionSet::Discrete(recovered)
+            }
+            Some(
+                full @ (SolutionSet::Continuous(_) | SolutionSet::Union(_) | SolutionSet::AllReals),
+            ) => full,
+            _ => set,
+        }
     } else {
         set
     };
@@ -13366,12 +13395,38 @@ fn try_solve_sign_via_abs(
 /// even though `solve(x²-2x = 3)` on its own returns `{-1, 3}`. Scoped to a constant RHS (`c < 0` ⇒
 /// no solution; `c = 0` ⇒ the single branch `arg = 0`); a non-constant RHS needs a `g ≥ 0` domain
 /// split and is left to the normal path. Roots are deduped by value.
+/// Total number of `abs(...)` nodes anywhere in `e` (the F5 nested-multi-abs
+/// gate: `|E| = c` with E combining ≥ 2 inner abs counts ≥ 3 with its outer).
+fn count_abs_nodes(ctx: &Context, e: ExprId) -> usize {
+    let own = match ctx.get(e) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) =>
+        {
+            1
+        }
+        _ => 0,
+    };
+    let children: Vec<ExprId> = match ctx.get(e) {
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            vec![*l, *r]
+        }
+        Expr::Neg(u) => vec![*u],
+        Expr::Function(_, args) => args.clone(),
+        _ => vec![],
+    };
+    own + children
+        .into_iter()
+        .map(|c| count_abs_nodes(ctx, c))
+        .sum::<usize>()
+}
+
 fn try_solve_abs_equality(
     simplifier: &mut Simplifier,
     eq: &Equation,
     var: &str,
 ) -> Option<SolutionSet> {
     use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::solution_set::union_solution_sets;
     use num_rational::BigRational;
     use num_traits::Zero;
     use std::collections::HashMap;
@@ -13402,14 +13457,34 @@ fn try_solve_abs_equality(
         vec![pos, neg]
     };
 
-    // Collect the discrete roots from both branches; bail on any non-discrete sub-result.
+    // Collect the branch results. All-Discrete branches keep the original
+    // value-dedup path below (byte-identical for the pinned `|x²-2x| = 3`
+    // family); a ray/interval branch (F5: `|x|−|x−2| = 2` → `[2, ∞)` and
+    // `= −2` → `(−∞, 0]` — a FLAT region of the piecewise argument) unions
+    // the FULL solution sets instead. Unsolved fragments still bail.
     let mut roots: Vec<ExprId> = Vec::new();
+    let mut full_sets: Vec<SolutionSet> = Vec::new();
+    let mut all_discrete = true;
     for branch in branches {
         match branch {
-            SolutionSet::Discrete(rs) => roots.extend(rs),
+            SolutionSet::Discrete(ref rs) => {
+                roots.extend(rs.iter().copied());
+                full_sets.push(branch);
+            }
             SolutionSet::Empty => {}
+            SolutionSet::Continuous(_) | SolutionSet::Union(_) | SolutionSet::AllReals => {
+                all_discrete = false;
+                full_sets.push(branch);
+            }
             _ => return None,
         }
+    }
+    if !all_discrete {
+        let mut acc = SolutionSet::Empty;
+        for s in full_sets {
+            acc = union_solution_sets(&simplifier.context, acc, s);
+        }
+        return Some(acc);
     }
     // Dedup by numeric value (the `arg = c` / `arg = -c` branches overlap only when `c = 0`).
     let mut seen: Vec<f64> = Vec::new();
