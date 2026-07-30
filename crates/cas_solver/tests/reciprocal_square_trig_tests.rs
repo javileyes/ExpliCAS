@@ -80,3 +80,51 @@ fn direct_and_power_one_trig_forms_are_unchanged() {
     // Boundary sin^2 = 1 single-family case unchanged.
     assert_eq!(solve_display("sin(x)^2", "1"), "{ 1/2·pi + k·pi : k ∈ ℤ }");
 }
+
+#[test]
+fn coefficient_and_even_power_spellings_keep_the_periodic_family() {
+    // SOUNDNESS (auditoría 2026-07-30, ficha S1c-001): el coeficiente ≠1
+    // simplificaba a `Mul(c, Div(1, cos²))` — el matcher F5 exigía un `Div`
+    // desnudo, no casaba, y el fallback de inverso unario emitía SOLO las
+    // raíces principales finitas (`{π/3, 2π/3}`) perdiendo la familia
+    // periódica entera. Tres formas estructurales medidas: producto por
+    // coeficiente, potencia par 2m, y constante en el denominador.
+    assert_eq!(
+        solve_display("2*sec(x)^2", "8"),
+        "{ 1/3·pi + k·pi, 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("3*sec(x)^2", "12"),
+        "{ 1/3·pi + k·pi, 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve_display("2*csc(x)^2", "8"),
+        "{ 1/6·pi + k·pi, 5/6·pi + k·pi : k ∈ ℤ }"
+    );
+    // Potencia par: sec⁴ = 16 ⟺ sec² = 4 (la rama negativa no existe:
+    // potencia par ≥ 0).
+    assert_eq!(
+        solve_display("sec(x)^4", "16"),
+        "{ 1/3·pi + k·pi, 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    // ⚠️ `sec²/2 = 2` reduce a cos² = 1/4 — la MISMA familia que sec² = 4,
+    // no la de cos² = 1/2 (aviso literal de la aceptación de la ficha).
+    assert_eq!(
+        solve_display("sec(x)^2/2", "2"),
+        "{ 1/3·pi + k·pi, 2/3·pi + k·pi : k ∈ ℤ }"
+    );
+    // Argumento escalado: el periodo se divide con el argumento.
+    assert_eq!(
+        solve_display("2*sec(2*x)^2", "8"),
+        "{ 1/6·pi + k·1/2·pi, 1/3·pi + k·1/2·pi : k ∈ ℤ }"
+    );
+}
+
+#[test]
+fn impossible_even_power_targets_are_empty_not_finite() {
+    // Potencia par de un real jamás es negativa: el conjunto vacío es una
+    // AFIRMACIÓN con argumento de completitud (no un decline). Antes el
+    // fallback podía fabricar raíces de arccos fuera de dominio.
+    assert_eq!(solve_display("2*sec(x)^2", "-8"), "No solution");
+    assert_eq!(solve_display("sec(x)^4", "-16"), "No solution");
+}

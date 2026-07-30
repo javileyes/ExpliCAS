@@ -5764,6 +5764,34 @@ fn try_solve_division_vs_const_sign_split(
 /// `3·sin − 4·sin³`) is not quadratic-in-u and the generic isolation leaks the
 /// self-referential `solve(x − arcsin(2·sin(x)³) = 0)`. Dispatched AFTER the
 /// existing trig owners, so already-working shapes keep their presentation.
+/// Exact m-th root of a non-negative rational, `None` unless both numerator
+/// and denominator are perfect m-th powers (the f64 seed only guesses; the
+/// EXACT `pow` round-trip decides — R2).
+fn exact_rational_mth_root(
+    value: &num_rational::BigRational,
+    m: u32,
+) -> Option<num_rational::BigRational> {
+    use num_traits::{Signed as _, ToPrimitive as _};
+    if value.is_negative() {
+        return None;
+    }
+    let root_of = |n: &num_bigint::BigInt| -> Option<num_bigint::BigInt> {
+        let seed = n.to_f64()?.powf(1.0 / f64::from(m)).round() as i64;
+        for candidate in seed.saturating_sub(1)..=seed.saturating_add(1) {
+            if candidate >= 0 {
+                let big = num_bigint::BigInt::from(candidate);
+                if big.pow(m) == *n {
+                    return Some(big);
+                }
+            }
+        }
+        None
+    };
+    let numer = root_of(value.numer())?;
+    let denom = root_of(value.denom())?;
+    Some(num_rational::BigRational::new(numer, denom))
+}
+
 fn try_solve_trig_sum_to_product_equation(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -6283,11 +6311,7 @@ fn try_solve_product_inequality_sign_split(
         }
         for (i, &low) in endpoints.iter().enumerate() {
             for &high in &endpoints[i + 1..] {
-                cas_solver_core::solution_set::try_compare_values(
-                    &simplifier.context,
-                    low,
-                    high,
-                )?;
+                cas_solver_core::solution_set::try_compare_values(&simplifier.context, low, high)?;
             }
         }
     }
@@ -8531,26 +8555,67 @@ fn try_solve_periodic_trig_equation_ungated(
     // remainder, k != 0) and recurse, so the existing double-angle reducer yields the full family.
     {
         use num_traits::Zero as _;
-        // Match a term `±A/trig(g)^2`; returns `(Pow(trig(g),2), signed A)`.
-        let recip_square = |ctx: &Context, term: ExprId| -> Option<(ExprId, BigRational)> {
-            let (inner, sign) = match ctx.get(term) {
+        // Match a term `±c·A/trig(g)^(2m)` in its measured spellings (audit
+        // 2026-07-30, ficha S1c-001): the bare `Div(A, Pow(trig, 2))`, the
+        // coefficient product `Mul(c, Div(…))` (`2·sec(x)² = 8` simplifies to
+        // `Mul(2, Div(1, cos²))`, which the Div-only matcher never saw — the
+        // finite arccos fallback then DROPPED the periodic family), the
+        // divided form `Div(A, Mul(c, Pow))` (`sec(x)²/2`), and the even
+        // power `Pow(trig, 2m)` (`sec(x)⁴`). Returns the trig BASE call, `m`
+        // and the effective `A` of `A/trig(g)^(2m)`.
+        let recip_square = |ctx: &Context, term: ExprId| -> Option<(ExprId, u32, BigRational)> {
+            let (inner, mut a_scale) = match ctx.get(term) {
                 Expr::Neg(i) => (*i, -BigRational::one()),
                 _ => (term, BigRational::one()),
+            };
+            let inner = match ctx.get(inner) {
+                Expr::Mul(l, r) => {
+                    if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, *l) {
+                        a_scale *= c;
+                        *r
+                    } else if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, *r) {
+                        a_scale *= c;
+                        *l
+                    } else {
+                        inner
+                    }
+                }
+                _ => inner,
             };
             let Expr::Div(num, den) = ctx.get(inner) else {
                 return None;
             };
             let (num, den) = (*num, *den);
             let a = cas_math::numeric_eval::as_rational_const(ctx, num)?;
-            let Expr::Pow(base, exp) = ctx.get(den) else {
+            let (den_pow, den_scale) = match ctx.get(den) {
+                Expr::Mul(l, r) => {
+                    if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, *l) {
+                        (*r, c)
+                    } else if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, *r) {
+                        (*l, c)
+                    } else {
+                        (den, BigRational::one())
+                    }
+                }
+                _ => (den, BigRational::one()),
+            };
+            if den_scale.is_zero() {
+                return None;
+            }
+            let Expr::Pow(base, exp) = ctx.get(den_pow) else {
                 return None;
             };
             let (base, exp) = (*base, *exp);
-            if cas_math::numeric_eval::as_rational_const(ctx, exp)
-                != Some(BigRational::from_integer(2.into()))
-            {
+            let exp_value = cas_math::numeric_eval::as_rational_const(ctx, exp)?;
+            if !exp_value.is_integer() {
                 return None;
             }
+            let exp_int = exp_value.to_integer();
+            use num_integer::Integer as _;
+            if exp_int < 2.into() || !exp_int.is_even() {
+                return None;
+            }
+            let m: u32 = (exp_int / num_bigint::BigInt::from(2)).try_into().ok()?;
             let Expr::Function(fn_id, args) = ctx.get(base) else {
                 return None;
             };
@@ -8558,22 +8623,22 @@ fn try_solve_periodic_trig_equation_ungated(
                 return None;
             }
             match ctx.builtin_of(*fn_id) {
-                Some(BuiltinFn::Sin | BuiltinFn::Cos) => Some((den, a * sign)),
+                Some(BuiltinFn::Sin | BuiltinFn::Cos) => Some((base, m, a_scale * a / den_scale)),
                 _ => None,
             }
         };
         let diff = simplifier.context.add(Expr::Sub(lhs, rhs));
         let (diff, _) = simplifier.simplify(diff);
-        let mut sq: Option<(ExprId, BigRational)> = None;
+        let mut sq: Option<(ExprId, u32, BigRational)> = None;
         let mut k = BigRational::zero();
         let mut shape_ok = true;
         for term in cas_math::expr_nary::add_leaves(&simplifier.context, diff) {
-            if let Some((pow, a)) = recip_square(&simplifier.context, term) {
+            if let Some(matched) = recip_square(&simplifier.context, term) {
                 if sq.is_some() {
                     shape_ok = false;
                     break;
                 }
-                sq = Some((pow, a));
+                sq = Some(matched);
             } else if let Some(c) =
                 cas_math::numeric_eval::as_rational_const(&simplifier.context, term)
             {
@@ -8584,18 +8649,37 @@ fn try_solve_periodic_trig_equation_ungated(
             }
         }
         if shape_ok {
-            if let Some((pow, a)) = sq {
+            if let Some((base, m, a)) = sq {
                 if !k.is_zero() {
-                    let target = -a / k; // trig(g)^2 = -A/k
-                    let target_expr = simplifier.context.add(Expr::Number(target));
-                    let reduced = Equation {
-                        lhs: pow,
-                        rhs: target_expr,
-                        op: RelOp::Eq,
+                    let target_2m = -a / k; // trig(g)^(2m) = target_2m
+                                            // Reduce the even power to the SQUARE the double-angle
+                                            // reducer owns: for m > 1, `trig^(2m) = t` ⟺
+                                            // `trig² = t^(1/m)` (the even power is non-negative, so
+                                            // only the positive real root exists). A negative `t` has
+                                            // the SAME (empty) solution set as `trig² = −1`, which
+                                            // the reducer already decides; a non-perfect m-th root
+                                            // declines honestly (irrational target: out of this
+                                            // reducer's exact scope).
+                    let target = if m == 1 {
+                        Some(target_2m)
+                    } else if target_2m < BigRational::zero() {
+                        Some(-BigRational::one())
+                    } else {
+                        exact_rational_mth_root(&target_2m, m)
                     };
-                    return try_solve_periodic_trig_equation_ungated(
-                        &reduced, var, simplifier, steps_out,
-                    );
+                    if let Some(target) = target {
+                        let two = simplifier.context.num(2);
+                        let pow = simplifier.context.add(Expr::Pow(base, two));
+                        let target_expr = simplifier.context.add(Expr::Number(target));
+                        let reduced = Equation {
+                            lhs: pow,
+                            rhs: target_expr,
+                            op: RelOp::Eq,
+                        };
+                        return try_solve_periodic_trig_equation_ungated(
+                            &reduced, var, simplifier, steps_out,
+                        );
+                    }
                 }
             }
         }
