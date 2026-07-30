@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 772 (newest first)
+Active entries: 773 (newest first)
 
 - 2026-07-30 | `retained` | `scripts/sound_probe.py` (nuevo, oráculo exacto R11), `scripts/corpus_behavio... | ARQUITECTURA/GATES (ciclo 0 de la remediación del informe integral): los gates del plan pasan de prosa a ejecutables
 - 2026-07-30 | `retained` | `cas_math/numeric_eval.rs` (`numeric_poly_zero_check` + variante `_structural... | SOUNDNESS (ciclo 1 de la remediación: el decisor de cero exacto): las 3 vías insonoras de numeric_poly_zero_check muertas, con paridad de capacidad por 9 familias de identidad exacta
 - 2026-07-30 | `retained` | `cas_solver/solve_backend_local.rs` (`check_root`: sustitución con `substitut... | SOUNDNESS (ciclo 2 de la remediación: check_root exacto): la sustitución-atrás de raíces deja el f64 y decide con el oráculo de intervalos
 - 2026-07-30 | `retained` | `cas_engine/engine/equivalence.rs` (cola de `are_equivalent`: cadena exacta c... | SOUNDNESS (ciclo 3 de la remediación: equivalencia sin confirmación flotante en constantes): el residual constante decide exacto en ambas direcciones y NaN deja de ser contraejemplo
+- 2026-07-30 | `retained` | `cas_parser/parser.rs` — guarda thread-local en `parse_expr` (la ÚNICA re-ent... | ROBUSTEZ (ciclo A de la remediación: cota de profundidad del parser): el anidamiento hostil pasa de abortar el proceso a error de sintaxis con mensaje
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
@@ -22928,3 +22929,17 @@ Active entries: 772 (newest first)
   - **La partición por CLASE DE RESIDUAL es el corte sound mínimo cuando el canal insonoro tiene clientela que no puedes cubrir hoy**: los wrong answers vivían TODOS en la clase constante (decidible exacta); la clase con variables conserva la sonda como último recurso NOMBRADO con criterio de retirada. Matar el P0 no exige cerrar el P1 el mismo día — exige dejarlo escrito y estrecho.
   - **Un flag de política es parte del contrato aunque tu código nuevo no lo necesite**: la cola exacta no usa la sonda, pero al reescribir la función me llevé por delante el `allow_numerical_verification` que el wire fija en off — y un pin de un cluster de hace meses (Round-4 O) lo cazó. Al reescribir una cola, inventariar primero qué SWITCHES la gobiernan.
   - **El probe sintético no es el flujo**: tres veces el `/y` probe cerró y el test siguió rojo (o viceversa) porque el pipeline transmuta el residual antes del decisor. La forma que decide es la del CALL-SITE — instrumentarlo ahí es lo único que no miente.
+
+## 2026-07-30 - ROBUSTEZ (ciclo A de la remediación: cota de profundidad del parser): el anidamiento hostil pasa de abortar el proceso a error de sintaxis con mensaje
+
+- area: `cas_parser/parser.rs` — guarda thread-local en `parse_expr` (la ÚNICA re-entrada recursiva de la gramática: parens, |·|, matrices, argumentos de función y ⁿ√ vuelven todos por ahí), `MAX_EXPR_DEPTH = 128`, chequeo ANTES de descender, `nom::Err::Failure(TooLarge)` para que las alternativas no lo enmascaren, reset en las 2 entradas públicas, mensaje dedicado en `nom_error_to_parse_error`; pin de 5 brazos. Fichas Q4a-001/Q4b-001 (carril C5) de `docs/AUDITORIA_INTEGRAL_2026-07-30.md`.
+- status: `retained`. Antes: ~1000+ parens ⇒ `fatal runtime error: stack overflow, aborting` (rc=134) en eval, envelope y REPL — y un abort en WASM envenena el módulo desplegado. Ahora: `Parse error at 256..257: expression nesting exceeds the supported depth` con `ok:false, code:E_PARSE` en JSON, envelope estructurado y caret en el REPL. 100 niveles parsean; 129+ rechazan.
+- capture:
+  - **El chokepoint de una gramática nom es su re-entrada, no sus 15 funciones**: enhebrar profundidad por parámetro era invasivo; UNA guarda en `parse_expr` acota parens, sqrt-chains, `1/(…` y matrices a la vez (verificado con las tres formas hostiles).
+  - **El límite lo fija el PEOR stack, no el main de release**: 256 sobrevivía en el binario release (8 MiB) y DESBORDÓ en el propio test (hilos de test debug: 2 MiB; la torre de combinadores nom cuesta ~10 KiB/nivel sin optimizar). Bisección 128/96/64: a 128 la guarda dispara antes que la pila en debug. El test del pin ES el canario del peor caso — si el test no puede correr con el límite, el límite está mal.
+  - `parse_latex` (el segundo parser recursivo del crate) resultó ser **pub sin ningún consumidor** — inalcanzable desde input de usuario hoy; anotado como hallazgo clase-U (si algún día se cablea, necesita la misma guarda).
+- observed: workspace `--no-fail-fast` 359 suites/0 fallos; clippy 0; engine-fast/scorecard/pressure/wasm verdes; corpus **0/221** (el corpus real no se acerca a 128 niveles); timing 1.68–1.69s vs base 1.79s con 0 regresiones en 2 corridas; huella estructural **0 y 0** campos. Pin `nesting_depth_is_bounded_with_a_controlled_error` (100 OK; 200/3000/20000 error con mensaje; sqrt-chain; reset entre llamadas).
+- decision: retener. Con esto el carril C5 del informe queda cerrado en su P0 abortivo (queda como observación la pregunta Q4b de presupuestos-vs-cuelgues, distinta clase).
+- retained learning:
+  - **rc=134 no es un panico: es la clase de fallo que NINGÚN catch_unwind atrapa** — el `catch_unwind` documentado de la FFI y el panic-fence del REPL eran vallas pintadas para este modo de fallo. La única defensa es no llegar: cota ANTES de descender.
+  - **El límite de una recursión se calibra contra el stack más pequeño donde correrá** (hilo de test debug, WASM), y el pin del límite es su propio canario: si el test desborda, el número está mal aunque el binario de producción aguante.

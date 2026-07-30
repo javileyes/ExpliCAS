@@ -714,7 +714,9 @@ fn parse_implicit_mul_chain(input: &str, acc: ParseNode) -> IResult<&str, ParseN
 
     match first_char {
         // Variable or function start: 2x, 2sin(x), 2pi, 2π
-        Some(c) if c.is_ascii_alphabetic() || c == '_' || cas_ast::greek_glyph_name(c).is_some() => {
+        Some(c)
+            if c.is_ascii_alphabetic() || c == '_' || cas_ast::greek_glyph_name(c).is_some() =>
+        {
             // Only if the current accumulator could allow implicit mul
             // (basically, if last token was a number, power, or factored expression)
             if can_implicit_mul(&acc) {
@@ -757,8 +759,43 @@ fn can_implicit_mul(node: &ParseNode) -> bool {
     }
 }
 
+/// Recursion budget for the descent. Every bracketed construct (parens, |·|,
+/// matrices, function arguments, ⁿ√) re-enters `parse_expr`, so ONE guard
+/// here bounds the whole grammar. Legit input nests a few dozen levels at
+/// most; the process ABORTED (stack overflow, rc=134 — fatal for the CLI and
+/// poison for the WASM module) somewhere past ~1000 nested parens
+/// (auditoría 2026-07-30, fichas Q4a-001/Q4b-001). 256 is far above any real
+/// expression and far below the crash region on every target — including
+/// DEBUG test threads (2 MiB stack: 256 already overflowed there; the nom
+/// combinator tower costs ~10 KiB per level unoptimized) and WASM.
+const MAX_EXPR_DEPTH: usize = 128;
+
+thread_local! {
+    static EXPR_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 // Expr
 fn parse_expr(input: &str) -> IResult<&str, ParseNode> {
+    let depth = EXPR_DEPTH.with(|c| {
+        let d = c.get() + 1;
+        c.set(d);
+        d
+    });
+    if depth > MAX_EXPR_DEPTH {
+        EXPR_DEPTH.with(|c| c.set(c.get() - 1));
+        // Failure (not Error) so alternatives don't mask it: the input is
+        // rejected as a whole with a controlled diagnostic, never an abort.
+        return Err(nom::Err::Failure(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::TooLarge,
+        )));
+    }
+    let result = parse_expr_inner(input);
+    EXPR_DEPTH.with(|c| c.set(c.get() - 1));
+    result
+}
+
+fn parse_expr_inner(input: &str) -> IResult<&str, ParseNode> {
     let (input, init) = parse_term(input)?;
     fold_many0(
         pair(preceded(multispace0, alt((tag("+"), tag("-")))), parse_term),
@@ -813,7 +850,9 @@ fn nom_error_to_parse_error(original: &str, err: nom::Err<nom::error::Error<&str
             let end = (offset + 1).min(original.len());
 
             // Check for specific error patterns to give helpful messages
-            let message = if e.code == nom::error::ErrorKind::Verify {
+            let message = if e.code == nom::error::ErrorKind::TooLarge {
+                format!("expression nesting exceeds the supported depth ({MAX_EXPR_DEPTH} levels)")
+            } else if e.code == nom::error::ErrorKind::Verify {
                 // Check if this is a superscript-after-function pattern (sin²(u))
                 if let Some((_, after_sup)) = parse_superscript_number(remaining) {
                     let after_sup_trimmed = after_sup.trim_start();
@@ -872,6 +911,7 @@ fn nom_error_to_parse_error(original: &str, err: nom::Err<nom::error::Error<&str
 ///
 /// Returns `ParseError` if parsing fails.
 pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
+    EXPR_DEPTH.with(|c| c.set(0));
     let (remaining, expr_node) =
         parse_expr(input).map_err(|e| nom_error_to_parse_error(input, e))?;
 
@@ -893,6 +933,7 @@ pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
 }
 
 pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, ParseError> {
+    EXPR_DEPTH.with(|c| c.set(0));
     // Try parsing as equation first
     if let Ok((remaining, (lhs, op, rhs))) = parse_equation(input) {
         if remaining.trim().is_empty() {
@@ -934,6 +975,42 @@ mod tests {
     use super::*;
     use cas_ast::BuiltinFn;
     use cas_formatter::DisplayExpr;
+
+    #[test]
+    fn nesting_depth_is_bounded_with_a_controlled_error() {
+        // ROBUSTEZ (auditoría 2026-07-30, fichas Q4a-001/Q4b-001): past
+        // ~1000 nested parens the recursive descent ABORTED the process
+        // (stack overflow, rc=134) in eval, envelope and the REPL — and a
+        // WASM abort poisons the module. The guard must reject with a
+        // Syntax error, never crash, and generous legitimate nesting must
+        // keep parsing.
+        let mut ctx = Context::new();
+
+        // Comfortable nesting parses.
+        let ok_input = format!("{}x{}", "(".repeat(100), ")".repeat(100));
+        assert!(parse(&ok_input, &mut ctx).is_ok(), "depth 100 must parse");
+
+        // Beyond the budget: controlled Syntax error mentioning the limit.
+        for n in [200usize, 3000, 20000] {
+            let bad = format!("{}x{}", "(".repeat(n), ")".repeat(n));
+            match parse(&bad, &mut ctx) {
+                Err(ParseError::Syntax { message, .. }) => {
+                    assert!(
+                        message.contains("nesting"),
+                        "depth {n}: message should name the nesting limit, got: {message}"
+                    );
+                }
+                other => panic!("depth {n}: expected Syntax error, got {other:?}"),
+            }
+        }
+
+        // Other bracketed recursions share the same budget (sqrt chain).
+        let sqrt_bad = format!("{}x{}", "sqrt(".repeat(400), ")".repeat(400));
+        assert!(parse(&sqrt_bad, &mut ctx).is_err());
+
+        // The guard resets between calls: a normal parse right after.
+        assert!(parse("(x+1)*(x-1)", &mut ctx).is_ok());
+    }
 
     #[test]
     fn test_inf_and_oo_parse_as_infinity() {
