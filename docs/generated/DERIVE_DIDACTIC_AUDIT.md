@@ -2140,7 +2140,7 @@ Result: e^(3 * x)
 ### Web / JSON Steps
 
 1. `Reescribir potencia exponencial`
-   - before: `e^x^3`
+   - before: `(e^x)^3`
    - after: `e^(3 · x)`
    - substeps:
      1. `Usar (e^A)^n = e^(n·A)`
@@ -4970,7 +4970,7 @@ Result: e^(x)^(3)
 
 1. `Reescribir potencia exponencial`
    - before: `e^(3 · x)`
-   - after: `e^x^3`
+   - after: `(e^x)^3`
    - substeps:
      1. `Usar e^(n·A) = (e^A)^n`
 
@@ -13277,7 +13277,7 @@ Result: 2 * x
 ### Web / JSON Steps
 
 1. `Multiplicar exponentes`
-   - before: `ln(e^x^2)`
+   - before: `ln((e^x)^2)`
    - after: `ln(e^(2 · x))`
    - substeps:
      1. `Usar (e^A)^n = e^(n·A)`
@@ -14700,10 +14700,10 @@ Strategy: rationalize
 Steps (Aggressive Mode):
 1. Rationalize denominator (diff squares)  [Racionalizar el denominador]
    Before: 1 / (sqrt(x) - a)
-   Cambio local: 1 / (sqrt(x) - a) -> (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
-   After: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+   Cambio local: 1 / (sqrt(x) - a) -> (sqrt(x) + a) / (sqrt(x)^(2) - (-a)^(2))
+   After: (sqrt(x) + a) / (sqrt(x)^(2) - (-a)^(2))
 2. (u^y)^(1/y) = u  [Deshacer raíz y potencia]
-   Before: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+   Before: (sqrt(x) + a) / (sqrt(x)^(2) - (-a)^(2))
    Cambio local: sqrt(x)^(2) -> x
    After: (sqrt(x) + a) / (x - a^2)
    ℹ️ Requires: x > 0
@@ -14718,13 +14718,13 @@ Result: (sqrt(x) + a) / (x - a^(2))
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(x) - a)`
-   - after: `(sqrt(x) + a)/(sqrt(x)^2 + a^2)`
+   - after: `(sqrt(x) + a)/(sqrt(x)^2 - (-a)^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
 2. `Deshacer raíz y potencia`
-   - before: `(sqrt(x) + a)/(sqrt(x)^2 + a^2)`
+   - before: `(sqrt(x) + a)/(sqrt(x)^2 - (-a)^2)`
    - after: `(sqrt(x) + a)/(x - a^2)`
    - substeps:
      1. `Reemplazar ese bloque en la expresión`
@@ -14747,10 +14747,10 @@ Strategy: rationalize
 Steps (Aggressive Mode):
 1. Rationalize denominator (diff squares)  [Racionalizar el denominador]
    Before: 1 / (sqrt(y) - a)
-   Cambio local: 1 / (sqrt(y) - a) -> (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
-   After: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+   Cambio local: 1 / (sqrt(y) - a) -> (sqrt(y) + a) / (sqrt(y)^(2) - (-a)^(2))
+   After: (sqrt(y) + a) / (sqrt(y)^(2) - (-a)^(2))
 2. (u^y)^(1/y) = u  [Deshacer raíz y potencia]
-   Before: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+   Before: (sqrt(y) + a) / (sqrt(y)^(2) - (-a)^(2))
    Cambio local: sqrt(y)^(2) -> y
    After: (sqrt(y) + a) / (y - a^2)
    ℹ️ Requires: y > 0
@@ -14765,13 +14765,13 @@ Result: (sqrt(y) + a) / (y - a^(2))
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(y) - a)`
-   - after: `(sqrt(y) + a)/(sqrt(y)^2 + a^2)`
+   - after: `(sqrt(y) + a)/(sqrt(y)^2 - (-a)^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
 2. `Deshacer raíz y potencia`
-   - before: `(sqrt(y) + a)/(sqrt(y)^2 + a^2)`
+   - before: `(sqrt(y) + a)/(sqrt(y)^2 - (-a)^2)`
    - after: `(sqrt(y) + a)/(y - a^2)`
    - substeps:
      1. `Reemplazar ese bloque en la expresión`
@@ -15220,9 +15220,9 @@ Steps (Aggressive Mode):
    Before: x^(2) + 3 * x + 1
    Subpasos:
      1.1 Añadir y restar el cuadrado del semicoeficiente
-         x^2 + 3 * x + 1 -> (3/2)^2 + x^2 + 3 * x + 1 - 3/2^2
+         x^2 + 3 * x + 1 -> (3/2)^2 + x^2 + 3 * x + 1 - (3/2)^2
      1.2 Agrupar el trinomio como cuadrado perfecto
-         (3/2)^2 + x^2 + 3 * x + 1 - 3/2^2 -> (x + 3/2)^2 - 5/4
+         (3/2)^2 + x^2 + 3 * x + 1 - (3/2)^2 -> (x + 3/2)^2 - 5/4
    Cambio local: x^(2) + 3 * x + 1 -> (3 / 2 + x)^(2) - 5 / 4
    After: (3 / 2 + x)^2 - 5 / 4
 Result: (3 / 2 + x)^(2) - 5 / 4

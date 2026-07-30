@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 775 (newest first)
+Active entries: 776 (newest first)
 
 - 2026-07-30 | `retained` | `scripts/sound_probe.py` (nuevo, oráculo exacto R11), `scripts/corpus_behavio... | ARQUITECTURA/GATES (ciclo 0 de la remediación del informe integral): los gates del plan pasan de prosa a ejecutables
 - 2026-07-30 | `retained` | `cas_math/numeric_eval.rs` (`numeric_poly_zero_check` + variante `_structural... | SOUNDNESS (ciclo 1 de la remediación: el decisor de cero exacto): las 3 vías insonoras de numeric_poly_zero_check muertas, con paridad de capacidad por 9 familias de identidad exacta
@@ -123,6 +123,7 @@ Active entries: 775 (newest first)
 - 2026-07-30 | `retained` | `cas_parser/parser.rs` — guarda thread-local en `parse_expr` (la ÚNICA re-ent... | ROBUSTEZ (ciclo A de la remediación: cota de profundidad del parser): el anidamiento hostil pasa de abortar el proceso a error de sintaxis con mensaje
 - 2026-07-30 | `retained` | `cas_solver/solve_backend_local.rs` — `try_solve_biquadratic` (disc por `BigR... | SOUNDNESS+CAPACIDAD (ciclo B de la remediación: rescates bicuadrática/cuártico exactos): el Empty fabricado muere y la rama compleja gradúa de residual a las 4 raíces
 - 2026-07-30 | `retained` | `cas_formatter/display_clean.rs` — `clean_simple_subtractive_parens_in_place`... | DIDÁCTICA/SOUNDNESS (ciclo C de la remediación: el limpiador de display deja de cambiar valores): quitar paréntesis tras un menos exige mirar qué sigue al cierre
+- 2026-07-30 | `retained` | `cas_didactic/didactic/latex_plain_text.rs` — `needs_parenthesized_power_base... | DIDÁCTICA/SOUNDNESS (ciclo D de la remediación: base de potencia con potencia dentro): `^` faltaba en la clase del predicado de paréntesis
 - 2026-07-29 | `retained` | `cas_formatter/latex_core.rs` + `latex_no_roots.rs` (brazo binario `root` en ... | SOUNDNESS DE PRESENTACIÓN (la raíz, en las tres superficies): el texto de un paso no volvía a entrar, y la cabecera de `root(a,n)` era texto plano
 - 2026-07-29 | `retained` | `cas_formatter/root_style.rs` (`saw_caret_fraction` exige una barra DENTRO de... | CORRECCIÓN DE LA DECISIÓN (el resultado ECOA la notación del input): «radical siempre» no era lo que el usuario quería, y la regla de eco anterior tampoco lo hacía
 - 2026-07-29 | `retained` | `cas_formatter/root_display_rewrite.rs` (NUEVO: `x^(p/q)` → nodos `sqrt`/`roo... | PRESENTACIÓN (el texto del resultado ECOA la notación, como su LaTeX): la superficie que quedaba contradiciendo a la otra
@@ -22974,3 +22975,13 @@ Active entries: 775 (newest first)
 - decision: retener. Ciclo D = D2-002 (una línea del predicado + pin).
 - retained learning:
   - **La limpieza de presentación es código de SOUNDNESS cuando corre sobre la línea de resultado**: un string-rewriter que solo se prueba con casos donde acierta es un cambiador de valores esperando su forma. Todo patrón de borrado necesita el test del caso donde NO debe disparar (aquí: potencia/factorial tras el cierre) tanto como el de donde sí.
+
+## 2026-07-30 - DIDÁCTICA/SOUNDNESS (ciclo D de la remediación: base de potencia con potencia dentro): `^` faltaba en la clase del predicado de paréntesis
+
+- area: `cas_didactic/didactic/latex_plain_text.rs` — `needs_parenthesized_power_base` gana `^` y `*` en su clase de caracteres; primer `mod tests` del archivo con el pin. Ficha D2-002 (carril C3) de `docs/AUDITORIA_INTEGRAL_2026-07-30.md`.
+- status: `retained`. Antes: el texto plano del paso para `(x^3)^2` publicaba `x^3^2` — que el PROPIO parser del motor relee asociando a la derecha como `x^(3^2)` = x^9: la clase más venenosa de paso falso, porque el texto re-parsea sin error a otro valor. Ahora publica `(x^3)^2`; las bases atómicas siguen sin paréntesis superfluos.
+- capture: el predicado listaba `' '|'+'|'-'|'·'|'/'` — exactamente la enumeración que la ficha señaló. La conversión LaTeX→texto decide paréntesis por INSPECCIÓN DE STRING, así que su clase de caracteres ES su tabla de precedencia: cada operador ausente es una asociatividad regalada al parser del lector.
+- observed: workspace `--no-fail-fast` 359 suites/0 fallos; clippy 0; harnesses verdes; corpus **0/221** (ninguna fila ejercita base-con-potencia en sus pasos); timing 1.76–1.81s vs base 1.79 con ofensores de identidad NO repetible en 5 corridas (jitter contado); huella estructural **0 y 0**.
+- decision: retener. Del carril C3 quedan vivos y sondados: D1a-001 (el substep de diferencia de cuadrados concatena factores sin paréntesis en texto Y LaTeX: `(x − 1·x + 1)/(x − 1)`) y D2-004 (diferencia de cubos) — emisores del lado didáctico, candidatos directos de la próxima tanda; el estructural de fondo (constructor único con precedencia para componer texto/LaTeX) sigue anotado en el informe.
+- retained learning:
+  - **Un conversor de notación que decide por inspección de string lleva su tabla de precedencia escondida en una clase de caracteres** — auditarla contra la gramática real del parser (¿qué operadores existen y asocian?) es un chequeo de una línea que evita la clase entera de «texto falso que re-parsea a otro valor».

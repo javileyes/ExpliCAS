@@ -297,8 +297,13 @@ fn replace_next_grouped_exponent(value: &str) -> Option<String> {
 }
 
 fn needs_parenthesized_power_base(base: &str) -> bool {
+    // `^` was missing from this class (auditoría 2026-07-30, ficha D2-002):
+    // the step text for `(x^3)^2` printed `x^3^2`, which the engine's own
+    // parser re-reads RIGHT-associatively as `x^(3^2)` = x^9 — a false step
+    // whose text happens to re-parse. A power base containing a power (or a
+    // bare `*` product) needs the parens.
     base.chars()
-        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/'))
+        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/' | '^' | '*'))
 }
 
 fn has_single_outer_parentheses(value: &str) -> bool {
@@ -365,4 +370,22 @@ fn find_balanced_braces(s: &str) -> Option<(String, usize)> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::latex_to_plain_text;
+
+    #[test]
+    fn power_base_containing_a_power_keeps_its_parens() {
+        // SOUNDNESS del texto (auditoría 2026-07-30, ficha D2-002): el
+        // predicado de paréntesis de base omitía `^`, así que `(x^3)^2` se
+        // publicaba como `x^3^2` — que el propio parser del motor relee
+        // asociando a la DERECHA como `x^(3^2)` = x^9: un paso falso cuyo
+        // texto re-parsea. La base con potencia (o producto con `*` crudo)
+        // conserva el grupo.
+        assert_eq!(latex_to_plain_text("{{x}^{3}}^{2}"), "(x^3)^2");
+        // Las bases atómicas siguen sin paréntesis superfluos.
+        assert_eq!(latex_to_plain_text("{x}^{2}"), "x^2");
+    }
 }
