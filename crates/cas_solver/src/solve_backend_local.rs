@@ -11921,10 +11921,18 @@ fn symbolic_poly_degree_in_var(ctx: &cas_ast::Context, expr: ExprId, var: &str) 
 /// Solve a BIQUADRATIC equation `a·x⁴ + b·x² + c = 0` (no odd-degree terms) by the substitution
 /// `z = x²`: solve the quadratic `a·z² + b·z + c = 0`, then for each NON-NEGATIVE real `z` root take
 /// `x = ±√z`. The normal path only handles biquadratics whose `x`-roots are rational; when they are
-/// surds (`x⁴-8x²+15 → {±√3, ±√5}`, `x⁴-2x²-3 → {±√3}`) it leaks a circular residual. Every produced
-/// root is verified by numeric back-substitution, so a wrong `z ≥ 0` decision (or a missed root) can
-/// never emit an unsound value. Returns `None` for a non-biquadratic quartic or `Empty` when no real
-/// root exists (`z` roots both negative or complex).
+/// surds (`x⁴-8x²+15 → {±√3, ±√5}`, `x⁴-2x²-3 → {±√3}`) it leaks a circular residual.
+///
+/// EXACT (R2; auditoría 2026-07-30, ficha Q3c-005): every drop/keep decision here is exact — the
+/// discriminant sign on `BigRational` and the `z`-root signs via the constant sign oracle on the
+/// CONSTRUCTED `z` expression. The old f64 chain (disc sign in f64 → `z_f` sign with `1e-12` →
+/// f64 back-substitution with `1e-9·scale` → value-dedup `1e-9`) FABRICATED `Empty` when
+/// cancellation flipped the disc sign (`x⁴ − 2⁵⁰-ish·x² + …` with 4 existing roots → «No
+/// solution»), and its docstring's safety claim was falsified: the failure mode is not a wrong
+/// VALUE but a wrong SET. Roots need no back-substitution — the quadratic formula over exact
+/// coefficients is an identity — and dedup is structural on the simplified interned ids. An
+/// undecidable `z` sign declines (`None`, honest residual): a probe never fabricates a set.
+/// Returns `None` for a non-biquadratic quartic or `Empty` (exact) when no real root exists.
 fn try_solve_biquadratic(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -11934,8 +11942,7 @@ fn try_solve_biquadratic(
     use cas_math::polynomial::Polynomial;
     use cas_solver_core::quadratic_formula::sqrt_expr;
     use num_rational::BigRational;
-    use num_traits::{ToPrimitive, Zero};
-    use std::collections::HashMap;
+    use num_traits::{Signed, Zero};
 
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
     let (diff, _) = simplifier.simplify(diff);
@@ -11951,22 +11958,51 @@ fn try_solve_biquadratic(
         return None;
     }
 
-    // Quadratic `a·z² + b·z + c` in `z = x²`: discriminant and its exact √.
+    // Quadratic `a·z² + b·z + c` in `z = x²`: discriminant sign decided EXACTLY.
     let r = |n: i64| BigRational::from_integer(n.into());
     let disc = &b * &b - &a * &c * r(4);
-    let (af, bf, cf) = (a.to_f64()?, b.to_f64()?, c.to_f64()?);
-    let disc_f = bf * bf - 4.0 * af * cf;
-    if disc_f < 0.0 {
+    if disc.is_negative() {
         if is_real_only {
-            // Complex z roots ⇒ no real x.
+            // Complex z roots ⇒ no real x. Exact, so Empty is sound.
             return Some(SolutionSet::Empty);
         }
-        // ComplexEnabled: `x = ±√(a+bi)` is block-B machinery — decline to an
-        // honest residual instead of a wrong Empty.
-        return None;
+        // ComplexEnabled: both z roots are complex conjugates; build the four
+        // `x = ±√z` EXACTLY — `√disc` over the negative rational folds to the
+        // i-form downstream and the nested `√(u + i·v)` stays as the exact
+        // closed form (the audit's b>0 twin pinned exactly that output). No
+        // sign decisions are needed over ℂ, so no oracle and no f64.
+        let ctx = &mut simplifier.context;
+        let num = |ctx: &mut cas_ast::Context, v: BigRational| ctx.add(Expr::Number(v));
+        let disc_node = num(ctx, disc);
+        let sqrt_disc = sqrt_expr(ctx, disc_node);
+        let neg_b = num(ctx, -&b);
+        let two_a = num(ctx, &a * r(2));
+        let mut raw_roots: Vec<ExprId> = Vec::new();
+        for sgn in [1i8, -1i8] {
+            let signed = if sgn > 0 {
+                sqrt_disc
+            } else {
+                ctx.add(Expr::Neg(sqrt_disc))
+            };
+            let z_numer = ctx.add(Expr::Add(neg_b, signed));
+            let z_expr = ctx.add(Expr::Div(z_numer, two_a));
+            let sqrt_z = sqrt_expr(ctx, z_expr);
+            let neg_sqrt_z = ctx.add(Expr::Neg(sqrt_z));
+            raw_roots.push(sqrt_z);
+            raw_roots.push(neg_sqrt_z);
+        }
+        let mut roots: Vec<ExprId> = Vec::new();
+        for raw in raw_roots {
+            let (root, _) = simplifier.simplify(raw);
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+        return Some(SolutionSet::Discrete(roots));
     }
 
-    // Build the exact `z = (−b ± √disc)/(2a)`, then `x = ±√z` for each non-negative z root.
+    // Build the exact `z = (−b ± √disc)/(2a)` and decide each z's SIGN with
+    // the exact constant oracle on the constructed expression.
     let ctx = &mut simplifier.context;
     let num = |ctx: &mut cas_ast::Context, v: BigRational| ctx.add(Expr::Number(v));
     let disc_node = num(ctx, disc);
@@ -11974,61 +12010,44 @@ fn try_solve_biquadratic(
     let neg_b = num(ctx, -&b);
     let two_a = num(ctx, &a * r(2));
     let mut raw_roots: Vec<ExprId> = Vec::new();
-    let mut exact_complex_roots: Vec<ExprId> = Vec::new();
-    for s in [1.0f64, -1.0f64] {
-        let z_f = (-bf + s * disc_f.sqrt()) / (2.0 * af);
-        let negative_z = z_f < -1e-12;
-        if negative_z && is_real_only {
-            continue; // z < 0 ⇒ x² = z has no real solution
-        }
-        let signed = if s > 0.0 {
+    for s in [1i8, -1i8] {
+        let signed = if s > 0 {
             sqrt_disc
         } else {
             ctx.add(Expr::Neg(sqrt_disc))
         };
         let z_numer = ctx.add(Expr::Add(neg_b, signed));
         let z_expr = ctx.add(Expr::Div(z_numer, two_a));
+        let negative_z = match cas_math::const_sign::provable_const_sign(ctx, z_expr) {
+            Some(cas_math::const_sign::ConstSign::Negative) => true,
+            Some(_) => false,
+            // Undecidable sign: never guess a set from it — decline to the
+            // honest residual.
+            None => return None,
+        };
+        if negative_z && is_real_only {
+            continue; // z < 0 ⇒ x² = z has no real solution
+        }
+        // ComplexEnabled with z < 0: `±√z` folds to the pure-imaginary pair
+        // downstream — exact either way, no separate handling needed.
         let sqrt_z = sqrt_expr(ctx, z_expr);
         let neg_sqrt_z = ctx.add(Expr::Neg(sqrt_z));
-        if negative_z {
-            // ComplexEnabled: `±√z` with z < 0 folds to the pure-imaginary
-            // pair downstream — exact, bypasses the f64 verification.
-            exact_complex_roots.push(sqrt_z);
-            exact_complex_roots.push(neg_sqrt_z);
-        } else {
-            raw_roots.push(sqrt_z);
-            raw_roots.push(neg_sqrt_z);
-        }
+        raw_roots.push(sqrt_z);
+        raw_roots.push(neg_sqrt_z);
     }
 
-    // Simplify, verify each candidate by numeric back-substitution, and dedup by numeric value.
+    // Roots hold by CONSTRUCTION (quadratic formula over exact coefficients);
+    // dedup structurally on the simplified interned ids (disc = 0 double
+    // root ⇒ identical expressions ⇒ identical ids).
     let mut roots: Vec<ExprId> = Vec::new();
-    let mut seen: Vec<f64> = Vec::new();
     for raw in raw_roots {
         let (root, _) = simplifier.simplify(raw);
-        let xv = match cas_math::evaluator_f64::eval_f64(&simplifier.context, root, &HashMap::new())
-        {
-            Some(v) if v.is_finite() => v,
-            _ => continue,
-        };
-        // p(xv) ≈ 0 (scaled by the coefficient magnitude).
-        let residual = af * xv.powi(4) + bf * xv * xv + cf;
-        let scale = 1.0 + af.abs() * xv.powi(4).abs() + bf.abs() * xv * xv + cf.abs();
-        if residual.abs() > 1e-9 * scale {
-            continue;
+        if !roots.contains(&root) {
+            roots.push(root);
         }
-        if seen.iter().any(|&v| (v - xv).abs() < 1e-9) {
-            continue;
-        }
-        seen.push(xv);
-        roots.push(root);
-    }
-    // ComplexEnabled: append the z<0 pure-imaginary pairs (exact, no f64 verify).
-    for raw in exact_complex_roots {
-        let (root, _) = simplifier.simplify(raw);
-        roots.push(root);
     }
     if roots.is_empty() {
+        // Only reachable when real-only and every z was PROVABLY negative.
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(roots))
@@ -12138,7 +12157,6 @@ fn try_solve_polynomial_with_quartic_factor(
     use cas_solver_core::rational_roots::{find_rational_roots, rational_to_expr};
     use num_rational::BigRational;
     use num_traits::{ToPrimitive, Zero};
-    use std::collections::HashMap;
     const MAX_CANDIDATES: usize = 256;
 
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
@@ -12217,43 +12235,24 @@ fn try_solve_polynomial_with_quartic_factor(
         .map(|root| rational_to_expr(&mut simplifier.context, root))
         .collect();
 
-    // Simplify and verify each quadratic root by numeric back-substitution; dedup by value.
-    let mut seen: Vec<f64> = roots
-        .iter()
-        .filter_map(|&r| cas_math::evaluator_f64::eval_f64(&simplifier.context, r, &HashMap::new()))
-        .collect();
-    for raw in raw_roots {
+    // Roots hold by CONSTRUCTION (exact rational roots from deflation; exact
+    // quadratic formula over the integer factors — the discriminant sign at
+    // the factor split above is already exact i64). The old f64
+    // back-substitution with `1e-9·scale` and the value-dedup `1e-9` were
+    // drop/keep decisions on data that is exact end to end (R2, auditoría
+    // 2026-07-30 ficha Q3c-005): with large coefficients they discarded true
+    // roots and, combined with `Empty` below, fabricated a wrong SET. Dedup
+    // is structural on the simplified interned ids.
+    for raw in raw_roots.into_iter().chain(exact_complex_roots) {
         let (root, _) = simplifier.simplify(raw);
-        let xv = match cas_math::evaluator_f64::eval_f64(&simplifier.context, root, &HashMap::new())
-        {
-            Some(v) if v.is_finite() => v,
-            _ => continue,
-        };
-        // Verify against the ORIGINAL polynomial p(xv) ≈ 0.
-        let mut residual = 0.0f64;
-        let mut scale = 0.0f64;
-        for (i, coeff) in poly.coeffs.iter().enumerate() {
-            if let Some(cf) = coeff.to_f64() {
-                let term = cf * xv.powi(i as i32);
-                residual += term;
-                scale += term.abs();
-            }
+        if !roots.contains(&root) {
+            roots.push(root);
         }
-        if residual.abs() > 1e-9 * (1.0 + scale) {
-            continue;
-        }
-        if seen.iter().any(|&v| (v - xv).abs() < 1e-9) {
-            continue;
-        }
-        seen.push(xv);
-        roots.push(root);
-    }
-    // ComplexEnabled: append the disc<0 conjugate pairs (exact, no f64 verify).
-    for raw in exact_complex_roots {
-        let (root, _) = simplifier.simplify(raw);
-        roots.push(root);
     }
     if roots.is_empty() {
+        // Exact everywhere above, so an empty set is a PROVEN empty set
+        // (real-only with every factor's discriminant negative and no
+        // rational roots).
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(roots))
@@ -13120,6 +13119,60 @@ mod tests {
     };
     use cas_ast::{Context, Expr};
     use cas_solver_core::domain_condition::ImplicitCondition;
+
+    #[test]
+    fn biquadratic_rescue_gates_are_exact() {
+        // SOUNDNESS (auditoría 2026-07-30, ficha Q3c-005): the f64 chain
+        // (disc sign in f64 → z_f sign → f64 back-substitution → value
+        // dedup) FABRICATED `Empty` when cancellation flipped the disc sign:
+        // `x⁴ − 2⁵⁰-ish·x² + (N²+3)/4` has disc = −3 exactly, f64 says 0.0,
+        // and the old path published «No solution» with 4 existing roots.
+        use super::try_solve_biquadratic;
+        use crate::Simplifier;
+        use cas_ast::{RelOp, SolutionSet};
+        use cas_parser::parse;
+
+        let eq_from = |s: &mut Simplifier, lhs: &str| cas_ast::Equation {
+            lhs: parse(lhs, &mut s.context).expect("lhs"),
+            rhs: parse("0", &mut s.context).expect("rhs"),
+            op: RelOp::Eq,
+        };
+
+        // The audit reproduction, complex mode: 4 exact roots, never Empty.
+        let mut s = Simplifier::with_default_rules();
+        let eq = eq_from(
+            &mut s,
+            "x^4 - 1125899906842625*x^2 + 316912650057057913324129222657",
+        );
+        match try_solve_biquadratic(&mut s, &eq, "x", false) {
+            Some(SolutionSet::Discrete(roots)) => assert_eq!(roots.len(), 4),
+            other => panic!("expected 4 exact complex roots, got {other:?}"),
+        }
+        // Same equation, real-only: disc = −3 < 0 EXACTLY ⇒ Empty is sound
+        // (all four roots are complex).
+        let eq = eq_from(
+            &mut s,
+            "x^4 - 1125899906842625*x^2 + 316912650057057913324129222657",
+        );
+        assert!(matches!(
+            try_solve_biquadratic(&mut s, &eq, "x", true),
+            Some(SolutionSet::Empty)
+        ));
+
+        // Surd roots keep working (the rescue's raison d'être).
+        let eq = eq_from(&mut s, "x^4 - 8*x^2 + 15");
+        match try_solve_biquadratic(&mut s, &eq, "x", true) {
+            Some(SolutionSet::Discrete(roots)) => assert_eq!(roots.len(), 4),
+            other => panic!("expected ±√3, ±√5, got {other:?}"),
+        }
+
+        // disc = 0 double root: structural dedup keeps exactly {−1, 1}.
+        let eq = eq_from(&mut s, "x^4 - 2*x^2 + 1");
+        match try_solve_biquadratic(&mut s, &eq, "x", true) {
+            Some(SolutionSet::Discrete(roots)) => assert_eq!(roots.len(), 2),
+            other => panic!("expected deduped double roots, got {other:?}"),
+        }
+    }
 
     #[test]
     fn check_root_is_exact_not_f64() {

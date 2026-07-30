@@ -10435,11 +10435,7 @@ fn complex_solve_pow_isolation_declines_honestly() {
     // n >= 3 has n roots the real n-th-root isolation cannot produce, and the
     // "even power cannot be negative" verdict is a REAL fact. Both decline to
     // an honest residual instead of a silent subset / wrong Empty.
-    for src in [
-        "solve(x^5 = 1, x)",
-        "solve(x^7 = 3, x)",
-        "solve(x^4 = -1, x)",
-    ] {
+    for src in ["solve(x^5 = 1, x)", "solve(x^7 = 3, x)"] {
         let (output, _code) =
             run_cli(&["eval", src, "--format", "json", "--value-domain", "complex"]);
         let wire = parse_wire(&output);
@@ -10448,6 +10444,30 @@ fn complex_solve_pow_isolation_declines_honestly() {
             result.contains("solve("),
             "complex `{src}` must stay an honest residual, got `{result}`"
         );
+    }
+
+    // GRADUATED 2026-07-30 (ciclo Q3c-005): `x^4 = −1` reaches the exact
+    // biquadratic complex branch (disc < 0 decided on BigRational, roots by
+    // construction) and now yields all four 4th roots of −1 — the canonical
+    // conjugate quartet (±1±i)/√2 — instead of the honest residual this pin
+    // used to protect.
+    {
+        let (output, _code) = run_cli(&[
+            "eval",
+            "solve(x^4 = -1, x)",
+            "--format",
+            "json",
+            "--value-domain",
+            "complex",
+        ]);
+        let wire = parse_wire(&output);
+        let result = wire["result"].as_str().unwrap_or_default();
+        for root in ["(1 + i)", "(-1 - i)", "(1 - i)", "(-1 + i)"] {
+            assert!(
+                result.contains(root),
+                "complex x^4 = -1 must carry the conjugate quartet, missing `{root}` in `{result}`"
+            );
+        }
     }
 
     // REAL mode keeps the real answers (subset semantics are correct over ℝ).
@@ -10491,8 +10511,9 @@ fn complex_solve_backend_twins_emit_conjugate_pairs() {
         "complex x^6-1 should carry the four complex roots, got `{result}`"
     );
 
-    // x^4+1 has NO rational quadratic factorization and complex z-roots: the
-    // biquadratic twin declines (honest residual), never Empty.
+    // GRADUATED 2026-07-30 (ciclo Q3c-005): x^4+1 has complex z-roots and the
+    // exact biquadratic complex branch now emits the conjugate quartet
+    // (±1±i)/√2 — never Empty, and no longer a residual.
     let (output, _code) = run_cli(&[
         "eval",
         "solve(x^4 + 1 = 0, x)",
@@ -10503,10 +10524,12 @@ fn complex_solve_backend_twins_emit_conjugate_pairs() {
     ]);
     let wire = parse_wire(&output);
     let result = wire["result"].as_str().unwrap_or_default();
-    assert!(
-        result.contains("solve("),
-        "complex x^4+1 must decline honestly, got `{result}`"
-    );
+    for root in ["(1 + i)", "(-1 - i)", "(1 - i)", "(-1 + i)"] {
+        assert!(
+            result.contains(root),
+            "complex x^4+1 must carry the conjugate quartet, missing `{root}` in `{result}`"
+        );
+    }
 
     // Real mode: both keep their real answers.
     let (output, _code) = run_cli(&[
