@@ -11703,3 +11703,39 @@ fn complex_literal_radicands_converge_across_steps_modes() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "2 * sqrt(2)", "{output}");
 }
+
+#[test]
+fn equiv_honors_value_domain_axis() {
+    // SOUNDNESS (auditoría 2026-07-30, ficha S5-002): `equiv((e^z)^w, e^(z*w))`
+    // publicaba `true` bajo --value-domain complex — la identidad es real-only
+    // (con rama principal, (e^(4i))^(1/2) = −e^(2i) ≠ e^(2i)) y el comparador
+    // corría sin ejes: are_equivalent simplificaba en RealOnly y su veredicto
+    // ganaba el `||`; el fallback expand() construía opciones frescas RealOnly.
+    // Ahora el eje llega por el sticky value domain (armado desde las
+    // semánticas de la petición) y el comparador declina en complejo.
+    for expr in ["equiv((e^z)^w, e^(z*w))", "equiv((2^z)^w, 2^(z*w))"] {
+        let (output, _code) = run_cli(&[
+            "eval",
+            expr,
+            "--value-domain",
+            "complex",
+            "--complex",
+            "on",
+            "--format",
+            "json",
+            "--no-pretty",
+        ]);
+        let wire = parse_wire(&output);
+        assert_ne!(
+            wire["result"], "true",
+            "{expr} must NOT confirm under complex: {output}"
+        );
+        // En real la identidad SÍ vale (e^z > 0) y debe seguir confirmando.
+        let (real_output, _code) = run_cli(&["eval", expr, "--format", "json", "--no-pretty"]);
+        let real_wire = parse_wire(&real_output);
+        assert_eq!(
+            real_wire["result"], "true",
+            "{expr} must stay true in real mode: {real_output}"
+        );
+    }
+}

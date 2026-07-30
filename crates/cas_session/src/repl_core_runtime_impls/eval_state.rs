@@ -62,6 +62,13 @@ impl ReplSimplifierRuntimeContext for ReplCore {
     fn simplifier_mut(&mut self) -> &mut Simplifier {
         ReplCore::simplifier_mut(self)
     }
+
+    fn session_value_domain(&self) -> cas_engine::ValueDomain {
+        ReplCore::simplify_options(self)
+            .shared
+            .semantics
+            .value_domain
+    }
 }
 
 impl ReplConfiguredRuntimeContext for ReplCore {

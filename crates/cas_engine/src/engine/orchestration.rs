@@ -237,8 +237,14 @@ impl Simplifier {
     /// Expand without rationalization.
     /// After expansion, recursively strips all __hold() wrappers so user sees clean result.
     pub fn expand(&mut self, expr_id: ExprId) -> (ExprId, Vec<Step>) {
-        let (result, steps) =
-            self.simplify_with_options(expr_id, crate::phase::SimplifyOptions::for_expand());
+        // Plain expand() honors the sticky value domain exactly like plain
+        // simplify() (RealOnly default keeps every non-sticky caller
+        // byte-identical): the equivalence comparator's expand fallback built
+        // fresh RealOnly options and re-proved `(e^z)^w ≡ e^(z·w)` under a
+        // complex session (audit 2026-07-30, ficha S5-002).
+        let mut options = crate::phase::SimplifyOptions::for_expand();
+        options.shared.semantics.value_domain = self.sticky_value_domain;
+        let (result, steps) = self.simplify_with_options(expr_id, options);
         // Strip ALL nested __hold wrappers (not just top-level)
         let clean_result = strip_all_holds(&mut self.context, result);
         (clean_result, steps)

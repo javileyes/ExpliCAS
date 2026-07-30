@@ -2,12 +2,20 @@ use crate::SetDisplayMode;
 
 use super::ReplSimplifierRuntimeContext;
 
-/// Evaluate `equiv ...` against runtime simplifier.
+/// Evaluate `equiv ...` against runtime simplifier. The comparison runs under
+/// the SESSION's value domain: the comparator's internal `simplify()` honors
+/// the simplifier's sticky value domain, so arming it here (save/restore) is
+/// what carries `semantics set value complex` into `equiv` (ficha S5-002).
 pub fn evaluate_equiv_invocation_message_on_runtime<C: ReplSimplifierRuntimeContext>(
     context: &mut C,
     line: &str,
 ) -> Result<String, String> {
-    crate::evaluate_equiv_invocation_message(context.simplifier_mut(), line)
+    let value_domain = context.session_value_domain();
+    let simplifier = context.simplifier_mut();
+    let previous = simplifier.set_sticky_value_domain(value_domain);
+    let result = crate::evaluate_equiv_invocation_message(simplifier, line);
+    simplifier.set_sticky_value_domain(previous);
+    result
 }
 
 /// Evaluate `subst ...` against runtime simplifier.

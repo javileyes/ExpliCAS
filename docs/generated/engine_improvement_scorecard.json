@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-30T17:44:25.162289+00:00",
+  "generated_at": "2026-07-30T18:03:14.029464+00:00",
   "generated_discovery": {
     "areas": {
       "calculus / differentiation": 2,
@@ -56,7 +56,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "11614d980110ecc1cd50c9224ad1c661f2e9c323"
+    "commit": "94beb0e559856fe2c22df32be504f64edd594ba7"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -75,7 +75,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 1.175,
+      "elapsed_seconds": 1.192,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -153,32 +153,32 @@
           "block9_residuals_and_non_goals": 16
         },
         "diff_cli_parse_runtime_distribution": {
-          "avg_case_ms": 0.058,
-          "max_case_ms": 0.175,
-          "p95_case_ms": 0.088,
+          "avg_case_ms": 0.059,
+          "max_case_ms": 0.169,
+          "p95_case_ms": 0.092,
           "timed_case_count": 85,
           "total_elapsed_seconds": 0.005
         },
         "diff_cli_public_overhead_runtime_distribution": {
-          "avg_case_ms": 9.818,
-          "max_case_ms": 275.261,
-          "p95_case_ms": 16.737,
+          "avg_case_ms": 9.937,
+          "max_case_ms": 274.676,
+          "p95_case_ms": 15.974,
           "timed_case_count": 85,
-          "total_elapsed_seconds": 0.834
+          "total_elapsed_seconds": 0.845
         },
         "diff_cli_simplify_runtime_distribution": {
-          "avg_case_ms": 3.081,
-          "max_case_ms": 14.393,
-          "p95_case_ms": 8.933,
-          "timed_case_count": 85,
-          "total_elapsed_seconds": 0.262
-        },
-        "diff_cli_total_runtime_distribution": {
-          "avg_case_ms": 3.144,
-          "max_case_ms": 14.503,
-          "p95_case_ms": 8.987,
+          "avg_case_ms": 3.143,
+          "max_case_ms": 14.345,
+          "p95_case_ms": 8.659,
           "timed_case_count": 85,
           "total_elapsed_seconds": 0.267
+        },
+        "diff_cli_total_runtime_distribution": {
+          "avg_case_ms": 3.208,
+          "max_case_ms": 14.446,
+          "p95_case_ms": 8.71,
+          "timed_case_count": 85,
+          "total_elapsed_seconds": 0.273
         },
         "diff_cold_start_case": {
           "argument_regime": "variable",
@@ -189,7 +189,7 @@
           "presentation_regime": "canonical",
           "status": "pass",
           "trace_regime": "power_rule",
-          "wall_elapsed_seconds": 0.279
+          "wall_elapsed_seconds": 0.278
         },
         "diff_distinct_required_display_count": 23,
         "diff_domain_regime_counts": {
@@ -227,16 +227,16 @@
           {
             "baseline_argument_regime": "symbolic_denominator_scaled_shifted_root",
             "baseline_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "baseline_case_ms": 26.0,
+            "baseline_case_ms": 25.0,
             "baseline_presentation_regime": "symbolic_denominator_open_interval_compact",
             "delta_ms": -3.0,
             "exact_square_argument_regime": "exact_square_symbolic_denominator_scaled_shifted_root",
             "exact_square_case": "inverse_hyperbolic_root_atanh_exact_square_denominator_scale_open_interval",
-            "exact_square_case_ms": 23.0,
+            "exact_square_case_ms": 22.0,
             "exact_square_presentation_regime": "exact_square_symbolic_denominator_open_interval_compact",
             "family": "inverse_hyperbolic_root",
             "name": "inverse_hyperbolic_root_atanh_denominator_scale_exact_square",
-            "ratio": 0.885
+            "ratio": 0.88
           }
         ],
         "diff_expected_step_substring_count": 204,
@@ -482,89 +482,89 @@
         "diff_residual_case_names": [],
         "diff_runtime_by_calculus_block_gate": [
           {
-            "avg_case_ms": 12.278,
+            "avg_case_ms": 12.481,
             "axis": "calculus_block_gate",
             "case_count": 54,
             "group": "domain_conditions_and_diff_policy",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.663
+            "total_elapsed_seconds": 0.674
           },
           {
-            "avg_case_ms": 24.133,
+            "avg_case_ms": 24.533,
             "axis": "calculus_block_gate",
             "case_count": 15,
             "group": "didactic_trace_and_diff_policy",
-            "max_elapsed_seconds": 0.279,
+            "max_elapsed_seconds": 0.278,
             "slowest_case": "polynomial_power_direct",
-            "total_elapsed_seconds": 0.362
+            "total_elapsed_seconds": 0.368
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.812,
             "axis": "calculus_block_gate",
             "case_count": 16,
             "group": "explicit_undefined_domain_policy",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
-            "total_elapsed_seconds": 0.076
+            "total_elapsed_seconds": 0.077
           }
         ],
         "diff_runtime_by_calculus_maturity_block": [
           {
-            "avg_case_ms": 14.855,
+            "avg_case_ms": 15.101,
             "axis": "calculus_maturity_block",
             "case_count": 69,
             "group": "block2_real_domain_differentiation",
-            "max_elapsed_seconds": 0.279,
+            "max_elapsed_seconds": 0.278,
             "slowest_case": "polynomial_power_direct",
-            "total_elapsed_seconds": 1.025
+            "total_elapsed_seconds": 1.042
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.812,
             "axis": "calculus_maturity_block",
             "case_count": 16,
             "group": "block9_residuals_and_non_goals",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
-            "total_elapsed_seconds": 0.076
+            "total_elapsed_seconds": 0.077
           }
         ],
         "diff_runtime_by_domain_regime": [
           {
-            "avg_case_ms": 51.0,
+            "avg_case_ms": 51.667,
             "axis": "domain_regime",
             "case_count": 6,
             "group": "unconditional",
-            "max_elapsed_seconds": 0.279,
+            "max_elapsed_seconds": 0.278,
             "slowest_case": "polynomial_power_direct",
-            "total_elapsed_seconds": 0.306
+            "total_elapsed_seconds": 0.31
           },
           {
-            "avg_case_ms": 9.8,
+            "avg_case_ms": 9.933,
             "axis": "domain_regime",
             "case_count": 30,
             "group": "required_condition",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.294
+            "total_elapsed_seconds": 0.298
           },
           {
-            "avg_case_ms": 23.5,
+            "avg_case_ms": 23.333,
             "axis": "domain_regime",
             "case_count": 6,
             "group": "linear_poles_required",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.141
+            "total_elapsed_seconds": 0.14
           },
           {
-            "avg_case_ms": 24.0,
+            "avg_case_ms": 23.333,
             "axis": "domain_regime",
             "case_count": 3,
             "group": "open_interval_required",
-            "max_elapsed_seconds": 0.026,
+            "max_elapsed_seconds": 0.025,
             "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.072
+            "total_elapsed_seconds": 0.07
           },
           {
             "avg_case_ms": 15.0,
@@ -578,40 +578,40 @@
         ],
         "diff_runtime_by_family": [
           {
-            "avg_case_ms": 279.0,
+            "avg_case_ms": 278.0,
             "axis": "family",
             "case_count": 1,
             "group": "polynomial",
-            "max_elapsed_seconds": 0.279,
+            "max_elapsed_seconds": 0.278,
             "slowest_case": "polynomial_power_direct",
-            "total_elapsed_seconds": 0.279
+            "total_elapsed_seconds": 0.278
           },
           {
-            "avg_case_ms": 12.333,
+            "avg_case_ms": 12.067,
             "axis": "family",
             "case_count": 15,
             "group": "inverse_trig_root",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.185
+            "total_elapsed_seconds": 0.181
           },
           {
-            "avg_case_ms": 21.0,
-            "axis": "family",
-            "case_count": 5,
-            "group": "inverse_hyperbolic_root",
-            "max_elapsed_seconds": 0.026,
-            "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.105
-          },
-          {
-            "avg_case_ms": 26.25,
+            "avg_case_ms": 26.5,
             "axis": "family",
             "case_count": 4,
             "group": "positive_quadratic_log_abs_pole_primitive",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.105
+            "total_elapsed_seconds": 0.106
+          },
+          {
+            "avg_case_ms": 20.6,
+            "axis": "family",
+            "case_count": 5,
+            "group": "inverse_hyperbolic_root",
+            "max_elapsed_seconds": 0.025,
+            "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+            "total_elapsed_seconds": 0.103
           },
           {
             "avg_case_ms": 20.5,
@@ -625,13 +625,13 @@
         ],
         "diff_runtime_by_positive_quadratic_policy_cluster": [
           {
-            "avg_case_ms": 26.25,
+            "avg_case_ms": 26.5,
             "axis": "positive_quadratic_policy_cluster",
             "case_count": 4,
             "group": "block2_positive_quadratic_log_abs_pole_primitive",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.105
+            "total_elapsed_seconds": 0.106
           },
           {
             "avg_case_ms": 15.0,
@@ -643,51 +643,42 @@
             "total_elapsed_seconds": 0.03
           },
           {
-            "avg_case_ms": 7.333,
+            "avg_case_ms": 8.0,
             "axis": "positive_quadratic_policy_cluster",
             "case_count": 3,
             "group": "block2_positive_quadratic_log_arctan_primitive",
-            "max_elapsed_seconds": 0.008,
-            "slowest_case": "positive_quadratic_log_arctan_surd_primitive_compact",
-            "total_elapsed_seconds": 0.022
+            "max_elapsed_seconds": 0.009,
+            "slowest_case": "positive_quadratic_log_arctan_surd_negative_orientation_compact",
+            "total_elapsed_seconds": 0.024
           }
         ],
         "diff_runtime_by_presentation_regime": [
           {
-            "avg_case_ms": 60.0,
+            "avg_case_ms": 60.2,
             "axis": "presentation_regime",
             "case_count": 5,
             "group": "canonical",
-            "max_elapsed_seconds": 0.279,
+            "max_elapsed_seconds": 0.278,
             "slowest_case": "polynomial_power_direct",
-            "total_elapsed_seconds": 0.3
+            "total_elapsed_seconds": 0.301
           },
           {
-            "avg_case_ms": 23.5,
+            "avg_case_ms": 23.333,
             "axis": "presentation_regime",
             "case_count": 6,
             "group": "compact_integer_rational_quotient",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.141
+            "total_elapsed_seconds": 0.14
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.812,
             "axis": "presentation_regime",
             "case_count": 16,
             "group": "undefined",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
-            "total_elapsed_seconds": 0.076
-          },
-          {
-            "avg_case_ms": 36.0,
-            "axis": "presentation_regime",
-            "case_count": 1,
-            "group": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
-            "max_elapsed_seconds": 0.036,
-            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.036
+            "total_elapsed_seconds": 0.077
           },
           {
             "avg_case_ms": 15.0,
@@ -697,35 +688,44 @@
             "max_elapsed_seconds": 0.018,
             "slowest_case": "inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
             "total_elapsed_seconds": 0.03
+          },
+          {
+            "avg_case_ms": 30.0,
+            "axis": "presentation_regime",
+            "case_count": 1,
+            "group": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
+            "max_elapsed_seconds": 0.03,
+            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+            "total_elapsed_seconds": 0.03
           }
         ],
         "diff_runtime_by_trace_regime": [
           {
-            "avg_case_ms": 279.0,
+            "avg_case_ms": 278.0,
             "axis": "trace_regime",
             "case_count": 1,
             "group": "power_rule",
-            "max_elapsed_seconds": 0.279,
+            "max_elapsed_seconds": 0.278,
             "slowest_case": "polynomial_power_direct",
-            "total_elapsed_seconds": 0.279
+            "total_elapsed_seconds": 0.278
           },
           {
-            "avg_case_ms": 14.0,
+            "avg_case_ms": 13.9,
             "axis": "trace_regime",
             "case_count": 10,
             "group": "chain_rule",
-            "max_elapsed_seconds": 0.026,
+            "max_elapsed_seconds": 0.025,
             "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.14
+            "total_elapsed_seconds": 0.139
           },
           {
-            "avg_case_ms": 28.0,
+            "avg_case_ms": 28.5,
             "axis": "trace_regime",
             "case_count": 2,
             "group": "positive_quadratic_log_abs_pole_linearity",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.056
+            "total_elapsed_seconds": 0.057
           },
           {
             "avg_case_ms": 20.5,
@@ -737,58 +737,58 @@
             "total_elapsed_seconds": 0.041
           },
           {
-            "avg_case_ms": 36.0,
+            "avg_case_ms": 15.0,
             "axis": "trace_regime",
-            "case_count": 1,
-            "group": "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
-            "max_elapsed_seconds": 0.036,
-            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.036
+            "case_count": 2,
+            "group": "direct_inverse_tangent_chain_rule",
+            "max_elapsed_seconds": 0.018,
+            "slowest_case": "inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
+            "total_elapsed_seconds": 0.03
           }
         ],
         "diff_runtime_by_variable_power_policy_cluster": [
           {
-            "avg_case_ms": 7.333,
+            "avg_case_ms": 7.667,
             "axis": "variable_power_policy_cluster",
             "case_count": 3,
             "group": "block2_variable_power_logarithmic_derivative_domain",
             "max_elapsed_seconds": 0.009,
             "slowest_case": "quadratic_base_variable_power_disconnected_domain",
-            "total_elapsed_seconds": 0.022
+            "total_elapsed_seconds": 0.023
           }
         ],
         "diff_runtime_concentration": {
           "slowest_argument_regime": "variable",
           "slowest_case": "polynomial_power_direct",
-          "slowest_case_ms": 279.0,
-          "slowest_case_share_percent": 25.3,
+          "slowest_case_ms": 278.0,
+          "slowest_case_share_percent": 24.8,
           "slowest_domain_regime": "unconditional",
           "slowest_family": "polynomial",
           "slowest_presentation_regime": "canonical",
           "slowest_trace_regime": "power_rule",
           "timed_case_count": 85,
-          "top_3_share_percent": 31.2,
-          "total_elapsed_seconds": 1.101
+          "top_3_share_percent": 30.1,
+          "total_elapsed_seconds": 1.119
         },
         "diff_runtime_distribution": {
-          "avg_case_ms": 12.953,
-          "max_case_ms": 279.0,
-          "p95_case_ms": 26.0,
+          "avg_case_ms": 13.165,
+          "max_case_ms": 278.0,
+          "p95_case_ms": 25.0,
           "timed_case_count": 85,
-          "total_elapsed_seconds": 1.101
+          "total_elapsed_seconds": 1.119
         },
         "diff_runtime_measurement": {
           "guidance": "require embedded or profiler evidence before treating this as an engine hotspot",
-          "max_case_ms": 36.0,
+          "max_case_ms": 30.0,
           "mode": "process_per_case",
-          "p95_case_ms": 26.0,
+          "p95_case_ms": 25.0,
           "pressure_status": "ok",
           "status": "process_overhead_floor"
         },
         "diff_runtime_pressure": {
-          "avg_case_ms": 9.786,
-          "max_case_ms": 36.0,
-          "p95_case_ms": 26.0,
+          "avg_case_ms": 10.012,
+          "max_case_ms": 30.0,
+          "p95_case_ms": 25.0,
           "primary_signal": "none",
           "reason": "within runtime pressure thresholds",
           "sample_basis": "warm",
@@ -796,7 +796,7 @@
           "slowest_family": "inverse_trig_root",
           "status": "ok",
           "timed_case_count": 84,
-          "top_3_share_percent": 11.2
+          "top_3_share_percent": 10.3
         },
         "diff_slowest_cases": [
           {
@@ -808,7 +808,7 @@
             "presentation_regime": "canonical",
             "status": "pass",
             "trace_regime": "power_rule",
-            "wall_elapsed_seconds": 0.279
+            "wall_elapsed_seconds": 0.278
           },
           {
             "argument_regime": "external_scale_symbolic_rational_denominator_affine_radicand",
@@ -819,7 +819,7 @@
             "presentation_regime": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
             "status": "pass",
             "trace_regime": "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
-            "wall_elapsed_seconds": 0.036
+            "wall_elapsed_seconds": 0.03
           },
           {
             "argument_regime": "scaled_positive_quadratic_plus_scaled_linear_pole",
@@ -841,7 +841,7 @@
             "presentation_regime": "compact_integer_rational_quotient",
             "status": "pass",
             "trace_regime": "positive_quadratic_log_abs_pole_linearity",
-            "wall_elapsed_seconds": 0.027
+            "wall_elapsed_seconds": 0.028
           },
           {
             "argument_regime": "symbolic_denominator_scaled_shifted_root",
@@ -852,7 +852,7 @@
             "presentation_regime": "symbolic_denominator_open_interval_compact",
             "status": "pass",
             "trace_regime": "chain_rule",
-            "wall_elapsed_seconds": 0.026
+            "wall_elapsed_seconds": 0.025
           }
         ],
         "diff_slowest_cli_parse_evaluations": [
@@ -873,20 +873,21 @@
             "trace_regime": "power_rule"
           },
           {
-            "argument_regime": "scaled_shifted_linear_factors",
-            "calculus_block_gate": "domain_conditions_and_diff_policy",
+            "argument_regime": "negative_orientation_surd_discriminant_log_arctan_primitive",
+            "calculus_block_gate": "didactic_trace_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
             "cli_parse_elapsed_seconds": 0.0,
-            "domain_regime": "linear_poles_required",
-            "family": "log_ratio_single_pole_primitive",
-            "name": "log_ratio_single_pole_scaled_shifted_linear_compact",
-            "presentation_regime": "compact_integer_rational_quotient",
+            "domain_regime": "unconditional_positive_quadratic",
+            "family": "positive_quadratic_log_arctan_primitive",
+            "name": "positive_quadratic_log_arctan_surd_negative_orientation_compact",
+            "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_arctan_primitive",
+            "presentation_regime": "compact_positive_quadratic_surd_negative_orientation_quotient",
             "step_rule_names": [
               "Calcular la derivada",
               "Usar linealidad de la derivada"
             ],
             "steps_count": 1,
-            "trace_regime": "log_ratio_single_pole_linearity"
+            "trace_regime": "positive_quadratic_log_arctan_surd_negative_orientation_linearity"
           },
           {
             "argument_regime": "scaled_positive_quadratic_plus_scaled_linear_pole",
@@ -906,32 +907,13 @@
             "trace_regime": "positive_quadratic_log_abs_pole_linearity"
           },
           {
-            "argument_regime": "linear_denominator_wrapper",
-            "calculus_block_gate": "domain_conditions_and_diff_policy",
-            "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_parse_elapsed_seconds": 0.0,
-            "domain_regime": "linear_wrapper_pole_required",
-            "family": "positive_quadratic_log_abs_pole_primitive",
-            "name": "positive_quadratic_log_abs_pole_linear_wrapper_compact",
-            "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
-            "presentation_regime": "compact_log_wrapper",
-            "step_rule_names": [
-              "Calcular la derivada",
-              "Usar regla del cociente",
-              "Derivar el numerador",
-              "Derivar el denominador"
-            ],
-            "steps_count": 1,
-            "trace_regime": "positive_quadratic_log_abs_pole_wrapper_linearity"
-          },
-          {
-            "argument_regime": "positive_orientation_combined_linear_denominator_source",
+            "argument_regime": "scaled_positive_quadratic_plus_linear_pole",
             "calculus_block_gate": "domain_conditions_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
             "cli_parse_elapsed_seconds": 0.0,
             "domain_regime": "linear_poles_required",
             "family": "positive_quadratic_log_abs_pole_primitive",
-            "name": "positive_quadratic_log_abs_pole_positive_orientation_combined_source_compact",
+            "name": "positive_quadratic_log_abs_pole_scaled_quadratic_compact",
             "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
             "presentation_regime": "compact_integer_rational_quotient",
             "step_rule_names": [
@@ -939,7 +921,26 @@
               "Usar linealidad de la derivada"
             ],
             "steps_count": 1,
-            "trace_regime": "positive_quadratic_log_abs_pole_raw_linearity"
+            "trace_regime": "positive_quadratic_log_abs_pole_linearity"
+          },
+          {
+            "argument_regime": "exact_square_symbolic_denominator_scaled_shifted_root",
+            "calculus_block_gate": "domain_conditions_and_diff_policy",
+            "calculus_maturity_block": "block2_real_domain_differentiation",
+            "cli_parse_elapsed_seconds": 0.0,
+            "domain_regime": "required_condition",
+            "family": "inverse_trig_root",
+            "name": "inverse_trig_root_exact_square_symbolic_denominator_scale_condition_dedupe",
+            "presentation_regime": "exact_square_symbolic_denominator_condition_deduped_compact",
+            "step_rule_names": [
+              "Reconocer un cuadrado perfecto bajo la ra\u00edz",
+              "Sacar constante de una fracci\u00f3n",
+              "Calcular la derivada",
+              "Usar regla de arctan(u)",
+              "Identificar u y du"
+            ],
+            "steps_count": 3,
+            "trace_regime": "parameter_denominator_exact_square_chain_rule"
           }
         ],
         "diff_slowest_cli_public_overhead_evaluations": [
@@ -963,7 +964,7 @@
             "argument_regime": "external_scale_symbolic_rational_denominator_affine_radicand",
             "calculus_block_gate": "domain_conditions_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_public_overhead_seconds": 0.032,
+            "cli_public_overhead_seconds": 0.026,
             "domain_regime": "required_condition",
             "family": "inverse_trig_root",
             "name": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
@@ -981,7 +982,7 @@
             "argument_regime": "linear_denominator_wrapper",
             "calculus_block_gate": "domain_conditions_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_public_overhead_seconds": 0.018,
+            "cli_public_overhead_seconds": 0.019,
             "domain_regime": "linear_wrapper_pole_required",
             "family": "positive_quadratic_log_abs_pole_primitive",
             "name": "positive_quadratic_log_abs_pole_linear_wrapper_compact",
@@ -995,24 +996,6 @@
             ],
             "steps_count": 1,
             "trace_regime": "positive_quadratic_log_abs_pole_wrapper_linearity"
-          },
-          {
-            "argument_regime": "non_unit_slope_symbolic_radius_affine_argument",
-            "calculus_block_gate": "domain_conditions_and_diff_policy",
-            "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_public_overhead_seconds": 0.017,
-            "domain_regime": "symbolic_radius_minimal_nonzero_parameter",
-            "family": "positive_quadratic_arctan_primitive",
-            "name": "inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
-            "positive_quadratic_policy_cluster": "block2_symbolic_radius_arctan_positive_quadratic",
-            "presentation_regime": "compact_shifted_symbolic_radius_positive_quadratic",
-            "step_rule_names": [
-              "Calcular la derivada",
-              "Usar regla del cociente",
-              "Derivar el numerador"
-            ],
-            "steps_count": 1,
-            "trace_regime": "direct_inverse_tangent_chain_rule"
           },
           {
             "argument_regime": "symbolic_denominator_scaled_shifted_root",
@@ -1035,6 +1018,24 @@
             ],
             "steps_count": 11,
             "trace_regime": "chain_rule"
+          },
+          {
+            "argument_regime": "non_unit_slope_symbolic_radius_affine_argument",
+            "calculus_block_gate": "domain_conditions_and_diff_policy",
+            "calculus_maturity_block": "block2_real_domain_differentiation",
+            "cli_public_overhead_seconds": 0.016,
+            "domain_regime": "symbolic_radius_minimal_nonzero_parameter",
+            "family": "positive_quadratic_arctan_primitive",
+            "name": "inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
+            "positive_quadratic_policy_cluster": "block2_symbolic_radius_arctan_positive_quadratic",
+            "presentation_regime": "compact_shifted_symbolic_radius_positive_quadratic",
+            "step_rule_names": [
+              "Calcular la derivada",
+              "Usar regla del cociente",
+              "Derivar el numerador"
+            ],
+            "steps_count": 1,
+            "trace_regime": "direct_inverse_tangent_chain_rule"
           }
         ],
         "diff_slowest_cli_simplify_evaluations": [
@@ -1059,7 +1060,7 @@
             "argument_regime": "quadratic_argument",
             "calculus_block_gate": "domain_conditions_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_simplify_elapsed_seconds": 0.013,
+            "cli_simplify_elapsed_seconds": 0.014,
             "domain_regime": "factored_nondifferentiable_points_required",
             "family": "abs",
             "name": "abs_quadratic_factored_nondifferentiable_domain",
@@ -1071,23 +1072,6 @@
             ],
             "steps_count": 1,
             "trace_regime": "piecewise_abs_chain_rule"
-          },
-          {
-            "argument_regime": "positive_orientation_combined_linear_denominator_source",
-            "calculus_block_gate": "domain_conditions_and_diff_policy",
-            "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_simplify_elapsed_seconds": 0.013,
-            "domain_regime": "linear_poles_required",
-            "family": "positive_quadratic_log_abs_pole_primitive",
-            "name": "positive_quadratic_log_abs_pole_positive_orientation_combined_source_compact",
-            "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
-            "presentation_regime": "compact_integer_rational_quotient",
-            "step_rule_names": [
-              "Calcular la derivada",
-              "Usar linealidad de la derivada"
-            ],
-            "steps_count": 1,
-            "trace_regime": "positive_quadratic_log_abs_pole_raw_linearity"
           },
           {
             "argument_regime": "scaled_positive_quadratic_plus_linear_pole",
@@ -1105,6 +1089,23 @@
             ],
             "steps_count": 1,
             "trace_regime": "positive_quadratic_log_abs_pole_linearity"
+          },
+          {
+            "argument_regime": "positive_orientation_combined_linear_denominator_source",
+            "calculus_block_gate": "domain_conditions_and_diff_policy",
+            "calculus_maturity_block": "block2_real_domain_differentiation",
+            "cli_simplify_elapsed_seconds": 0.013,
+            "domain_regime": "linear_poles_required",
+            "family": "positive_quadratic_log_abs_pole_primitive",
+            "name": "positive_quadratic_log_abs_pole_positive_orientation_combined_source_compact",
+            "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
+            "presentation_regime": "compact_integer_rational_quotient",
+            "step_rule_names": [
+              "Calcular la derivada",
+              "Usar linealidad de la derivada"
+            ],
+            "steps_count": 1,
+            "trace_regime": "positive_quadratic_log_abs_pole_raw_linearity"
           },
           {
             "argument_regime": "symbolic_denominator_scaled_shifted_root",
@@ -1134,7 +1135,7 @@
             "argument_regime": "scaled_positive_quadratic_plus_scaled_linear_pole",
             "calculus_block_gate": "domain_conditions_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_total_elapsed_seconds": 0.015,
+            "cli_total_elapsed_seconds": 0.014,
             "domain_regime": "linear_poles_required",
             "family": "positive_quadratic_log_abs_pole_primitive",
             "name": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
@@ -1151,7 +1152,7 @@
             "argument_regime": "quadratic_argument",
             "calculus_block_gate": "domain_conditions_and_diff_policy",
             "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_total_elapsed_seconds": 0.013,
+            "cli_total_elapsed_seconds": 0.014,
             "domain_regime": "factored_nondifferentiable_points_required",
             "family": "abs",
             "name": "abs_quadratic_factored_nondifferentiable_domain",
@@ -1163,6 +1164,23 @@
             ],
             "steps_count": 1,
             "trace_regime": "piecewise_abs_chain_rule"
+          },
+          {
+            "argument_regime": "scaled_positive_quadratic_plus_linear_pole",
+            "calculus_block_gate": "domain_conditions_and_diff_policy",
+            "calculus_maturity_block": "block2_real_domain_differentiation",
+            "cli_total_elapsed_seconds": 0.014,
+            "domain_regime": "linear_poles_required",
+            "family": "positive_quadratic_log_abs_pole_primitive",
+            "name": "positive_quadratic_log_abs_pole_scaled_quadratic_compact",
+            "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
+            "presentation_regime": "compact_integer_rational_quotient",
+            "step_rule_names": [
+              "Calcular la derivada",
+              "Usar linealidad de la derivada"
+            ],
+            "steps_count": 1,
+            "trace_regime": "positive_quadratic_log_abs_pole_linearity"
           },
           {
             "argument_regime": "positive_orientation_combined_linear_denominator_source",
@@ -1180,23 +1198,6 @@
             ],
             "steps_count": 1,
             "trace_regime": "positive_quadratic_log_abs_pole_raw_linearity"
-          },
-          {
-            "argument_regime": "scaled_positive_quadratic_plus_linear_pole",
-            "calculus_block_gate": "domain_conditions_and_diff_policy",
-            "calculus_maturity_block": "block2_real_domain_differentiation",
-            "cli_total_elapsed_seconds": 0.013,
-            "domain_regime": "linear_poles_required",
-            "family": "positive_quadratic_log_abs_pole_primitive",
-            "name": "positive_quadratic_log_abs_pole_scaled_quadratic_compact",
-            "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
-            "presentation_regime": "compact_integer_rational_quotient",
-            "step_rule_names": [
-              "Calcular la derivada",
-              "Usar linealidad de la derivada"
-            ],
-            "steps_count": 1,
-            "trace_regime": "positive_quadratic_log_abs_pole_linearity"
           },
           {
             "argument_regime": "symbolic_denominator_scaled_shifted_root",
@@ -1320,7 +1321,7 @@
             "family": "polynomial",
             "name": "polynomial_power_direct",
             "presentation_regime": "canonical",
-            "process_elapsed_seconds": 0.279,
+            "process_elapsed_seconds": 0.278,
             "step_rule_names": [
               "Calcular la derivada",
               "Usar regla de la potencia"
@@ -1336,7 +1337,7 @@
             "family": "inverse_trig_root",
             "name": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
             "presentation_regime": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
-            "process_elapsed_seconds": 0.036,
+            "process_elapsed_seconds": 0.03,
             "step_rule_names": [
               "Calcular la derivada",
               "Usar factor constante de la derivada",
@@ -1372,7 +1373,7 @@
             "name": "positive_quadratic_log_abs_pole_scaled_quadratic_compact",
             "positive_quadratic_policy_cluster": "block2_positive_quadratic_log_abs_pole_primitive",
             "presentation_regime": "compact_integer_rational_quotient",
-            "process_elapsed_seconds": 0.027,
+            "process_elapsed_seconds": 0.028,
             "step_rule_names": [
               "Calcular la derivada",
               "Usar linealidad de la derivada"
@@ -1388,7 +1389,7 @@
             "family": "inverse_hyperbolic_root",
             "name": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
             "presentation_regime": "symbolic_denominator_open_interval_compact",
-            "process_elapsed_seconds": 0.026,
+            "process_elapsed_seconds": 0.025,
             "step_rule_names": [
               "Calcular la derivada",
               "Usar regla de la cadena",
@@ -1478,80 +1479,89 @@
         },
         "diff_warm_runtime_by_calculus_block_gate": [
           {
-            "avg_case_ms": 12.278,
+            "avg_case_ms": 12.481,
             "axis": "calculus_block_gate",
             "case_count": 54,
             "group": "domain_conditions_and_diff_policy",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.663
+            "total_elapsed_seconds": 0.674
           },
           {
-            "avg_case_ms": 5.929,
+            "avg_case_ms": 6.429,
             "axis": "calculus_block_gate",
             "case_count": 14,
             "group": "didactic_trace_and_diff_policy",
             "max_elapsed_seconds": 0.009,
-            "slowest_case": "inverse_hyperbolic_acosh_named_positive_offset_satisfied_lower_bound",
-            "total_elapsed_seconds": 0.083
+            "slowest_case": "positive_quadratic_log_arctan_surd_negative_orientation_compact",
+            "total_elapsed_seconds": 0.09
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.812,
             "axis": "calculus_block_gate",
             "case_count": 16,
             "group": "explicit_undefined_domain_policy",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
-            "total_elapsed_seconds": 0.076
+            "total_elapsed_seconds": 0.077
           }
         ],
         "diff_warm_runtime_by_calculus_maturity_block": [
           {
-            "avg_case_ms": 10.971,
+            "avg_case_ms": 11.235,
             "axis": "calculus_maturity_block",
             "case_count": 68,
             "group": "block2_real_domain_differentiation",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.746
+            "total_elapsed_seconds": 0.764
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.812,
             "axis": "calculus_maturity_block",
             "case_count": 16,
             "group": "block9_residuals_and_non_goals",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
-            "total_elapsed_seconds": 0.076
+            "total_elapsed_seconds": 0.077
           }
         ],
         "diff_warm_runtime_by_domain_regime": [
           {
-            "avg_case_ms": 9.8,
+            "avg_case_ms": 9.933,
             "axis": "domain_regime",
             "case_count": 30,
             "group": "required_condition",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.294
+            "total_elapsed_seconds": 0.298
           },
           {
-            "avg_case_ms": 23.5,
+            "avg_case_ms": 23.333,
             "axis": "domain_regime",
             "case_count": 6,
             "group": "linear_poles_required",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.141
+            "total_elapsed_seconds": 0.14
           },
           {
-            "avg_case_ms": 24.0,
+            "avg_case_ms": 23.333,
             "axis": "domain_regime",
             "case_count": 3,
             "group": "open_interval_required",
-            "max_elapsed_seconds": 0.026,
+            "max_elapsed_seconds": 0.025,
             "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.072
+            "total_elapsed_seconds": 0.07
+          },
+          {
+            "avg_case_ms": 6.4,
+            "axis": "domain_regime",
+            "case_count": 5,
+            "group": "unconditional",
+            "max_elapsed_seconds": 0.007,
+            "slowest_case": "polynomial_inner_chain_power",
+            "total_elapsed_seconds": 0.032
           },
           {
             "avg_case_ms": 15.0,
@@ -1561,44 +1571,35 @@
             "max_elapsed_seconds": 0.018,
             "slowest_case": "inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
             "total_elapsed_seconds": 0.03
-          },
-          {
-            "avg_case_ms": 5.4,
-            "axis": "domain_regime",
-            "case_count": 5,
-            "group": "unconditional",
-            "max_elapsed_seconds": 0.007,
-            "slowest_case": "trig_product_rule",
-            "total_elapsed_seconds": 0.027
           }
         ],
         "diff_warm_runtime_by_family": [
           {
-            "avg_case_ms": 12.333,
+            "avg_case_ms": 12.067,
             "axis": "family",
             "case_count": 15,
             "group": "inverse_trig_root",
-            "max_elapsed_seconds": 0.036,
+            "max_elapsed_seconds": 0.03,
             "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.185
+            "total_elapsed_seconds": 0.181
           },
           {
-            "avg_case_ms": 21.0,
-            "axis": "family",
-            "case_count": 5,
-            "group": "inverse_hyperbolic_root",
-            "max_elapsed_seconds": 0.026,
-            "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.105
-          },
-          {
-            "avg_case_ms": 26.25,
+            "avg_case_ms": 26.5,
             "axis": "family",
             "case_count": 4,
             "group": "positive_quadratic_log_abs_pole_primitive",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.105
+            "total_elapsed_seconds": 0.106
+          },
+          {
+            "avg_case_ms": 20.6,
+            "axis": "family",
+            "case_count": 5,
+            "group": "inverse_hyperbolic_root",
+            "max_elapsed_seconds": 0.025,
+            "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
+            "total_elapsed_seconds": 0.103
           },
           {
             "avg_case_ms": 20.5,
@@ -1621,13 +1622,13 @@
         ],
         "diff_warm_runtime_by_positive_quadratic_policy_cluster": [
           {
-            "avg_case_ms": 26.25,
+            "avg_case_ms": 26.5,
             "axis": "positive_quadratic_policy_cluster",
             "case_count": 4,
             "group": "block2_positive_quadratic_log_abs_pole_primitive",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.105
+            "total_elapsed_seconds": 0.106
           },
           {
             "avg_case_ms": 15.0,
@@ -1639,42 +1640,33 @@
             "total_elapsed_seconds": 0.03
           },
           {
-            "avg_case_ms": 7.333,
+            "avg_case_ms": 8.0,
             "axis": "positive_quadratic_policy_cluster",
             "case_count": 3,
             "group": "block2_positive_quadratic_log_arctan_primitive",
-            "max_elapsed_seconds": 0.008,
-            "slowest_case": "positive_quadratic_log_arctan_surd_primitive_compact",
-            "total_elapsed_seconds": 0.022
+            "max_elapsed_seconds": 0.009,
+            "slowest_case": "positive_quadratic_log_arctan_surd_negative_orientation_compact",
+            "total_elapsed_seconds": 0.024
           }
         ],
         "diff_warm_runtime_by_presentation_regime": [
           {
-            "avg_case_ms": 23.5,
+            "avg_case_ms": 23.333,
             "axis": "presentation_regime",
             "case_count": 6,
             "group": "compact_integer_rational_quotient",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.141
+            "total_elapsed_seconds": 0.14
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.812,
             "axis": "presentation_regime",
             "case_count": 16,
             "group": "undefined",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "inverse_trig_shifted_quadratic_empty_open_interval_undefined",
-            "total_elapsed_seconds": 0.076
-          },
-          {
-            "avg_case_ms": 36.0,
-            "axis": "presentation_regime",
-            "case_count": 1,
-            "group": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
-            "max_elapsed_seconds": 0.036,
-            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.036
+            "total_elapsed_seconds": 0.077
           },
           {
             "avg_case_ms": 15.0,
@@ -1686,33 +1678,42 @@
             "total_elapsed_seconds": 0.03
           },
           {
-            "avg_case_ms": 26.0,
+            "avg_case_ms": 30.0,
+            "axis": "presentation_regime",
+            "case_count": 1,
+            "group": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
+            "max_elapsed_seconds": 0.03,
+            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+            "total_elapsed_seconds": 0.03
+          },
+          {
+            "avg_case_ms": 25.0,
             "axis": "presentation_regime",
             "case_count": 1,
             "group": "symbolic_denominator_open_interval_compact",
-            "max_elapsed_seconds": 0.026,
+            "max_elapsed_seconds": 0.025,
             "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.026
+            "total_elapsed_seconds": 0.025
           }
         ],
         "diff_warm_runtime_by_trace_regime": [
           {
-            "avg_case_ms": 14.0,
+            "avg_case_ms": 13.9,
             "axis": "trace_regime",
             "case_count": 10,
             "group": "chain_rule",
-            "max_elapsed_seconds": 0.026,
+            "max_elapsed_seconds": 0.025,
             "slowest_case": "inverse_hyperbolic_root_atanh_symbolic_denominator_scale_open_interval",
-            "total_elapsed_seconds": 0.14
+            "total_elapsed_seconds": 0.139
           },
           {
-            "avg_case_ms": 28.0,
+            "avg_case_ms": 28.5,
             "axis": "trace_regime",
             "case_count": 2,
             "group": "positive_quadratic_log_abs_pole_linearity",
             "max_elapsed_seconds": 0.029,
             "slowest_case": "positive_quadratic_log_abs_pole_scaled_linear_pole_compact",
-            "total_elapsed_seconds": 0.056
+            "total_elapsed_seconds": 0.057
           },
           {
             "avg_case_ms": 20.5,
@@ -1724,15 +1725,6 @@
             "total_elapsed_seconds": 0.041
           },
           {
-            "avg_case_ms": 36.0,
-            "axis": "trace_regime",
-            "case_count": 1,
-            "group": "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
-            "max_elapsed_seconds": 0.036,
-            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-            "total_elapsed_seconds": 0.036
-          },
-          {
             "avg_case_ms": 15.0,
             "axis": "trace_regime",
             "case_count": 2,
@@ -1740,38 +1732,47 @@
             "max_elapsed_seconds": 0.018,
             "slowest_case": "inverse_trig_symbolic_radius_non_unit_slope_arctan_primitive_compact",
             "total_elapsed_seconds": 0.03
+          },
+          {
+            "avg_case_ms": 30.0,
+            "axis": "trace_regime",
+            "case_count": 1,
+            "group": "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
+            "max_elapsed_seconds": 0.03,
+            "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+            "total_elapsed_seconds": 0.03
           }
         ],
         "diff_warm_runtime_by_variable_power_policy_cluster": [
           {
-            "avg_case_ms": 7.333,
+            "avg_case_ms": 7.667,
             "axis": "variable_power_policy_cluster",
             "case_count": 3,
             "group": "block2_variable_power_logarithmic_derivative_domain",
             "max_elapsed_seconds": 0.009,
             "slowest_case": "quadratic_base_variable_power_disconnected_domain",
-            "total_elapsed_seconds": 0.022
+            "total_elapsed_seconds": 0.023
           }
         ],
         "diff_warm_runtime_concentration": {
           "slowest_argument_regime": "external_scale_symbolic_rational_denominator_affine_radicand",
           "slowest_case": "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
-          "slowest_case_ms": 36.0,
-          "slowest_case_share_percent": 4.4,
+          "slowest_case_ms": 30.0,
+          "slowest_case_share_percent": 3.6,
           "slowest_domain_regime": "required_condition",
           "slowest_family": "inverse_trig_root",
           "slowest_presentation_regime": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
           "slowest_trace_regime": "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
           "timed_case_count": 84,
-          "top_3_share_percent": 11.2,
-          "total_elapsed_seconds": 0.822
+          "top_3_share_percent": 10.3,
+          "total_elapsed_seconds": 0.841
         },
         "diff_warm_runtime_distribution": {
-          "avg_case_ms": 9.786,
-          "max_case_ms": 36.0,
-          "p95_case_ms": 26.0,
+          "avg_case_ms": 10.012,
+          "max_case_ms": 30.0,
+          "p95_case_ms": 25.0,
           "timed_case_count": 84,
-          "total_elapsed_seconds": 0.822
+          "total_elapsed_seconds": 0.841
         },
         "diff_warm_slowest_cases": [
           {
@@ -1783,7 +1784,7 @@
             "presentation_regime": "external_scale_symbolic_rational_denominator_affine_radicand_compact",
             "status": "pass",
             "trace_regime": "constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
-            "wall_elapsed_seconds": 0.036
+            "wall_elapsed_seconds": 0.03
           },
           {
             "argument_regime": "scaled_positive_quadratic_plus_scaled_linear_pole",
@@ -1805,7 +1806,7 @@
             "presentation_regime": "compact_integer_rational_quotient",
             "status": "pass",
             "trace_regime": "positive_quadratic_log_abs_pole_linearity",
-            "wall_elapsed_seconds": 0.027
+            "wall_elapsed_seconds": 0.028
           },
           {
             "argument_regime": "symbolic_denominator_scaled_shifted_root",
@@ -1816,7 +1817,7 @@
             "presentation_regime": "symbolic_denominator_open_interval_compact",
             "status": "pass",
             "trace_regime": "chain_rule",
-            "wall_elapsed_seconds": 0.026
+            "wall_elapsed_seconds": 0.025
           },
           {
             "argument_regime": "positive_orientation_combined_linear_denominator_source",
@@ -1827,7 +1828,7 @@
             "presentation_regime": "compact_integer_rational_quotient",
             "status": "pass",
             "trace_regime": "positive_quadratic_log_abs_pole_raw_linearity",
-            "wall_elapsed_seconds": 0.026
+            "wall_elapsed_seconds": 0.025
           }
         ],
         "diff_warning_expected_case_count": 0,
@@ -1838,12 +1839,12 @@
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
-        "reported_elapsed_per_case_ms": 13.8246,
+        "reported_elapsed_per_case_ms": 14.0247,
         "slow": 0,
         "timeouts": 0,
         "total_cases": 85
       },
-      "process_elapsed_seconds": 1.175,
+      "process_elapsed_seconds": 1.192,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1864,7 +1865,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 2.313,
+      "elapsed_seconds": 2.352,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1882,7 +1883,7 @@
         "passed": 263,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 2.313,
+      "process_elapsed_seconds": 2.352,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1900,7 +1901,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 4.492,
+      "elapsed_seconds": 4.486,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1984,12 +1985,12 @@
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
-        "reported_elapsed_per_case_ms": 88.0711,
+        "reported_elapsed_per_case_ms": 87.9565,
         "slow": 0,
         "timeouts": 0,
         "total_cases": 51
       },
-      "process_elapsed_seconds": 4.492,
+      "process_elapsed_seconds": 4.486,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -2010,7 +2011,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.081,
+      "elapsed_seconds": 0.082,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -2025,11 +2026,11 @@
         "ignored": 0,
         "measured": 0,
         "passed": 2,
-        "reported_elapsed_per_case_ms": 40.3814,
+        "reported_elapsed_per_case_ms": 41.0016,
         "timeouts": 0,
         "total_cases": 2
       },
-      "process_elapsed_seconds": 0.081,
+      "process_elapsed_seconds": 0.082,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -2049,7 +2050,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.08,
+      "elapsed_seconds": 0.079,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -2359,7 +2360,7 @@
           "accepted": 33
         },
         "backend_verification_checks_used_total": 33,
-        "backend_verification_elapsed_ms": 0.298,
+        "backend_verification_elapsed_ms": 0.288,
         "backend_verification_evidence_by_method": {
           "hermite/direct_differentiation": 2,
           "hermite/method_specific_differentiation": 18,
@@ -2411,7 +2412,7 @@
           "verification_check_budget_remaining_total": 1,
           "verification_check_budget_utilization_percent": 97.1,
           "verification_checks_used_total": 33,
-          "verification_elapsed_ms": 0.298
+          "verification_elapsed_ms": 0.288
         },
         "backend_verification_pressure_status": "ok",
         "backend_verification_residual_by_method": {
@@ -2455,10 +2456,10 @@
         "backend_verified_count": 34,
         "failed": 0,
         "passed": 40,
-        "reported_elapsed_per_case_ms": 1.9989,
+        "reported_elapsed_per_case_ms": 1.9669,
         "total_cases": 40
       },
-      "process_elapsed_seconds": 0.08,
+      "process_elapsed_seconds": 0.079,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -2476,7 +2477,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 8.852,
+      "elapsed_seconds": 8.869,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -2784,32 +2785,32 @@
           "block9_residuals_and_non_goals": 16
         },
         "integrate_cli_parse_runtime_distribution": {
-          "avg_case_ms": 0.06,
-          "max_case_ms": 0.128,
-          "p95_case_ms": 0.083,
+          "avg_case_ms": 0.057,
+          "max_case_ms": 0.102,
+          "p95_case_ms": 0.073,
           "timed_case_count": 313,
-          "total_elapsed_seconds": 0.019
+          "total_elapsed_seconds": 0.018
         },
         "integrate_cli_public_overhead_runtime_distribution": {
-          "avg_case_ms": 7.513,
-          "max_case_ms": 225.838,
-          "p95_case_ms": 15.076,
+          "avg_case_ms": 7.552,
+          "max_case_ms": 232.277,
+          "p95_case_ms": 14.807,
           "timed_case_count": 313,
-          "total_elapsed_seconds": 2.352
+          "total_elapsed_seconds": 2.364
         },
         "integrate_cli_simplify_runtime_distribution": {
-          "avg_case_ms": 4.269,
-          "max_case_ms": 194.711,
-          "p95_case_ms": 9.916,
+          "avg_case_ms": 4.292,
+          "max_case_ms": 195.222,
+          "p95_case_ms": 10.277,
           "timed_case_count": 313,
-          "total_elapsed_seconds": 1.336
+          "total_elapsed_seconds": 1.343
         },
         "integrate_cli_total_runtime_distribution": {
-          "avg_case_ms": 4.335,
-          "max_case_ms": 194.814,
-          "p95_case_ms": 9.99,
+          "avg_case_ms": 4.354,
+          "max_case_ms": 195.273,
+          "p95_case_ms": 10.342,
           "timed_case_count": 313,
-          "total_elapsed_seconds": 1.357
+          "total_elapsed_seconds": 1.363
         },
         "integrate_cold_start_case": {
           "argument_regime": "variable_power",
@@ -2820,7 +2821,7 @@
           "presentation_regime": "compact_power",
           "status": "pass",
           "trace_regime": "power_rule",
-          "wall_elapsed_seconds": 0.017
+          "wall_elapsed_seconds": 0.016
         },
         "integrate_direct_diff_integrate_base_integration_policy_cluster_counts": {
           "block4_exponential_by_parts": 2,
@@ -3726,10 +3727,10 @@
             "avg_step_text_char_count": 758.833,
             "case_count": 6,
             "cause": "special_function_method_required",
-            "cli_total_seconds": 0.00829,
-            "integrate_total_seconds": 0.041,
-            "public_overhead_share_percent": 80.6,
-            "public_overhead_total_seconds": 0.033033,
+            "cli_total_seconds": 0.009125,
+            "integrate_total_seconds": 0.045,
+            "public_overhead_share_percent": 78.2,
+            "public_overhead_total_seconds": 0.03518,
             "slowest_case": "explicit_tangent_log_residual_condition_alias_dedupe"
           },
           {
@@ -3737,21 +3738,21 @@
             "avg_step_text_char_count": 382.0,
             "case_count": 7,
             "cause": "non_elementary_composition",
-            "cli_total_seconds": 0.010112,
-            "integrate_total_seconds": 0.038,
-            "public_overhead_share_percent": 72.5,
-            "public_overhead_total_seconds": 0.027533,
-            "slowest_case": "non_elementary_tan_polynomial_residual_domain"
+            "cli_total_seconds": 0.009516,
+            "integrate_total_seconds": 0.036,
+            "public_overhead_share_percent": 73.8,
+            "public_overhead_total_seconds": 0.026555,
+            "slowest_case": "explicit_reciprocal_tangent_presimplified_residual_domain"
           },
           {
             "avg_required_display_count": 1.0,
             "avg_step_text_char_count": 571.0,
             "case_count": 1,
             "cause": "branch_sensitive_interval_residual",
-            "cli_total_seconds": 0.003563,
+            "cli_total_seconds": 0.003786,
             "integrate_total_seconds": 0.011,
-            "public_overhead_share_percent": 64.2,
-            "public_overhead_total_seconds": 0.007061,
+            "public_overhead_share_percent": 66.8,
+            "public_overhead_total_seconds": 0.007353,
             "slowest_case": "additive_inverse_sqrt_interval_residual_domain"
           },
           {
@@ -3759,10 +3760,10 @@
             "avg_step_text_char_count": 0.0,
             "case_count": 1,
             "cause": "definite_interval_not_certifiable",
-            "cli_total_seconds": 0.001103,
+            "cli_total_seconds": 0.001126,
             "integrate_total_seconds": 0.005,
-            "public_overhead_share_percent": 68.8,
-            "public_overhead_total_seconds": 0.003438,
+            "public_overhead_share_percent": 74.7,
+            "public_overhead_total_seconds": 0.003736,
             "slowest_case": "definite_integral_symbolic_bound_conditional_residual"
           }
         ],
@@ -3772,10 +3773,10 @@
             "avg_step_text_char_count": 874.0,
             "case_count": 5,
             "cause_family": "special_function_method_required/explicit_reciprocal_trig_residual_domain",
-            "cli_total_seconds": 0.006482,
-            "integrate_total_seconds": 0.035,
-            "public_overhead_share_percent": 81.8,
-            "public_overhead_total_seconds": 0.028632,
+            "cli_total_seconds": 0.007489,
+            "integrate_total_seconds": 0.039,
+            "public_overhead_share_percent": 80.1,
+            "public_overhead_total_seconds": 0.031249,
             "slowest_case": "explicit_tangent_log_residual_condition_alias_dedupe"
           },
           {
@@ -3783,10 +3784,10 @@
             "avg_step_text_char_count": 200.667,
             "case_count": 3,
             "cause_family": "non_elementary_composition/trig_residual_domain",
-            "cli_total_seconds": 0.004708,
-            "integrate_total_seconds": 0.017,
-            "public_overhead_share_percent": 71.4,
-            "public_overhead_total_seconds": 0.012144,
+            "cli_total_seconds": 0.00391,
+            "integrate_total_seconds": 0.015,
+            "public_overhead_share_percent": 72.4,
+            "public_overhead_total_seconds": 0.010859,
             "slowest_case": "non_elementary_tan_polynomial_residual_domain"
           },
           {
@@ -3794,21 +3795,21 @@
             "avg_step_text_char_count": 869.0,
             "case_count": 2,
             "cause_family": "non_elementary_composition/explicit_reciprocal_trig_residual_domain",
-            "cli_total_seconds": 0.003032,
+            "cli_total_seconds": 0.002952,
             "integrate_total_seconds": 0.011,
-            "public_overhead_share_percent": 74.5,
-            "public_overhead_total_seconds": 0.008195,
-            "slowest_case": "explicit_reciprocal_sine_presimplified_residual_domain"
+            "public_overhead_share_percent": 74.3,
+            "public_overhead_total_seconds": 0.008173,
+            "slowest_case": "explicit_reciprocal_tangent_presimplified_residual_domain"
           },
           {
             "avg_required_display_count": 1.0,
             "avg_step_text_char_count": 571.0,
             "case_count": 1,
             "cause_family": "branch_sensitive_interval_residual/inverse_sqrt_additive_residual_domain",
-            "cli_total_seconds": 0.003563,
+            "cli_total_seconds": 0.003786,
             "integrate_total_seconds": 0.011,
-            "public_overhead_share_percent": 64.2,
-            "public_overhead_total_seconds": 0.007061,
+            "public_overhead_share_percent": 66.8,
+            "public_overhead_total_seconds": 0.007353,
             "slowest_case": "additive_inverse_sqrt_interval_residual_domain"
           },
           {
@@ -3816,10 +3817,10 @@
             "avg_step_text_char_count": 183.0,
             "case_count": 1,
             "cause_family": "special_function_method_required/log_rational_residual",
-            "cli_total_seconds": 0.001808,
+            "cli_total_seconds": 0.001636,
             "integrate_total_seconds": 0.006,
-            "public_overhead_share_percent": 73.4,
-            "public_overhead_total_seconds": 0.004401,
+            "public_overhead_share_percent": 65.5,
+            "public_overhead_total_seconds": 0.003931,
             "slowest_case": "log_rational_positive_domain_residual"
           }
         ],
@@ -3827,15 +3828,15 @@
           {
             "calculus_block_gate": "safe_residual_policy",
             "calculus_maturity_block": "block9_residuals_and_non_goals",
-            "cli_simplify_ms": 3.506,
-            "cli_total_seconds": 0.003563,
+            "cli_simplify_ms": 3.731,
+            "cli_total_seconds": 0.003786,
             "domain_regime": "radical_interval_additive_residual",
             "family": "inverse_sqrt_additive_residual_domain",
             "integrate_elapsed_seconds": 0.011,
             "name": "additive_inverse_sqrt_interval_residual_domain",
             "presentation_regime": "residual_reciprocal_sqrt_power",
-            "public_overhead_seconds": 0.007061,
-            "public_overhead_share_percent": 64.2,
+            "public_overhead_seconds": 0.007353,
+            "public_overhead_share_percent": 66.8,
             "required_display_count": 1,
             "residual_cause": "branch_sensitive_interval_residual",
             "stdout_bytes": 3128,
@@ -3845,15 +3846,15 @@
           {
             "calculus_block_gate": "safe_residual_policy",
             "calculus_maturity_block": "block9_residuals_and_non_goals",
-            "cli_simplify_ms": 1.185,
-            "cli_total_seconds": 0.001242,
+            "cli_simplify_ms": 1.308,
+            "cli_total_seconds": 0.001374,
             "domain_regime": "explicit_cotangent_log_numeric_offset_condition_dedupe",
             "family": "explicit_reciprocal_trig_residual_domain",
-            "integrate_elapsed_seconds": 0.007,
+            "integrate_elapsed_seconds": 0.008,
             "name": "explicit_cotangent_log_numeric_offset_residual_condition_alias_dedupe",
             "presentation_regime": "offset_cotangent_numeric_condition_alias_dedupe",
-            "public_overhead_seconds": 0.005923,
-            "public_overhead_share_percent": 84.6,
+            "public_overhead_seconds": 0.006414,
+            "public_overhead_share_percent": 80.2,
             "required_display_count": 4,
             "residual_cause": "special_function_method_required",
             "stdout_bytes": 4757,
@@ -3863,33 +3864,15 @@
           {
             "calculus_block_gate": "safe_residual_policy",
             "calculus_maturity_block": "block9_residuals_and_non_goals",
-            "cli_simplify_ms": 1.077,
-            "cli_total_seconds": 0.001135,
-            "domain_regime": "explicit_cotangent_log_numeric_shifted_condition_dedupe",
-            "family": "explicit_reciprocal_trig_residual_domain",
-            "integrate_elapsed_seconds": 0.007,
-            "name": "explicit_cotangent_log_numeric_shifted_residual_condition_alias_dedupe",
-            "presentation_regime": "shifted_cotangent_numeric_condition_alias_dedupe",
-            "public_overhead_seconds": 0.005636,
-            "public_overhead_share_percent": 80.5,
-            "required_display_count": 4,
-            "residual_cause": "special_function_method_required",
-            "stdout_bytes": 4757,
-            "step_text_char_count": 930,
-            "trace_regime": "residual_presimplification_with_domain"
-          },
-          {
-            "calculus_block_gate": "safe_residual_policy",
-            "calculus_maturity_block": "block9_residuals_and_non_goals",
-            "cli_simplify_ms": 1.227,
-            "cli_total_seconds": 0.00128,
+            "cli_simplify_ms": 1.371,
+            "cli_total_seconds": 0.001439,
             "domain_regime": "explicit_tangent_log_numeric_offset_condition_dedupe",
             "family": "explicit_reciprocal_trig_residual_domain",
-            "integrate_elapsed_seconds": 0.007,
+            "integrate_elapsed_seconds": 0.008,
             "name": "explicit_tangent_log_numeric_offset_residual_condition_alias_dedupe",
             "presentation_regime": "offset_tangent_numeric_condition_alias_dedupe",
-            "public_overhead_seconds": 0.006027,
-            "public_overhead_share_percent": 86.1,
+            "public_overhead_seconds": 0.006502,
+            "public_overhead_share_percent": 81.3,
             "required_display_count": 4,
             "residual_cause": "special_function_method_required",
             "stdout_bytes": 4755,
@@ -3899,27 +3882,45 @@
           {
             "calculus_block_gate": "safe_residual_policy",
             "calculus_maturity_block": "block9_residuals_and_non_goals",
-            "cli_simplify_ms": 1.16,
-            "cli_total_seconds": 0.001217,
+            "cli_simplify_ms": 1.379,
+            "cli_total_seconds": 0.001448,
             "domain_regime": "explicit_tangent_log_numeric_shifted_condition_dedupe",
             "family": "explicit_reciprocal_trig_residual_domain",
-            "integrate_elapsed_seconds": 0.007,
+            "integrate_elapsed_seconds": 0.008,
             "name": "explicit_tangent_log_numeric_shifted_residual_condition_alias_dedupe",
             "presentation_regime": "shifted_tangent_numeric_condition_alias_dedupe",
-            "public_overhead_seconds": 0.005899,
-            "public_overhead_share_percent": 84.3,
+            "public_overhead_seconds": 0.006532,
+            "public_overhead_share_percent": 81.7,
             "required_display_count": 4,
             "residual_cause": "special_function_method_required",
             "stdout_bytes": 4755,
             "step_text_char_count": 928,
+            "trace_regime": "residual_presimplification_with_domain"
+          },
+          {
+            "calculus_block_gate": "safe_residual_policy",
+            "calculus_maturity_block": "block9_residuals_and_non_goals",
+            "cli_simplify_ms": 1.887,
+            "cli_total_seconds": 0.001951,
+            "domain_regime": "explicit_tangent_log_shifted_condition_dedupe",
+            "family": "explicit_reciprocal_trig_residual_domain",
+            "integrate_elapsed_seconds": 0.008,
+            "name": "explicit_tangent_log_residual_condition_alias_dedupe",
+            "presentation_regime": "shifted_tangent_condition_alias_dedupe",
+            "public_overhead_seconds": 0.005636,
+            "public_overhead_share_percent": 70.5,
+            "required_display_count": 4,
+            "residual_cause": "special_function_method_required",
+            "stdout_bytes": 3953,
+            "step_text_char_count": 654,
             "trace_regime": "residual_presimplification_with_domain"
           }
         ],
         "integrate_residual_shape_orientation_probes": [
           {
-            "cli_parse_us": 70.0,
-            "cli_simplify_us": 1423.0,
-            "cli_total_us": 1496.0,
+            "cli_parse_us": 65.0,
+            "cli_simplify_us": 1376.0,
+            "cli_total_us": 1444.0,
             "expression_shape": "source",
             "name": "shifted_tangent_log_source",
             "orientation": "tan_minus_offset",
@@ -3929,12 +3930,12 @@
             "stderr_bytes": 0,
             "stdout_bytes": 2444,
             "steps_mode": "off",
-            "wall_elapsed_seconds": 0.008
+            "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 72.0,
-            "cli_simplify_us": 1313.0,
-            "cli_total_us": 1391.0,
+            "cli_parse_us": 62.0,
+            "cli_simplify_us": 1304.0,
+            "cli_total_us": 1374.0,
             "expression_shape": "source",
             "name": "shifted_tangent_log_source",
             "orientation": "tan_minus_offset",
@@ -3947,9 +3948,9 @@
             "wall_elapsed_seconds": 0.008
           },
           {
-            "cli_parse_us": 73.0,
-            "cli_simplify_us": 1043.0,
-            "cli_total_us": 1119.0,
+            "cli_parse_us": 72.0,
+            "cli_simplify_us": 1069.0,
+            "cli_total_us": 1144.0,
             "expression_shape": "factored_residual",
             "name": "shifted_tangent_log_factored_residual",
             "orientation": "tan_minus_offset",
@@ -3962,9 +3963,9 @@
             "wall_elapsed_seconds": 0.006
           },
           {
-            "cli_parse_us": 73.0,
-            "cli_simplify_us": 1041.0,
-            "cli_total_us": 1120.0,
+            "cli_parse_us": 101.0,
+            "cli_simplify_us": 1351.0,
+            "cli_total_us": 1461.0,
             "expression_shape": "factored_residual",
             "name": "shifted_tangent_log_factored_residual",
             "orientation": "tan_minus_offset",
@@ -3972,14 +3973,14 @@
             "result": "integrate(cos(x) / (ln(sin(x) / cos(x))\u00b7(sin(x) - 2\u00b7cos(x))), x)",
             "status": "pass",
             "stderr_bytes": 0,
-            "stdout_bytes": 4114,
+            "stdout_bytes": 4115,
             "steps_mode": "on",
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 75.0,
-            "cli_simplify_us": 1226.0,
-            "cli_total_us": 1304.0,
+            "cli_parse_us": 92.0,
+            "cli_simplify_us": 1467.0,
+            "cli_total_us": 1564.0,
             "expression_shape": "source",
             "name": "shifted_cotangent_log_source",
             "orientation": "cot_minus_offset",
@@ -3992,9 +3993,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 74.0,
-            "cli_simplify_us": 1216.0,
-            "cli_total_us": 1296.0,
+            "cli_parse_us": 64.0,
+            "cli_simplify_us": 1245.0,
+            "cli_total_us": 1315.0,
             "expression_shape": "source",
             "name": "shifted_cotangent_log_source",
             "orientation": "cot_minus_offset",
@@ -4003,43 +4004,43 @@
             "status": "pass",
             "stderr_bytes": 0,
             "stdout_bytes": 4757,
-            "steps_mode": "on",
-            "wall_elapsed_seconds": 0.007
-          },
-          {
-            "cli_parse_us": 83.0,
-            "cli_simplify_us": 1085.0,
-            "cli_total_us": 1171.0,
-            "expression_shape": "factored_residual",
-            "name": "shifted_cotangent_log_factored_residual",
-            "orientation": "cot_minus_offset",
-            "required_display_count": 4,
-            "result": "integrate(sin(x) / (ln(cos(x) / sin(x))\u00b7(cos(x) - 2\u00b7sin(x))), x)",
-            "status": "pass",
-            "stderr_bytes": 0,
-            "stdout_bytes": 2503,
-            "steps_mode": "off",
-            "wall_elapsed_seconds": 0.006
-          },
-          {
-            "cli_parse_us": 72.0,
-            "cli_simplify_us": 1058.0,
-            "cli_total_us": 1135.0,
-            "expression_shape": "factored_residual",
-            "name": "shifted_cotangent_log_factored_residual",
-            "orientation": "cot_minus_offset",
-            "required_display_count": 4,
-            "result": "integrate(sin(x) / (ln(cos(x) / sin(x))\u00b7(cos(x) - 2\u00b7sin(x))), x)",
-            "status": "pass",
-            "stderr_bytes": 0,
-            "stdout_bytes": 4114,
             "steps_mode": "on",
             "wall_elapsed_seconds": 0.007
           },
           {
             "cli_parse_us": 69.0,
-            "cli_simplify_us": 1417.0,
-            "cli_total_us": 1489.0,
+            "cli_simplify_us": 1043.0,
+            "cli_total_us": 1114.0,
+            "expression_shape": "factored_residual",
+            "name": "shifted_cotangent_log_factored_residual",
+            "orientation": "cot_minus_offset",
+            "required_display_count": 4,
+            "result": "integrate(sin(x) / (ln(cos(x) / sin(x))\u00b7(cos(x) - 2\u00b7sin(x))), x)",
+            "status": "pass",
+            "stderr_bytes": 0,
+            "stdout_bytes": 2503,
+            "steps_mode": "off",
+            "wall_elapsed_seconds": 0.006
+          },
+          {
+            "cli_parse_us": 68.0,
+            "cli_simplify_us": 1064.0,
+            "cli_total_us": 1138.0,
+            "expression_shape": "factored_residual",
+            "name": "shifted_cotangent_log_factored_residual",
+            "orientation": "cot_minus_offset",
+            "required_display_count": 4,
+            "result": "integrate(sin(x) / (ln(cos(x) / sin(x))\u00b7(cos(x) - 2\u00b7sin(x))), x)",
+            "status": "pass",
+            "stderr_bytes": 0,
+            "stdout_bytes": 4114,
+            "steps_mode": "on",
+            "wall_elapsed_seconds": 0.007
+          },
+          {
+            "cli_parse_us": 64.0,
+            "cli_simplify_us": 1378.0,
+            "cli_total_us": 1445.0,
             "expression_shape": "source",
             "name": "offset_tangent_log_source",
             "orientation": "offset_minus_tan",
@@ -4052,9 +4053,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 66.0,
-            "cli_simplify_us": 1358.0,
-            "cli_total_us": 1429.0,
+            "cli_parse_us": 61.0,
+            "cli_simplify_us": 1369.0,
+            "cli_total_us": 1436.0,
             "expression_shape": "source",
             "name": "offset_tangent_log_source",
             "orientation": "offset_minus_tan",
@@ -4067,9 +4068,9 @@
             "wall_elapsed_seconds": 0.008
           },
           {
-            "cli_parse_us": 74.0,
-            "cli_simplify_us": 1139.0,
-            "cli_total_us": 1216.0,
+            "cli_parse_us": 69.0,
+            "cli_simplify_us": 1125.0,
+            "cli_total_us": 1196.0,
             "expression_shape": "factored_residual",
             "name": "offset_tangent_log_factored_residual",
             "orientation": "offset_minus_tan",
@@ -4082,9 +4083,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 74.0,
-            "cli_simplify_us": 1105.0,
-            "cli_total_us": 1184.0,
+            "cli_parse_us": 69.0,
+            "cli_simplify_us": 1088.0,
+            "cli_total_us": 1163.0,
             "expression_shape": "factored_residual",
             "name": "offset_tangent_log_factored_residual",
             "orientation": "offset_minus_tan",
@@ -4097,9 +4098,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 96.0,
-            "cli_simplify_us": 1352.0,
-            "cli_total_us": 1452.0,
+            "cli_parse_us": 61.0,
+            "cli_simplify_us": 1321.0,
+            "cli_total_us": 1385.0,
             "expression_shape": "source",
             "name": "offset_cotangent_log_source",
             "orientation": "offset_minus_cot",
@@ -4112,9 +4113,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 66.0,
-            "cli_simplify_us": 1344.0,
-            "cli_total_us": 1415.0,
+            "cli_parse_us": 49.0,
+            "cli_simplify_us": 1205.0,
+            "cli_total_us": 1259.0,
             "expression_shape": "source",
             "name": "offset_cotangent_log_source",
             "orientation": "offset_minus_cot",
@@ -4124,12 +4125,12 @@
             "stderr_bytes": 0,
             "stdout_bytes": 4757,
             "steps_mode": "on",
-            "wall_elapsed_seconds": 0.008
+            "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 74.0,
-            "cli_simplify_us": 1071.0,
-            "cli_total_us": 1148.0,
+            "cli_parse_us": 69.0,
+            "cli_simplify_us": 1131.0,
+            "cli_total_us": 1203.0,
             "expression_shape": "factored_residual",
             "name": "offset_cotangent_log_factored_residual",
             "orientation": "offset_minus_cot",
@@ -4142,9 +4143,9 @@
             "wall_elapsed_seconds": 0.006
           },
           {
-            "cli_parse_us": 74.0,
-            "cli_simplify_us": 1101.0,
-            "cli_total_us": 1180.0,
+            "cli_parse_us": 55.0,
+            "cli_simplify_us": 1069.0,
+            "cli_total_us": 1130.0,
             "expression_shape": "factored_residual",
             "name": "offset_cotangent_log_factored_residual",
             "orientation": "offset_minus_cot",
@@ -4157,9 +4158,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 63.0,
-            "cli_simplify_us": 1271.0,
-            "cli_total_us": 1337.0,
+            "cli_parse_us": 93.0,
+            "cli_simplify_us": 1311.0,
+            "cli_total_us": 1413.0,
             "expression_shape": "source",
             "name": "symbolic_shifted_tangent_log_source",
             "orientation": "tan_minus_symbolic_offset",
@@ -4172,9 +4173,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 65.0,
-            "cli_simplify_us": 1233.0,
-            "cli_total_us": 1303.0,
+            "cli_parse_us": 95.0,
+            "cli_simplify_us": 1310.0,
+            "cli_total_us": 1412.0,
             "expression_shape": "source",
             "name": "symbolic_shifted_tangent_log_source",
             "orientation": "tan_minus_symbolic_offset",
@@ -4187,9 +4188,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 65.0,
-            "cli_simplify_us": 1336.0,
-            "cli_total_us": 1404.0,
+            "cli_parse_us": 47.0,
+            "cli_simplify_us": 1259.0,
+            "cli_total_us": 1308.0,
             "expression_shape": "source",
             "name": "symbolic_offset_tangent_log_source",
             "orientation": "symbolic_offset_minus_tan",
@@ -4202,9 +4203,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 68.0,
+            "cli_parse_us": 60.0,
             "cli_simplify_us": 1309.0,
-            "cli_total_us": 1383.0,
+            "cli_total_us": 1375.0,
             "expression_shape": "source",
             "name": "symbolic_offset_tangent_log_source",
             "orientation": "symbolic_offset_minus_tan",
@@ -4217,9 +4218,9 @@
             "wall_elapsed_seconds": 0.008
           },
           {
-            "cli_parse_us": 67.0,
-            "cli_simplify_us": 1215.0,
-            "cli_total_us": 1285.0,
+            "cli_parse_us": 65.0,
+            "cli_simplify_us": 1158.0,
+            "cli_total_us": 1226.0,
             "expression_shape": "source",
             "name": "symbolic_shifted_cotangent_log_source",
             "orientation": "cot_minus_symbolic_offset",
@@ -4232,9 +4233,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 63.0,
-            "cli_simplify_us": 1175.0,
-            "cli_total_us": 1244.0,
+            "cli_parse_us": 61.0,
+            "cli_simplify_us": 1201.0,
+            "cli_total_us": 1268.0,
             "expression_shape": "source",
             "name": "symbolic_shifted_cotangent_log_source",
             "orientation": "cot_minus_symbolic_offset",
@@ -4247,9 +4248,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 72.0,
-            "cli_simplify_us": 1303.0,
-            "cli_total_us": 1378.0,
+            "cli_parse_us": 66.0,
+            "cli_simplify_us": 1275.0,
+            "cli_total_us": 1344.0,
             "expression_shape": "source",
             "name": "symbolic_offset_cotangent_log_source",
             "orientation": "symbolic_offset_minus_cot",
@@ -4262,9 +4263,9 @@
             "wall_elapsed_seconds": 0.007
           },
           {
-            "cli_parse_us": 65.0,
-            "cli_simplify_us": 1232.0,
-            "cli_total_us": 1302.0,
+            "cli_parse_us": 49.0,
+            "cli_simplify_us": 1225.0,
+            "cli_total_us": 1279.0,
             "expression_shape": "source",
             "name": "symbolic_offset_cotangent_log_source",
             "orientation": "symbolic_offset_minus_cot",
@@ -4293,179 +4294,179 @@
         },
         "integrate_runtime_by_antiderivative_verification_mode": [
           {
-            "avg_case_ms": 22.442,
+            "avg_case_ms": 22.495,
             "case_count": 95,
-            "max_elapsed_seconds": 0.369,
+            "max_elapsed_seconds": 0.368,
             "mode": "residual_equivalence",
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 2.132
+            "total_elapsed_seconds": 2.137
           },
           {
-            "avg_case_ms": 8.224,
+            "avg_case_ms": 8.388,
             "case_count": 85,
-            "max_elapsed_seconds": 0.029,
+            "max_elapsed_seconds": 0.031,
             "mode": "direct_derivative",
             "slowest_case": "arcsine_square_affine_argument_by_parts",
-            "total_elapsed_seconds": 0.699
+            "total_elapsed_seconds": 0.713
           }
         ],
         "integrate_runtime_by_calculus_block_gate": [
           {
-            "avg_case_ms": 28.43,
+            "avg_case_ms": 28.622,
             "axis": "calculus_block_gate",
             "case_count": 172,
             "group": "domain_conditions_and_verified_antiderivative",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 4.89
+            "total_elapsed_seconds": 4.923
           },
           {
-            "avg_case_ms": 31.505,
+            "avg_case_ms": 31.396,
             "axis": "calculus_block_gate",
             "case_count": 101,
             "group": "didactic_trace_and_verified_antiderivative",
-            "max_elapsed_seconds": 0.378,
+            "max_elapsed_seconds": 0.374,
             "slowest_case": "linear_over_sqrt_completed_square_asinh",
-            "total_elapsed_seconds": 3.182
+            "total_elapsed_seconds": 3.171
           },
           {
-            "avg_case_ms": 20.05,
+            "avg_case_ms": 19.2,
             "axis": "calculus_block_gate",
             "case_count": 20,
             "group": "algorithmic_backend_boundary_verified",
-            "max_elapsed_seconds": 0.054,
+            "max_elapsed_seconds": 0.053,
             "slowest_case": "algorithmic_backend_rational_resolvent_cubic_quartic",
-            "total_elapsed_seconds": 0.401
+            "total_elapsed_seconds": 0.384
           },
           {
-            "avg_case_ms": 6.4,
+            "avg_case_ms": 6.533,
             "axis": "calculus_block_gate",
             "case_count": 15,
             "group": "safe_residual_policy",
             "max_elapsed_seconds": 0.011,
             "slowest_case": "additive_inverse_sqrt_interval_residual_domain",
-            "total_elapsed_seconds": 0.096
+            "total_elapsed_seconds": 0.098
           },
           {
-            "avg_case_ms": 4.8,
+            "avg_case_ms": 5.2,
             "axis": "calculus_block_gate",
             "case_count": 5,
             "group": "explicit_undefined_domain_policy",
-            "max_elapsed_seconds": 0.005,
-            "slowest_case": "definite_integral_trig_pole_inside_undefined",
-            "total_elapsed_seconds": 0.024
+            "max_elapsed_seconds": 0.006,
+            "slowest_case": "definite_integral_pi_bound_pole_inside_undefined",
+            "total_elapsed_seconds": 0.026
           }
         ],
         "integrate_runtime_by_calculus_maturity_block": [
           {
-            "avg_case_ms": 56.878,
+            "avg_case_ms": 56.898,
             "axis": "calculus_maturity_block",
             "case_count": 49,
             "group": "block8_radical_inverse_families",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 2.787
+            "total_elapsed_seconds": 2.788
           },
           {
-            "avg_case_ms": 21.388,
+            "avg_case_ms": 22.03,
             "axis": "calculus_maturity_block",
             "case_count": 67,
             "group": "block7_trig_hyperbolic_integration",
-            "max_elapsed_seconds": 0.244,
+            "max_elapsed_seconds": 0.248,
             "slowest_case": "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
-            "total_elapsed_seconds": 1.433
+            "total_elapsed_seconds": 1.476
           },
           {
-            "avg_case_ms": 30.116,
+            "avg_case_ms": 29.651,
             "axis": "calculus_maturity_block",
             "case_count": 43,
             "group": "block4_base_integration",
-            "max_elapsed_seconds": 0.21,
+            "max_elapsed_seconds": 0.207,
             "slowest_case": "quadratic_times_cosine_square_power_reduction",
-            "total_elapsed_seconds": 1.295
+            "total_elapsed_seconds": 1.275
           },
           {
-            "avg_case_ms": 26.442,
+            "avg_case_ms": 26.349,
             "axis": "calculus_maturity_block",
             "case_count": 43,
             "group": "block5_generalized_substitution",
-            "max_elapsed_seconds": 0.068,
+            "max_elapsed_seconds": 0.071,
             "slowest_case": "mixed_trig_quartic_sine_odd_cosine",
-            "total_elapsed_seconds": 1.137
+            "total_elapsed_seconds": 1.133
           },
           {
-            "avg_case_ms": 32.955,
+            "avg_case_ms": 13.792,
             "axis": "calculus_maturity_block",
-            "case_count": 22,
-            "group": "block6_rational_integration",
-            "max_elapsed_seconds": 0.06,
-            "slowest_case": "rational_partial_fraction_mixed_linear_positive_quadratic",
-            "total_elapsed_seconds": 0.725
+            "case_count": 53,
+            "group": "block13_definite_integrals",
+            "max_elapsed_seconds": 0.203,
+            "slowest_case": "definite_integral_tan_cube_pi_bound",
+            "total_elapsed_seconds": 0.731
           }
         ],
         "integrate_runtime_by_family": [
           {
-            "avg_case_ms": 153.0,
+            "avg_case_ms": 153.4,
             "axis": "family",
             "case_count": 5,
             "group": "by_parts_bounded_inverse_trig",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 0.765
+            "total_elapsed_seconds": 0.767
           },
           {
-            "avg_case_ms": 15.25,
+            "avg_case_ms": 15.523,
             "axis": "family",
             "case_count": 44,
             "group": "definite_integral_ftc",
             "max_elapsed_seconds": 0.203,
             "slowest_case": "definite_integral_tan_cube_pi_bound",
-            "total_elapsed_seconds": 0.671
+            "total_elapsed_seconds": 0.683
           },
           {
-            "avg_case_ms": 215.5,
+            "avg_case_ms": 213.5,
             "axis": "family",
             "case_count": 2,
             "group": "linear_over_sqrt_shifted_quadratic",
-            "max_elapsed_seconds": 0.378,
+            "max_elapsed_seconds": 0.374,
             "slowest_case": "linear_over_sqrt_completed_square_asinh",
-            "total_elapsed_seconds": 0.431
+            "total_elapsed_seconds": 0.427
           },
           {
             "avg_case_ms": 135.0,
             "axis": "family",
             "case_count": 3,
             "group": "polynomial_times_trig_square_power_reduction",
-            "max_elapsed_seconds": 0.21,
+            "max_elapsed_seconds": 0.207,
             "slowest_case": "quadratic_times_cosine_square_power_reduction",
             "total_elapsed_seconds": 0.405
           },
           {
-            "avg_case_ms": 91.25,
+            "avg_case_ms": 93.75,
             "axis": "family",
             "case_count": 4,
             "group": "hyperbolic_reciprocal_fourth",
-            "max_elapsed_seconds": 0.244,
+            "max_elapsed_seconds": 0.248,
             "slowest_case": "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
-            "total_elapsed_seconds": 0.365
+            "total_elapsed_seconds": 0.375
           }
         ],
         "integrate_runtime_by_residual_cause": [
           {
-            "avg_case_ms": 6.833,
+            "avg_case_ms": 7.5,
             "case_count": 6,
             "cause": "special_function_method_required",
-            "max_elapsed_seconds": 0.007,
+            "max_elapsed_seconds": 0.008,
             "slowest_case": "explicit_tangent_log_residual_condition_alias_dedupe",
-            "total_elapsed_seconds": 0.041
+            "total_elapsed_seconds": 0.045
           },
           {
-            "avg_case_ms": 5.429,
+            "avg_case_ms": 5.143,
             "case_count": 7,
             "cause": "non_elementary_composition",
             "max_elapsed_seconds": 0.006,
-            "slowest_case": "non_elementary_tan_polynomial_residual_domain",
-            "total_elapsed_seconds": 0.038
+            "slowest_case": "explicit_reciprocal_tangent_presimplified_residual_domain",
+            "total_elapsed_seconds": 0.036
           },
           {
             "avg_case_ms": 11.0,
@@ -4486,27 +4487,27 @@
         ],
         "integrate_runtime_by_residual_cause_family": [
           {
-            "avg_case_ms": 7.0,
+            "avg_case_ms": 7.8,
             "case_count": 5,
             "cause_family": "special_function_method_required/explicit_reciprocal_trig_residual_domain",
-            "max_elapsed_seconds": 0.007,
+            "max_elapsed_seconds": 0.008,
             "slowest_case": "explicit_tangent_log_residual_condition_alias_dedupe",
-            "total_elapsed_seconds": 0.035
+            "total_elapsed_seconds": 0.039
           },
           {
-            "avg_case_ms": 5.667,
+            "avg_case_ms": 5.0,
             "case_count": 3,
             "cause_family": "non_elementary_composition/trig_residual_domain",
-            "max_elapsed_seconds": 0.006,
+            "max_elapsed_seconds": 0.005,
             "slowest_case": "non_elementary_tan_polynomial_residual_domain",
-            "total_elapsed_seconds": 0.017
+            "total_elapsed_seconds": 0.015
           },
           {
             "avg_case_ms": 5.5,
             "case_count": 2,
             "cause_family": "non_elementary_composition/explicit_reciprocal_trig_residual_domain",
             "max_elapsed_seconds": 0.006,
-            "slowest_case": "explicit_reciprocal_sine_presimplified_residual_domain",
+            "slowest_case": "explicit_reciprocal_tangent_presimplified_residual_domain",
             "total_elapsed_seconds": 0.011
           },
           {
@@ -4528,55 +4529,55 @@
         ],
         "integrate_runtime_by_trace_regime": [
           {
-            "avg_case_ms": 153.0,
+            "avg_case_ms": 153.4,
             "axis": "trace_regime",
             "case_count": 5,
             "group": "by_parts_bounded_inverse_trig",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 0.765
+            "total_elapsed_seconds": 0.767
           },
           {
-            "avg_case_ms": 215.5,
+            "avg_case_ms": 213.5,
             "axis": "trace_regime",
             "case_count": 2,
             "group": "linear_radical_split",
-            "max_elapsed_seconds": 0.378,
+            "max_elapsed_seconds": 0.374,
             "slowest_case": "linear_over_sqrt_completed_square_asinh",
-            "total_elapsed_seconds": 0.431
+            "total_elapsed_seconds": 0.427
           },
           {
             "avg_case_ms": 135.0,
             "axis": "trace_regime",
             "case_count": 3,
             "group": "trig_square_power_reduction",
-            "max_elapsed_seconds": 0.21,
+            "max_elapsed_seconds": 0.207,
             "slowest_case": "quadratic_times_cosine_square_power_reduction",
             "total_elapsed_seconds": 0.405
           },
           {
-            "avg_case_ms": 91.667,
+            "avg_case_ms": 92.667,
             "axis": "trace_regime",
             "case_count": 3,
             "group": "werner_product_to_sum",
             "max_elapsed_seconds": 0.101,
             "slowest_case": "product_to_sum_sin_sin_distinct_frequencies",
-            "total_elapsed_seconds": 0.275
+            "total_elapsed_seconds": 0.278
           },
           {
-            "avg_case_ms": 23.909,
+            "avg_case_ms": 23.636,
             "axis": "trace_regime",
             "case_count": 11,
             "group": "algorithmic_backend_rational_summary",
-            "max_elapsed_seconds": 0.054,
+            "max_elapsed_seconds": 0.053,
             "slowest_case": "algorithmic_backend_rational_resolvent_cubic_quartic",
-            "total_elapsed_seconds": 0.263
+            "total_elapsed_seconds": 0.26
           }
         ],
         "integrate_runtime_concentration": {
           "slowest_argument_regime": "monomial_times_shifted_arcsine",
           "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-          "slowest_case_ms": 396.0,
+          "slowest_case_ms": 394.0,
           "slowest_case_share_percent": 4.6,
           "slowest_domain_regime": "bounded_interval_required",
           "slowest_family": "by_parts_bounded_inverse_trig",
@@ -4584,39 +4585,39 @@
           "slowest_trace_regime": "by_parts_bounded_inverse_trig",
           "timed_case_count": 313,
           "top_3_share_percent": 11.8,
-          "total_elapsed_seconds": 8.593
+          "total_elapsed_seconds": 8.602
         },
         "integrate_runtime_distribution": {
-          "avg_case_ms": 27.454,
-          "max_case_ms": 396.0,
-          "p95_case_ms": 74.0,
+          "avg_case_ms": 27.482,
+          "max_case_ms": 394.0,
+          "p95_case_ms": 73.0,
           "timed_case_count": 313,
-          "total_elapsed_seconds": 8.593
+          "total_elapsed_seconds": 8.602
         },
         "integrate_runtime_measurement": {
           "guidance": "triage runtime pressure with focused probes",
-          "max_case_ms": 396.0,
+          "max_case_ms": 394.0,
           "mode": "process_per_case",
-          "p95_case_ms": 74.0,
+          "p95_case_ms": 73.0,
           "pressure_status": "watch",
           "status": "actionable_pressure"
         },
         "integrate_runtime_pressure": {
-          "avg_case_ms": 27.487,
-          "max_case_ms": 396.0,
-          "p95_case_ms": 74.0,
+          "avg_case_ms": 27.519,
+          "max_case_ms": 394.0,
+          "p95_case_ms": 73.0,
           "primary_signal": "max",
-          "reason": "max_case_ms=396.000",
+          "reason": "max_case_ms=394.000",
           "sample_basis": "warm",
           "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
           "slowest_family": "by_parts_bounded_inverse_trig",
           "status": "watch",
           "timed_case_count": 312,
-          "top_3_share_percent": 11.9
+          "top_3_share_percent": 11.8
         },
         "integrate_slowest_antiderivative_residual_simplifications": [
           {
-            "antiderivative_residual_simplify_elapsed_seconds": 0.007,
+            "antiderivative_residual_simplify_elapsed_seconds": 0.006,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block6_rational_integration",
@@ -4625,7 +4626,7 @@
             "trace_regime": "arctan_expanded_numeric_affine_named_positive_constant_radius_positive_quadratic_table"
           },
           {
-            "antiderivative_residual_simplify_elapsed_seconds": 0.004,
+            "antiderivative_residual_simplify_elapsed_seconds": 0.005,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block7_trig_hyperbolic_integration",
@@ -4634,7 +4635,7 @@
             "trace_regime": "negative_symbolic_exact_derivative_reciprocal_trig_product"
           },
           {
-            "antiderivative_residual_simplify_elapsed_seconds": 0.004,
+            "antiderivative_residual_simplify_elapsed_seconds": 0.005,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block7_trig_hyperbolic_integration",
@@ -4643,27 +4644,27 @@
             "trace_regime": "negative_symbolic_exact_derivative_reciprocal_trig_product"
           },
           {
-            "antiderivative_residual_simplify_elapsed_seconds": 0.004,
-            "antiderivative_verification_mode": "residual_equivalence",
-            "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
-            "calculus_maturity_block": "block7_trig_hyperbolic_integration",
-            "family": "reciprocal_trig_derivative_product",
-            "name": "negative_symbolic_external_scale_cosecant_cotangent_derivative_product_domain",
-            "trace_regime": "negative_symbolic_external_scale_derivative_reciprocal_trig_product"
-          },
-          {
-            "antiderivative_residual_simplify_elapsed_seconds": 0.004,
+            "antiderivative_residual_simplify_elapsed_seconds": 0.005,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block7_trig_hyperbolic_integration",
             "family": "reciprocal_trig_derivative_product",
             "name": "negative_symbolic_external_scale_secant_tangent_derivative_product_domain",
             "trace_regime": "negative_symbolic_external_scale_derivative_reciprocal_trig_product"
+          },
+          {
+            "antiderivative_residual_simplify_elapsed_seconds": 0.005,
+            "antiderivative_verification_mode": "residual_equivalence",
+            "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
+            "calculus_maturity_block": "block7_trig_hyperbolic_integration",
+            "family": "reciprocal_trig_derivative_product",
+            "name": "symbolic_external_scale_cosecant_cotangent_derivative_product_domain",
+            "trace_regime": "symbolic_external_scale_derivative_reciprocal_trig_product"
           }
         ],
         "integrate_slowest_antiderivative_verifications": [
           {
-            "antiderivative_verification_elapsed_seconds": 0.369,
+            "antiderivative_verification_elapsed_seconds": 0.368,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block8_radical_inverse_families",
@@ -4672,7 +4673,7 @@
             "trace_regime": "by_parts_bounded_inverse_trig"
           },
           {
-            "antiderivative_verification_elapsed_seconds": 0.224,
+            "antiderivative_verification_elapsed_seconds": 0.22,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block8_radical_inverse_families",
@@ -4681,7 +4682,7 @@
             "trace_regime": "linear_radical_split"
           },
           {
-            "antiderivative_verification_elapsed_seconds": 0.109,
+            "antiderivative_verification_elapsed_seconds": 0.108,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
@@ -4690,7 +4691,7 @@
             "trace_regime": "trig_square_power_reduction"
           },
           {
-            "antiderivative_verification_elapsed_seconds": 0.089,
+            "antiderivative_verification_elapsed_seconds": 0.088,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
@@ -4699,7 +4700,7 @@
             "trace_regime": "reciprocal_quadratic_irrational_log_form"
           },
           {
-            "antiderivative_verification_elapsed_seconds": 0.066,
+            "antiderivative_verification_elapsed_seconds": 0.067,
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block8_radical_inverse_families",
@@ -4718,7 +4719,7 @@
             "presentation_regime": "quarter_factored_shifted_inverse_radical",
             "status": "pass",
             "trace_regime": "by_parts_bounded_inverse_trig",
-            "wall_elapsed_seconds": 0.396
+            "wall_elapsed_seconds": 0.394
           },
           {
             "argument_regime": "linear_over_completed_square_positive",
@@ -4729,7 +4730,7 @@
             "presentation_regime": "sqrt_plus_asinh_split",
             "status": "pass",
             "trace_regime": "linear_radical_split",
-            "wall_elapsed_seconds": 0.378
+            "wall_elapsed_seconds": 0.374
           },
           {
             "argument_regime": "symbolic_external_scale_shifted_polynomial_hyperbolic_fourth",
@@ -4740,7 +4741,7 @@
             "presentation_regime": "external_scale_reciprocal_hyperbolic_tangent_minus_cubic",
             "status": "pass",
             "trace_regime": "symbolic_external_scale_polynomial_hyperbolic_sine_reciprocal_fourth",
-            "wall_elapsed_seconds": 0.244
+            "wall_elapsed_seconds": 0.248
           },
           {
             "argument_regime": "polynomial_times_trig_square",
@@ -4751,7 +4752,7 @@
             "presentation_regime": "polynomial_times_double_angle_trig",
             "status": "pass",
             "trace_regime": "trig_square_power_reduction",
-            "wall_elapsed_seconds": 0.21
+            "wall_elapsed_seconds": 0.207
           },
           {
             "argument_regime": "tan_cube_pi_bound_integral",
@@ -4767,22 +4768,40 @@
         ],
         "integrate_slowest_cli_parse_evaluations": [
           {
-            "antiderivative_verification_mode": "direct_diff_integrate_exact",
-            "calculus_block_gate": "algorithmic_backend_boundary_verified",
-            "calculus_maturity_block": "block12_hybrid_algorithmic_backend",
+            "antiderivative_verification_mode": "direct_diff_integrate_equivalence",
+            "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
+            "calculus_maturity_block": "block4_base_integration",
             "cli_parse_elapsed_seconds": 0.0,
-            "family": "algorithmic_backend_rational_multi_quadratic",
-            "name": "algorithmic_backend_rational_multi_quadratic_triple_product",
-            "trace_regime": "algorithmic_backend_rational_summary"
+            "family": "by_parts_exponential_table",
+            "name": "by_parts_exponential_normalized_div_linear",
+            "trace_regime": "by_parts_exponential_normalized_div"
           },
           {
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
-            "calculus_maturity_block": "block5_generalized_substitution",
+            "calculus_maturity_block": "block8_radical_inverse_families",
             "cli_parse_elapsed_seconds": 0.0,
-            "family": "weierstrass_rational_substitution",
-            "name": "weierstrass_half_angle_tangent",
-            "trace_regime": "weierstrass_substitution_delegation"
+            "family": "quadratic_radical_over_monomial",
+            "name": "arcsec_reciprocal_hyperbola_radical",
+            "trace_regime": "quadratic_radical_monomial_delegation"
+          },
+          {
+            "antiderivative_verification_mode": "definite_ftc_from_verified_antiderivative",
+            "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
+            "calculus_maturity_block": "block13_definite_integrals",
+            "cli_parse_elapsed_seconds": 0.0,
+            "family": "definite_integral_ftc",
+            "name": "definite_integral_boundary_convergent_log",
+            "trace_regime": "definite_ftc_boundary_limit"
+          },
+          {
+            "antiderivative_verification_mode": "definite_ftc_from_verified_antiderivative",
+            "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
+            "calculus_maturity_block": "block13_definite_integrals",
+            "cli_parse_elapsed_seconds": 0.0,
+            "family": "definite_integral_ftc",
+            "name": "definite_integral_improper_log_divergent_positive",
+            "trace_regime": "definite_ftc_improper_limit"
           },
           {
             "antiderivative_verification_mode": "direct_derivative",
@@ -4792,24 +4811,6 @@
             "family": "sqrt_chain_hyperbolic_log",
             "name": "affine_shifted_sqrt_chain_hyperbolic_tangent_log_domain",
             "trace_regime": "affine_shifted_sqrt_chain_hyperbolic_log"
-          },
-          {
-            "antiderivative_verification_mode": "direct_diff_integrate_exact",
-            "calculus_block_gate": "algorithmic_backend_boundary_verified",
-            "calculus_maturity_block": "block12_hybrid_algorithmic_backend",
-            "cli_parse_elapsed_seconds": 0.0,
-            "family": "algorithmic_backend_hermite_positive_quadratic",
-            "name": "algorithmic_backend_hermite_expanded_symbolic_affine_derivative_multiple_numerator",
-            "trace_regime": "algorithmic_backend_hermite_summary"
-          },
-          {
-            "antiderivative_verification_mode": "residual_equivalence",
-            "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
-            "calculus_maturity_block": "block5_generalized_substitution",
-            "cli_parse_elapsed_seconds": 0.0,
-            "family": "weierstrass_rational_substitution",
-            "name": "weierstrass_double_angle_slope",
-            "trace_regime": "weierstrass_substitution_delegation"
           }
         ],
         "integrate_slowest_cli_public_overhead_evaluations": [
@@ -4817,7 +4818,7 @@
             "antiderivative_verification_mode": "direct_derivative",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block7_trig_hyperbolic_integration",
-            "cli_public_overhead_seconds": 0.226,
+            "cli_public_overhead_seconds": 0.232,
             "family": "hyperbolic_reciprocal_fourth",
             "name": "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
             "trace_regime": "symbolic_external_scale_polynomial_hyperbolic_sine_reciprocal_fourth"
@@ -4825,38 +4826,38 @@
           {
             "antiderivative_verification_mode": "direct_derivative",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
-            "calculus_maturity_block": "block7_trig_hyperbolic_integration",
-            "cli_public_overhead_seconds": 0.042,
-            "family": "hyperbolic_tanh_log_derivative",
-            "name": "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
-            "trace_regime": "symbolic_external_scale_hyperbolic_tanh_substitution"
-          },
-          {
-            "antiderivative_verification_mode": "direct_derivative",
-            "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block5_generalized_substitution",
-            "cli_public_overhead_seconds": 0.041,
+            "cli_public_overhead_seconds": 0.044,
             "family": "exp_polynomial_derivative",
             "name": "polynomial_exp_derivative_substitution",
             "trace_regime": "polynomial_derivative_substitution"
           },
           {
-            "antiderivative_verification_mode": "definite_ftc_from_verified_antiderivative",
-            "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
-            "calculus_maturity_block": "block13_definite_integrals",
-            "cli_public_overhead_seconds": 0.038,
-            "family": "definite_integral_ftc",
-            "name": "definite_integral_semicircle_area",
-            "trace_regime": "definite_ftc_boundary_limit"
-          },
-          {
             "antiderivative_verification_mode": "direct_derivative",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block7_trig_hyperbolic_integration",
-            "cli_public_overhead_seconds": 0.038,
+            "cli_public_overhead_seconds": 0.042,
             "family": "hyperbolic_reciprocal_fourth",
             "name": "hyperbolic_sinh_reciprocal_fourth_substitution",
             "trace_regime": "hyperbolic_sine_reciprocal_fourth_substitution"
+          },
+          {
+            "antiderivative_verification_mode": "direct_derivative",
+            "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
+            "calculus_maturity_block": "block7_trig_hyperbolic_integration",
+            "cli_public_overhead_seconds": 0.039,
+            "family": "hyperbolic_tanh_log_derivative",
+            "name": "symbolic_external_scale_hyperbolic_tanh_direct_log_positive",
+            "trace_regime": "symbolic_external_scale_hyperbolic_tanh_substitution"
+          },
+          {
+            "antiderivative_verification_mode": "definite_ftc_from_verified_antiderivative",
+            "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
+            "calculus_maturity_block": "block13_definite_integrals",
+            "cli_public_overhead_seconds": 0.037,
+            "family": "definite_integral_ftc",
+            "name": "definite_integral_semicircle_area",
+            "trace_regime": "definite_ftc_boundary_limit"
           }
         ],
         "integrate_slowest_cli_simplify_evaluations": [
@@ -4873,7 +4874,7 @@
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
-            "cli_simplify_elapsed_seconds": 0.087,
+            "cli_simplify_elapsed_seconds": 0.085,
             "family": "polynomial_times_trig_square_power_reduction",
             "name": "quadratic_times_cosine_square_power_reduction",
             "trace_regime": "trig_square_power_reduction"
@@ -4891,19 +4892,19 @@
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
-            "cli_simplify_elapsed_seconds": 0.033,
+            "cli_simplify_elapsed_seconds": 0.032,
             "family": "polynomial_times_trig_square_power_reduction",
             "name": "linear_times_affine_sine_square_power_reduction",
             "trace_regime": "trig_square_power_reduction"
           },
           {
-            "antiderivative_verification_mode": "definite_ftc_from_verified_antiderivative",
+            "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
-            "calculus_maturity_block": "block13_definite_integrals",
-            "cli_simplify_elapsed_seconds": 0.033,
-            "family": "definite_integral_ftc",
-            "name": "definite_integral_fourier_orthogonality_sines",
-            "trace_regime": "definite_ftc_evaluation"
+            "calculus_maturity_block": "block4_base_integration",
+            "cli_simplify_elapsed_seconds": 0.032,
+            "family": "polynomial_times_trig_square_power_reduction",
+            "name": "linear_times_sine_square_power_reduction",
+            "trace_regime": "trig_square_power_reduction"
           }
         ],
         "integrate_slowest_cli_total_evaluations": [
@@ -4920,7 +4921,7 @@
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
-            "cli_total_elapsed_seconds": 0.087,
+            "cli_total_elapsed_seconds": 0.085,
             "family": "polynomial_times_trig_square_power_reduction",
             "name": "quadratic_times_cosine_square_power_reduction",
             "trace_regime": "trig_square_power_reduction"
@@ -4938,19 +4939,19 @@
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
-            "cli_total_elapsed_seconds": 0.033,
+            "cli_total_elapsed_seconds": 0.032,
             "family": "polynomial_times_trig_square_power_reduction",
             "name": "linear_times_affine_sine_square_power_reduction",
             "trace_regime": "trig_square_power_reduction"
           },
           {
-            "antiderivative_verification_mode": "definite_ftc_from_verified_antiderivative",
+            "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
-            "calculus_maturity_block": "block13_definite_integrals",
-            "cli_total_elapsed_seconds": 0.033,
-            "family": "definite_integral_ftc",
-            "name": "definite_integral_fourier_orthogonality_sines",
-            "trace_regime": "definite_ftc_evaluation"
+            "calculus_maturity_block": "block4_base_integration",
+            "cli_total_elapsed_seconds": 0.032,
+            "family": "polynomial_times_trig_square_power_reduction",
+            "name": "linear_times_sine_square_power_reduction",
+            "trace_regime": "trig_square_power_reduction"
           }
         ],
         "integrate_slowest_direct_diff_integrate_checks": [
@@ -4985,7 +4986,7 @@
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block8_radical_inverse_families",
-            "direct_diff_integrate_elapsed_seconds": 0.04,
+            "direct_diff_integrate_elapsed_seconds": 0.039,
             "family": "by_parts_bounded_inverse_trig",
             "name": "by_parts_monomial_arccosine_domain",
             "trace_regime": "by_parts_bounded_inverse_trig"
@@ -4993,11 +4994,11 @@
           {
             "antiderivative_verification_mode": "residual_equivalence",
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
-            "calculus_maturity_block": "block4_base_integration",
-            "direct_diff_integrate_elapsed_seconds": 0.035,
-            "family": "product_to_sum_distinct_frequency",
-            "name": "product_to_sum_sin_sin_distinct_frequencies",
-            "trace_regime": "werner_product_to_sum"
+            "calculus_maturity_block": "block5_generalized_substitution",
+            "direct_diff_integrate_elapsed_seconds": 0.036,
+            "family": "mixed_trig_power_substitution",
+            "name": "mixed_trig_quartic_sine_odd_cosine",
+            "trace_regime": "mixed_trig_power_substitution_delegation"
           }
         ],
         "integrate_slowest_integrate_evaluations": [
@@ -5006,7 +5007,7 @@
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
             "calculus_maturity_block": "block7_trig_hyperbolic_integration",
             "family": "hyperbolic_reciprocal_fourth",
-            "integrate_elapsed_seconds": 0.232,
+            "integrate_elapsed_seconds": 0.238,
             "name": "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
             "trace_regime": "symbolic_external_scale_polynomial_hyperbolic_sine_reciprocal_fourth"
           },
@@ -5015,7 +5016,7 @@
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block13_definite_integrals",
             "family": "definite_integral_ftc",
-            "integrate_elapsed_seconds": 0.202,
+            "integrate_elapsed_seconds": 0.203,
             "name": "definite_integral_tan_cube_pi_bound",
             "trace_regime": "definite_ftc_pi_bounds"
           },
@@ -5024,7 +5025,7 @@
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block4_base_integration",
             "family": "polynomial_times_trig_square_power_reduction",
-            "integrate_elapsed_seconds": 0.101,
+            "integrate_elapsed_seconds": 0.099,
             "name": "quadratic_times_cosine_square_power_reduction",
             "trace_regime": "trig_square_power_reduction"
           },
@@ -5033,18 +5034,18 @@
             "calculus_block_gate": "didactic_trace_and_verified_antiderivative",
             "calculus_maturity_block": "block13_definite_integrals",
             "family": "definite_integral_ftc",
-            "integrate_elapsed_seconds": 0.056,
+            "integrate_elapsed_seconds": 0.054,
             "name": "definite_integral_fourier_orthogonality_sines",
             "trace_regime": "definite_ftc_evaluation"
           },
           {
-            "antiderivative_verification_mode": "verification_gap",
+            "antiderivative_verification_mode": "direct_derivative",
             "calculus_block_gate": "domain_conditions_and_verified_antiderivative",
-            "calculus_maturity_block": "block8_radical_inverse_families",
-            "family": "quadratic_radical_over_monomial",
-            "integrate_elapsed_seconds": 0.044,
-            "name": "arcsec_circle_radical_over_x",
-            "trace_regime": "quadratic_radical_monomial_delegation"
+            "calculus_maturity_block": "block7_trig_hyperbolic_integration",
+            "family": "hyperbolic_reciprocal_fourth",
+            "integrate_elapsed_seconds": 0.048,
+            "name": "hyperbolic_sinh_reciprocal_fourth_substitution",
+            "trace_regime": "hyperbolic_sine_reciprocal_fourth_substitution"
           }
         ],
         "integrate_step_checked_case_count": 306,
@@ -5251,211 +5252,211 @@
         "integrate_verified_supported_case_count": 212,
         "integrate_warm_runtime_by_calculus_block_gate": [
           {
-            "avg_case_ms": 28.43,
+            "avg_case_ms": 28.622,
             "axis": "calculus_block_gate",
             "case_count": 172,
             "group": "domain_conditions_and_verified_antiderivative",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 4.89
+            "total_elapsed_seconds": 4.923
           },
           {
-            "avg_case_ms": 31.65,
+            "avg_case_ms": 31.55,
             "axis": "calculus_block_gate",
             "case_count": 100,
             "group": "didactic_trace_and_verified_antiderivative",
-            "max_elapsed_seconds": 0.378,
+            "max_elapsed_seconds": 0.374,
             "slowest_case": "linear_over_sqrt_completed_square_asinh",
-            "total_elapsed_seconds": 3.165
+            "total_elapsed_seconds": 3.155
           },
           {
-            "avg_case_ms": 20.05,
+            "avg_case_ms": 19.2,
             "axis": "calculus_block_gate",
             "case_count": 20,
             "group": "algorithmic_backend_boundary_verified",
-            "max_elapsed_seconds": 0.054,
+            "max_elapsed_seconds": 0.053,
             "slowest_case": "algorithmic_backend_rational_resolvent_cubic_quartic",
-            "total_elapsed_seconds": 0.401
+            "total_elapsed_seconds": 0.384
           },
           {
-            "avg_case_ms": 6.4,
+            "avg_case_ms": 6.533,
             "axis": "calculus_block_gate",
             "case_count": 15,
             "group": "safe_residual_policy",
             "max_elapsed_seconds": 0.011,
             "slowest_case": "additive_inverse_sqrt_interval_residual_domain",
-            "total_elapsed_seconds": 0.096
+            "total_elapsed_seconds": 0.098
           },
           {
-            "avg_case_ms": 4.8,
+            "avg_case_ms": 5.2,
             "axis": "calculus_block_gate",
             "case_count": 5,
             "group": "explicit_undefined_domain_policy",
-            "max_elapsed_seconds": 0.005,
-            "slowest_case": "definite_integral_trig_pole_inside_undefined",
-            "total_elapsed_seconds": 0.024
+            "max_elapsed_seconds": 0.006,
+            "slowest_case": "definite_integral_pi_bound_pole_inside_undefined",
+            "total_elapsed_seconds": 0.026
           }
         ],
         "integrate_warm_runtime_by_calculus_maturity_block": [
           {
-            "avg_case_ms": 56.878,
+            "avg_case_ms": 56.898,
             "axis": "calculus_maturity_block",
             "case_count": 49,
             "group": "block8_radical_inverse_families",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 2.787
+            "total_elapsed_seconds": 2.788
           },
           {
-            "avg_case_ms": 21.388,
+            "avg_case_ms": 22.03,
             "axis": "calculus_maturity_block",
             "case_count": 67,
             "group": "block7_trig_hyperbolic_integration",
-            "max_elapsed_seconds": 0.244,
+            "max_elapsed_seconds": 0.248,
             "slowest_case": "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
-            "total_elapsed_seconds": 1.433
+            "total_elapsed_seconds": 1.476
           },
           {
-            "avg_case_ms": 30.429,
+            "avg_case_ms": 29.976,
             "axis": "calculus_maturity_block",
             "case_count": 42,
             "group": "block4_base_integration",
-            "max_elapsed_seconds": 0.21,
+            "max_elapsed_seconds": 0.207,
             "slowest_case": "quadratic_times_cosine_square_power_reduction",
-            "total_elapsed_seconds": 1.278
+            "total_elapsed_seconds": 1.259
           },
           {
-            "avg_case_ms": 26.442,
+            "avg_case_ms": 26.349,
             "axis": "calculus_maturity_block",
             "case_count": 43,
             "group": "block5_generalized_substitution",
-            "max_elapsed_seconds": 0.068,
+            "max_elapsed_seconds": 0.071,
             "slowest_case": "mixed_trig_quartic_sine_odd_cosine",
-            "total_elapsed_seconds": 1.137
+            "total_elapsed_seconds": 1.133
           },
           {
-            "avg_case_ms": 32.955,
+            "avg_case_ms": 13.792,
             "axis": "calculus_maturity_block",
-            "case_count": 22,
-            "group": "block6_rational_integration",
-            "max_elapsed_seconds": 0.06,
-            "slowest_case": "rational_partial_fraction_mixed_linear_positive_quadratic",
-            "total_elapsed_seconds": 0.725
+            "case_count": 53,
+            "group": "block13_definite_integrals",
+            "max_elapsed_seconds": 0.203,
+            "slowest_case": "definite_integral_tan_cube_pi_bound",
+            "total_elapsed_seconds": 0.731
           }
         ],
         "integrate_warm_runtime_by_family": [
           {
-            "avg_case_ms": 153.0,
+            "avg_case_ms": 153.4,
             "axis": "family",
             "case_count": 5,
             "group": "by_parts_bounded_inverse_trig",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 0.765
+            "total_elapsed_seconds": 0.767
           },
           {
-            "avg_case_ms": 15.25,
+            "avg_case_ms": 15.523,
             "axis": "family",
             "case_count": 44,
             "group": "definite_integral_ftc",
             "max_elapsed_seconds": 0.203,
             "slowest_case": "definite_integral_tan_cube_pi_bound",
-            "total_elapsed_seconds": 0.671
+            "total_elapsed_seconds": 0.683
           },
           {
-            "avg_case_ms": 215.5,
+            "avg_case_ms": 213.5,
             "axis": "family",
             "case_count": 2,
             "group": "linear_over_sqrt_shifted_quadratic",
-            "max_elapsed_seconds": 0.378,
+            "max_elapsed_seconds": 0.374,
             "slowest_case": "linear_over_sqrt_completed_square_asinh",
-            "total_elapsed_seconds": 0.431
+            "total_elapsed_seconds": 0.427
           },
           {
             "avg_case_ms": 135.0,
             "axis": "family",
             "case_count": 3,
             "group": "polynomial_times_trig_square_power_reduction",
-            "max_elapsed_seconds": 0.21,
+            "max_elapsed_seconds": 0.207,
             "slowest_case": "quadratic_times_cosine_square_power_reduction",
             "total_elapsed_seconds": 0.405
           },
           {
-            "avg_case_ms": 91.25,
+            "avg_case_ms": 93.75,
             "axis": "family",
             "case_count": 4,
             "group": "hyperbolic_reciprocal_fourth",
-            "max_elapsed_seconds": 0.244,
+            "max_elapsed_seconds": 0.248,
             "slowest_case": "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
-            "total_elapsed_seconds": 0.365
+            "total_elapsed_seconds": 0.375
           }
         ],
         "integrate_warm_runtime_by_trace_regime": [
           {
-            "avg_case_ms": 153.0,
+            "avg_case_ms": 153.4,
             "axis": "trace_regime",
             "case_count": 5,
             "group": "by_parts_bounded_inverse_trig",
-            "max_elapsed_seconds": 0.396,
+            "max_elapsed_seconds": 0.394,
             "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-            "total_elapsed_seconds": 0.765
+            "total_elapsed_seconds": 0.767
           },
           {
-            "avg_case_ms": 215.5,
+            "avg_case_ms": 213.5,
             "axis": "trace_regime",
             "case_count": 2,
             "group": "linear_radical_split",
-            "max_elapsed_seconds": 0.378,
+            "max_elapsed_seconds": 0.374,
             "slowest_case": "linear_over_sqrt_completed_square_asinh",
-            "total_elapsed_seconds": 0.431
+            "total_elapsed_seconds": 0.427
           },
           {
             "avg_case_ms": 135.0,
             "axis": "trace_regime",
             "case_count": 3,
             "group": "trig_square_power_reduction",
-            "max_elapsed_seconds": 0.21,
+            "max_elapsed_seconds": 0.207,
             "slowest_case": "quadratic_times_cosine_square_power_reduction",
             "total_elapsed_seconds": 0.405
           },
           {
-            "avg_case_ms": 91.667,
+            "avg_case_ms": 92.667,
             "axis": "trace_regime",
             "case_count": 3,
             "group": "werner_product_to_sum",
             "max_elapsed_seconds": 0.101,
             "slowest_case": "product_to_sum_sin_sin_distinct_frequencies",
-            "total_elapsed_seconds": 0.275
+            "total_elapsed_seconds": 0.278
           },
           {
-            "avg_case_ms": 23.909,
+            "avg_case_ms": 23.636,
             "axis": "trace_regime",
             "case_count": 11,
             "group": "algorithmic_backend_rational_summary",
-            "max_elapsed_seconds": 0.054,
+            "max_elapsed_seconds": 0.053,
             "slowest_case": "algorithmic_backend_rational_resolvent_cubic_quartic",
-            "total_elapsed_seconds": 0.263
+            "total_elapsed_seconds": 0.26
           }
         ],
         "integrate_warm_runtime_concentration": {
           "slowest_argument_regime": "monomial_times_shifted_arcsine",
           "slowest_case": "by_parts_monomial_shifted_arcsine_domain",
-          "slowest_case_ms": 396.0,
+          "slowest_case_ms": 394.0,
           "slowest_case_share_percent": 4.6,
           "slowest_domain_regime": "bounded_interval_required",
           "slowest_family": "by_parts_bounded_inverse_trig",
           "slowest_presentation_regime": "quarter_factored_shifted_inverse_radical",
           "slowest_trace_regime": "by_parts_bounded_inverse_trig",
           "timed_case_count": 312,
-          "top_3_share_percent": 11.9,
-          "total_elapsed_seconds": 8.576
+          "top_3_share_percent": 11.8,
+          "total_elapsed_seconds": 8.586
         },
         "integrate_warm_runtime_distribution": {
-          "avg_case_ms": 27.487,
-          "max_case_ms": 396.0,
-          "p95_case_ms": 74.0,
+          "avg_case_ms": 27.519,
+          "max_case_ms": 394.0,
+          "p95_case_ms": 73.0,
           "timed_case_count": 312,
-          "total_elapsed_seconds": 8.576
+          "total_elapsed_seconds": 8.586
         },
         "integrate_warm_slowest_cases": [
           {
@@ -5467,7 +5468,7 @@
             "presentation_regime": "quarter_factored_shifted_inverse_radical",
             "status": "pass",
             "trace_regime": "by_parts_bounded_inverse_trig",
-            "wall_elapsed_seconds": 0.396
+            "wall_elapsed_seconds": 0.394
           },
           {
             "argument_regime": "linear_over_completed_square_positive",
@@ -5478,7 +5479,7 @@
             "presentation_regime": "sqrt_plus_asinh_split",
             "status": "pass",
             "trace_regime": "linear_radical_split",
-            "wall_elapsed_seconds": 0.378
+            "wall_elapsed_seconds": 0.374
           },
           {
             "argument_regime": "symbolic_external_scale_shifted_polynomial_hyperbolic_fourth",
@@ -5489,7 +5490,7 @@
             "presentation_regime": "external_scale_reciprocal_hyperbolic_tangent_minus_cubic",
             "status": "pass",
             "trace_regime": "symbolic_external_scale_polynomial_hyperbolic_sine_reciprocal_fourth",
-            "wall_elapsed_seconds": 0.244
+            "wall_elapsed_seconds": 0.248
           },
           {
             "argument_regime": "polynomial_times_trig_square",
@@ -5500,7 +5501,7 @@
             "presentation_regime": "polynomial_times_double_angle_trig",
             "status": "pass",
             "trace_regime": "trig_square_power_reduction",
-            "wall_elapsed_seconds": 0.21
+            "wall_elapsed_seconds": 0.207
           },
           {
             "argument_regime": "tan_cube_pi_bound_integral",
@@ -5521,12 +5522,12 @@
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
-        "reported_elapsed_per_case_ms": 28.2803,
+        "reported_elapsed_per_case_ms": 28.334,
         "slow": 0,
         "timeouts": 0,
         "total_cases": 313
       },
-      "process_elapsed_seconds": 8.852,
+      "process_elapsed_seconds": 8.869,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -5547,7 +5548,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 5.21,
+      "elapsed_seconds": 5.187,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -5565,7 +5566,7 @@
         "passed": 380,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 5.21,
+      "process_elapsed_seconds": 5.187,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -5583,7 +5584,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 1.243,
+      "elapsed_seconds": 1.299,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -5600,32 +5601,32 @@
           "block9_residuals_and_non_goals": 31
         },
         "limit_cli_parse_runtime_distribution": {
-          "avg_case_ms": 0.052,
-          "max_case_ms": 0.115,
-          "p95_case_ms": 0.067,
+          "avg_case_ms": 0.056,
+          "max_case_ms": 0.132,
+          "p95_case_ms": 0.071,
           "timed_case_count": 209,
-          "total_elapsed_seconds": 0.011
+          "total_elapsed_seconds": 0.012
         },
         "limit_cli_public_overhead_runtime_distribution": {
-          "avg_case_ms": 4.619,
-          "max_case_ms": 43.557,
-          "p95_case_ms": 6.687,
+          "avg_case_ms": 4.808,
+          "max_case_ms": 44.947,
+          "p95_case_ms": 7.313,
           "timed_case_count": 209,
-          "total_elapsed_seconds": 0.965
+          "total_elapsed_seconds": 1.005
         },
         "limit_cli_simplify_runtime_distribution": {
-          "avg_case_ms": 0.866,
-          "max_case_ms": 7.878,
-          "p95_case_ms": 1.738,
+          "avg_case_ms": 0.936,
+          "max_case_ms": 8.223,
+          "p95_case_ms": 1.92,
           "timed_case_count": 209,
-          "total_elapsed_seconds": 0.181
+          "total_elapsed_seconds": 0.196
         },
         "limit_cli_total_runtime_distribution": {
-          "avg_case_ms": 0.923,
-          "max_case_ms": 7.936,
-          "p95_case_ms": 1.834,
+          "avg_case_ms": 0.997,
+          "max_case_ms": 8.297,
+          "p95_case_ms": 1.989,
           "timed_case_count": 209,
-          "total_elapsed_seconds": 0.193
+          "total_elapsed_seconds": 0.208
         },
         "limit_cold_start_case": {
           "domain_regime": "unconditional",
@@ -5636,7 +5637,7 @@
           "presentation_regime": "canonical",
           "status": "pass",
           "trace_regime": "substitution",
-          "wall_elapsed_seconds": 0.007
+          "wall_elapsed_seconds": 0.009
         },
         "limit_distinct_required_display_count": 48,
         "limit_domain_regime_counts": {
@@ -6083,178 +6084,178 @@
         },
         "limit_runtime_by_domain_regime": [
           {
-            "avg_case_ms": 6.381,
+            "avg_case_ms": 7.048,
             "axis": "domain_regime",
             "case_count": 21,
             "group": "required_condition",
-            "max_elapsed_seconds": 0.018,
+            "max_elapsed_seconds": 0.02,
             "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
-            "total_elapsed_seconds": 0.134
+            "total_elapsed_seconds": 0.148
           },
           {
-            "avg_case_ms": 4.75,
+            "avg_case_ms": 4.9,
             "axis": "domain_regime",
             "case_count": 20,
             "group": "unconditional",
-            "max_elapsed_seconds": 0.007,
+            "max_elapsed_seconds": 0.009,
             "slowest_case": "finite_polynomial_supported",
-            "total_elapsed_seconds": 0.095
+            "total_elapsed_seconds": 0.098
           },
           {
-            "avg_case_ms": 6.444,
+            "avg_case_ms": 6.667,
             "axis": "domain_regime",
             "case_count": 9,
             "group": "total_real_function",
             "max_elapsed_seconds": 0.01,
             "slowest_case": "infinity_sqrt_scaled_quadratic_difference_half",
-            "total_elapsed_seconds": 0.058
+            "total_elapsed_seconds": 0.06
           },
           {
-            "avg_case_ms": 19.0,
+            "avg_case_ms": 19.333,
             "axis": "domain_regime",
             "case_count": 3,
             "group": "higher_order_taylor_removable_quotient",
-            "max_elapsed_seconds": 0.045,
+            "max_elapsed_seconds": 0.046,
             "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-            "total_elapsed_seconds": 0.057
+            "total_elapsed_seconds": 0.058
           },
           {
-            "avg_case_ms": 4.875,
+            "avg_case_ms": 34.0,
             "axis": "domain_regime",
-            "case_count": 8,
-            "group": "first_order_equivalent_quotient",
-            "max_elapsed_seconds": 0.006,
-            "slowest_case": "finite_first_order_equiv_asin_quotient",
-            "total_elapsed_seconds": 0.039
+            "case_count": 1,
+            "group": "one_sided_rational_unit_base_boundary_log_zero_tail_endpoint",
+            "max_elapsed_seconds": 0.034,
+            "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
+            "total_elapsed_seconds": 0.034
           }
         ],
         "limit_runtime_by_family": [
           {
-            "avg_case_ms": 4.6,
+            "avg_case_ms": 4.55,
             "axis": "family",
             "case_count": 20,
             "group": "root",
             "max_elapsed_seconds": 0.006,
             "slowest_case": "infinity_root_polynomial_tail_domain_suppression",
-            "total_elapsed_seconds": 0.092
+            "total_elapsed_seconds": 0.091
           },
           {
-            "avg_case_ms": 9.444,
+            "avg_case_ms": 9.889,
             "axis": "family",
             "case_count": 9,
             "group": "radical_difference_conjugate",
-            "max_elapsed_seconds": 0.018,
+            "max_elapsed_seconds": 0.02,
             "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
-            "total_elapsed_seconds": 0.085
+            "total_elapsed_seconds": 0.089
           },
           {
-            "avg_case_ms": 18.0,
+            "avg_case_ms": 19.25,
             "axis": "family",
             "case_count": 4,
             "group": "log_rational_endpoint",
-            "max_elapsed_seconds": 0.033,
+            "max_elapsed_seconds": 0.034,
             "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
-            "total_elapsed_seconds": 0.072
+            "total_elapsed_seconds": 0.077
           },
           {
-            "avg_case_ms": 5.154,
+            "avg_case_ms": 5.692,
             "axis": "family",
             "case_count": 13,
             "group": "rational",
             "max_elapsed_seconds": 0.007,
-            "slowest_case": "infinity_rational_equal_degree",
-            "total_elapsed_seconds": 0.067
+            "slowest_case": "finite_rational_required_condition",
+            "total_elapsed_seconds": 0.074
           },
           {
-            "avg_case_ms": 5.364,
+            "avg_case_ms": 5.455,
             "axis": "family",
             "case_count": 11,
             "group": "logarithmic_growth",
             "max_elapsed_seconds": 0.008,
             "slowest_case": "infinity_log_rational_argument_dominance",
-            "total_elapsed_seconds": 0.059
+            "total_elapsed_seconds": 0.06
           }
         ],
         "limit_runtime_by_point_regime": [
           {
-            "avg_case_ms": 5.906,
+            "avg_case_ms": 6.083,
             "axis": "point_regime",
             "case_count": 96,
             "group": "finite",
-            "max_elapsed_seconds": 0.045,
+            "max_elapsed_seconds": 0.046,
             "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-            "total_elapsed_seconds": 0.567
+            "total_elapsed_seconds": 0.584
           },
           {
-            "avg_case_ms": 4.877,
+            "avg_case_ms": 5.068,
             "axis": "point_regime",
             "case_count": 73,
             "group": "infinity",
             "max_elapsed_seconds": 0.01,
             "slowest_case": "infinity_sqrt_scaled_quadratic_difference_half",
-            "total_elapsed_seconds": 0.356
+            "total_elapsed_seconds": 0.37
           },
           {
-            "avg_case_ms": 6.075,
+            "avg_case_ms": 6.525,
             "axis": "point_regime",
             "case_count": 40,
             "group": "finite_one_sided",
-            "max_elapsed_seconds": 0.033,
+            "max_elapsed_seconds": 0.034,
             "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
-            "total_elapsed_seconds": 0.243
+            "total_elapsed_seconds": 0.261
           }
         ],
         "limit_runtime_by_trace_regime": [
           {
-            "avg_case_ms": 4.571,
+            "avg_case_ms": 4.643,
             "axis": "trace_regime",
             "case_count": 14,
             "group": "finite_residual_policy",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "finite_binary_log_unit_base_boundary_residual",
-            "total_elapsed_seconds": 0.064
+            "total_elapsed_seconds": 0.065
+          },
+          {
+            "avg_case_ms": 19.333,
+            "axis": "trace_regime",
+            "case_count": 3,
+            "group": "finite_taylor_quotient_policy",
+            "max_elapsed_seconds": 0.046,
+            "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
+            "total_elapsed_seconds": 0.058
           },
           {
             "avg_case_ms": 19.0,
             "axis": "trace_regime",
-            "case_count": 3,
-            "group": "finite_taylor_quotient_policy",
-            "max_elapsed_seconds": 0.045,
-            "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-            "total_elapsed_seconds": 0.057
+            "case_count": 2,
+            "group": "radical_difference_conjugate",
+            "max_elapsed_seconds": 0.02,
+            "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
+            "total_elapsed_seconds": 0.038
           },
           {
-            "avg_case_ms": 4.875,
+            "avg_case_ms": 34.0,
+            "axis": "trace_regime",
+            "case_count": 1,
+            "group": "one_sided_rational_unit_base_boundary_log_endpoint_policy",
+            "max_elapsed_seconds": 0.034,
+            "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
+            "total_elapsed_seconds": 0.034
+          },
+          {
+            "avg_case_ms": 4.125,
             "axis": "trace_regime",
             "case_count": 8,
             "group": "finite_first_order_equiv_quotient_policy",
-            "max_elapsed_seconds": 0.006,
-            "slowest_case": "finite_first_order_equiv_asin_quotient",
-            "total_elapsed_seconds": 0.039
-          },
-          {
-            "avg_case_ms": 5.0,
-            "axis": "trace_regime",
-            "case_count": 7,
-            "group": "finite_bilateral_trig_pole_policy",
             "max_elapsed_seconds": 0.005,
-            "slowest_case": "finite_trig_sine_even_power_pole_bilateral_supported",
-            "total_elapsed_seconds": 0.035
-          },
-          {
-            "avg_case_ms": 17.5,
-            "axis": "trace_regime",
-            "case_count": 2,
-            "group": "radical_difference_conjugate",
-            "max_elapsed_seconds": 0.018,
-            "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
-            "total_elapsed_seconds": 0.035
+            "slowest_case": "finite_first_order_equiv_asin_quotient",
+            "total_elapsed_seconds": 0.033
           }
         ],
         "limit_runtime_concentration": {
           "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-          "slowest_case_ms": 45.0,
-          "slowest_case_share_percent": 3.9,
+          "slowest_case_ms": 46.0,
+          "slowest_case_share_percent": 3.8,
           "slowest_domain_regime": "higher_order_taylor_removable_quotient",
           "slowest_family": "higher_order_taylor_quotient",
           "slowest_point_regime": "finite",
@@ -6262,27 +6263,27 @@
           "slowest_trace_regime": "finite_taylor_quotient_policy",
           "timed_case_count": 209,
           "top_3_share_percent": 8.4,
-          "total_elapsed_seconds": 1.166
+          "total_elapsed_seconds": 1.215
         },
         "limit_runtime_distribution": {
-          "avg_case_ms": 5.579,
-          "max_case_ms": 45.0,
-          "p95_case_ms": 9.0,
+          "avg_case_ms": 5.813,
+          "max_case_ms": 46.0,
+          "p95_case_ms": 10.0,
           "timed_case_count": 209,
-          "total_elapsed_seconds": 1.166
+          "total_elapsed_seconds": 1.215
         },
         "limit_runtime_measurement": {
           "guidance": "require embedded or profiler evidence before treating this as an engine hotspot",
-          "max_case_ms": 45.0,
+          "max_case_ms": 46.0,
           "mode": "process_per_case",
-          "p95_case_ms": 9.0,
+          "p95_case_ms": 10.0,
           "pressure_status": "ok",
           "status": "process_overhead_floor"
         },
         "limit_runtime_pressure": {
-          "avg_case_ms": 5.572,
-          "max_case_ms": 45.0,
-          "p95_case_ms": 9.0,
+          "avg_case_ms": 5.798,
+          "max_case_ms": 46.0,
+          "p95_case_ms": 10.0,
           "primary_signal": "none",
           "reason": "within runtime pressure thresholds",
           "sample_basis": "warm",
@@ -6302,7 +6303,7 @@
             "presentation_regime": "exact_rational",
             "status": "pass",
             "trace_regime": "finite_taylor_quotient_policy",
-            "wall_elapsed_seconds": 0.045
+            "wall_elapsed_seconds": 0.046
           },
           {
             "domain_regime": "one_sided_rational_unit_base_boundary_log_zero_tail_endpoint",
@@ -6313,7 +6314,7 @@
             "presentation_regime": "infinity",
             "status": "pass",
             "trace_regime": "one_sided_rational_unit_base_boundary_log_endpoint_policy",
-            "wall_elapsed_seconds": 0.033
+            "wall_elapsed_seconds": 0.034
           },
           {
             "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
@@ -6324,7 +6325,7 @@
             "presentation_regime": "infinity",
             "status": "pass",
             "trace_regime": "one_sided_rational_log_endpoint_policy",
-            "wall_elapsed_seconds": 0.02
+            "wall_elapsed_seconds": 0.022
           },
           {
             "domain_regime": "required_condition",
@@ -6335,7 +6336,7 @@
             "presentation_regime": "canonical",
             "status": "pass",
             "trace_regime": "radical_difference_conjugate",
-            "wall_elapsed_seconds": 0.018
+            "wall_elapsed_seconds": 0.02
           },
           {
             "domain_regime": "required_condition",
@@ -6346,10 +6347,18 @@
             "presentation_regime": "canonical",
             "status": "pass",
             "trace_regime": "radical_difference_conjugate",
-            "wall_elapsed_seconds": 0.017
+            "wall_elapsed_seconds": 0.018
           }
         ],
         "limit_slowest_cli_parse_evaluations": [
+          {
+            "cli_parse_elapsed_seconds": 0.0,
+            "domain_regime": "table_undefined_trig_pole_residual",
+            "family": "trig_special_angle",
+            "name": "finite_trig_table_undefined_pole_residual",
+            "presentation_regime": "undefined",
+            "trace_regime": "finite_bilateral_dne_policy"
+          },
           {
             "cli_parse_elapsed_seconds": 0.0,
             "domain_regime": "unconditional",
@@ -6360,40 +6369,32 @@
           },
           {
             "cli_parse_elapsed_seconds": 0.0,
-            "domain_regime": "required_condition",
-            "family": "radical_conjugate_removable",
-            "name": "finite_radical_conjugate_affine_radicand",
-            "presentation_regime": "exact_rational",
-            "trace_regime": "radical_conjugate_cancellation"
-          },
-          {
-            "cli_parse_elapsed_seconds": 0.0,
             "domain_regime": "unconditional",
             "family": "fractional_power_growth",
-            "name": "infinity_fractional_power_negative_exponent_decays",
-            "presentation_regime": "zero",
+            "name": "infinity_fractional_power_odd_denominator_diverges",
+            "presentation_regime": "infinity",
             "trace_regime": "fractional_power_infinity_tail_policy"
           },
           {
             "cli_parse_elapsed_seconds": 0.0,
-            "domain_regime": "required_condition",
-            "family": "rational",
-            "name": "finite_rational_required_condition",
-            "presentation_regime": "canonical",
-            "trace_regime": "safe_rational_substitution"
+            "domain_regime": "bilateral_even_order_reciprocal_trig_sine_pole",
+            "family": "reciprocal_trig",
+            "name": "finite_reciprocal_trig_sine_even_power_pole_bilateral_supported",
+            "presentation_regime": "infinity",
+            "trace_regime": "finite_bilateral_trig_pole_policy"
           },
           {
             "cli_parse_elapsed_seconds": 0.0,
-            "domain_regime": "rational_common_denominator",
-            "family": "rational",
-            "name": "infinity_rational_difference_finite_value",
-            "presentation_regime": "exact_rational",
-            "trace_regime": "rational_difference_policy"
+            "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
+            "family": "log_rational_endpoint",
+            "name": "finite_one_sided_variable_base_log_rational_zero_tail_endpoint_supported",
+            "presentation_regime": "infinity",
+            "trace_regime": "one_sided_rational_log_endpoint_policy"
           }
         ],
         "limit_slowest_cli_public_overhead_evaluations": [
           {
-            "cli_public_overhead_seconds": 0.044,
+            "cli_public_overhead_seconds": 0.045,
             "domain_regime": "higher_order_taylor_removable_quotient",
             "family": "higher_order_taylor_quotient",
             "name": "finite_higher_order_taylor_arctan_cubic_quotient",
@@ -6409,12 +6410,20 @@
             "trace_regime": "one_sided_rational_unit_base_boundary_log_endpoint_policy"
           },
           {
-            "cli_public_overhead_seconds": 0.017,
+            "cli_public_overhead_seconds": 0.019,
             "domain_regime": "required_condition",
             "family": "radical_difference_conjugate",
             "name": "finite_radical_difference_conjugate_scaled_radius_supported",
             "presentation_regime": "canonical",
             "trace_regime": "radical_difference_conjugate"
+          },
+          {
+            "cli_public_overhead_seconds": 0.017,
+            "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
+            "family": "log_rational_endpoint",
+            "name": "finite_one_sided_variable_base_log_rational_zero_tail_endpoint_supported",
+            "presentation_regime": "infinity",
+            "trace_regime": "one_sided_rational_log_endpoint_policy"
           },
           {
             "cli_public_overhead_seconds": 0.016,
@@ -6423,14 +6432,6 @@
             "name": "finite_radical_difference_conjugate_unit_radius_supported",
             "presentation_regime": "canonical",
             "trace_regime": "radical_difference_conjugate"
-          },
-          {
-            "cli_public_overhead_seconds": 0.016,
-            "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
-            "family": "log_rational_endpoint",
-            "name": "finite_one_sided_variable_base_log_rational_zero_tail_endpoint_supported",
-            "presentation_regime": "infinity",
-            "trace_regime": "one_sided_rational_log_endpoint_policy"
           }
         ],
         "limit_slowest_cli_simplify_evaluations": [
@@ -6451,7 +6452,7 @@
             "trace_regime": "one_sided_orientation_policy"
           },
           {
-            "cli_simplify_elapsed_seconds": 0.004,
+            "cli_simplify_elapsed_seconds": 0.005,
             "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
             "family": "log_rational_endpoint",
             "name": "finite_one_sided_variable_base_log_rational_zero_tail_endpoint_supported",
@@ -6468,11 +6469,11 @@
           },
           {
             "cli_simplify_elapsed_seconds": 0.003,
-            "domain_regime": "binary_log_variable_base_unit_removable_quotient",
-            "family": "binary_log_variable_base_unit_quotient",
-            "name": "finite_binary_log_variable_base_unit_scaled_quotient",
-            "presentation_regime": "exact_log_base_factor",
-            "trace_regime": "finite_binary_log_variable_base_unit_quotient_policy"
+            "domain_regime": "one_sided_unit_base_boundary_rational_log_zero_tail_endpoint",
+            "family": "log_rational_endpoint",
+            "name": "finite_one_sided_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
+            "presentation_regime": "negative_infinity",
+            "trace_regime": "one_sided_unit_base_boundary_rational_log_endpoint_policy"
           }
         ],
         "limit_slowest_cli_total_evaluations": [
@@ -6493,7 +6494,7 @@
             "trace_regime": "one_sided_orientation_policy"
           },
           {
-            "cli_total_elapsed_seconds": 0.004,
+            "cli_total_elapsed_seconds": 0.005,
             "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
             "family": "log_rational_endpoint",
             "name": "finite_one_sided_variable_base_log_rational_zero_tail_endpoint_supported",
@@ -6510,11 +6511,11 @@
           },
           {
             "cli_total_elapsed_seconds": 0.003,
-            "domain_regime": "binary_log_variable_base_unit_removable_quotient",
-            "family": "binary_log_variable_base_unit_quotient",
-            "name": "finite_binary_log_variable_base_unit_scaled_quotient",
-            "presentation_regime": "exact_log_base_factor",
-            "trace_regime": "finite_binary_log_variable_base_unit_quotient_policy"
+            "domain_regime": "one_sided_unit_base_boundary_rational_log_zero_tail_endpoint",
+            "family": "log_rational_endpoint",
+            "name": "finite_one_sided_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
+            "presentation_regime": "negative_infinity",
+            "trace_regime": "one_sided_unit_base_boundary_rational_log_endpoint_policy"
           }
         ],
         "limit_step_checked_case_count": 209,
@@ -6635,178 +6636,178 @@
         },
         "limit_warm_runtime_by_domain_regime": [
           {
-            "avg_case_ms": 6.381,
+            "avg_case_ms": 7.048,
             "axis": "domain_regime",
             "case_count": 21,
             "group": "required_condition",
-            "max_elapsed_seconds": 0.018,
+            "max_elapsed_seconds": 0.02,
             "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
-            "total_elapsed_seconds": 0.134
+            "total_elapsed_seconds": 0.148
           },
           {
-            "avg_case_ms": 4.632,
+            "avg_case_ms": 4.684,
             "axis": "domain_regime",
             "case_count": 19,
             "group": "unconditional",
-            "max_elapsed_seconds": 0.006,
-            "slowest_case": "infinity_radical_conjugate_product_shifted_linear_tail",
-            "total_elapsed_seconds": 0.088
+            "max_elapsed_seconds": 0.007,
+            "slowest_case": "infinity_product_log_unit_argument_quadratic_cofactor_supported",
+            "total_elapsed_seconds": 0.089
           },
           {
-            "avg_case_ms": 6.444,
+            "avg_case_ms": 6.667,
             "axis": "domain_regime",
             "case_count": 9,
             "group": "total_real_function",
             "max_elapsed_seconds": 0.01,
             "slowest_case": "infinity_sqrt_scaled_quadratic_difference_half",
-            "total_elapsed_seconds": 0.058
+            "total_elapsed_seconds": 0.06
           },
           {
-            "avg_case_ms": 19.0,
+            "avg_case_ms": 19.333,
             "axis": "domain_regime",
             "case_count": 3,
             "group": "higher_order_taylor_removable_quotient",
-            "max_elapsed_seconds": 0.045,
+            "max_elapsed_seconds": 0.046,
             "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-            "total_elapsed_seconds": 0.057
+            "total_elapsed_seconds": 0.058
           },
           {
-            "avg_case_ms": 4.875,
+            "avg_case_ms": 34.0,
             "axis": "domain_regime",
-            "case_count": 8,
-            "group": "first_order_equivalent_quotient",
-            "max_elapsed_seconds": 0.006,
-            "slowest_case": "finite_first_order_equiv_asin_quotient",
-            "total_elapsed_seconds": 0.039
+            "case_count": 1,
+            "group": "one_sided_rational_unit_base_boundary_log_zero_tail_endpoint",
+            "max_elapsed_seconds": 0.034,
+            "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
+            "total_elapsed_seconds": 0.034
           }
         ],
         "limit_warm_runtime_by_family": [
           {
-            "avg_case_ms": 4.6,
+            "avg_case_ms": 4.55,
             "axis": "family",
             "case_count": 20,
             "group": "root",
             "max_elapsed_seconds": 0.006,
             "slowest_case": "infinity_root_polynomial_tail_domain_suppression",
-            "total_elapsed_seconds": 0.092
+            "total_elapsed_seconds": 0.091
           },
           {
-            "avg_case_ms": 9.444,
+            "avg_case_ms": 9.889,
             "axis": "family",
             "case_count": 9,
             "group": "radical_difference_conjugate",
-            "max_elapsed_seconds": 0.018,
+            "max_elapsed_seconds": 0.02,
             "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
-            "total_elapsed_seconds": 0.085
+            "total_elapsed_seconds": 0.089
           },
           {
-            "avg_case_ms": 18.0,
+            "avg_case_ms": 19.25,
             "axis": "family",
             "case_count": 4,
             "group": "log_rational_endpoint",
-            "max_elapsed_seconds": 0.033,
+            "max_elapsed_seconds": 0.034,
             "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
-            "total_elapsed_seconds": 0.072
+            "total_elapsed_seconds": 0.077
           },
           {
-            "avg_case_ms": 5.154,
+            "avg_case_ms": 5.692,
             "axis": "family",
             "case_count": 13,
             "group": "rational",
             "max_elapsed_seconds": 0.007,
-            "slowest_case": "infinity_rational_equal_degree",
-            "total_elapsed_seconds": 0.067
+            "slowest_case": "finite_rational_required_condition",
+            "total_elapsed_seconds": 0.074
           },
           {
-            "avg_case_ms": 5.364,
+            "avg_case_ms": 5.455,
             "axis": "family",
             "case_count": 11,
             "group": "logarithmic_growth",
             "max_elapsed_seconds": 0.008,
             "slowest_case": "infinity_log_rational_argument_dominance",
-            "total_elapsed_seconds": 0.059
+            "total_elapsed_seconds": 0.06
           }
         ],
         "limit_warm_runtime_by_point_regime": [
           {
-            "avg_case_ms": 5.895,
+            "avg_case_ms": 6.053,
             "axis": "point_regime",
             "case_count": 95,
             "group": "finite",
-            "max_elapsed_seconds": 0.045,
+            "max_elapsed_seconds": 0.046,
             "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-            "total_elapsed_seconds": 0.56
+            "total_elapsed_seconds": 0.575
           },
           {
-            "avg_case_ms": 4.877,
+            "avg_case_ms": 5.068,
             "axis": "point_regime",
             "case_count": 73,
             "group": "infinity",
             "max_elapsed_seconds": 0.01,
             "slowest_case": "infinity_sqrt_scaled_quadratic_difference_half",
-            "total_elapsed_seconds": 0.356
+            "total_elapsed_seconds": 0.37
           },
           {
-            "avg_case_ms": 6.075,
+            "avg_case_ms": 6.525,
             "axis": "point_regime",
             "case_count": 40,
             "group": "finite_one_sided",
-            "max_elapsed_seconds": 0.033,
+            "max_elapsed_seconds": 0.034,
             "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
-            "total_elapsed_seconds": 0.243
+            "total_elapsed_seconds": 0.261
           }
         ],
         "limit_warm_runtime_by_trace_regime": [
           {
-            "avg_case_ms": 4.571,
+            "avg_case_ms": 4.643,
             "axis": "trace_regime",
             "case_count": 14,
             "group": "finite_residual_policy",
             "max_elapsed_seconds": 0.007,
             "slowest_case": "finite_binary_log_unit_base_boundary_residual",
-            "total_elapsed_seconds": 0.064
+            "total_elapsed_seconds": 0.065
+          },
+          {
+            "avg_case_ms": 19.333,
+            "axis": "trace_regime",
+            "case_count": 3,
+            "group": "finite_taylor_quotient_policy",
+            "max_elapsed_seconds": 0.046,
+            "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
+            "total_elapsed_seconds": 0.058
           },
           {
             "avg_case_ms": 19.0,
             "axis": "trace_regime",
-            "case_count": 3,
-            "group": "finite_taylor_quotient_policy",
-            "max_elapsed_seconds": 0.045,
-            "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-            "total_elapsed_seconds": 0.057
+            "case_count": 2,
+            "group": "radical_difference_conjugate",
+            "max_elapsed_seconds": 0.02,
+            "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
+            "total_elapsed_seconds": 0.038
           },
           {
-            "avg_case_ms": 4.875,
+            "avg_case_ms": 34.0,
+            "axis": "trace_regime",
+            "case_count": 1,
+            "group": "one_sided_rational_unit_base_boundary_log_endpoint_policy",
+            "max_elapsed_seconds": 0.034,
+            "slowest_case": "finite_one_sided_rational_unit_base_boundary_log_rational_zero_tail_endpoint_supported",
+            "total_elapsed_seconds": 0.034
+          },
+          {
+            "avg_case_ms": 4.125,
             "axis": "trace_regime",
             "case_count": 8,
             "group": "finite_first_order_equiv_quotient_policy",
-            "max_elapsed_seconds": 0.006,
-            "slowest_case": "finite_first_order_equiv_asin_quotient",
-            "total_elapsed_seconds": 0.039
-          },
-          {
-            "avg_case_ms": 5.0,
-            "axis": "trace_regime",
-            "case_count": 7,
-            "group": "finite_bilateral_trig_pole_policy",
             "max_elapsed_seconds": 0.005,
-            "slowest_case": "finite_trig_sine_even_power_pole_bilateral_supported",
-            "total_elapsed_seconds": 0.035
-          },
-          {
-            "avg_case_ms": 17.5,
-            "axis": "trace_regime",
-            "case_count": 2,
-            "group": "radical_difference_conjugate",
-            "max_elapsed_seconds": 0.018,
-            "slowest_case": "finite_radical_difference_conjugate_scaled_radius_supported",
-            "total_elapsed_seconds": 0.035
+            "slowest_case": "finite_first_order_equiv_asin_quotient",
+            "total_elapsed_seconds": 0.033
           }
         ],
         "limit_warm_runtime_concentration": {
           "slowest_case": "finite_higher_order_taylor_arctan_cubic_quotient",
-          "slowest_case_ms": 45.0,
-          "slowest_case_share_percent": 3.9,
+          "slowest_case_ms": 46.0,
+          "slowest_case_share_percent": 3.8,
           "slowest_domain_regime": "higher_order_taylor_removable_quotient",
           "slowest_family": "higher_order_taylor_quotient",
           "slowest_point_regime": "finite",
@@ -6814,14 +6815,14 @@
           "slowest_trace_regime": "finite_taylor_quotient_policy",
           "timed_case_count": 208,
           "top_3_share_percent": 8.5,
-          "total_elapsed_seconds": 1.159
+          "total_elapsed_seconds": 1.206
         },
         "limit_warm_runtime_distribution": {
-          "avg_case_ms": 5.572,
-          "max_case_ms": 45.0,
-          "p95_case_ms": 9.0,
+          "avg_case_ms": 5.798,
+          "max_case_ms": 46.0,
+          "p95_case_ms": 10.0,
           "timed_case_count": 208,
-          "total_elapsed_seconds": 1.159
+          "total_elapsed_seconds": 1.206
         },
         "limit_warm_slowest_cases": [
           {
@@ -6833,7 +6834,7 @@
             "presentation_regime": "exact_rational",
             "status": "pass",
             "trace_regime": "finite_taylor_quotient_policy",
-            "wall_elapsed_seconds": 0.045
+            "wall_elapsed_seconds": 0.046
           },
           {
             "domain_regime": "one_sided_rational_unit_base_boundary_log_zero_tail_endpoint",
@@ -6844,7 +6845,7 @@
             "presentation_regime": "infinity",
             "status": "pass",
             "trace_regime": "one_sided_rational_unit_base_boundary_log_endpoint_policy",
-            "wall_elapsed_seconds": 0.033
+            "wall_elapsed_seconds": 0.034
           },
           {
             "domain_regime": "one_sided_variable_base_rational_log_zero_tail_endpoint",
@@ -6855,7 +6856,7 @@
             "presentation_regime": "infinity",
             "status": "pass",
             "trace_regime": "one_sided_rational_log_endpoint_policy",
-            "wall_elapsed_seconds": 0.02
+            "wall_elapsed_seconds": 0.022
           },
           {
             "domain_regime": "required_condition",
@@ -6866,7 +6867,7 @@
             "presentation_regime": "canonical",
             "status": "pass",
             "trace_regime": "radical_difference_conjugate",
-            "wall_elapsed_seconds": 0.018
+            "wall_elapsed_seconds": 0.02
           },
           {
             "domain_regime": "required_condition",
@@ -6877,7 +6878,7 @@
             "presentation_regime": "canonical",
             "status": "pass",
             "trace_regime": "radical_difference_conjugate",
-            "wall_elapsed_seconds": 0.017
+            "wall_elapsed_seconds": 0.018
           }
         ],
         "limit_warning_expected_case_count": 28,
@@ -6886,12 +6887,12 @@
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
-        "reported_elapsed_per_case_ms": 5.947,
+        "reported_elapsed_per_case_ms": 6.214,
         "slow": 0,
         "timeouts": 0,
         "total_cases": 209
       },
-      "process_elapsed_seconds": 1.243,
+      "process_elapsed_seconds": 1.299,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -6912,7 +6913,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.678,
+      "elapsed_seconds": 0.679,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -6924,7 +6925,7 @@
         "passed": 190,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.678,
+      "process_elapsed_seconds": 0.679,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -6945,7 +6946,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.366,
+      "elapsed_seconds": 0.364,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -6957,7 +6958,7 @@
         "passed": 8,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.366,
+      "process_elapsed_seconds": 0.364,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -6976,7 +6977,7 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 7.799,
+      "elapsed_seconds": 7.869,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -7022,12 +7023,12 @@
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
-        "reported_elapsed_per_case_ms": 10.6835,
+        "reported_elapsed_per_case_ms": 10.7793,
         "slow": 0,
         "timeouts": 0,
         "total_cases": 730
       },
-      "process_elapsed_seconds": 7.799,
+      "process_elapsed_seconds": 7.869,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -7043,7 +7044,7 @@
         "--json"
       ],
       "delta": {},
-      "elapsed_seconds": 0.751,
+      "elapsed_seconds": 0.755,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -7053,7 +7054,7 @@
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
-        "reported_elapsed_per_case_ms": 19.7649,
+        "reported_elapsed_per_case_ms": 19.8762,
         "slow": 0,
         "solve_system_coefficient_regime_counts": {
           "rational": 20,
@@ -7097,7 +7098,7 @@
         "timeouts": 0,
         "total_cases": 38
       },
-      "process_elapsed_seconds": 0.751,
+      "process_elapsed_seconds": 0.755,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -7120,7 +7121,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.469,
+      "elapsed_seconds": 1.569,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -7218,7 +7219,7 @@
         "unsupported": 0,
         "unsupported_by_family": {}
       },
-      "process_elapsed_seconds": 0.469,
+      "process_elapsed_seconds": 1.569,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -7242,28 +7243,28 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 3.809,
+      "elapsed_seconds": 23.339,
       "env": {},
       "guardrail": null,
       "metrics": {
-        "artifact_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.171,contract_trig_phase_shift_general_shifted_terms_with_passthrough:0.079,finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower:0.079,expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough:0.077,finite_telescoping_sum_affine_symbolic_shift_symbolic_lower:0.065,rationalize_symbolic_linear_root:0.050",
-        "artifact_family_hotspots": "expand:0.320,trig_contract:0.206,finite_telescoping:0.194,trig_expand:0.148,rationalize:0.148,solve_prep:0.137",
-        "artifact_seconds": 0.469,
+        "artifact_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.170,contract_trig_phase_shift_general_shifted_terms_with_passthrough:0.078,finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower:0.077,expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough:0.075,finite_telescoping_sum_affine_symbolic_shift_symbolic_lower:0.064,rationalize_symbolic_linear_root:0.050",
+        "artifact_family_hotspots": "expand:0.317,trig_contract:0.204,finite_telescoping:0.192,rationalize:0.148,trig_expand:0.146,solve_prep:0.133",
+        "artifact_seconds": 0.466,
         "cases": 472,
-        "cli_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.165,contract_trig_phase_shift_general_shifted_terms_with_passthrough:0.079,expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough:0.076,finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower:0.060,finite_telescoping_sum_affine_symbolic_shift_symbolic_lower:0.056,rationalize_symbolic_linear_root_alt_var:0.050",
-        "cli_family_hotspots": "expand:0.304,trig_contract:0.194,finite_telescoping:0.157,rationalize:0.137,trig_expand:0.121,solve_prep:0.115",
-        "cli_seconds": 0.383,
+        "cli_case_hotspots": "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.159,contract_trig_phase_shift_general_shifted_terms_with_passthrough:0.078,expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough:0.075,finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower:0.063,finite_telescoping_sum_affine_symbolic_shift_symbolic_lower:0.055,rationalize_symbolic_linear_root:0.044",
+        "cli_family_hotspots": "expand:0.297,trig_contract:0.193,finite_telescoping:0.153,rationalize:0.130,trig_expand:0.120,solve_prep:0.116",
+        "cli_seconds": 0.382,
         "flagged_cases": 0,
         "flagged_rate": 0.0,
         "mean_step_count": 1.05,
         "no_web_steps": 0,
         "no_web_substeps": 0,
         "report_seconds": 0.001,
-        "reported_total_seconds": 0.852,
+        "reported_total_seconds": 0.849,
         "total_web_substeps": 518,
         "worker_count": 4
       },
-      "process_elapsed_seconds": 3.809,
+      "process_elapsed_seconds": 23.339,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -7438,7 +7439,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 5.29,
+      "elapsed_seconds": 5.27,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -7608,9 +7609,9 @@
         "max_expression_depth": 18,
         "max_shell_depth": 5,
         "passed": 1488,
-        "reported_elapsed": "5.29s",
-        "reported_elapsed_per_case_ms": 3.5551,
-        "reported_elapsed_seconds": 5.29,
+        "reported_elapsed": "5.27s",
+        "reported_elapsed_per_case_ms": 3.5417,
+        "reported_elapsed_seconds": 5.27,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -8731,7 +8732,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 5.621,
+      "process_elapsed_seconds": 6.491,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -8755,7 +8756,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.105,
+      "elapsed_seconds": 0.942,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -8768,7 +8769,7 @@
         "single_step_no_substeps": 1,
         "total_wire_substeps": 24
       },
-      "process_elapsed_seconds": 0.105,
+      "process_elapsed_seconds": 0.942,
       "returncode": 0,
       "status": "warn",
       "timed_out": false,
@@ -8791,7 +8792,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 13.211,
+      "elapsed_seconds": 13.198,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -9050,7 +9051,7 @@
         "timeouts": 0,
         "total_combos": 16519
       },
-      "process_elapsed_seconds": 13.211,
+      "process_elapsed_seconds": 13.198,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -9074,7 +9075,7 @@
         "should_be_empty"
       ],
       "delta": {},
-      "elapsed_seconds": 82.548,
+      "elapsed_seconds": 83.839,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -9128,7 +9129,7 @@
         "substeps_total_hits": 299,
         "substeps_total_rows": 99
       },
-      "process_elapsed_seconds": 82.548,
+      "process_elapsed_seconds": 83.839,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

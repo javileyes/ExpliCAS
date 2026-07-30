@@ -496,8 +496,18 @@ impl Engine {
         // evaluator reduces `a - b` to exactly 0 — an exact symbolic zero, not numeric.
         let saved_numeric = self.simplifier.allow_numerical_verification;
         self.simplifier.allow_numerical_verification = false;
+        // The comparator's internal `simplify()` honors the simplifier's
+        // sticky value domain; arm it from the request's semantics
+        // (save/restore) so `--value-domain complex` reaches BOTH branches —
+        // without it, `are_equivalent` ran RealOnly and its collapse of
+        // real-only identities won the permissive `||` (`equiv((e^z)^w,
+        // e^(z*w))` published `true` in complex; audit 2026-07-30, S5-002).
+        let saved_value_domain = self
+            .simplifier
+            .set_sticky_value_domain(options.shared.semantics.value_domain);
         let are_eq = self.simplifier.are_equivalent(resolved, resolved_other)
             || self.equiv_difference_evaluates_to_zero(options, resolved, resolved_other);
+        self.simplifier.set_sticky_value_domain(saved_value_domain);
         self.simplifier.allow_numerical_verification = saved_numeric;
         let rhs_domain = crate::infer_implicit_domain(
             &self.simplifier.context,
