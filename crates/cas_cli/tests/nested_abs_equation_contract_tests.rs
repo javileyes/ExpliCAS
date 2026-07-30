@@ -72,6 +72,22 @@ fn out_of_range_constants_settle_empty_with_branch_completeness() {
 }
 
 #[test]
+fn abs_ratio_with_nested_numerator_recovers_the_twin() {
+    // F5 members 5-6: `|N|/|D| = c` cleared to `|N| = c·|D|` with the exact
+    // `D ≠ 0` filter (`||x|−2|/|x| = 1` returned `{−1}`, losing `1`).
+    assert_eq!(solve("abs(abs(x)-2)/abs(x) = 1"), "{ -1, 1 }");
+    assert_eq!(solve("abs(abs(x)-3)/abs(x) = 1"), "{ -3/2, 3/2 }");
+    assert_eq!(solve("abs(abs(x)-2)/abs(x) = 2"), "{ -2/3, 2/3 }");
+    // c = 0 keeps the D ≠ 0 filter (`x = ±2` are fine, no 0/0 point enters).
+    assert_eq!(solve("abs(abs(x)-2)/abs(x) = 0"), "{ 2, -2 }");
+    // A negative ratio of absolute values is impossible wherever defined.
+    assert_eq!(solve("abs(abs(x)-2)/abs(x) = -1"), "No solution");
+    // Plain (non-nested) ratios keep their working owner.
+    assert_eq!(solve("abs(x+1)/abs(x-1) = 2"), "{ 3, 1/3 }");
+    assert_eq!(solve("abs(x^2-4)/abs(x) = 3"), "{ -1, 4, -4, 1 }");
+}
+
+#[test]
 fn single_inner_abs_and_plain_forms_keep_their_owner() {
     // Single-inner-abs (2 abs total, below the ≥ 3 gate): isolation path.
     assert_eq!(solve("abs(abs(x)-3) = 1"), "{ 4, -4, 2, -2 }");

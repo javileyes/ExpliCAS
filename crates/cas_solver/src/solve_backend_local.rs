@@ -12332,6 +12332,39 @@ fn solve_local_core_inner(
         set
     };
 
+    // F5 members 5-6: `|N| / |D| = c` with a NESTED-abs numerator
+    // (`||x|−2| / |x| = 1` → `{−1}`, losing the twin `1`). The plain forms
+    // (`|x+1|/|x−1| = 2`, 2 abs nodes) keep their working owner; the nested
+    // shape (≥ 3 abs) re-derives through the CLEARED equation
+    // `|N| = c·|D|` — whose nested-abs machinery the arm above just fixed —
+    // and enforces the ratio's own `D ≠ 0` exactly per root. Same
+    // strictly-more-complete replacement contract as the nested-abs arm.
+    let set = if matches!(
+        &set,
+        SolutionSet::Discrete(_)
+            | SolutionSet::Empty
+            | SolutionSet::Residual(_)
+            | SolutionSet::Conditional(_)
+    ) && count_abs_nodes(&simplifier.context, eq.lhs) >= 3
+    {
+        let current_len = match &set {
+            SolutionSet::Discrete(roots) => roots.len(),
+            SolutionSet::Residual(_) | SolutionSet::Conditional(_) => usize::MAX,
+            _ => 0,
+        };
+        match try_solve_abs_ratio_equality(simplifier, eq, var) {
+            Some(SolutionSet::Discrete(recovered))
+                if current_len == usize::MAX || recovered.len() > current_len =>
+            {
+                SolutionSet::Discrete(recovered)
+            }
+            Some(SolutionSet::Empty) if current_len == usize::MAX => SolutionSet::Empty,
+            _ => set,
+        }
+    } else {
+        set
+    };
+
     // A degree>=3 polynomial equation with SYMBOLIC coefficients (`x³+p·x+q = 0`) has no
     // closed-form path here (`Polynomial` stores rational coeffs; Cardano is rational-only), so
     // base-side power isolation takes the n-th root of both sides UNCONDITIONALLY -- unlike the
@@ -13505,6 +13538,70 @@ fn try_solve_abs_equality(
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(unique))
+}
+
+/// F5 members 5-6 (frontier-audit 2026-07-14): `|N| / |D| = c` (c a rational
+/// constant) for the NESTED-abs numerator family (`||x|−2| / |x| = 1` →
+/// `{−1}`, losing the twin `1`). Clears to `|N| = c·|D|` — the textbook
+/// multiplication by the positive `|D|` — re-solves through the FULL
+/// pipeline (whose nested-abs machinery the sibling recovery owns), then
+/// enforces the ratio's own definedness `D ≠ 0` on each root EXACTLY: a
+/// cleared root with `D = 0` is a `0/0` point of the original quotient and
+/// must not be published (this is also what makes the `c = 0` reduction
+/// `|N| = 0` sound). Declines on any non-Discrete cleared result (a
+/// flat-region ray would need point-puncture set algebra) and on any root
+/// whose `D` value cannot be decided exactly — never a float drop.
+fn try_solve_abs_ratio_equality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_math::numeric_eval::as_rational_const;
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    if !matches!(eq.op, cas_ast::RelOp::Eq) {
+        return None;
+    }
+    let Expr::Div(num, den) = simplifier.context.get(eq.lhs) else {
+        return None;
+    };
+    let (num, den) = (*num, *den);
+    // Both sides of the quotient must be abs calls (`|N| / |D|`).
+    match_abs_argument(&simplifier.context, num)?;
+    let d_arg = match_abs_argument(&simplifier.context, den)?;
+    if !cas_solver_core::isolation_utils::contains_var(&simplifier.context, eq.lhs, var) {
+        return None;
+    }
+    let c = as_rational_const(&simplifier.context, eq.rhs)?;
+    if c < BigRational::zero() {
+        return Some(SolutionSet::Empty); // |N|/|D| ≥ 0 wherever it is defined
+    }
+    // Cleared equation `|N| = c·|D|` through the full solver.
+    let rhs2_raw = simplifier.context.add(Expr::Mul(eq.rhs, den));
+    let (rhs2, _) = simplifier.simplify(rhs2_raw);
+    let cleared = solve_relation_set(simplifier, var, num, rhs2, cas_ast::RelOp::Eq)?;
+    let roots = match cleared {
+        SolutionSet::Discrete(rs) => rs,
+        SolutionSet::Empty => return Some(SolutionSet::Empty),
+        _ => return None,
+    };
+    // Exact `D ≠ 0` filter per root (`|d_arg|` vanishes iff `d_arg` does).
+    let var_id = simplifier.context.var(var);
+    let mut kept = Vec::new();
+    for root in roots {
+        let d_at = substitute_expr_by_id(&mut simplifier.context, d_arg, var_id, root);
+        let (d_at, _) = simplifier.simplify(d_at);
+        match as_rational_const(&simplifier.context, d_at) {
+            Some(v) if v.is_zero() => {} // 0/0 point of the original: drop
+            Some(_) => kept.push(root),
+            None => return None, // undecidable definedness: decline whole recovery
+        }
+    }
+    if kept.is_empty() {
+        return Some(SolutionSet::Empty);
+    }
+    Some(SolutionSet::Discrete(kept))
 }
 
 /// Recover the degenerate `coefficient = 0` branch of a PARAMETRIC linear equation whose solution is a
