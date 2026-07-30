@@ -47,7 +47,15 @@ const TERMINATION_NET: Duration = Duration::from_secs(30);
 /// Exact mirror of the `cas_cli eval` defaults (see `eval_command_config` and
 /// the clap defaults in `cli_args.rs`) — the gate must compare the same two
 /// runs a user gets from `eval "<expr>"` vs `eval "<expr>" --steps on`.
-fn cli_default_config(expr: &str, steps_mode: EvalStepsMode) -> EvalCommandConfig<'_> {
+/// The value domain is the ONE axis the gate varies beyond the steps mode:
+/// the C2 audit class (2026-07-30, S4-001/S4-002) lived exactly in shortcut
+/// layers that dropped `--value-domain complex`, so the complex profile
+/// sweeps the same off/on invariant under that flag.
+fn cli_config(
+    expr: &str,
+    steps_mode: EvalStepsMode,
+    value_domain: EvalValueDomain,
+) -> EvalCommandConfig<'_> {
     EvalCommandConfig {
         expr,
         auto_store: false,
@@ -62,7 +70,7 @@ fn cli_default_config(expr: &str, steps_mode: EvalStepsMode) -> EvalCommandConfi
         expand_policy: EvalExpandPolicy::Off,
         complex_mode: EvalComplexMode::Auto,
         const_fold: EvalConstFoldMode::Off,
-        value_domain: EvalValueDomain::Real,
+        value_domain,
         complex_branch: EvalBranchMode::Principal,
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
@@ -97,16 +105,45 @@ struct KnownDivergence {
 
 const QUARANTINE: &[KnownDivergence] = &[];
 
-fn quarantine_entry(input: &str) -> Option<&'static KnownDivergence> {
-    QUARANTINE.iter().find(|k| k.input == input)
-}
-
 /// Inputs that exceed the termination net in BOTH modes — an engine
 /// non-termination bug (its own class, tracked separately), not a steps
 /// divergence: the sweep must neither wedge on them nor certify them.
 /// Self-invalidating like `QUARANTINE`: an entry that terminates again fails
 /// the sweep until it is removed.
 const HANG_QUARANTINE: &[&str] = &[];
+
+/// Divergences of the COMPLEX profile (`--value-domain complex`), the C2
+/// audit axis (2026-07-30): shortcut layers that drop the value-domain flag
+/// take a real-only path with steps=off that the staged pipeline (steps=on)
+/// does not take. Inventoried and quarantined exactly like the real-mode
+/// list: every entry is a measured C2-class member awaiting its owner, and
+/// the list is self-invalidating (an input that stops diverging, or diverges
+/// differently, fails the sweep until the entry is updated or removed).
+const COMPLEX_QUARANTINE: &[KnownDivergence] = &[
+    // S4-002 symbolic rows (P1): the steps-off shortcut still emits the |·|
+    // real-only form for scaled symbolic radicands; the refutador reclassified
+    // them under the `assume_scope: real` contract and they are PINNED
+    // (`substitution_identities.csv:132`). Their owner is the confluence
+    // migration of that shortcut, not a decline (both spellings are
+    // value-correct under the pinned contract).
+    KnownDivergence {
+        input: "sqrt(4*x^2)",
+        off: "2 * |x|",
+        on: "2 * sqrt(x^2)",
+    },
+    KnownDivergence {
+        input: "sqrt(9*x^2)",
+        off: "3 * |x|",
+        on: "3 * sqrt(x^2)",
+    },
+    KnownDivergence {
+        input: "sqrt(16*x^4)",
+        off: "4 * x^2",
+        on: "4 * sqrt(x^4)",
+    },
+];
+
+const COMPLEX_HANG_QUARANTINE: &[&str] = &[];
 
 /// A fresh (unquarantined) hang leaks a spinning thread per mode; cap them so
 /// a pathological corpus drift cannot melt the machine before the report.
@@ -132,23 +169,27 @@ impl fmt::Display for Outcome {
 /// kill it — it dies with the test process) and the outcome is `Timeout`.
 /// The sweep caps fresh hangs so a pathological corpus cannot pile up leaked
 /// spinning threads.
-fn eval_outcome(input: &str, steps_mode: EvalStepsMode) -> Outcome {
+fn eval_outcome(input: &str, steps_mode: EvalStepsMode, value_domain: EvalValueDomain) -> Outcome {
     let (tx, rx) = mpsc::channel();
     let owned = input.to_string();
     thread::spawn(move || {
-        let _ = tx.send(eval_outcome_blocking(&owned, steps_mode));
+        let _ = tx.send(eval_outcome_blocking(&owned, steps_mode, value_domain));
     });
     rx.recv_timeout(TERMINATION_NET).unwrap_or(Outcome::Timeout)
 }
 
-fn eval_outcome_blocking(input: &str, steps_mode: EvalStepsMode) -> Outcome {
+fn eval_outcome_blocking(
+    input: &str,
+    steps_mode: EvalStepsMode,
+    value_domain: EvalValueDomain,
+) -> Outcome {
     let run = catch_unwind(AssertUnwindSafe(|| {
         let mut engine = cas_solver::runtime::Engine::new();
         let mut state = cas_session::SessionState::new();
         evaluate_eval_command_in_memory_with_state(
             &mut engine,
             &mut state,
-            cli_default_config(input, steps_mode),
+            cli_config(input, steps_mode, value_domain),
             Language::Es,
             |steps, events, ctx, mode| {
                 cas_didactic::collect_step_payloads_with_events_localized(
@@ -180,6 +221,24 @@ fn eval_outcome_blocking(input: &str, steps_mode: EvalStepsMode) -> Outcome {
 /// format drift that silently loads 0 expressions must fail loudly, not pass
 /// as a green sweep (no silent caps).
 fn assert_steps_mode_invariant(corpus: &str, inputs: Vec<String>, min_expected: usize) {
+    assert_steps_mode_invariant_in_domain(
+        corpus,
+        inputs,
+        min_expected,
+        EvalValueDomain::Real,
+        QUARANTINE,
+        HANG_QUARANTINE,
+    );
+}
+
+fn assert_steps_mode_invariant_in_domain(
+    corpus: &str,
+    inputs: Vec<String>,
+    min_expected: usize,
+    value_domain: EvalValueDomain,
+    quarantine: &[KnownDivergence],
+    hang_quarantine: &[&str],
+) {
     assert!(
         inputs.len() >= min_expected,
         "{corpus}: loader returned {} expressions (expected at least {min_expected}) — \
@@ -191,10 +250,10 @@ fn assert_steps_mode_invariant(corpus: &str, inputs: Vec<String>, min_expected: 
     let mut quarantined = 0usize;
     let mut fresh_hangs = 0usize;
     for input in &inputs {
-        let off = eval_outcome(input, EvalStepsMode::Off);
-        let on = eval_outcome(input, EvalStepsMode::On);
+        let off = eval_outcome(input, EvalStepsMode::Off, value_domain);
+        let on = eval_outcome(input, EvalStepsMode::On, value_domain);
 
-        let hang_known = HANG_QUARANTINE.contains(&input.as_str());
+        let hang_known = hang_quarantine.contains(&input.as_str());
         let both_hang = off == Outcome::Timeout && on == Outcome::Timeout;
         if both_hang || hang_known {
             match (both_hang, hang_known) {
@@ -224,7 +283,7 @@ fn assert_steps_mode_invariant(corpus: &str, inputs: Vec<String>, min_expected: 
             continue;
         }
 
-        let known = quarantine_entry(input);
+        let known = quarantine.iter().find(|k| k.input == input);
         match (off != on, known) {
             (false, None) => {}
             (false, Some(_)) => divergences.push(format!(
@@ -554,8 +613,8 @@ fn input_associativity_pairs_inventory() {
         for f in carriers {
             let grouped = format!("{f} + ({z})");
             let flat = format!("{f} + {z}");
-            let g = eval_outcome(&grouped, EvalStepsMode::Off);
-            let p = eval_outcome(&flat, EvalStepsMode::Off);
+            let g = eval_outcome(&grouped, EvalStepsMode::Off, EvalValueDomain::Real);
+            let p = eval_outcome(&flat, EvalStepsMode::Off, EvalValueDomain::Real);
             swept += 1;
             if g != p {
                 divergences.push(format!(
@@ -596,5 +655,83 @@ fn full_pressure_corpora_result_is_steps_mode_invariant() {
         "docs/embedded_equivalence_context_corpus.csv",
         load_expr_columns(embedded, true, &[0]),
         1000,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// COMPLEX value-domain profile (C2 audit axis, 2026-07-30)
+// ---------------------------------------------------------------------------
+
+/// Canary for the complex profile: the audited S4-001/S4-002 families must
+/// agree across steps modes under `--value-domain complex` (they are the
+/// forms whose steps-off shortcuts dropped the axis), and the analytic
+/// identities that are complex-valid must KEEP collapsing identically.
+#[test]
+fn complex_profile_canary_audited_families_agree() {
+    assert_steps_mode_invariant_in_domain(
+        "complex canary (S4 families + analytic identities)",
+        [
+            // S4-001: real-only zero identities now decline in both modes.
+            "sqrt(x^2)-abs(x)",
+            "abs(x)-sqrt(x^2)",
+            "sqrt(x^4)-x^2",
+            "sqrt(x^2*y^2)-abs(x*y)",
+            "sqrt((x-1)^2)-abs(x-1)",
+            "sqrt((x+2)^2)-abs(x+2)",
+            "2*ln(abs(x))-ln(x^2)",
+            "ln(x^2)-2*ln(abs(x))",
+            // S4-002: literal-i radicands fold to their true value.
+            "sqrt(4*i^2)",
+            "sqrt(16*i^4)",
+            "sqrt(9*i^2)",
+            // S4-002 symbolic rows: KNOWN divergence (P1, pinned contract
+            // under assume_scope: real) — quarantined, measured, fenced.
+            "sqrt(4*x^2)",
+            "sqrt(9*x^2)",
+            "sqrt(16*x^4)",
+            // Positive-scale extraction stays alive in C.
+            "sqrt(8)",
+            "sqrt(18)",
+            // Analytic identities: complex-valid, must still collapse.
+            "sin(x)^2+cos(x)^2-1",
+            "(x+1)^2-x^2-2*x-1",
+            "e^(x+y)-e^x*e^y",
+            "sinh(x)^2-cosh(x)^2+1",
+            // Complex arithmetic staples.
+            "i^2",
+            "(1+i)*(1-i)",
+            "sqrt(-4)",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect(),
+        18,
+        EvalValueDomain::Complex,
+        COMPLEX_QUARANTINE,
+        COMPLEX_HANG_QUARANTINE,
+    );
+}
+
+/// Sweep the root-shortcut-sensitive slice of the web examples corpus under
+/// the complex profile: expressions carrying the carriers the C2 class lives
+/// in (roots, abs, logs, the imaginary unit). Filtering keeps the always-on
+/// cost proportional to the fenced class instead of doubling the whole gate.
+#[test]
+fn complex_profile_web_examples_root_families_agree() {
+    let inputs: Vec<String> = load_web_examples()
+        .into_iter()
+        .filter(|expr| {
+            ["sqrt", "abs", "ln(", "log", "cbrt"]
+                .iter()
+                .any(|token| expr.contains(token))
+        })
+        .collect();
+    assert_steps_mode_invariant_in_domain(
+        "web/examples.csv (root/abs/log slice, complex profile)",
+        inputs,
+        20,
+        EvalValueDomain::Complex,
+        COMPLEX_QUARANTINE,
+        COMPLEX_HANG_QUARANTINE,
     );
 }
