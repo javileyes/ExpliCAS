@@ -163,29 +163,52 @@ fn reciprocal_square_less_than_needs_no_puncture() {
 }
 
 #[test]
-fn declined_branches_never_fabricate_empty() {
-    // The hyperbolic members of F4: the abs split's branches (`tanh < 1`,
-    // `tanh > −1`) both decline, and `Residual ∩ X → Empty` in the core
-    // used to fabricate «No solution» (true set: ℝ). The combiner now
-    // propagates the unsolved fragment — an HONEST residual echo. Full
-    // range-based hyperbolic capability is a named follow-up.
-    let tanh_abs = solve("abs(tanh(x)) < 1");
-    assert_ne!(tanh_abs, "No solution");
-    assert!(
-        tanh_abs.starts_with("solve("),
-        "expected echo, got {tanh_abs}"
+fn hyperbolic_range_edges_settle_exactly() {
+    // The F4 hyperbolic member, closed by the range-edge guard:
+    // range(tanh) = (−1, 1) strict and range(cosh) = [1, ∞) decide the ±1
+    // thresholds with no inversion. (History: these returned a fabricated
+    // «No solution» via `Residual ∩ X → Empty`, then an honest echo after
+    // the combiner fix, and now the exact set.)
+    assert_eq!(solve("tanh(x)^2 < 1"), "All real numbers");
+    assert_eq!(solve("abs(tanh(x)) < 1"), "All real numbers");
+    assert_eq!(solve("abs(tanh(x)) <= 1"), "All real numbers");
+    assert_eq!(solve("tanh(x)^2 >= 1"), "No solution");
+    assert_eq!(solve("abs(tanh(x)) > 1"), "No solution");
+    assert_eq!(solve("tanh(2*x)^2 < 1"), "All real numbers");
+    assert_eq!(solve("cosh(x)^2 >= 1"), "All real numbers");
+    assert_eq!(solve("cosh(x)^2 < 1"), "No solution");
+    // Power-1 edges through the same guard.
+    assert_eq!(solve("tanh(x) < 1"), "All real numbers");
+    assert_eq!(solve("tanh(x) >= 1"), "No solution");
+    assert_eq!(solve("cosh(x) >= 1"), "All real numbers");
+    // cosh(g) > 1 ⟺ g ≠ 0 (the attained minimum punctures).
+    assert_eq!(solve("cosh(x) > 1"), "(-infinity, 0) U (0, infinity)");
+    assert_eq!(
+        solve("cosh(2*x-1) > 1"),
+        "(-infinity, 1/2) U (1/2, infinity)"
     );
-    let tanh_sq = solve("tanh(x)^2 < 1");
-    assert_ne!(tanh_sq, "No solution");
+}
+
+#[test]
+fn hyperbolic_interior_and_restricted_domains_still_decline() {
+    // Interior thresholds need the ar-inversions (named follow-up)…
+    let interior = solve("tanh(x)^2 < 1/4");
     assert!(
-        tanh_sq.starts_with("solve("),
-        "expected echo, got {tanh_sq}"
+        interior.starts_with("solve("),
+        "expected echo, got {interior}"
     );
+    // …sinh has full range (no edge at all)…
     let sinh_sq = solve("sinh(x)^2 < 1");
     assert_ne!(sinh_sq, "No solution");
     assert!(
         sinh_sq.starts_with("solve("),
         "expected echo, got {sinh_sq}"
+    );
+    // …and a NON-polynomial argument must not claim ℝ (true set: (0, ∞)).
+    let restricted = solve("tanh(ln(x)) < 1");
+    assert!(
+        restricted.starts_with("solve("),
+        "expected echo, got {restricted}"
     );
 }
 

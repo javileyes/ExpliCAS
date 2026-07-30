@@ -8023,7 +8023,20 @@ fn try_solve_even_power_or_abs_trig_inequality(
         if let Expr::Function(fn_id, args) = ctx_.get(e) {
             if args.len() == 1 && contains_var(ctx_, args[0], var) {
                 if let Some(f) = ctx_.builtin_of(*fn_id) {
-                    if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                    // Tanh/Cosh (F4 hyperbolic member): total domain, no
+                    // poles — the square/abs reduction and its edge arms
+                    // apply verbatim; their sub-solves settle at the RANGE
+                    // edges (`tanh ⋚ ±1`, `cosh ⋚ 1`) through
+                    // `try_solve_hyperbolic_range_edge_inequality` and
+                    // decline honestly for interior thresholds.
+                    if matches!(
+                        f,
+                        BuiltinFn::Sin
+                            | BuiltinFn::Cos
+                            | BuiltinFn::Tan
+                            | BuiltinFn::Tanh
+                            | BuiltinFn::Cosh
+                    ) {
                         return Some((f, args[0]));
                     }
                 }
@@ -8265,16 +8278,22 @@ fn solve_trig_square_or_abs_rel(
     use num_traits::{One, Zero};
 
     // The non-positive-threshold edges settle by the sign of a square / abs.
+    // Tanh/Cosh join the sin/cos arms: total domain, no poles (inner-argument
+    // domain conditions attach through the shared required-conditions
+    // machinery, same as `sin(ln(x))² ≥ 0` → «ℝ if x > 0»).
+    let pole_free = matches!(
+        trig_fn,
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tanh | BuiltinFn::Cosh
+    );
     let zero = BigRational::zero();
     if t < zero {
         // trig² (or |trig|) ≥ 0 > t everywhere it is defined.
         return match op {
             RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
             // `> t` / `≥ t` for t < 0 is always true — but tan is undefined
-            // at its poles, so only the bounded sin/cos are unconditionally ℝ.
-            RelOp::Gt | RelOp::Geq if matches!(trig_fn, BuiltinFn::Sin | BuiltinFn::Cos) => {
-                Some(SolutionSet::AllReals)
-            }
+            // at its poles, so only the pole-free functions are
+            // unconditionally ℝ.
+            RelOp::Gt | RelOp::Geq if pole_free => Some(SolutionSet::AllReals),
             _ => None,
         };
     }
@@ -8282,11 +8301,9 @@ fn solve_trig_square_or_abs_rel(
         match op {
             RelOp::Lt => return Some(SolutionSet::Empty), // trig² < 0 impossible
             RelOp::Leq => return None, // trig² ≤ 0 ⟺ trig = 0, a point set — decline
-            // trig² ≥ 0 is always true for the bounded sin/cos; tan is
+            // trig² ≥ 0 is always true for the pole-free functions; tan is
             // punctured at its poles, so decline there.
-            RelOp::Geq if matches!(trig_fn, BuiltinFn::Sin | BuiltinFn::Cos) => {
-                return Some(SolutionSet::AllReals)
-            }
+            RelOp::Geq if pole_free => return Some(SolutionSet::AllReals),
             RelOp::Geq => return None,
             // trig² > 0 ⟺ trig ≠ 0: fall through to the r = 0 reduction
             // (`trig > 0 ∪ trig < 0` → the punctured line), NOT AllReals.
@@ -8383,6 +8400,123 @@ fn trig_abs_threshold_window_split(
         });
     }
     acc
+}
+
+/// Hyperbolic RANGE-edge inequalities (F4 hyperbolic member, frontier-audit
+/// 2026-07-14): `tanh(g) ⋚ c` for |c| ≥ 1 and `cosh(g) ⋚ c` for c ≤ 1 are
+/// decided EXACTLY by the function's range — `tanh: ℝ → (−1, 1)` (strict:
+/// the bounds are never attained) and `cosh: ℝ → [1, ∞)` (1 attained exactly
+/// where g = 0) — with no inversion machinery. The argument must be a
+/// NON-CONSTANT POLYNOMIAL in `var` so its domain is all of ℝ: for
+/// `tanh(ln(x)) < 1` the true set is `(0, ∞)`, not ℝ, and the guard must
+/// decline. Thresholds strictly inside the range (|c| < 1 for tanh, c > 1
+/// for cosh) still decline honestly — the ar-function inversion is a named
+/// follow-up, and `sinh` (full range) has no edge at all.
+fn try_solve_hyperbolic_range_edge_inequality(
+    eq: &Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_rational::BigRational;
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let hyper_of = |ctx_: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId)> {
+        if let Expr::Function(fn_id, args) = ctx_.get(e) {
+            if args.len() == 1 && contains_var(ctx_, args[0], var) {
+                if let Some(f) = ctx_.builtin_of(*fn_id) {
+                    if matches!(f, BuiltinFn::Tanh | BuiltinFn::Cosh) {
+                        return Some((f, args[0]));
+                    }
+                }
+            }
+        }
+        None
+    };
+    let (hyper_fn, g, c_expr, op) = if let Some((f, g)) = hyper_of(&simplifier.context, eq.lhs) {
+        if contains_var(&simplifier.context, eq.rhs, var) {
+            return None;
+        }
+        (f, g, eq.rhs, eq.op.clone())
+    } else if let Some((f, g)) = hyper_of(&simplifier.context, eq.rhs) {
+        if contains_var(&simplifier.context, eq.lhs, var) {
+            return None;
+        }
+        (f, g, eq.lhs, flip_inequality(eq.op.clone()))
+    } else {
+        return None;
+    };
+    // The even-power split hands its branches UNSIMPLIFIED bounds
+    // (`tanh(x)² < 1` → branch `tanh(x) < sqrt(1)`): fold before reading.
+    let (c_expr, _) = simplifier.simplify(c_expr);
+    let c = as_rational_const(&simplifier.context, c_expr)?;
+    // Total-domain gate: a polynomial argument is defined on all of ℝ.
+    let g_poly = cas_math::polynomial::Polynomial::from_expr(&simplifier.context, g, var).ok()?;
+    if g_poly.degree() < 1 {
+        return None;
+    }
+    let one = BigRational::from_integer(1.into());
+    match hyper_fn {
+        BuiltinFn::Tanh => {
+            // tanh(g) ∈ (−1, 1) for every real g, both bounds strict.
+            if c >= one {
+                match op {
+                    RelOp::Lt | RelOp::Leq => Some(SolutionSet::AllReals),
+                    RelOp::Gt | RelOp::Geq => Some(SolutionSet::Empty),
+                    _ => None,
+                }
+            } else if c <= -one {
+                match op {
+                    RelOp::Gt | RelOp::Geq => Some(SolutionSet::AllReals),
+                    RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+                    _ => None,
+                }
+            } else {
+                None // interior threshold: needs artanh inversion (follow-up)
+            }
+        }
+        BuiltinFn::Cosh => {
+            // cosh(g) ∈ [1, ∞), with cosh(g) = 1 ⟺ g = 0.
+            if c < one {
+                match op {
+                    RelOp::Gt | RelOp::Geq => Some(SolutionSet::AllReals),
+                    RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+                    _ => None,
+                }
+            } else if c == one {
+                match op {
+                    RelOp::Geq => Some(SolutionSet::AllReals),
+                    RelOp::Lt => Some(SolutionSet::Empty),
+                    // cosh(g) > 1 ⟺ g ≠ 0; cosh(g) ≤ 1 ⟺ g = 0: both need
+                    // g's zero set — delegate to the full solver on the
+                    // POLYNOMIAL relation (total domain, no recursion into
+                    // this handler: the sub-relations carry no hyperbolic).
+                    RelOp::Gt => {
+                        let zero = simplifier.context.num(0);
+                        let lo = solve_relation_set(simplifier, var, g, zero, RelOp::Lt)?;
+                        let hi = solve_relation_set(simplifier, var, g, zero, RelOp::Gt)?;
+                        Some(cas_solver_core::solution_set::union_solution_sets(
+                            &simplifier.context,
+                            lo,
+                            hi,
+                        ))
+                    }
+                    RelOp::Leq => {
+                        let zero = simplifier.context.num(0);
+                        solve_relation_set(simplifier, var, g, zero, RelOp::Eq)
+                    }
+                    _ => None,
+                }
+            } else {
+                None // c > 1: needs arcosh inversion (follow-up)
+            }
+        }
+        _ => None,
+    }
 }
 
 fn try_solve_reciprocal_trig_inequality(
@@ -11856,6 +11990,13 @@ fn solve_local_core_inner(
     // on `trig(g)` and combine with the circular same-period algebra
     // (`1/sin(x) > 2` ⟺ 0 < sin(x) < 1/2 → two windows per period).
     if let Some(set) = try_solve_reciprocal_trig_inequality(eq, var, simplifier) {
+        return Ok((set, Vec::new()));
+    }
+    // Hyperbolic RANGE edges: `tanh(g) ⋚ c` with |c| ≥ 1 and `cosh(g) ⋚ c`
+    // with c ≤ 1 settle exactly from range(tanh) = (−1, 1) and
+    // range(cosh) = [1, ∞) — no inversion needed (F4 hyperbolic member:
+    // `tanh(x)² < 1` splits into `tanh < 1 ∧ tanh > −1`, both edges).
+    if let Some(set) = try_solve_hyperbolic_range_edge_inequality(eq, var, simplifier) {
         return Ok((set, Vec::new()));
     }
     // Scout family C: `A/|g| ⋚ c` — the generic inversion lost the `g = 0`
