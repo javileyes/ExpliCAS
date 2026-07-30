@@ -779,6 +779,47 @@ fn atomize_non_poly(
                 if !n.is_integer() && !c.is_negative() {
                     if let (Some(pn), Some(q)) = (n.numer().to_i64(), n.denom().to_u32()) {
                         if (2..=12).contains(&q) && pn.unsigned_abs() <= 64 {
+                            // Canonical square-root normalization (q = 2):
+                            // √(num/den) = (s/den)·√m with m the SQUAREFREE
+                            // part of num·den — so √(5/4) and √5 share one
+                            // atom (denested residues die without this).
+                            if q == 2 && pn == 1 {
+                                use num_traits::Zero as _;
+                                let m0 = c.numer() * c.denom();
+                                let mut sq = num_bigint::BigInt::from(1);
+                                let mut m = m0.clone();
+                                let mut pdiv = num_bigint::BigInt::from(2);
+                                let limit = num_bigint::BigInt::from(10_000);
+                                while &pdiv * &pdiv <= m && pdiv <= limit {
+                                    let p2 = &pdiv * &pdiv;
+                                    while (&m % &p2).is_zero() {
+                                        m /= &p2;
+                                        sq *= &pdiv;
+                                    }
+                                    pdiv += 1;
+                                }
+                                // leftover perfect square (large prime²)?
+                                if let Some(r) = crate::const_sign::exact_nth_root(
+                                    &num_rational::BigRational::from_integer(m.clone()),
+                                    2,
+                                ) {
+                                    sq *= r.to_integer();
+                                    m = num_bigint::BigInt::from(1);
+                                }
+                                let coef = num_rational::BigRational::new(sq, c.denom().clone());
+                                if m == num_bigint::BigInt::from(1) {
+                                    return Some(ctx.add(cas_ast::Expr::Number(coef)));
+                                }
+                                let m_node = ctx.add(cas_ast::Expr::Number(
+                                    num_rational::BigRational::from_integer(m),
+                                ));
+                                let half = num_rational::BigRational::new(1.into(), 2.into());
+                                let half_node = ctx.add(cas_ast::Expr::Number(half));
+                                let key = ctx.add(cas_ast::Expr::Pow(m_node, half_node));
+                                let atom = atom_for(ctx, atoms, key);
+                                let coef_node = ctx.add(cas_ast::Expr::Number(coef));
+                                return Some(ctx.add(cas_ast::Expr::Mul(coef_node, atom)));
+                            }
                             // Perfect root: 4^(1/2) IS 2 — fold to the exact
                             // rational instead of minting an atom whose
                             // linear occurrences no even-power relation can
@@ -839,6 +880,50 @@ fn atomize_non_poly(
             Some(atom_for(ctx, atoms, expr))
         }
         cas_ast::Expr::Function(f, args) => {
+            // Denesting: sqrt(a + b·√n) with rational a,b,n denests exactly
+            // iff a² − b²·n is a perfect square d², into
+            // √((a+d)/2) + sign(b)·√((a−d)/2) — both plain rational sqrts
+            // that re-enter this atomizer and share the √n-family atoms.
+            // Closes surd-root verification residues like
+            // sqrt((3−√5)/2) + (1−√5)/2 (the (1−√5)/2 root of √(x+1) = −x).
+            if ctx.is_builtin(f, cas_ast::BuiltinFn::Sqrt)
+                && args.len() == 1
+                && cas_ast::collect_variables(ctx, args[0]).is_empty()
+            {
+                if let Some((a, b, Some(rad))) =
+                    crate::root_forms::as_linear_surd_expr(ctx, args[0])
+                {
+                    use num_traits::{Signed, Zero};
+                    if !b.is_zero() {
+                        if let Some(n) = crate::numeric_eval::as_rational_const(ctx, rad) {
+                            let disc = &a * &a - &b * &b * &n;
+                            if !disc.is_negative() {
+                                if let Some(d) = crate::const_sign::exact_nth_root(&disc, 2) {
+                                    let half = num_rational::BigRational::new(1.into(), 2.into());
+                                    let p1 = (&a + &d) * &half;
+                                    let p2 = (&a - &d) * &half;
+                                    if !p1.is_negative() && !p2.is_negative() {
+                                        let p1n = ctx.add(cas_ast::Expr::Number(p1));
+                                        let p2n = ctx.add(cas_ast::Expr::Number(p2));
+                                        let s1 =
+                                            ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![p1n]);
+                                        let s2 =
+                                            ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![p2n]);
+                                        let comb = if b.is_positive() {
+                                            ctx.add(cas_ast::Expr::Add(s1, s2))
+                                        } else {
+                                            ctx.add(cas_ast::Expr::Sub(s1, s2))
+                                        };
+                                        return atomize_non_poly(
+                                            ctx, comb, atoms, expfold, powfold,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // sqrt(c) over a RATIONAL constant: same canonical atom as
             // c^(1/2) (the constant-radical fold above).
             if ctx.is_builtin(f, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 {
@@ -877,6 +962,81 @@ fn atomize_non_poly(
             } else {
                 expr
             };
+            // ln(e^w) = w: unconditional real identity (ln∘exp = id on all
+            // of ℝ) — `sin(ln(e^x))` must share its atom with `sin(x)`.
+            // And ln(e) = 1 (the pipeline sometimes leaves `x·ln(e)`).
+            if ctx.is_builtin(f, cas_ast::BuiltinFn::Ln) && nargs.len() == 1 {
+                if matches!(
+                    ctx.get(nargs[0]),
+                    cas_ast::Expr::Constant(cas_ast::Constant::E)
+                ) {
+                    return Some(ctx.num(1));
+                }
+                if let cas_ast::Expr::Pow(b, w) = ctx.get(nargs[0]).clone() {
+                    if matches!(ctx.get(b), cas_ast::Expr::Constant(cas_ast::Constant::E)) {
+                        return Some(w);
+                    }
+                }
+                if let cas_ast::Expr::Function(g, gargs) = ctx.get(nargs[0]).clone() {
+                    if ctx.is_builtin(g, cas_ast::BuiltinFn::Exp) && gargs.len() == 1 {
+                        return Some(gargs[0]);
+                    }
+                }
+            }
+            // Log-of-rational fold: ln(c) for POSITIVE rational c becomes the
+            // exact integer combination of ln(prime) atoms via trial-division
+            // factorization (ln(8) = 3·ln(2); ln(9/4) = 2·ln(3) − 2·ln(2)).
+            // The interval oracle can bound but never PROVE zero for
+            // transcendental residues like 3·ln(2) − ln(8); this fold makes
+            // them polynomial identities between prime-log atoms. Bounded:
+            // primes ≤ 10⁴, leftover cofactors get their own atom.
+            if ctx.is_builtin(f, cas_ast::BuiltinFn::Ln) && nargs.len() == 1 {
+                if let cas_ast::Expr::Number(c) = ctx.get(nargs[0]).clone() {
+                    use num_traits::{One, Signed, Zero};
+                    if c.is_positive() && !c.is_one() {
+                        let mut terms: Vec<(i64, num_bigint::BigInt)> = Vec::new();
+                        let push_factors =
+                            |n: &num_bigint::BigInt, sign: i64, terms: &mut Vec<(i64, num_bigint::BigInt)>| {
+                                let mut m = n.clone();
+                                let mut p = num_bigint::BigInt::from(2);
+                                let limit = num_bigint::BigInt::from(10_000);
+                                while &p * &p <= m && p <= limit {
+                                    let mut e = 0i64;
+                                    while (&m % &p).is_zero() {
+                                        m /= &p;
+                                        e += 1;
+                                    }
+                                    if e > 0 {
+                                        terms.push((sign * e, p.clone()));
+                                    }
+                                    p += 1;
+                                }
+                                if m > num_bigint::BigInt::one() {
+                                    terms.push((sign, m));
+                                }
+                            };
+                        push_factors(c.numer(), 1, &mut terms);
+                        push_factors(c.denom(), -1, &mut terms);
+                        let mut acc: Option<ExprId> = None;
+                        for (e, prime) in terms {
+                            let p_node = ctx.add(cas_ast::Expr::Number(
+                                num_rational::BigRational::from_integer(prime),
+                            ));
+                            let ln_p = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![p_node]);
+                            let atom = atom_for(ctx, atoms, ln_p);
+                            let coef = ctx.num(e);
+                            let term = ctx.add(cas_ast::Expr::Mul(coef, atom));
+                            acc = Some(match acc {
+                                None => term,
+                                Some(prev) => ctx.add(cas_ast::Expr::Add(prev, term)),
+                            });
+                        }
+                        if let Some(total) = acc {
+                            return Some(total);
+                        }
+                    }
+                }
+            }
             // Exponential lowering: with an active e-fold base g and a
             // normalized argument k·g, the DEFINITIONS sinh(k·g) =
             // (u^k − u^(−k))/2 and cosh(k·g) = (u^k + u^(−k))/2 (u = e^g)

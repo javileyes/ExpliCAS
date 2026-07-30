@@ -69,14 +69,54 @@ impl Simplifier {
                     return true;
                 }
 
+                // A probe never CONFIRMS (R2; auditoría 2026-07-30 fichas
+                // S5-006/Q1b-002): the old tail returned `true` from ONE f64
+                // evaluation at x=1.23456789 under an ABSOLUTE 1e-9 epsilon,
+                // which let solve's verification publish the spurious root of
+                // `sqrt(x)/(10^10·π) = −2/(10^10·π)` (residual ≈ 1.27e-10 at
+                // the fake root 4). The SOUND confirmation channel is exact:
+                // the sign oracle for constant residuals (solve verifies
+                // substituted roots through here — `2^3 − 8`, surd
+                // residuals) and the exact zero-decider (probes refute,
+                // algebra confirms) when variables remain.
+                // Exact channels FIRST, in both directions (R2; auditoría
+                // 2026-07-30 fichas S5-006/Q1b-002). The audit's wrong answer
+                // was the probe CONFIRMING the near-zero-but-provably-positive
+                // constant `4/(10^10·π)`; the exact sign oracle now REFUTES it
+                // outright, and true surd/log zeros confirm through the exact
+                // closure (prime-log folds, denesting, Pythagoras…). Only
+                // residuals the exact machinery cannot decide fall through to
+                // the legacy probe — a documented, materially narrowed P1
+                // (every exactly-decidable residual now bypasses it), pending
+                // full retirement when the closure covers the remaining
+                // pipeline spellings.
+                if cas_ast::collect_variables(&self.context, result_expr).is_empty() {
+                    match cas_math::const_sign::provable_const_sign(&self.context, result_expr) {
+                        Some(cas_math::const_sign::ConstSign::Zero) => return true,
+                        Some(_) => return false, // provably nonzero — exact refute
+                        None => {}
+                    }
+                    match cas_math::root_forms::provable_sign_vs_zero(&self.context, result_expr) {
+                        Some(std::cmp::Ordering::Equal) => return true,
+                        Some(_) => return false,
+                        None => {}
+                    }
+                }
+                if cas_math::numeric_eval::provable_exact_zero(&mut self.context, result_expr) {
+                    return true;
+                }
+                // The legacy probe respects the numeric-verification switch
+                // (the wire `equiv(A,B)` runs with it OFF — Round-4 Cluster O
+                // pins that `equiv(x,y)` must not confirm from the shared
+                // probe point). The exact channels above need no switch:
+                // they are sound unconditionally.
                 if !self.allow_numerical_verification {
                     return false;
                 }
                 let vars = cas_ast::collect_variables(&self.context, result_expr);
                 let var_map = cas_solver_core::equivalence::default_equiv_probe_map(vars);
-
                 if let Some(val) = eval_f64(&self.context, result_expr, &var_map) {
-                    cas_solver_core::equivalence::is_numeric_equiv_zero(val)
+                    val.is_finite() && cas_solver_core::equivalence::is_numeric_equiv_zero(val)
                 } else {
                     false
                 }
@@ -342,12 +382,21 @@ impl Simplifier {
                 let var_map = cas_solver_core::equivalence::default_equiv_probe_map(vars);
 
                 if let Some(val) = eval_f64(&self.context, result_expr, &var_map) {
-                    if cas_solver_core::equivalence::is_numeric_equiv_zero(val) {
-                        // Numeric evidence suggests equivalence but couldn't prove symbolically
-                        return EquivalenceResult::Unknown;
-                    } else {
-                        // Found counterexample
-                        return EquivalenceResult::False;
+                    // A NON-FINITE probe value is NOT a counterexample
+                    // (auditoría 2026-07-30, ficha S5-003: the REPL `equiv`
+                    // REFUTED the TRUE identity ln(−1) = i·π in complex mode
+                    // because the real-valued f64 evaluator returned NaN and
+                    // NaN fails the near-zero test). Only a finite, clearly
+                    // nonzero residual refutes; everything else falls
+                    // through — the complex net below or Unknown decide.
+                    if val.is_finite() {
+                        if cas_solver_core::equivalence::is_numeric_equiv_zero(val) {
+                            // Numeric evidence suggests equivalence but couldn't prove symbolically
+                            return EquivalenceResult::Unknown;
+                        } else {
+                            // Found counterexample
+                            return EquivalenceResult::False;
+                        }
                     }
                 }
 
@@ -405,6 +454,49 @@ mod complex_refute_tests {
             extended("ln(-1)", "-i*pi", true),
             EquivalenceResult::False
         ));
+    }
+
+    #[test]
+    fn nan_probe_is_not_a_counterexample() {
+        // SOUNDNESS (auditoría 2026-07-30, ficha S5-003): ln(−1) = i·π is a
+        // TRUE identity (principal branch); the real-valued f64 probe returns
+        // NaN on it and the old code read NaN as a counterexample → False.
+        // A non-finite probe value proves nothing.
+        assert!(!matches!(
+            extended("ln(-1)", "i*pi", true),
+            EquivalenceResult::False
+        ));
+    }
+
+    #[test]
+    fn constant_residuals_decide_exactly_never_by_probe() {
+        // SOUNDNESS (fichas S5-006 / Q1b-002): the audit's wrong answer was
+        // the f64 probe CONFIRMING the constant residual `4/(10^10·π)` ≈
+        // 1.27e-10 under an ABSOLUTE 1e-9 epsilon, which published the
+        // spurious root {4} of `sqrt(x)/(10^10·π) = −2/(10^10·π)`. Constant
+        // residuals now decide EXACTLY in both directions: the provably
+        // positive near-zero refutes…
+        let mut s = Simplifier::with_default_rules();
+        let a = cas_parser::parse("sqrt(4)/(10^10*pi)", &mut s.context).expect("a");
+        let b = cas_parser::parse("-2/(10^10*pi)", &mut s.context).expect("b");
+        assert!(
+            !s.are_equivalent(a, b),
+            "provably-positive residual must refute"
+        );
+
+        // …true transcendental zeros confirm through the exact closure
+        // (3·ln(2) = ln(8): interval arithmetic alone can never prove it)…
+        let c = cas_parser::parse("3*ln(2)", &mut s.context).expect("c");
+        let d = cas_parser::parse("ln(8)", &mut s.context).expect("d");
+        assert!(s.are_equivalent(c, d), "prime-log fold must confirm");
+
+        // …and surd zeros with denesting confirm exactly too.
+        let e = cas_parser::parse("sqrt(2)*sqrt(2)", &mut s.context).expect("e");
+        let f = cas_parser::parse("2", &mut s.context).expect("f");
+        assert!(s.are_equivalent(e, f));
+        // NOTE (P1 residual, documentado en el ledger): residuales CON
+        // variables aún caen a la sonda f64 heredada cuando el cierre exacto
+        // no decide; su retirada exige cubrir los deletreos del pipeline.
     }
 
     #[test]

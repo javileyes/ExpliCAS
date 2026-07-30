@@ -302,6 +302,15 @@ fn is_one_half(ctx: &Context, expr: ExprId) -> bool {
 /// (`pi*x/y - (355/113)*x/y` → `0`) and kept an f64 `1e-10` gate for
 /// surd/transcendental forms (`(sin(x/10^11)+1)/y - 1/y` → `0`). All three
 /// confirmation channels are gone; only the refutation power remains.
+/// PUBLIC sanctioned zero-confirmation (R2): exact probes may refute, only
+/// exact algebra confirms — the same contract as the internal fraction
+/// zero-decider, exposed for consumers outside cas_math (the engine's bool
+/// equivalence uses it as the SOUND replacement of its removed f64
+/// probe-confirm tail).
+pub fn provable_exact_zero(ctx: &mut Context, expr: ExprId) -> bool {
+    numeric_poly_zero_check(ctx, expr)
+}
+
 pub(crate) fn numeric_poly_zero_check(ctx: &mut Context, expr: ExprId) -> bool {
     use num_rational::BigRational;
     use num_traits::Zero;
@@ -318,12 +327,28 @@ pub(crate) fn numeric_poly_zero_check(ctx: &mut Context, expr: ExprId) -> bool {
             return v.is_zero();
         }
         // Exact algebraic-zero check (rationals, perfect-square surds like `sqrt(4)-2`,
-        // and anything the exact rational sign oracle pins to zero); bails to `false`
-        // when it cannot PROVE zero, never guessing from a float.
-        return matches!(
+        // and anything the exact rational sign oracle pins to zero)…
+        if matches!(
             crate::const_sign::provable_const_sign(ctx, expr),
             Some(crate::const_sign::ConstSign::Zero)
-        );
+        ) {
+            return true;
+        }
+        // …the surd-form oracle as the second exact channel (linear surd
+        // combinations WITH DENESTING — `sqrt((3−√5)/2) − (√5−1)/2` — decide
+        // here; the interval oracle can only bracket them)…
+        if matches!(
+            crate::root_forms::provable_sign_vs_zero(ctx, expr),
+            Some(std::cmp::Ordering::Equal)
+        ) {
+            return true;
+        }
+        // …and the opaque closure as the third: interval arithmetic can
+        // BOUND but never PROVE zero for transcendental residues like
+        // `3·ln(2) − ln(8)`; the atomizer's folds (prime-log, radicals,
+        // Pythagoras…) turn them into polynomial identities.
+        // Confirmation-only, still never a float.
+        return crate::poly_compare::poly_is_zero_opaque(ctx, expr);
     }
 
     // Limit to reasonable number of variables (avoid combinatorial explosion)

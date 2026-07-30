@@ -2239,7 +2239,7 @@ pub(crate) fn provable_const_minus_rational_sign(
 /// Like [`as_linear_surd`] but the radicand may be ANY constant expression (e.g. `9 + 4e`), returned
 /// as `(A, B, radicand)` for `A + B·√radicand` (`radicand = None` when `B = 0`). Only the `√`
 /// (`as_sqrt_like`) spelling of the surd is decomposed.
-fn as_linear_surd_expr(
+pub(crate) fn as_linear_surd_expr(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<(BigRational, BigRational, Option<ExprId>)> {
