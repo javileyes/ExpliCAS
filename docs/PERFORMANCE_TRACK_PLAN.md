@@ -5054,7 +5054,7 @@ Those are valid projects, but not part of this performance track.
 - validation kept green:
   - `cargo check -p cas_cli --benches`
   - `CAS_BENCH_FAST=1 cargo bench -p cas_cli --bench frontend_cli -- --noplot`
-  - `cargo test -p cas_cli --test cli_contract_tests test_eval_rejects_legacy_cli_budget_alias -- --exact`
+  - `cargo test -p cas_cli --test cli_contract_tests cli_wire::test_eval_rejects_legacy_cli_budget_alias -- --exact`
 - useful snapshot after removing the alias:
   - `frontend_cli/parse/eval/text/light`: `21.249-21.911 us`
   - `frontend_cli/parse/eval/json/gcd`: `23.229-23.679 us`

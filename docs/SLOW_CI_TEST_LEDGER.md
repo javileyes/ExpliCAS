@@ -84,7 +84,7 @@ Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINA
   - `cas_cli`
   - integration contract antiderivative verification
 - repro:
-  - `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_expanded_polynomial_tangent_cotangent_preserves_domain -- --exact --nocapture`
+  - `cargo test -p cas_cli --test integrate_contract_tests trigonometric::integrate_contract_expanded_polynomial_tangent_cotangent_preserves_domain -- --exact --nocapture`
 - latest measured time:
   - observed during guardrail investigation: full
     `cargo test -p cas_cli --test integrate_contract_tests -- --nocapture`
@@ -119,7 +119,7 @@ Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINA
   - `cas_solver`
   - diff step contract for inverse reciprocal trig derivatives
 - repro:
-  - `cargo test -p cas_solver --test diff_step_contract_tests inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions -- --exact --nocapture`
+  - `cargo test -p cas_solver --test diff_step_contract_tests inverse_trig::inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions -- --exact --nocapture`
 - latest measured time:
   - observed in `make ci`: `66.72s` test time
   - focused repro: `65.51s` test time (`real 68.85s`)
@@ -162,9 +162,9 @@ Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINA
   - `cas_cli`
   - integration contract antiderivative verification
 - repro:
-  - `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_supported_antiderivatives_verify_by_differentiation -- --exact --nocapture`
+  - `cargo test -p cas_cli --test integrate_contract_tests verification::integrate_contract_supported_antiderivatives_verify_by_differentiation -- --exact --nocapture`
   - exhaustive manual sweep:
-    `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive -- --exact --ignored --nocapture`
+    `cargo test -p cas_cli --test integrate_contract_tests verification::integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive -- --exact --ignored --nocapture`
 - latest measured time:
   - before harness split: `68.44s` test time (`real 72.34s`)
   - after harness split: default representative smoke `2.00s` test time
@@ -230,7 +230,7 @@ Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINA
   - `cas_cli`
   - integration contract antiderivative verification
 - repro:
-  - `cargo test -q -p cas_cli --test integrate_contract_tests integrate_contract_shifted_polynomial_atanh_surd_width_uses_compact_positive_domain -- --exact --nocapture`
+  - `cargo test -q -p cas_cli --test integrate_contract_tests inverse_trig::integrate_contract_shifted_polynomial_atanh_surd_width_uses_compact_positive_domain -- --exact --nocapture`
 - latest measured time:
   - before fix: `66.51s` test time (`real 69.85s`)
   - after fix: `0.08s` test time
@@ -805,7 +805,7 @@ Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINA
   - semantics derive contract harness
 - repro:
   - `cargo test -p cas_cli --test semantics_cli_contract_tests -- --nocapture`
-  - `cargo test -p cas_cli --test semantics_cli_contract_tests derive_representative_trig_power_reduction_cases_use_single_named_step -- --exact --nocapture`
+  - `cargo test -p cas_cli --test semantics_cli_contract_tests derive_trig::derive_representative_trig_power_reduction_cases_use_single_named_step -- --exact --nocapture`
 - latest measured time before fix:
   - full `semantics_cli_contract_tests` bin: `44.02s`
 - latest measured time after fix:
@@ -2732,7 +2732,7 @@ Rotation: this ledger follows the same monthly rotation policy as ENGINE_COMBINA
   - diff step contract harness
 - repro:
   - `cargo test -p cas_solver --test diff_step_contract_tests -- --nocapture`
-  - `cargo test -p cas_solver --test diff_step_contract_tests eval_steps_collapse_additive_zero_tail_for_log_fraction_gap_regression -- --exact --nocapture`
+  - `cargo test -p cas_solver --test diff_step_contract_tests exponential_log::eval_steps_collapse_additive_zero_tail_for_log_fraction_gap_regression -- --exact --nocapture`
 - latest measured time before fix:
   - full bin: `2.99s`
   - dominant exact: `3.04s`
