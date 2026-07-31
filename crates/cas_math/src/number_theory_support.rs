@@ -475,25 +475,46 @@ pub fn try_rewrite_consecutive_factorial_ratio_expr(
     let num_arg = extract_factorial_call_arg(ctx, num)?;
     let den_arg = extract_factorial_call_arg(ctx, den)?;
 
+    // Literal pair first: the offset is the DIFFERENCE of the two numbers,
+    // which the structural matcher below cannot see (`12345` and `12344`
+    // share no additive base).
+    if let (Some(num_val), Some(den_val)) = (
+        extract_integer_bigint(ctx, num_arg),
+        extract_integer_bigint(ctx, den_arg),
+    ) {
+        return rewrite_numeric_factorial_ratio(ctx, num_arg, den_arg, num_val, den_val);
+    }
+
     let (num_base, num_offset) = extract_additive_base_and_integer_offset(ctx, num_arg)?;
     let (den_base, den_offset) = extract_additive_base_and_integer_offset(ctx, den_arg)?;
     if compare_expr(ctx, num_base, den_base) != std::cmp::Ordering::Equal {
         return None;
     }
 
-    let gap = num_offset - den_offset;
-    if gap <= 0 {
+    if num_offset == den_offset {
         return None;
     }
 
-    let rewritten = if gap == 1 {
-        num_arg
+    // The shorter factorial survives the cancellation; its argument is the one
+    // whose non-negativity the caller must require. Under `low ≥ 0` every
+    // factor of the cancelled span is ≥ 1, so the reciprocal form below is
+    // also well-defined.
+    let inverted = num_offset < den_offset;
+    let (low_arg, low_offset, high_arg, high_offset) = if inverted {
+        (num_arg, num_offset, den_arg, den_offset)
     } else {
-        let mut factors = Vec::with_capacity(gap as usize);
-        for shift in 1..=gap {
-            let factor_offset = den_offset + shift;
-            let factor = if factor_offset == num_offset {
-                num_arg
+        (den_arg, den_offset, num_arg, num_offset)
+    };
+
+    let span = high_offset - low_offset;
+    let product = if span == 1 {
+        high_arg
+    } else {
+        let mut factors = Vec::with_capacity(span as usize);
+        for shift in 1..=span {
+            let factor_offset = low_offset + shift;
+            let factor = if factor_offset == high_offset {
+                high_arg
             } else {
                 rebuild_base_with_integer_offset(ctx, den_base, factor_offset)
             };
@@ -502,9 +523,71 @@ pub fn try_rewrite_consecutive_factorial_ratio_expr(
         build_balanced_mul(ctx, &factors)
     };
 
+    let rewritten = if inverted {
+        let one = ctx.num(1);
+        ctx.add(Expr::Div(one, product))
+    } else {
+        product
+    };
+
     Some(ConsecutiveFactorialRatioRewrite {
         rewritten,
-        factorial_arg_requires_nonnegative: den_arg,
+        factorial_arg_requires_nonnegative: low_arg,
+    })
+}
+
+/// Cancel `n!/d!` for integer literals without materializing either factorial:
+/// the quotient is the falling-factorial product `(low+1)···high` — the same
+/// exact BigInt arithmetic `perm`/`choose` use — or its reciprocal when the
+/// denominator is the larger one.
+fn rewrite_numeric_factorial_ratio(
+    ctx: &mut Context,
+    num_arg: ExprId,
+    den_arg: ExprId,
+    num_val: BigInt,
+    den_val: BigInt,
+) -> Option<ConsecutiveFactorialRatioRewrite> {
+    // A negative literal has no factorial — leave the expression alone.
+    if num_val.is_negative() || den_val.is_negative() {
+        return None;
+    }
+    // Both under the const-fold ceiling: plain factorial evaluation already
+    // folds each side exactly, and that (already narrated) path stays the
+    // owner so existing step output does not shift.
+    let fold_max = BigInt::from(FACTORIAL_FOLD_MAX);
+    if num_val <= fold_max && den_val <= fold_max {
+        return None;
+    }
+
+    let (low_arg, low_val, high_val, inverted) = match num_val.cmp(&den_val) {
+        std::cmp::Ordering::Greater => (den_arg, den_val, num_val, false),
+        std::cmp::Ordering::Less => (num_arg, num_val, den_val, true),
+        std::cmp::Ordering::Equal => return None,
+    };
+
+    // Cap the cancelled span like the factorial fold itself: a longer product
+    // would materialize the same kind of astronomical number the fold refuses.
+    if &high_val - &low_val > fold_max {
+        return None;
+    }
+
+    let mut product = BigInt::one();
+    let mut factor = &low_val + 1;
+    while factor <= high_val {
+        product *= &factor;
+        factor += 1;
+    }
+
+    let value = if inverted {
+        BigRational::new(BigInt::one(), product)
+    } else {
+        BigRational::from_integer(product)
+    };
+    let rewritten = ctx.add(Expr::Number(value));
+
+    Some(ConsecutiveFactorialRatioRewrite {
+        rewritten,
+        factorial_arg_requires_nonnegative: low_arg,
     })
 }
 
@@ -1353,12 +1436,17 @@ pub(crate) fn compute_prime_factors_expr(ctx: &mut Context, n: ExprId) -> Option
 }
 
 /// Compute `n!` for exact non-negative integer inputs, bounded by `n <= 1000`.
+/// Const-fold ceiling for `n!`, shared with the factorial-ratio cancellation
+/// (there it bounds the CANCELLED SPAN, not the arguments): past it the
+/// numbers become astronomically large instead of didactic.
+const FACTORIAL_FOLD_MAX: u32 = 1000;
+
 pub(crate) fn compute_factorial_expr(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     let val = extract_integer_bigint(ctx, n)?;
     if val.is_negative() {
         return None;
     }
-    if val > BigInt::from(1000) {
+    if val > BigInt::from(FACTORIAL_FOLD_MAX) {
         return None;
     }
 
@@ -1959,6 +2047,105 @@ mod tests {
     fn does_not_rewrite_unrelated_factorial_ratio() {
         let mut ctx = Context::new();
         let expr = parse("(n + 1)! / m!", &mut ctx).expect("parse");
+        assert!(try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrites_inverted_symbolic_factorial_ratio_to_reciprocal() {
+        let mut ctx = Context::new();
+        let expr = parse("n! / (n + 1)!", &mut ctx).expect("parse");
+        let expected = parse("1 / (n + 1)", &mut ctx).expect("expected");
+        let expected_arg = parse("n", &mut ctx).expect("arg");
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+        // The SHORTER factorial's argument carries the domain condition.
+        assert_eq!(
+            compare_expr(
+                &ctx,
+                rewrite.factorial_arg_requires_nonnegative,
+                expected_arg
+            ),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_numeric_factorial_ratio_above_fold_ceiling() {
+        let mut ctx = Context::new();
+        let expr = parse("12345! / 12344!", &mut ctx).expect("parse");
+        let expected = parse("12345", &mut ctx).expect("expected");
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_numeric_factorial_ratio_gap_two_as_falling_factorial() {
+        let mut ctx = Context::new();
+        let expr = parse("12345! / 12343!", &mut ctx).expect("parse");
+        // 12345 · 12344, never materializing either factorial.
+        let expected = parse("152386680", &mut ctx).expect("expected");
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_inverted_numeric_factorial_ratio_to_exact_rational() {
+        let mut ctx = Context::new();
+        let expr = parse("12344! / 12345!", &mut ctx).expect("parse");
+        // A single exact rational NUMBER, not a Div node.
+        let expected = ctx.add(Expr::Number(BigRational::new(
+            BigInt::one(),
+            BigInt::from(12345),
+        )));
+
+        let rewrite =
+            try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn numeric_factorial_ratio_leaves_small_pair_to_the_const_fold() {
+        // Both sides under the fold ceiling: plain factorial evaluation owns
+        // them (5!/3! → 120/6), so the ratio matcher must decline.
+        let mut ctx = Context::new();
+        let expr = parse("5! / 3!", &mut ctx).expect("parse");
+        assert!(try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn numeric_factorial_ratio_respects_span_cap() {
+        // Gap of 12342 factors would materialize an astronomical product.
+        let mut ctx = Context::new();
+        let expr = parse("12345! / 3!", &mut ctx).expect("parse");
+        assert!(try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn numeric_factorial_ratio_rejects_negative_arguments() {
+        let mut ctx = Context::new();
+        let expr = parse("(-12345)! / (-12346)!", &mut ctx).expect("parse");
         assert!(try_rewrite_consecutive_factorial_ratio_expr(&mut ctx, expr).is_none());
     }
 }

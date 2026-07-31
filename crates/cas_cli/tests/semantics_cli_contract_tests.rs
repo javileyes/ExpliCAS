@@ -11802,3 +11802,73 @@ fn fraction_sum_substeps_are_localized_and_carry_clean_latex() {
         }
     }
 }
+
+/// La cancelación de factoriales consecutivos también cubre el par NUMÉRICO
+/// por encima del techo de const-fold (1000!): `12345!/12344!` se cancela como
+/// falling factorial exacto sin materializar ningún factorial, en ambas
+/// direcciones. El defecto que esto pinnea: el matcher solo veía offsets
+/// estructurales (`n+1` vs `n`) y dos literales quedaban sin simplificar.
+#[test]
+fn numeric_factorial_ratio_cancels_without_materializing_factorials() {
+    // Dirección directa: gap 1 → el propio numerador.
+    let (output, _code) = run_cli(&["eval", "12345!/12344!", "--format", "json", "--steps", "on"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "12345", "in: {output}");
+    // La condición NonNegative(12344) es decidible y debe evaporarse.
+    assert_eq!(
+        wire["required_display"].as_array().map(Vec::len),
+        Some(0),
+        "no spurious conditions: {output}"
+    );
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        steps
+            .iter()
+            .any(|s| s["rule"] == "Cancelar factoriales consecutivos"),
+        "expected the consecutive-factorial rule to narrate: {output}"
+    );
+
+    // Par negado: denominador mayor → racional exacto.
+    let (output, _code) = run_cli(&["eval", "12344!/12345!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1/12345", "in: {output}");
+
+    // Gap 2 → producto de dos factores, plegado.
+    let (output, _code) = run_cli(&["eval", "12345!/12343!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "152386680", "in: {output}");
+
+    // Gap astronómico: se queda simbólico (el 3! sí se pliega a 6).
+    let (output, _code) = run_cli(&["eval", "12345!/3!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    let result = wire["result"].as_str().expect("result string");
+    assert!(
+        result.contains("12345!"),
+        "astronomical span must stay unexpanded: {output}"
+    );
+
+    // Par pequeño: lo sigue plegando la evaluación normal de factoriales.
+    let (output, _code) = run_cli(&["eval", "5!/3!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "20", "in: {output}");
+}
+
+/// El par negado SIMBÓLICO: `n!/(n+1)!` → `1/(n+1)` con la condición de
+/// dominio sobre el factorial más corto (`n ≥ 0`). Antes solo se cancelaba la
+/// dirección con numerador mayor.
+#[test]
+fn inverted_symbolic_factorial_ratio_cancels_to_reciprocal() {
+    let (output, _code) = run_cli(&["eval", "n!/(n+1)!", "--format", "json", "--no-pretty"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1 / (n + 1)", "in: {output}");
+    let required: Vec<String> = wire["required_display"]
+        .as_array()
+        .expect("required array")
+        .iter()
+        .map(|v| v.as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(
+        required.iter().any(|c| c == "n ≥ 0"),
+        "domain condition on the shorter factorial must survive: {required:?} in {output}"
+    );
+}
