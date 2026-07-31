@@ -4,6 +4,7 @@ use cas_api_models::{
 };
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::expr_destructure::unary_builtin_arg_through_hold;
 use cas_math::numeric_eval::as_rational_const;
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
 use num_bigint::BigInt;
@@ -1330,7 +1331,7 @@ fn sec_tan_compact_quotient_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Div(numerator, denominator) = ctx.get(expr) else {
         return None;
     };
-    let denominator_arg = unary_builtin_arg(ctx, *denominator, BuiltinFn::Cos)?;
+    let denominator_arg = unary_builtin_arg_through_hold(ctx, *denominator, BuiltinFn::Cos)?;
     let numerator_arg = one_plus_unary_builtin_arg(ctx, *numerator, BuiltinFn::Sin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, denominator_arg, numerator_arg)
         .then_some(denominator_arg)
@@ -1341,7 +1342,7 @@ fn csc_cot_compact_quotient_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Div(numerator, denominator) = ctx.get(expr) else {
         return None;
     };
-    let denominator_arg = unary_builtin_arg(ctx, *denominator, BuiltinFn::Sin)?;
+    let denominator_arg = unary_builtin_arg_through_hold(ctx, *denominator, BuiltinFn::Sin)?;
     let numerator_arg = one_minus_unary_builtin_arg(ctx, *numerator, BuiltinFn::Cos)?;
     cas_math::expr_domain::exprs_equivalent(ctx, denominator_arg, numerator_arg)
         .then_some(denominator_arg)
@@ -1354,9 +1355,9 @@ fn one_plus_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -
     };
 
     if is_integer_literal(ctx, *left, 1) {
-        unary_builtin_arg(ctx, *right, builtin)
+        unary_builtin_arg_through_hold(ctx, *right, builtin)
     } else if is_integer_literal(ctx, *right, 1) {
-        unary_builtin_arg(ctx, *left, builtin)
+        unary_builtin_arg_through_hold(ctx, *left, builtin)
     } else {
         None
     }
@@ -1366,7 +1367,7 @@ fn one_minus_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) 
     let expr = cas_ast::hold::unwrap_hold(ctx, expr);
     match ctx.get(expr) {
         Expr::Sub(left, right) if is_integer_literal(ctx, *left, 1) => {
-            unary_builtin_arg(ctx, *right, builtin)
+            unary_builtin_arg_through_hold(ctx, *right, builtin)
         }
         Expr::Add(left, right) if is_integer_literal(ctx, *left, 1) => {
             negated_unary_builtin_arg(ctx, *right, builtin)
@@ -1408,9 +1409,9 @@ fn reciprocal_trig_log_argument_condition_is_redundant(
         let crate::ImplicitCondition::NonZero(candidate_expr) = candidate else {
             return false;
         };
-        unary_builtin_arg(ctx, *candidate_expr, required_builtin).is_some_and(|candidate_arg| {
-            cas_math::expr_domain::exprs_equivalent(ctx, candidate_arg, arg)
-        })
+        unary_builtin_arg_through_hold(ctx, *candidate_expr, required_builtin).is_some_and(
+            |candidate_arg| cas_math::expr_domain::exprs_equivalent(ctx, candidate_arg, arg),
+        )
     })
 }
 
@@ -1549,7 +1550,7 @@ fn sqrt_like_unary_condition_arg(ctx: &Context, expr: ExprId) -> Option<(Builtin
         BuiltinFn::Sinh,
         BuiltinFn::Tanh,
     ] {
-        if let Some(arg) = unary_builtin_arg(ctx, expr, builtin) {
+        if let Some(arg) = unary_builtin_arg_through_hold(ctx, expr, builtin) {
             if expr_contains_sqrt_like_form(ctx, arg) {
                 return Some((builtin, arg));
             }
@@ -1559,7 +1560,7 @@ fn sqrt_like_unary_condition_arg(ctx: &Context, expr: ExprId) -> Option<(Builtin
 }
 
 fn expr_contains_sqrt_like_form(ctx: &Context, expr: ExprId) -> bool {
-    if unary_builtin_arg(ctx, expr, BuiltinFn::Sqrt).is_some() {
+    if unary_builtin_arg_through_hold(ctx, expr, BuiltinFn::Sqrt).is_some() {
         return true;
     }
     let expr = cas_ast::hold::unwrap_hold(ctx, expr);
@@ -1593,7 +1594,7 @@ fn sqrt_like_args_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool
     let left = cas_ast::hold::unwrap_hold(ctx, left);
     let right = cas_ast::hold::unwrap_hold(ctx, right);
     if let (Some(left_arg), Expr::Pow(right_base, right_exp)) = (
-        unary_builtin_arg(ctx, left, BuiltinFn::Sqrt),
+        unary_builtin_arg_through_hold(ctx, left, BuiltinFn::Sqrt),
         ctx.get(right),
     ) {
         if is_positive_half_literal(ctx, *right_exp) {
@@ -1602,7 +1603,7 @@ fn sqrt_like_args_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool
     }
     if let (Expr::Pow(left_base, left_exp), Some(right_arg)) = (
         ctx.get(left),
-        unary_builtin_arg(ctx, right, BuiltinFn::Sqrt),
+        unary_builtin_arg_through_hold(ctx, right, BuiltinFn::Sqrt),
     ) {
         if is_positive_half_literal(ctx, *left_exp) {
             return sqrt_like_args_equivalent(ctx, *left_base, right_arg);
@@ -1649,7 +1650,7 @@ fn sqrt_like_args_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool
 }
 
 fn expr_contains_sqrt_call(ctx: &Context, expr: ExprId) -> bool {
-    if unary_builtin_arg(ctx, expr, BuiltinFn::Sqrt).is_some() {
+    if unary_builtin_arg_through_hold(ctx, expr, BuiltinFn::Sqrt).is_some() {
         return true;
     }
     let expr = cas_ast::hold::unwrap_hold(ctx, expr);
@@ -1842,14 +1843,11 @@ fn csc_cot_difference_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Sub(left, right) => {
             same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *right, BuiltinFn::Cot)
         }
-        Expr::Add(left, right) => unary_builtin_arg(ctx, *left, BuiltinFn::Csc)
+        Expr::Add(left, right) => unary_builtin_arg_through_hold(ctx, *left, BuiltinFn::Csc)
             .zip(negated_unary_builtin_arg(ctx, *right, BuiltinFn::Cot))
             .or_else(|| {
-                unary_builtin_arg(ctx, *right, BuiltinFn::Csc).zip(negated_unary_builtin_arg(
-                    ctx,
-                    *left,
-                    BuiltinFn::Cot,
-                ))
+                unary_builtin_arg_through_hold(ctx, *right, BuiltinFn::Csc)
+                    .zip(negated_unary_builtin_arg(ctx, *left, BuiltinFn::Cot))
             })
             .and_then(|(left_arg, right_arg)| {
                 cas_math::expr_domain::exprs_equivalent(ctx, left_arg, right_arg)
@@ -1940,7 +1938,7 @@ fn reciprocal_builtin_denominator_arg(
         return None;
     };
     if is_integer_literal(ctx, *numerator, 1) {
-        unary_builtin_arg(ctx, *denominator, denominator_builtin)
+        unary_builtin_arg_through_hold(ctx, *denominator, denominator_builtin)
     } else {
         None
     }
@@ -1983,32 +1981,20 @@ fn same_arg_unary_pair(
     right: ExprId,
     right_builtin: BuiltinFn,
 ) -> Option<ExprId> {
-    let left_arg = unary_builtin_arg(ctx, left, left_builtin)?;
-    let right_arg = unary_builtin_arg(ctx, right, right_builtin)?;
+    let left_arg = unary_builtin_arg_through_hold(ctx, left, left_builtin)?;
+    let right_arg = unary_builtin_arg_through_hold(ctx, right, right_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, left_arg, right_arg).then_some(left_arg)
-}
-
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
-    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    if args.len() == 1 && ctx.is_builtin(*fn_id, builtin) {
-        Some(args[0])
-    } else {
-        None
-    }
 }
 
 fn negated_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
     let expr = cas_ast::hold::unwrap_hold(ctx, expr);
     match ctx.get(expr) {
-        Expr::Neg(inner) => unary_builtin_arg(ctx, *inner, builtin),
+        Expr::Neg(inner) => unary_builtin_arg_through_hold(ctx, *inner, builtin),
         Expr::Mul(left, right) if is_integer_literal(ctx, *left, -1) => {
-            unary_builtin_arg(ctx, *right, builtin)
+            unary_builtin_arg_through_hold(ctx, *right, builtin)
         }
         Expr::Mul(left, right) if is_integer_literal(ctx, *right, -1) => {
-            unary_builtin_arg(ctx, *left, builtin)
+            unary_builtin_arg_through_hold(ctx, *left, builtin)
         }
         _ => None,
     }

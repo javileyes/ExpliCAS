@@ -3,7 +3,7 @@
 //! These helpers expose borrowed AST shape checks without forcing callers to
 //! clone `Expr` nodes.
 
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 
 /// Destruct `Add(l, r)`.
 #[inline]
@@ -91,4 +91,24 @@ mod tests {
         assert!(as_pow(&ctx, pow).is_some());
         assert!(as_add(&ctx, pow).is_none());
     }
+}
+
+/// Destruct a unary call to `builtin`, seeing through a `__hold` barrier.
+///
+/// A deliberate exception to this module's convention: the `as_*` helpers
+/// above are pure shape checks, while this one strips `__hold` first, because
+/// every caller wants the held tree to match the same way the unheld one does.
+/// The name says so; four copies of this logic used to live scattered under
+/// the bare name `unary_builtin_arg`.
+#[inline]
+pub fn unary_builtin_arg_through_hold(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin)).then_some(args[0])
 }

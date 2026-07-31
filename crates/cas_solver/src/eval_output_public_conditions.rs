@@ -1,4 +1,5 @@
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_destructure::unary_builtin_arg_through_hold;
 use num_traits::{One, Signed, Zero};
 
 pub(crate) fn public_required_condition_displays(
@@ -81,8 +82,8 @@ fn trig_quotient_arg(
     numerator_builtin: BuiltinFn,
     denominator_builtin: BuiltinFn,
 ) -> Option<ExprId> {
-    let numerator_arg = unary_builtin_arg(ctx, numerator, numerator_builtin)?;
-    let denominator_arg = unary_builtin_arg(ctx, denominator, denominator_builtin)?;
+    let numerator_arg = unary_builtin_arg_through_hold(ctx, numerator, numerator_builtin)?;
+    let denominator_arg = unary_builtin_arg_through_hold(ctx, denominator, denominator_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, numerator_arg, denominator_arg)
         .then_some(numerator_arg)
 }
@@ -155,7 +156,7 @@ fn public_log_scaled_trig_shift_nonzero_exprs(
 }
 
 fn scaled_ln_arg(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-    if let Some(log_arg) = unary_builtin_arg(ctx, expr, BuiltinFn::Ln) {
+    if let Some(log_arg) = unary_builtin_arg_through_hold(ctx, expr, BuiltinFn::Ln) {
         let one = ctx.num(1);
         return Some((one, log_arg));
     }
@@ -180,7 +181,7 @@ fn scaled_ln_arg_from_factor(
     if value.is_zero() {
         return None;
     }
-    let log_arg = unary_builtin_arg(ctx, log_term, BuiltinFn::Ln)?;
+    let log_arg = unary_builtin_arg_through_hold(ctx, log_term, BuiltinFn::Ln)?;
     Some((scale, log_arg))
 }
 
@@ -198,7 +199,8 @@ fn trig_quotient_log_product_divisor(
         BuiltinFn::Cot => BuiltinFn::Sin,
         _ => return None,
     };
-    let denominator_arg = unary_builtin_arg(ctx, *denominator, source_defined_builtin)?;
+    let denominator_arg =
+        unary_builtin_arg_through_hold(ctx, *denominator, source_defined_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, arg, denominator_arg).then_some((
         source_defined_builtin,
         source_builtin,
@@ -222,14 +224,14 @@ fn trig_quotient_log_product_from_factors(
     trig_term: ExprId,
     log_term: ExprId,
 ) -> Option<(ExprId, BuiltinFn, ExprId)> {
-    let log_arg = unary_builtin_arg(ctx, log_term, BuiltinFn::Ln)?;
+    let log_arg = unary_builtin_arg_through_hold(ctx, log_term, BuiltinFn::Ln)?;
     let (source_builtin, source_arg) = positive_trig_quotient_source_condition(ctx, log_arg)?;
     let numerator_builtin = match source_builtin {
         BuiltinFn::Tan => BuiltinFn::Sin,
         BuiltinFn::Cot => BuiltinFn::Cos,
         _ => return None,
     };
-    let trig_arg = unary_builtin_arg(ctx, trig_term, numerator_builtin)?;
+    let trig_arg = unary_builtin_arg_through_hold(ctx, trig_term, numerator_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, source_arg, trig_arg).then_some((
         log_arg,
         source_builtin,
@@ -367,7 +369,7 @@ fn linear_trig_quotient_parts(
     denominator_builtin: BuiltinFn,
     source_builtin: BuiltinFn,
 ) -> Option<(BuiltinFn, BuiltinFn, ExprId, ExprId)> {
-    let source_arg = unary_builtin_arg(ctx, source_term, numerator_builtin)?;
+    let source_arg = unary_builtin_arg_through_hold(ctx, source_term, numerator_builtin)?;
     let (offset, denominator_arg) =
         scaled_numeric_builtin_arg(ctx, scaled_denominator_term, denominator_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, source_arg, denominator_arg).then_some((
@@ -386,7 +388,7 @@ fn linear_trig_negative_quotient_parts(
     denominator_builtin: BuiltinFn,
     source_builtin: BuiltinFn,
 ) -> Option<(BuiltinFn, BuiltinFn, ExprId, ExprId)> {
-    let source_arg = unary_builtin_arg(ctx, source_term, numerator_builtin)?;
+    let source_arg = unary_builtin_arg_through_hold(ctx, source_term, numerator_builtin)?;
     let (offset, denominator_arg) = negative_scaled_numeric_builtin_arg(
         ctx,
         negative_scaled_denominator_term,
@@ -405,7 +407,7 @@ fn scaled_numeric_builtin_arg(
     expr: ExprId,
     builtin: BuiltinFn,
 ) -> Option<(ExprId, ExprId)> {
-    if let Some(arg) = unary_builtin_arg(ctx, expr, builtin) {
+    if let Some(arg) = unary_builtin_arg_through_hold(ctx, expr, builtin) {
         let one = ctx.num(1);
         return Some((one, arg));
     }
@@ -449,7 +451,7 @@ fn scaled_numeric_builtin_arg_from_factor(
     if value.is_zero() {
         return None;
     }
-    let arg = unary_builtin_arg(ctx, trig_term, builtin)?;
+    let arg = unary_builtin_arg_through_hold(ctx, trig_term, builtin)?;
     Some((scale, arg))
 }
 
@@ -466,7 +468,7 @@ fn negative_scaled_numeric_builtin_arg_from_factor(
         return None;
     }
     let positive_scale = ctx.add(Expr::Number(-value.clone()));
-    let arg = unary_builtin_arg(ctx, trig_term, builtin)?;
+    let arg = unary_builtin_arg_through_hold(ctx, trig_term, builtin)?;
     Some((positive_scale, arg))
 }
 
@@ -585,7 +587,7 @@ fn reciprocal_trig_source_defined_condition(
         (BuiltinFn::Sec, ReciprocalTrigSourceCondition::Sec),
         (BuiltinFn::Csc, ReciprocalTrigSourceCondition::Csc),
     ] {
-        if let Some(arg) = unary_builtin_arg(ctx, expr, builtin) {
+        if let Some(arg) = unary_builtin_arg_through_hold(ctx, expr, builtin) {
             return Some((kind, arg));
         }
     }
@@ -594,16 +596,4 @@ fn reciprocal_trig_source_defined_condition(
 
 fn source_builtin_expr(ctx: &mut Context, builtin: BuiltinFn, arg: ExprId) -> ExprId {
     ctx.add(Expr::Function(ctx.builtin_id(builtin), vec![arg]))
-}
-
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
-    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    if args.len() == 1 && ctx.is_builtin(*fn_id, builtin) {
-        Some(args[0])
-    } else {
-        None
-    }
 }

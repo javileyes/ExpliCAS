@@ -1,3 +1,4 @@
+use crate::expr_destructure::unary_builtin_arg_through_hold;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::One;
 
@@ -109,8 +110,8 @@ fn source_and_factored_trig_poles(
         return None;
     };
 
-    let lhs_ratio_arg = unary_builtin_arg(ctx, lhs, ratio_builtin);
-    let rhs_ratio_arg = unary_builtin_arg(ctx, rhs, ratio_builtin);
+    let lhs_ratio_arg = unary_builtin_arg_through_hold(ctx, lhs, ratio_builtin);
+    let rhs_ratio_arg = unary_builtin_arg_through_hold(ctx, rhs, ratio_builtin);
     let ratio_num = ctx.call_builtin(ratio_num_builtin, vec![arg]);
     let ratio_den = ctx.call_builtin(ratio_den_builtin, vec![arg]);
 
@@ -138,7 +139,7 @@ fn factored_reciprocal_trig_log_pole(
     };
 
     if let Some((offset, arg)) = mul_by_unary_builtin_arg(ctx, *left, BuiltinFn::Cos) {
-        if unary_builtin_arg(ctx, *right, BuiltinFn::Sin) == Some(arg) {
+        if unary_builtin_arg_through_hold(ctx, *right, BuiltinFn::Sin) == Some(arg) {
             return Some((
                 BuiltinFn::Tan,
                 arg,
@@ -147,7 +148,7 @@ fn factored_reciprocal_trig_log_pole(
             ));
         }
     }
-    if let Some(arg) = unary_builtin_arg(ctx, *left, BuiltinFn::Sin) {
+    if let Some(arg) = unary_builtin_arg_through_hold(ctx, *left, BuiltinFn::Sin) {
         if let Some((offset, rhs_arg)) = mul_by_unary_builtin_arg(ctx, *right, BuiltinFn::Cos) {
             if crate::expr_domain::exprs_equivalent(ctx, arg, rhs_arg) {
                 return Some((
@@ -160,7 +161,7 @@ fn factored_reciprocal_trig_log_pole(
         }
     }
     if let Some((offset, arg)) = mul_by_unary_builtin_arg(ctx, *left, BuiltinFn::Sin) {
-        if unary_builtin_arg(ctx, *right, BuiltinFn::Cos) == Some(arg) {
+        if unary_builtin_arg_through_hold(ctx, *right, BuiltinFn::Cos) == Some(arg) {
             return Some((
                 BuiltinFn::Cot,
                 arg,
@@ -169,7 +170,7 @@ fn factored_reciprocal_trig_log_pole(
             ));
         }
     }
-    if let Some(arg) = unary_builtin_arg(ctx, *left, BuiltinFn::Cos) {
+    if let Some(arg) = unary_builtin_arg_through_hold(ctx, *left, BuiltinFn::Cos) {
         if let Some((offset, rhs_arg)) = mul_by_unary_builtin_arg(ctx, *right, BuiltinFn::Sin) {
             if crate::expr_domain::exprs_equivalent(ctx, arg, rhs_arg) {
                 return Some((
@@ -194,10 +195,10 @@ fn mul_by_unary_builtin_arg(
     let Expr::Mul(left, right) = ctx.get(expr) else {
         return None;
     };
-    if let Some(arg) = unary_builtin_arg(ctx, *right, builtin) {
+    if let Some(arg) = unary_builtin_arg_through_hold(ctx, *right, builtin) {
         return Some((*left, arg));
     }
-    unary_builtin_arg(ctx, *left, builtin).map(|arg| (*right, arg))
+    unary_builtin_arg_through_hold(ctx, *left, builtin).map(|arg| (*right, arg))
 }
 
 fn source_reciprocal_trig_log_pole_matches(
@@ -214,25 +215,19 @@ fn source_reciprocal_trig_log_pole_matches(
     };
 
     match orientation {
-        TrigLogPoleOrientation::RatioMinusOffset => unary_builtin_arg(ctx, *left, builtin)
-            .is_some_and(|source_arg| {
+        TrigLogPoleOrientation::RatioMinusOffset => {
+            unary_builtin_arg_through_hold(ctx, *left, builtin).is_some_and(|source_arg| {
                 crate::expr_domain::exprs_equivalent(ctx, source_arg, arg)
                     && crate::expr_domain::exprs_equivalent(ctx, *right, offset)
-            }),
-        TrigLogPoleOrientation::OffsetMinusRatio => unary_builtin_arg(ctx, *right, builtin)
-            .is_some_and(|source_arg| {
+            })
+        }
+        TrigLogPoleOrientation::OffsetMinusRatio => {
+            unary_builtin_arg_through_hold(ctx, *right, builtin).is_some_and(|source_arg| {
                 crate::expr_domain::exprs_equivalent(ctx, source_arg, arg)
                     && crate::expr_domain::exprs_equivalent(ctx, *left, offset)
-            }),
+            })
+        }
     }
-}
-
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, expected_builtin: BuiltinFn) -> Option<ExprId> {
-    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(expected_builtin)).then_some(args[0])
 }
 
 #[cfg(test)]

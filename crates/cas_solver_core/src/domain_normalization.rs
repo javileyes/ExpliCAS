@@ -5341,7 +5341,11 @@ fn reciprocal_sum_nonzero_is_dominated(
     has_left && has_right && has_sum
 }
 
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+fn unary_builtin_arg_through_abs(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
     let expr = extract_abs_argument_view(ctx, expr).unwrap_or(expr);
     match ctx.get(expr) {
         Expr::Function(fn_id, args)
@@ -5355,10 +5359,11 @@ fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<
 
 fn trig_unit_offset_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
     fn trig_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
-        unary_builtin_arg(ctx, expr, BuiltinFn::Sin)
+        unary_builtin_arg_through_abs(ctx, expr, BuiltinFn::Sin)
             .map(|arg| (BuiltinFn::Sin, arg))
             .or_else(|| {
-                unary_builtin_arg(ctx, expr, BuiltinFn::Cos).map(|arg| (BuiltinFn::Cos, arg))
+                unary_builtin_arg_through_abs(ctx, expr, BuiltinFn::Cos)
+                    .map(|arg| (BuiltinFn::Cos, arg))
             })
     }
 
@@ -5395,7 +5400,9 @@ fn trig_perpendicular_nonzero_is_present(
         let ImplicitCondition::NonZero(other_expr) = condition else {
             return false;
         };
-        let Some(other_arg) = unary_builtin_arg(ctx, *other_expr, perpendicular_builtin) else {
+        let Some(other_arg) =
+            unary_builtin_arg_through_abs(ctx, *other_expr, perpendicular_builtin)
+        else {
             return false;
         };
         positive_ordered_exprs_equivalent(ctx, arg, other_arg)
@@ -5428,16 +5435,16 @@ fn reciprocal_trig_log_arg_pole_builtin(
         first: BuiltinFn,
         second: BuiltinFn,
     ) -> Option<ExprId> {
-        let first_left = unary_builtin_arg(ctx, left, first);
-        let second_right = unary_builtin_arg(ctx, right, second);
+        let first_left = unary_builtin_arg_through_abs(ctx, left, first);
+        let second_right = unary_builtin_arg_through_abs(ctx, right, second);
         if let (Some(left_arg), Some(right_arg)) = (first_left, second_right) {
             if positive_ordered_exprs_equivalent(ctx, left_arg, right_arg) {
                 return Some(left_arg);
             }
         }
 
-        let second_left = unary_builtin_arg(ctx, left, second);
-        let first_right = unary_builtin_arg(ctx, right, first);
+        let second_left = unary_builtin_arg_through_abs(ctx, left, second);
+        let first_right = unary_builtin_arg_through_abs(ctx, right, first);
         if let (Some(left_arg), Some(right_arg)) = (second_left, first_right) {
             if positive_ordered_exprs_equivalent(ctx, left_arg, right_arg) {
                 return Some(left_arg);
@@ -5475,8 +5482,8 @@ fn reciprocal_trig_log_arg_pole_builtin(
             {
                 return None;
             }
-            let num_arg = unary_builtin_arg(ctx, num, num_builtin)?;
-            let den_arg = unary_builtin_arg(ctx, den, den_builtin)?;
+            let num_arg = unary_builtin_arg_through_abs(ctx, num, num_builtin)?;
+            let den_arg = unary_builtin_arg_through_abs(ctx, den, den_builtin)?;
             if !positive_ordered_exprs_equivalent(ctx, num_arg, den_arg) {
                 return None;
             }
@@ -5526,7 +5533,7 @@ fn reciprocal_trig_log_arg_nonzero_is_dominated_by_pole(
     let Some((pole_builtin, arg)) = reciprocal_trig_log_arg_pole_builtin(ctx, expr) else {
         return false;
     };
-    let Some(pole_arg) = unary_builtin_arg(ctx, pole_expr, pole_builtin) else {
+    let Some(pole_arg) = unary_builtin_arg_through_abs(ctx, pole_expr, pole_builtin) else {
         return false;
     };
 
@@ -6695,7 +6702,7 @@ fn sin_or_cos_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
 }
 
 fn sine_double_angle_matches_arg(ctx: &Context, expr: ExprId, arg: ExprId) -> bool {
-    let Some(sin_arg) = unary_builtin_arg(ctx, expr, BuiltinFn::Sin) else {
+    let Some(sin_arg) = unary_builtin_arg_through_abs(ctx, expr, BuiltinFn::Sin) else {
         return false;
     };
     let Expr::Mul(left, right) = ctx.get(sin_arg) else {

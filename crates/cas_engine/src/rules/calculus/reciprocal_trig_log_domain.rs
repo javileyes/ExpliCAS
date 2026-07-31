@@ -1,4 +1,5 @@
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_destructure::unary_builtin_arg_through_hold;
 
 pub(super) fn collect_reciprocal_trig_log_denominator_conditions(
     ctx: &mut Context,
@@ -111,8 +112,8 @@ fn same_arg_unary_pair(
     right: ExprId,
     right_builtin: BuiltinFn,
 ) -> Option<ExprId> {
-    let left_arg = unary_builtin_arg(ctx, left, left_builtin)?;
-    let right_arg = unary_builtin_arg(ctx, right, right_builtin)?;
+    let left_arg = unary_builtin_arg_through_hold(ctx, left, left_builtin)?;
+    let right_arg = unary_builtin_arg_through_hold(ctx, right, right_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, left_arg, right_arg).then_some(left_arg)
 }
 
@@ -135,7 +136,7 @@ fn same_arg_unary_negated_pair(
     negative: ExprId,
     negative_builtin: BuiltinFn,
 ) -> Option<ExprId> {
-    let positive_arg = unary_builtin_arg(ctx, positive, positive_builtin)?;
+    let positive_arg = unary_builtin_arg_through_hold(ctx, positive, positive_builtin)?;
     let negative_arg = negated_unary_builtin_arg(ctx, negative, negative_builtin)?;
     cas_math::expr_domain::exprs_equivalent(ctx, positive_arg, negative_arg).then_some(positive_arg)
 }
@@ -149,13 +150,5 @@ fn negated_unary_builtin_arg(
     let Expr::Neg(inner) = ctx.get(expr) else {
         return None;
     };
-    unary_builtin_arg(ctx, *inner, expected_builtin)
-}
-
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, expected_builtin: BuiltinFn) -> Option<ExprId> {
-    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
-    };
-    (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(expected_builtin)).then_some(args[0])
+    unary_builtin_arg_through_hold(ctx, *inner, expected_builtin)
 }
