@@ -4558,6 +4558,47 @@ fn try_decline_variable_base_log_inequality(
     ))
 }
 
+/// Collect the arguments of BOUNDED-DOMAIN inverse functions of `var` anywhere
+/// in `e`: `asin`/`acos` (closed domain [−1, 1] → strict = false) and
+/// `atanh` (open (−1, 1) → strict = true). `acosh`'s lower bound is already
+/// recorded by the implicit-domain inference (its `LowerBound` variant carries
+/// a detached rational and needs no new node).
+fn collect_bounded_domain_inverse_args(
+    ctx: &Context,
+    e: ExprId,
+    var: &str,
+    out: &mut Vec<(ExprId, bool)>,
+) {
+    use cas_solver_core::isolation_utils::contains_var;
+    match ctx.get(e) {
+        Expr::Function(fn_id, args) => {
+            let (fn_id, args) = (*fn_id, args.clone());
+            if args.len() == 1 && contains_var(ctx, args[0], var) {
+                let strict = match ctx.builtin_of(fn_id) {
+                    Some(cas_ast::BuiltinFn::Asin | cas_ast::BuiltinFn::Acos) => Some(false),
+                    Some(cas_ast::BuiltinFn::Atanh) => Some(true),
+                    _ => None,
+                };
+                if let Some(strict) = strict {
+                    if !out.iter().any(|&(g, s)| g == args[0] && s == strict) {
+                        out.push((args[0], strict));
+                    }
+                }
+            }
+            for a in args {
+                collect_bounded_domain_inverse_args(ctx, a, var, out);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            let (l, r) = (*l, *r);
+            collect_bounded_domain_inverse_args(ctx, l, var, out);
+            collect_bounded_domain_inverse_args(ctx, r, var, out);
+        }
+        Expr::Neg(u) => collect_bounded_domain_inverse_args(ctx, *u, var, out),
+        _ => {}
+    }
+}
+
 /// True when `e` contains a `sin`/`cos`/`tan` — or a reciprocal `sec`/`csc`/`cot` — whose ARGUMENT
 /// involves `var` (anywhere in the tree). `sin(2)·x` (constant trig) is false; `sin(2x)`,
 /// `x − cos(x)`, `sec(x)²` are true. The reciprocals are periodic too: without them, forms no
@@ -12373,6 +12414,39 @@ fn solve_local_core_inner(
         }
     }
     let mut conds = ctx.required_conditions();
+    // BOUNDED-DOMAIN INVERSE-FUNCTION CONDITION (F10 m4, frontier-audit
+    // 2026-07-14): `asin(g)`/`acos(g)` require `−1 ≤ g ≤ 1` and `artanh(g)`
+    // requires `−1 < g < 1`, but the `&Context`-only implicit-domain inference
+    // cannot BUILD the condition node `1 − g²` (LowerBound carries a detached
+    // rational; there is no upper-bound variant), so identities like
+    // `asin(x) + acos(x) = π/2` returned a bare «All real numbers» — an
+    // over-claim (the true set is [−1, 1]). This solver-layer site has the
+    // mutable context: record `NonNegative(1 − g²)` (resp. `Positive`), whose
+    // display already renders as `−1 ≤ x ≤ 1`, into BOTH the published
+    // conditions (parity with how `√x = √x` shows «ℝ if x ≥ 0») and the local
+    // filter list (an exact-rational root outside the domain now drops).
+    if eq.op == cas_ast::RelOp::Eq {
+        let mut bounded_args: Vec<(ExprId, bool)> = Vec::new(); // (arg, strict)
+        for side in [eq.lhs, eq.rhs] {
+            collect_bounded_domain_inverse_args(&simplifier.context, side, var, &mut bounded_args);
+        }
+        for (g, strict) in bounded_args {
+            let two = simplifier.context.num(2);
+            let g_sq = simplifier.context.add(Expr::Pow(g, two));
+            let one = simplifier.context.num(1);
+            let radicand = simplifier.context.add(Expr::Sub(one, g_sq));
+            let (radicand, _) = simplifier.simplify(radicand);
+            let cond = if strict {
+                ImplicitCondition::Positive(radicand)
+            } else {
+                ImplicitCondition::NonNegative(radicand)
+            };
+            if !conds.contains(&cond) {
+                ctx.note_required_condition(cond.clone());
+                conds.push(cond);
+            }
+        }
+    }
     // RADICAL-EQUATION RANGE CONDITION: an equation reducible to a single isolated radical
     // `s·√f + rest = 0` ⟺ `√f = g` (g = −rest/s) carries the range constraint `g ≥ 0` (√ is
     // nonnegative). Squaring loses it, so the solver returns BOTH quadratic roots — e.g.

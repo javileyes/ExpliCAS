@@ -100,6 +100,49 @@ fn parameter_only_range_condition_is_published() {
         .any(|c| c == "2" || c == "5 - 3"));
 }
 
+fn solve_result_and_conditions(input: &str) -> (String, Vec<String>) {
+    let out = Command::new(cargo::cargo_bin!("cas_cli"))
+        .args(["eval", &format!("solve({input}, x)"), "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    let result = wire["result"].as_str().unwrap_or("").to_string();
+    let conds = wire["required_conditions"]
+        .as_array()
+        .map(|cs| {
+            cs.iter()
+                .filter_map(|c| c["expr_display"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    (result, conds)
+}
+
+#[test]
+fn bounded_domain_inverse_identity_carries_the_interval() {
+    // F10 member 4: `asin(x) + acos(x) = π/2` is an identity ON ITS DOMAIN
+    // [−1, 1]; the bare «All real numbers» was an over-claim. The condition
+    // `1 − x² ≥ 0` (displayed as the interval) now rides the same channel
+    // `√x = √x` uses for «ℝ if x ≥ 0».
+    let (res, conds) = solve_result_and_conditions("asin(x)+acos(x) = pi/2");
+    assert_eq!(res, "All real numbers if -1 ≤ x ≤ 1");
+    assert!(conds.contains(&"1 - x^2".to_string()));
+    // Affine argument scales the interval through the quadratic display.
+    let (res2, _) = solve_result_and_conditions("asin(2*x)+acos(2*x) = pi/2");
+    assert_eq!(res2, "All real numbers if -1/2 ≤ x ≤ 1/2");
+    // atanh's domain is OPEN.
+    let (res3, _) = solve_result_and_conditions("atanh(x) = atanh(x)");
+    assert_eq!(res3, "All real numbers if -1 < x < 1");
+    // Discrete answers stay clean (no noise line) and unconditioned
+    // identities stay bare ℝ.
+    let (res4, conds4) = solve_result_and_conditions("asin(x) = pi/6");
+    assert_eq!(res4, "{ 1/2 }");
+    assert!(conds4.is_empty());
+    let (res5, conds5) = solve_result_and_conditions("x = x");
+    assert_eq!(res5, "All real numbers");
+    assert!(conds5.is_empty());
+}
+
 #[test]
 fn numeric_and_constant_controls_are_untouched() {
     // Numeric radicand: rational back-substitution already filtered these.
