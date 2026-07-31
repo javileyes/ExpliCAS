@@ -101,13 +101,68 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 | # | Acción | Esfuerzo | Beneficio |
 |---|---|---|---|
 | P1 | ~~`orchestrator.rs` → directorio `orchestrator/`~~ | Medio, mecánico | **HECHO 2026-07-31** — ver más abajo |
-| P2 | `rules/arithmetic.rs` → repartir las 30 reglas en la taxonomía existente de `rules/`, helpers a `rules/support/`; re-export desde el path original | Medio, mecánico | El catch-all desaparece; cada regla vive con su familia |
+| P2 | ~~`rules/arithmetic.rs` → repartir las reglas en la taxonomía de `rules/`~~ | Medio, mecánico | **HECHO 2026-07-31, con cambio de plan medido** — ver más abajo |
 | P3 | `symbolic_integration_support.rs` y `limits_support.rs` → directorios con `mod.rs` de API curada (re-export explícito) e internals privados | Medio | Reduce la superficie de 91 pub; recorta el acoplamiento aferente a cas_math |
 | P4 | `solve_backend_local.rs` → partir por familia de ecuación | Medio | Reparte el churn más alto del repo; menos conflictos en paralelo |
 | P5 | ~~Test-monolitos (`cli_contract_tests.rs` y compañía) → un fichero por dominio~~ | Bajo | **HECHO 2026-07-31** — ver más abajo |
 | P6 | Dedup de `collect_add_terms` / `unary_builtin_arg` y similares | Bajo | Elimina deriva silenciosa entre 13–14 copias |
 
 P1, P2 y P5 son independientes entre sí y se pueden hacer en sesiones separadas sin pisarse.
+
+## P2 ejecutado (2026-07-31) — con la recomendación original corregida por la medición
+
+`rules/arithmetic.rs`, **39.346 → 1.988 líneas** en el padre, en 24 ficheros
+(`f079bd1f6`, `2d46ef2ff`, `025061ae3`, `78f78b643`):
+
+| Paso | Qué | Resultado |
+|---|---|---|
+| 1/3 | sale el `mod tests` inline (398 tests, 8.524 líneas) | 39.346 → 30.821 |
+| 2/3 | las 713 fns → 12 submódulos por objeto cancelado + `support` | padre: ~1.950 |
+| 3/3 | los 398 tests → 11 submódulos con las mismas familias | `tests.rs`: 52 líneas |
+
+El padre conserva lo que es su superficie real: los `use`, los 29 structs
+auxiliares, el catálogo de las 25 reglas (`define_rule!`) y `pub fn register`.
+
+### El cambio de plan, y por qué
+
+La auditoría proponía repartir las reglas por la taxonomía existente
+(`trigonometry/`, `logarithms/`, `exponents/`…). **La medición dice que no se
+puede.** Cierre transitivo de helpers por tema:
+
+| tema | helpers que necesita | exclusivos suyos | los usa también arithmetic |
+|---|---:|---:|---:|
+| trigonometry | 151 | **15** | 136 |
+| hyperbolic | 42 | 13 | 29 |
+| logarithms | 34 | **3** | 31 |
+| exponents | 14 | 8 | 6 |
+| algebra | 3 | **0** | 3 |
+
+Las reglas no pueden llevarse su maquinaria porque la comparten con las reglas
+de cancelación que se quedarían. Y el token dominante de los 713 helpers lo
+confirma: `cancellation` (134), por delante de `zero` (126) y `trig` (117).
+
+**Esto no es un montón de reglas mal archivadas: es UN motor de cancelación con
+25 puntos de entrada.** Los propios nombres lo dicen —
+`ExpandTrigSumToProductToEnableCancellationRule` no es una regla de trig, es una
+regla de cancelación con disparador trigonométrico. Dispersarlas habría
+duplicado maquinaria o tejido una telaraña entre directorios peor que el
+fichero de partida. Si algún día se quiere mover familias de verdad, primero
+hay que separar el motor de sus disparadores: eso es rediseño, no mudanza.
+
+### Dos trampas que este fichero tenía y el orquestador no
+
+**Rutas `super::` explícitas en los tests.** Los 398 tests llaman a los helpers
+con `super::foo` (325 ocurrencias); al bajarlos un nivel eso deja de apuntar al
+padre y todo revienta con E0425. Se reescriben a `super::super::foo` — misma
+referencia relativa, un nivel más abajo. Declarado: deja de ser movimiento
+puro, y la verificación deshace la reescritura antes de comparar.
+
+**`cargo build` verde no dice nada de los tests.** `register` es la única
+función `pub` del módulo y la llaman otros crates; el reexport
+`pub(crate) use general::*` la estrechó. `cargo build --workspace` salió limpio
+—porque a `register` solo la llama código de *test* de otro crate— y el fallo
+apareció en el gate final. Ahora vive en el padre, junto al catálogo. Anotado
+como L10: tras tocar visibilidades, `cargo test --workspace --no-run`.
 
 ## P1 ejecutado (2026-07-31)
 

@@ -102,6 +102,55 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   `core`, `std`, `alloc`, `test`, `proc_macro` y los nombres de crates del
   workspace antes de emitir.
 
+### L8 — `rules/arithmetic.rs` no es un archivador: es un motor de cancelación
+- **Origen:** P2, medición previa al troceo (2026-07-31).
+- **Qué:** la auditoría proponía repartir sus 25 reglas por la taxonomía
+  existente de `rules/`. La medición del cierre transitivo de helpers dice que
+  no se puede: de los 151 helpers que necesita la trigonometría solo **15 son
+  exclusivos suyos** (los otros 136 los usan también las reglas aritméticas);
+  logaritmos, 3 exclusivos de 34; álgebra, 0 de 3. El token dominante de los
+  713 helpers es `cancellation` (134), por delante de `zero` (126) y `trig`
+  (117).
+- **Por qué importa:** `ExpandTrigSumToProductToEnableCancellationRule` no es
+  una regla de trigonometría mal archivada — es una regla de **cancelación** con
+  disparador trigonométrico. Dispersar las reglas habría duplicado maquinaria o
+  tejido una telaraña entre directorios peor que el fichero de partida. La
+  recomendación original de P2 en la auditoría queda **superada por la
+  medición**.
+- **Qué queda vivo de aquella idea:** si algún día se quiere de verdad mover
+  familias a la taxonomía, primero hay que separar el motor de cancelación de
+  sus disparadores. Eso es rediseño, no mudanza.
+
+### L9 — Los tests con rutas `super::` explícitas no son movibles sin reescritura
+- **Origen:** P2 (2026-07-31), pisado y resuelto.
+- **Qué:** los 398 tests de `arithmetic` llaman a los helpers con rutas
+  explícitas `super::foo` (325 ocurrencias). Al bajarlos un nivel de
+  anidamiento, `super` deja de apuntar al módulo padre y todo revienta con
+  E0425. Los del orquestador no tenían el problema porque usan `use super::*` y
+  llamadas sin cualificar.
+- **Acción aplicada:** reescribir `super::` → `super::super::` en los bloques
+  movidos (misma referencia relativa, un nivel más abajo). Verificado
+  deshaciendo la reescritura al comparar contra HEAD.
+- **Para P3/P4:** comprobar `grep -c 'super::'` en el bloque a mover ANTES de
+  moverlo; si sale distinto de cero, la reescritura es obligatoria y hay que
+  declararla (deja de ser movimiento puro).
+
+### L10 — `cargo build --workspace` verde NO implica que compilen los tests
+- **Origen:** P2 (2026-07-31), fallo real en el gate final.
+- **Qué:** tras repartir los helpers de `arithmetic`, `cargo build --workspace`
+  salió limpio y `cargo test -p cas_engine --lib` pasó. El gate final
+  (`cargo test --workspace`) reventó con E0603: `register` era `pub`, la llama
+  otro crate, y el reexport `pub(crate) use general::*` la había estrechado.
+  Solo la llamaba código de **test** (`cas_cli/tests/advanced_simplification.rs`),
+  y ningún `build` compila eso.
+- **Por qué importa:** es la misma familia de falso verde que `| tail` y
+  `; echo OK`, pero más sutil porque el comando en sí es correcto: lo engañoso
+  es el ALCANCE. Un `build` limpio no dice nada sobre los objetivos de test.
+- **Regla para P3/P4:** tras cualquier cambio de visibilidad, verificar con
+  `cargo test --workspace --no-run` (compila todo lo que el gate ejecutará)
+  antes de dar el paso por bueno; no basta con `build` ni con los tests del
+  crate tocado.
+
 ---
 
 ## Cerrados
