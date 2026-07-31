@@ -506,6 +506,27 @@
             white-space: nowrap;
         }
 
+        /* ≈ numeric hint under the exact result: same quiet register as
+           result-plain, slightly dimmer so the exact value keeps the lead. */
+        .result-approx {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+            width: fit-content;
+            max-width: 100%;
+        }
+
+        .result-approx-text {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            opacity: 0.75;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         /* Scrollable expression content */
         .expression-input {
             overflow-x: auto;
@@ -3176,7 +3197,8 @@
                         inv_trig: branchModeSelect.value,
                         complex: complexModeSelect.value,
                         numeric_display: numericDisplaySelect.value,
-                        time_budget_ms: DEFAULT_TIME_BUDGET_MS
+                        time_budget_ms: DEFAULT_TIME_BUDGET_MS,
+                        approx_hint: true
                     })
                 );
                 const data = JSON.parse(wire);
@@ -3223,6 +3245,7 @@
                     required_display: data.required_display || [],
                     assumptions_used: data.assumptions_used || [],
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
+                    result_approx: data.result_approx || null,
                     error: undefined,
                     assignment: assignment,
                     variables: knownVariables,
@@ -3282,6 +3305,7 @@
                     required_display: data.required_display || [],
                     assumptions_used: data.assumptions_used || [],
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
+                    result_approx: data.result_approx || null,
                     error: data.error,
                     // Variable assignment fields from server
                     assignment: data.assignment || null,
@@ -3548,6 +3572,11 @@
                                 <span class="result-plain-text">${escapeHtml(resultPlainPreview(result.result))}</span>
                                 <button class="copy-btn" onclick="copyResultText(this)">📋</button>
                             </div>
+                            ${result.result_approx ? `
+                            <div class="result-approx" data-approx="${escapeHtml(result.result_approx)}">
+                                <span class="result-approx-text">&asymp; ${escapeHtml(result.result_approx).replace('*10^', '×10^')}</span>
+                                <button class="copy-btn" onclick="copyApproxText(this)">📋</button>
+                            </div>` : ''}
                         </div>
 
                         ${hasRequirements ? `
@@ -4036,6 +4065,13 @@
             const section = btn.closest('.result-section');
             const rm = section ? section.querySelector('.result-math') : null;
             copyExpression(btn, rm ? (rm.dataset.result || '') : '');
+        }
+
+        // The ≈ hint copies its RAW wire form (`3.27*10^150`): ASCII that
+        // re-parses in the engine, unlike the × glyph shown for display.
+        function copyApproxText(btn) {
+            const row = btn.closest('.result-approx');
+            copyExpression(btn, row ? (row.dataset.approx || '') : '');
         }
 
         function copyExpression(btn, text) {

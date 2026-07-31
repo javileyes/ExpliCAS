@@ -28,6 +28,7 @@ fn log_power_requires_drop_redundant_power_guards() {
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
             numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+            approx_hint: false,
         },
         cas_solver_core::eval_option_axes::Language::Es,
         |_steps, _events, _context, _steps_mode| Vec::new(),

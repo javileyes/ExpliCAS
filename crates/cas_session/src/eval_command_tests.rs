@@ -26,6 +26,7 @@ mod tests {
             inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
             assume_scope: cas_api_models::EvalAssumeScope::Real,
             numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+            approx_hint: false,
         }
     }
 
@@ -336,6 +337,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
                 numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+                approx_hint: false,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -369,6 +371,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
                 numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+                approx_hint: false,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -524,6 +527,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
                 numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+                approx_hint: false,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -566,6 +570,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
                 numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+                approx_hint: false,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),
@@ -715,6 +720,7 @@ mod tests {
                 inv_trig: cas_api_models::EvalInvTrigPolicy::Strict,
                 assume_scope: cas_api_models::EvalAssumeScope::Real,
                 numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+                approx_hint: false,
             },
             cas_solver_core::eval_option_axes::Language::Es,
             |_steps, _events, _context, _steps_mode| Vec::new(),

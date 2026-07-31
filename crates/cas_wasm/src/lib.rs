@@ -189,6 +189,8 @@ pub struct FullWireOptions {
     pub numeric_display: String,
     pub time_budget_ms: Option<u64>,
     pub max_chars: usize,
+    /// Compute the `result_approx` (`≈`) hint. Off unless the page opts in.
+    pub approx_hint: bool,
 }
 
 impl Default for FullWireOptions {
@@ -202,6 +204,7 @@ impl Default for FullWireOptions {
             numeric_display: "exact".to_string(),
             time_budget_ms: None,
             max_chars: 500_000,
+            approx_hint: false,
         }
     }
 }
@@ -225,6 +228,7 @@ fn build_run_config<'a>(
         expr,
         auto_store,
         max_chars: opts.max_chars,
+        approx_hint: opts.approx_hint,
         time_budget_ms: opts.time_budget_ms,
         steps_mode: match opts.steps.as_str() {
             "on" => cas_api_models::EvalStepsMode::On,

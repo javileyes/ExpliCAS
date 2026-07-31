@@ -12023,7 +12023,10 @@ fn bignum_materializes_exact_giants_with_size_gate() {
     let wire = parse_wire(&output);
     let (folded, _code) = run_cli(&["eval", "100!", "--format", "json"]);
     let folded_wire = parse_wire(&folded);
-    assert_eq!(wire["result"], folded_wire["result"], "bignum(100!) == 100!");
+    assert_eq!(
+        wire["result"], folded_wire["result"],
+        "bignum(100!) == 100!"
+    );
 
     // Sobre el techo: residual instantáneo, jamás minutos de multiplicación.
     for over in ["bignum(5^123456789)", "bignum(300000!)", "bignum(1000000!)"] {
@@ -12103,5 +12106,78 @@ fn mixed_band_factorial_ratio_cancels_instead_of_folding_one_side() {
 
     let (output, _code) = run_cli(&["eval", "1000!", "--format", "json"]);
     let wire = parse_wire(&output);
-    assert_eq!(wire["result_chars"], 2568, "bare 1000! must still fold: {output}");
+    assert_eq!(
+        wire["result_chars"], 2568,
+        "bare 1000! must still fold: {output}"
+    );
+}
+
+/// `result_approx` (la lectura `≈` numérica de un resultado EXACTO) es un
+/// campo del wire estrictamente opt-in: aparece solo con `--approx-hint`
+/// (la web lo envía; los tests jamás), en ASCII re-parseable (`*10^`,
+/// exponente negativo entre paréntesis), y solo cuando aporta información:
+/// resultado cerrado, no ya-decimal, y distinto de su render exacto.
+#[test]
+fn approx_hint_field_is_opt_in_and_informative() {
+    // Racional exacto → decimal de 12 dígitos.
+    let (output, _code) = run_cli(&["eval", "5/6", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "5/6", "in: {output}");
+    assert_eq!(wire["result_approx"], "0.833333333333", "in: {output}");
+
+    // Cerrado simbólico (constantes trascendentales).
+    let (output, _code) = run_cli(&["eval", "sqrt(2)+pi", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_approx"], "4.55580621596", "in: {output}");
+
+    // Entero gigante materializado: notación científica ASCII.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "2^500",
+        "--approx-hint",
+        "--format",
+        "json",
+        "--max-chars",
+        "200",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_approx"], "3.2733906079*10^150", "in: {output}");
+
+    // Más allá de f64: el carril sci exacto toma el relevo (simbólico intacto
+    // + su lectura numérica), con paréntesis en el exponente negativo.
+    let (output, _code) = run_cli(&["eval", "5^123456789", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "5^123456789", "in: {output}");
+    assert_eq!(
+        wire["result_approx"], "2.20110600528*10^86292592",
+        "in: {output}"
+    );
+
+    let (output, _code) = run_cli(&["eval", "5^-123456789", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(
+        wire["result_approx"], "4.5431705588*10^(-86292593)",
+        "in: {output}"
+    );
+
+    // Sin información nueva → ausente: entero pequeño idéntico a su render...
+    let (output, _code) = run_cli(&["eval", "1001", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert!(wire.get("result_approx").is_none(), "in: {output}");
+
+    // ...resultado que YA es presentación numérica (nodo decimal)...
+    let (output, _code) = run_cli(&["eval", "approx(pi)", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert!(wire.get("result_approx").is_none(), "in: {output}");
+
+    // ...y variables libres (sin lectura numérica cerrada).
+    let (output, _code) = run_cli(&["eval", "x+1", "--approx-hint", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert!(wire.get("result_approx").is_none(), "in: {output}");
+
+    // El pin de coste: SIN el flag el campo no existe — ni para el racional
+    // que con flag sí lo emite. Los suites nunca pagan este cómputo.
+    let (output, _code) = run_cli(&["eval", "5/6", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert!(wire.get("result_approx").is_none(), "in: {output}");
 }

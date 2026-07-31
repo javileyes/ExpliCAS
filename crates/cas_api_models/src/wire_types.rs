@@ -361,6 +361,12 @@ pub struct EvalWireOutput {
     pub result_chars: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_latex: Option<String>,
+    /// `≈` numeric rendering of an EXACT result (`0.833333333333`,
+    /// `3.2733906079×10^150`), present only when the request opted in via
+    /// `approx_hint` AND the result is closed, not already a numeric
+    /// presentation, and reads differently from `result`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_approx: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strategy: Option<String>,
     pub steps_mode: String,
@@ -404,6 +410,7 @@ pub struct EvalOutputBuild<'a> {
     pub result_truncated: bool,
     pub result_chars: usize,
     pub result_latex: Option<String>,
+    pub result_approx: Option<String>,
     pub strategy: Option<String>,
     pub steps_mode: &'a str,
     pub steps_count: usize,
@@ -447,6 +454,7 @@ impl EvalWireOutput {
             result_truncated: parts.result_truncated,
             result_chars: parts.result_chars,
             result_latex: parts.result_latex,
+            result_approx: parts.result_approx,
             strategy: parts.strategy,
             steps_mode: parts.steps_mode.to_string(),
             steps_count: parts.steps_count,
@@ -1598,6 +1606,10 @@ pub struct EvalSessionRunConfig<'a> {
     pub inv_trig: EvalInvTrigPolicy,
     pub assume_scope: EvalAssumeScope,
     pub numeric_display: EvalNumericDisplay,
+    /// Compute the `result_approx` wire field (presentation-only `≈` hint).
+    /// Off by default: tests and plain CLI runs never pay for it; the web
+    /// opts in.
+    pub approx_hint: bool,
 }
 
 // =============================================================================
@@ -2586,6 +2598,7 @@ mod tests {
             result_truncated: false,
             result_chars: 3,
             result_latex: None,
+            result_approx: None,
             strategy: Some("expand".to_string()),
             steps_mode: "off",
             steps_count: 0,

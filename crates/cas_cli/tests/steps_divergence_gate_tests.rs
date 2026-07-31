@@ -75,6 +75,7 @@ fn cli_config(
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
         numeric_display: EvalNumericDisplay::Exact,
+        approx_hint: false,
     }
 }
 

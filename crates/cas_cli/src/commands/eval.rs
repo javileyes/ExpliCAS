@@ -65,6 +65,7 @@ pub(super) fn eval_command_config<'a>(
         expr,
         auto_store: args.session.is_some(),
         max_chars: args.max_chars,
+        approx_hint: args.approx_hint,
         time_budget_ms: args.time_budget_ms,
         steps_mode: steps_mode(args.steps),
         budget_preset: budget_preset(args.budget),

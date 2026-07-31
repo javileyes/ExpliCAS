@@ -33,6 +33,7 @@ fn eval_config<'a>(expr: &'a str, domain: EvalDomainMode) -> EvalSessionRunConfi
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
         numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+        approx_hint: false,
     }
 }
 

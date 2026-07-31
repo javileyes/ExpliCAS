@@ -931,6 +931,9 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "json",
                 "--max-chars",
                 "500000",
+                # ≈ hint for the result card (presentation-only wire field;
+                # only UI-facing surfaces pay for it, never the test suites).
+                "--approx-hint",
                 "--steps",
                 "on" if steps_on else "off",
                 "--lang",

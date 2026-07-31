@@ -8,6 +8,8 @@ pub(crate) struct EvalOutputFinalizeShared<'a> {
     pub(crate) input: &'a str,
     pub(crate) input_latex: Option<String>,
     pub(crate) style_signals: ParseStyleSignals,
+    /// Compute the `result_approx` (`≈`) wire hint — request-scoped opt-in.
+    pub(crate) approx_hint: bool,
     pub(crate) stored_id: Option<u64>,
     pub(crate) strategy: Option<String>,
     pub(crate) steps_mode: &'a str,

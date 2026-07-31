@@ -307,6 +307,11 @@ pub struct EvalArgs {
     #[arg(long, default_value_t = 2000)]
     pub max_chars: usize,
 
+    /// Compute the `result_approx` wire field: a numeric `≈` reading of an
+    /// exact result (presentation only; the web UI opts in, tests never do)
+    #[arg(long, default_value_t = false)]
+    pub approx_hint: bool,
+
     /// Cooperative wall-clock simplification budget in milliseconds
     #[arg(long)]
     pub time_budget_ms: Option<u64>,

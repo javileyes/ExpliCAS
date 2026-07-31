@@ -57,6 +57,7 @@ pub(super) fn finalize_eval_collected(
         result: &prepared.output_view.result,
         ctx: &engine.simplifier.context,
         max_chars: config.max_chars,
+        approx_hint: config.approx_hint,
         input: config.expr,
         input_latex: collected.input_latex,
         style_signals: prepared.style_signals,

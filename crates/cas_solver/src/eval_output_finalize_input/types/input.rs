@@ -9,6 +9,7 @@ pub(crate) struct EvalOutputFinalizeInput<'a> {
     pub(crate) result: &'a crate::EvalResult,
     pub(crate) ctx: &'a Context,
     pub(crate) max_chars: usize,
+    pub(crate) approx_hint: bool,
     pub(crate) input: &'a str,
     pub(crate) input_latex: Option<String>,
     pub(crate) style_signals: ParseStyleSignals,

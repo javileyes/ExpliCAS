@@ -38,6 +38,7 @@ fn config(expr: &str) -> EvalCommandConfig<'_> {
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
         numeric_display: EvalNumericDisplay::Exact,
+        approx_hint: false,
     }
 }
 

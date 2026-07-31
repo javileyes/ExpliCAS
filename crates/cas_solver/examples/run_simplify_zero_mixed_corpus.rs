@@ -858,6 +858,7 @@ fn mixed_zero_eval_command_config<'a>(expression: &'a str) -> EvalCommandConfig<
         inv_trig: EvalInvTrigPolicy::Strict,
         assume_scope: EvalAssumeScope::Real,
         numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+        approx_hint: false,
     }
 }
 

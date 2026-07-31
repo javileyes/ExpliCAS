@@ -12,6 +12,7 @@ impl<'a> EvalOutputFinalizeInput<'a> {
                 input: self.input,
                 input_latex: self.input_latex,
                 style_signals: self.style_signals,
+                approx_hint: self.approx_hint,
                 stored_id: self.stored_id,
                 strategy: self.strategy,
                 steps_mode: self.steps_mode,

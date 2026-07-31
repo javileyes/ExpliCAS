@@ -14,6 +14,24 @@ pub fn is_decimal_node(ctx: &Context, id: ExprId) -> bool {
     )
 }
 
+/// Does the tree contain a `decimal(...)` display node ANYWHERE? A result
+/// that does is already a numeric presentation (`approx()`, `--numeric-display
+/// decimal`, the sci lane's `decimal(m)·10^k`), so surfaces like the
+/// `result_approx` hint must not re-approximate it.
+pub fn contains_decimal_node(ctx: &Context, id: ExprId) -> bool {
+    if is_decimal_node(ctx, id) {
+        return true;
+    }
+    match ctx.get(id) {
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            contains_decimal_node(ctx, *a) || contains_decimal_node(ctx, *b)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => contains_decimal_node(ctx, *inner),
+        Expr::Function(_, args) => args.iter().any(|arg| contains_decimal_node(ctx, *arg)),
+        _ => false,
+    }
+}
+
 /// Evaluate a CLOSED subexpression through the complex walker and emit the
 /// cartesian `decimal(re) + decimal(im)·i` (pure-imaginary and finite-only;
 /// a real result means the real f64 surface owns it — decline).
