@@ -102,24 +102,6 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   antes de dar el paso por bueno; no basta con `build` ni con los tests del
   crate tocado.
 
-### L11 — Detectores de sec/csc de potencia IMPAR sin cablear (superados, no pendientes)
-- **Origen:** P3, medición de superficie pública (2026-07-31).
-- **Qué:** en `symbolic_integration_support` la familia de predicados
-  `integrate_symbolic_is_{sec,csc}_{third,fourth,sixth,eighth}_affine_target`
-  tiene una asimetría limpia: las potencias **pares** se usan en 3 ficheros
-  externos cada una; las dos de potencia **tercera**, en **ninguno**.
-- **Comprobado contra el motor antes de juzgar:** `integrate(sec(x)^3, x)`
-  devuelve el resultado correcto `(ln|tan(x)+sec(x)| + tan(x)·sec(x))/2`. O sea
-  que la capacidad existe y se sirve por OTRA ruta: no son semillas de trabajo
-  pendiente, son **detectores superados**.
-- **Estado:** cuarentena, no borrado. Son `pub`, así que el compilador no puede
-  certificarlos, y el criterio del protocolo (compilador + registries + frentes
-  vivos) no se cumple entero. Antes de quitarlos hay que contrastar con
-  `docs/G1_RATIONAL_INTEGRATION_SCOPING.md` y el frontier de cálculo.
-- **Tercer candidato del mismo barrido:**
-  `integrate_symbolic_is_polynomial_times_constant_base_power_target`, sin uso
-  ni siquiera en tests.
-
 ### L12 — La superficie pública de cas_math es ancha pero REAL
 - **Origen:** P3 (2026-07-31), medición que corrige la propia auditoría.
 - **Qué:** la auditoría señalaba las 91 `pub fn` de
@@ -186,10 +168,15 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   presupuesto activo) — hay trabajo no medido por el sistema de presupuesto.
 - **Doctrina aplicable:** familia C5 («HANG de oscilación expand↔factor — fix
   de orquestación, no apresurar»). No se parchea en caliente: mejor un hang
-  honesto que una respuesta incorrecta instantánea. Pistas para el fix de
-  orquestación: (a) por qué el router no prueba u-du antes del carril
-  Weierstrass; (b) metrar la estrategia 2 en el presupuesto; (c) considerar
-  abstención de estrategia 2 cuando la abstracción opaca es parcial.
+  honesto que una respuesta incorrecta instantánea.
+- **Pista (a) EJECUTADA 2026-08-01 (`79ed4ce58`):** la vía u-du simbólica
+  (`symbolic_power_substitution_from_base`: deriva la base con el
+  diferenciador completo y exige cofactor = s·u' exacto) caza esta familia
+  ANTES del carril Weierstrass — `∫cos·(sin+1)²` → `(sin+1)³/3` compuesta, el
+  hang muere de rebote y sin tocar la zona de orquestación. Quedan latentes
+  para otras familias patológicas: **(b)** metrar la estrategia 2 en el
+  presupuesto (verificado que `--budget standard` no la poda) y **(c)**
+  abstención de estrategia 2 con abstracción opaca parcial.
 
 ### L14 — Tres suposiciones de utillaje que el troceo destapó (todas corregidas)
 - **Origen:** P7, troceo de `focused_rule_substeps.rs` (2026-07-31).
@@ -216,6 +203,23 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 ---
 
 ## Cerrados
+
+### L11 — Detectores sec/csc de potencia impar → CERRADO 2026-08-01 (borrados)
+La cuarentena se resolvió haciendo el trabajo que el informe de saneamiento del
+2026-07-02 (§11, Clase A) dejaba encargado a «la campaña de universalidad»:
+**verificar antes de borrar**. Verificado:
+- Los tres predicados (`integrate_symbolic_is_{sec,csc}_third_affine_target`,
+  `integrate_symbolic_is_polynomial_times_constant_base_power_target`) eran
+  **espejos redundantes**: sus handlers están cableados directamente en el
+  router (`support.rs:799` sirve `∫sec³` desde el commit `863ee59fd` de junio),
+  y las capacidades responden bien HOY (`∫sec³`, `∫csc³`, `∫sec⁵`, `∫csc⁵`,
+  `∫x·2^x`, comprobadas antes y después del borrado).
+- Las potencias PARES consumen sus predicados desde las rutas de presentación;
+  las impares nunca los necesitaron.
+- El frontier que los querría (F2) está cerrado desde 2026-07-31.
+Borrados los 3 predicados + su único test (que solo ejercitaba al predicado).
+El compilador no emite ni un dead_code tras el borrado: los handlers quedan
+vivos vía router, como predecía el análisis.
 
 ### L15 — CERRADO: wrong answer 7/3 por colisión de temps opacos (P0, preexistente)
 - **Origen:** sondas de la pregunta abierta de L13 (2026-07-31/08-01); fix en

@@ -1768,46 +1768,6 @@ pub fn integrate_symbolic_is_cot_eighth_affine_target(
     }
 }
 
-// NOTE: unwired capability predicate (kept pub as reserved API; its handler exists
-// but no route calls it yet) — see docs/INFORME_SANEAMIENTO_CODIGO_2026-07-02.md §11.
-pub fn integrate_symbolic_is_sec_third_affine_target(
-    ctx: &mut Context,
-    expr: ExprId,
-    var: &str,
-) -> bool {
-    match ctx.get(expr).clone() {
-        Expr::Pow(base, exp) => {
-            trig_sec_third_affine_antiderivative(ctx, base, exp, var).is_some()
-                || trig_sec_fifth_affine_antiderivative(ctx, base, exp, var).is_some()
-        }
-        Expr::Div(num, den) => {
-            trig_sec_third_quotient_antiderivative(ctx, num, den, var).is_some()
-                || trig_sec_fifth_quotient_antiderivative(ctx, num, den, var).is_some()
-        }
-        _ => false,
-    }
-}
-
-// NOTE: unwired capability predicate (kept pub as reserved API; its handler exists
-// but no route calls it yet) — see docs/INFORME_SANEAMIENTO_CODIGO_2026-07-02.md §11.
-pub fn integrate_symbolic_is_csc_third_affine_target(
-    ctx: &mut Context,
-    expr: ExprId,
-    var: &str,
-) -> bool {
-    match ctx.get(expr).clone() {
-        Expr::Pow(base, exp) => {
-            trig_csc_third_affine_antiderivative(ctx, base, exp, var).is_some()
-                || trig_csc_fifth_affine_antiderivative(ctx, base, exp, var).is_some()
-        }
-        Expr::Div(num, den) => {
-            trig_csc_third_quotient_antiderivative(ctx, num, den, var).is_some()
-                || trig_csc_fifth_quotient_antiderivative(ctx, num, den, var).is_some()
-        }
-        _ => false,
-    }
-}
-
 pub fn integrate_symbolic_is_sec_fourth_affine_target(
     ctx: &mut Context,
     expr: ExprId,

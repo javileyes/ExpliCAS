@@ -5819,19 +5819,6 @@ fn reciprocal_trig_odd_cube_closed_forms_are_exact() {
 }
 
 #[test]
-fn reciprocal_trig_odd_power_targets_decline_other_owners() {
-    let mut ctx = Context::new();
-    // Even powers and the n = 1 log forms keep their owners.
-    for source in ["1/cos(x)", "1/cos(x)^2", "1/cos(x)^4", "1/sin(x)^4"] {
-        let expr = parse(source, &mut ctx).expect(source);
-        assert!(
-            !super::integrate_symbolic_is_sec_third_affine_target(&mut ctx, expr, "x"),
-            "must not claim: {source}"
-        );
-    }
-}
-
-#[test]
 fn exp_polynomial_substitution_covers_normalized_div_shapes() {
     let mut ctx = Context::new();
     // c*u' / e^u normalizations of c*u'*e^(-u) for nonlinear u.

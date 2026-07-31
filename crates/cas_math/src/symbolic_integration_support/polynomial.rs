@@ -1281,16 +1281,6 @@ pub(super) fn polynomial_times_constant_base_power_antiderivative(
     Some(mul2_raw(ctx, power_factor, inner))
 }
 
-// NOTE: unwired capability predicate (kept pub as reserved API; its handler exists
-// but no route calls it yet) — see docs/INFORME_SANEAMIENTO_CODIGO_2026-07-02.md §11.
-pub fn integrate_symbolic_is_polynomial_times_constant_base_power_target(
-    ctx: &mut Context,
-    expr: ExprId,
-    var: &str,
-) -> bool {
-    polynomial_times_constant_base_power_antiderivative(ctx, expr, var).is_some()
-}
-
 pub(super) fn add_polynomial_term(
     acc: Polynomial,
     term: &Polynomial,
