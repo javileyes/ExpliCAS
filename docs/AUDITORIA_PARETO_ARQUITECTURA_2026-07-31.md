@@ -102,12 +102,57 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 |---|---|---|---|
 | P1 | ~~`orchestrator.rs` → directorio `orchestrator/`~~ | Medio, mecánico | **HECHO 2026-07-31** — ver más abajo |
 | P2 | ~~`rules/arithmetic.rs` → repartir las reglas en la taxonomía de `rules/`~~ | Medio, mecánico | **HECHO 2026-07-31, con cambio de plan medido** — ver más abajo |
-| P3 | `symbolic_integration_support.rs` y `limits_support.rs` → directorios con `mod.rs` de API curada (re-export explícito) e internals privados | Medio | Reduce la superficie de 91 pub; recorta el acoplamiento aferente a cas_math |
+| P3 | ~~`symbolic_integration_support.rs` y `limits_support.rs` → API curada~~ | Medio | **HECHO 2026-07-31; la parte «curar la API» no tenía recorrido** — ver más abajo |
 | P4 | `solve_backend_local.rs` → partir por familia de ecuación | Medio | Reparte el churn más alto del repo; menos conflictos en paralelo |
 | P5 | ~~Test-monolitos (`cli_contract_tests.rs` y compañía) → un fichero por dominio~~ | Bajo | **HECHO 2026-07-31** — ver más abajo |
 | P6 | Dedup de `collect_add_terms` / `unary_builtin_arg` y similares | Bajo | Elimina deriva silenciosa entre 13–14 copias |
 
 P1, P2 y P5 son independientes entre sí y se pueden hacer en sesiones separadas sin pisarse.
+
+## P3 ejecutado (2026-07-31) — y la medición vuelve a corregir a la auditoría
+
+Los dos ficheros de `cas_math`, **49.956 → 530 líneas** entre ambos padres, en
+23 ficheros (`21288b2c5`, `41d120e8b`):
+
+| Fichero | Antes | Tests fuera | Padre final | Submódulos |
+|---|---:|---:|---:|---|
+| `symbolic_integration_support.rs` | 29.999 | 198 tests | **359** | 11, por técnica |
+| `limits_support.rs` | 19.957 | 146 tests | **171** | 10, por familia de límite |
+
+### La parte «API curada» del plan no tenía recorrido
+
+La auditoría señalaba las 91 `pub fn` de `symbolic_integration_support` como
+superficie inflada. Medido contra todo el workspace: **88 de las 91 se usan
+fuera de cas_math**, y las 8 de `limits_support`, las 8. **Cero candidatas a
+`pub(crate)`.** No hay superficie que recortar: es ancha porque se usa.
+
+Ojo con la conclusión inversa, eso sí: que la API se use no dice que esté bien
+diseñada — dice que estrecharla es un cambio de contrato con 39 ficheros, no una
+limpieza. Anotado como L12.
+
+### Lo que sí encontró el barrido: detectores superados
+
+De las 91, solo 3 no se usan en ningún sitio, y forman un patrón limpio:
+`integrate_symbolic_is_{sec,csc}_third_affine_target`. Sus hermanas de potencia
+**par** (cuarta, sexta, octava) se usan en 3 ficheros externos cada una; las de
+potencia **tercera**, en ninguna.
+
+Antes de juzgarlas se comprobó la capacidad contra el motor:
+`integrate(sec(x)^3, x)` devuelve `(ln|tan(x)+sec(x)| + tan(x)·sec(x))/2`, que
+es correcto. **La capacidad existe y se sirve por otra ruta**, así que no son
+semillas de trabajo pendiente sino detectores superados. Aun así van a
+cuarentena, no a la papelera: son `pub`, el compilador no puede certificarlas, y
+el criterio del protocolo (compilador + registries + frentes vivos) no se cumple
+entero. L11.
+
+### Un fallo propio, y por qué se cuenta
+
+El detector de llamadas del troceador exigía nombres de 7 caracteres o más, así
+que helpers cortos como `is_var` nunca aparecían como llamados y se quedaban
+privados: 31 errores E0425. Umbral bajado a 2. La asimetría importa — marcar de
+más solo ensancha visibilidad, marcar de menos rompe la compilación. Y esta vez
+sí se pasó `cargo test --workspace --no-run` (la regla de L10) antes de dar el
+paso por bueno.
 
 ## P2 ejecutado (2026-07-31) — con la recomendación original corregida por la medición
 

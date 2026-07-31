@@ -151,6 +151,36 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   antes de dar el paso por bueno; no basta con `build` ni con los tests del
   crate tocado.
 
+### L11 — Detectores de sec/csc de potencia IMPAR sin cablear (superados, no pendientes)
+- **Origen:** P3, medición de superficie pública (2026-07-31).
+- **Qué:** en `symbolic_integration_support` la familia de predicados
+  `integrate_symbolic_is_{sec,csc}_{third,fourth,sixth,eighth}_affine_target`
+  tiene una asimetría limpia: las potencias **pares** se usan en 3 ficheros
+  externos cada una; las dos de potencia **tercera**, en **ninguno**.
+- **Comprobado contra el motor antes de juzgar:** `integrate(sec(x)^3, x)`
+  devuelve el resultado correcto `(ln|tan(x)+sec(x)| + tan(x)·sec(x))/2`. O sea
+  que la capacidad existe y se sirve por OTRA ruta: no son semillas de trabajo
+  pendiente, son **detectores superados**.
+- **Estado:** cuarentena, no borrado. Son `pub`, así que el compilador no puede
+  certificarlos, y el criterio del protocolo (compilador + registries + frentes
+  vivos) no se cumple entero. Antes de quitarlos hay que contrastar con
+  `docs/G1_RATIONAL_INTEGRATION_SCOPING.md` y el frontier de cálculo.
+- **Tercer candidato del mismo barrido:**
+  `integrate_symbolic_is_polynomial_times_constant_base_power_target`, sin uso
+  ni siquiera en tests.
+
+### L12 — La superficie pública de cas_math es ancha pero REAL
+- **Origen:** P3 (2026-07-31), medición que corrige la propia auditoría.
+- **Qué:** la auditoría señalaba las 91 `pub fn` de
+  `symbolic_integration_support` como superficie inflada que impedía refactorizar
+  con seguridad local. Medido: **88 de las 91 se usan fuera de cas_math**, y las
+  8 de `limits_support`, las 8. No hay ninguna candidata a `pub(crate)`.
+- **Por qué importa:** la parte «API curada» de P3 no tiene recorrido — no hay
+  superficie que recortar. Lo que sí queda es lo que se hizo: trocear para
+  navegar. Y cuidado con la conclusión inversa: que la API se use no significa
+  que esté bien diseñada, significa que estrecharla es un cambio de contrato con
+  39 ficheros, no una limpieza.
+
 ---
 
 ## Cerrados
