@@ -190,21 +190,56 @@ fn hyperbolic_range_edges_settle_exactly() {
 }
 
 #[test]
-fn hyperbolic_interior_and_restricted_domains_still_decline() {
-    // Interior thresholds need the ar-inversions (named follow-up)…
-    let interior = solve("tanh(x)^2 < 1/4");
-    assert!(
-        interior.starts_with("solve("),
-        "expected echo, got {interior}"
+fn hyperbolic_interior_thresholds_invert_exactly() {
+    // ar*-inversion cycle: sinh/tanh are strictly increasing on their total
+    // domain (`hyper(g) {op} c ⟺ g {op} ar*(c)`), and cosh is even with
+    // minimum 1 (`cosh(g) {op} c ⟺ |g| {op} acosh(c)`, band built DIRECTLY
+    // — symbolic ar*-endpoints cannot go through the set algebra).
+    assert_eq!(solve("sinh(x) < 1"), "(-infinity, asinh(1))");
+    assert_eq!(solve("tanh(x) < 1/2"), "(-infinity, atanh(1/2))");
+    assert_eq!(solve("tanh(x) > -1/2"), "(-atanh(1/2), infinity)");
+    assert_eq!(solve("cosh(x) < 2"), "(-acosh(2), acosh(2))");
+    assert_eq!(
+        solve("cosh(x) >= 3"),
+        "(-infinity, -acosh(3)] U [acosh(3), infinity)"
     );
-    // …sinh has full range (no edge at all)…
-    let sinh_sq = solve("sinh(x)^2 < 1");
-    assert_ne!(sinh_sq, "No solution");
-    assert!(
-        sinh_sq.starts_with("solve("),
-        "expected echo, got {sinh_sq}"
+    // Affine arguments map through the rational slope.
+    assert_eq!(solve("sinh(2*x) >= 3"), "[1/2·asinh(3), infinity)");
+    assert_eq!(
+        solve("cosh(2*x-1) < 2"),
+        "(1/2·(1 - acosh(2)), 1/2·(acosh(2) + 1))"
     );
-    // …and a NON-polynomial argument must not claim ℝ (true set: (0, ∞)).
+}
+
+#[test]
+fn hyperbolic_squares_and_abs_build_the_symmetric_band() {
+    // The even-power split's branches carry symbolic ar*-endpoints the core
+    // set algebra cannot order (F7 trap): the square/abs shapes reduce
+    // inside the hyperbolic handler with a KNOWN endpoint order (odd
+    // increasing inverse ⟹ −ar(r) < ar(r) by the math).
+    assert_eq!(solve("sinh(x)^2 < 1"), "(-asinh(1), asinh(1))");
+    assert_eq!(
+        solve("sinh(x)^2 > 1"),
+        "(-infinity, -asinh(1)) U (asinh(1), infinity)"
+    );
+    assert_eq!(solve("tanh(x)^2 < 1/4"), "(-atanh(1/2), atanh(1/2))");
+    assert_eq!(solve("abs(tanh(x)) < 1/2"), "(-atanh(1/2), atanh(1/2))");
+    assert_eq!(solve("cosh(x)^2 < 4"), "(-acosh(2), acosh(2))");
+    assert_eq!(solve("sinh(2*x)^2 <= 1"), "[-1/2·asinh(1), 1/2·asinh(1)]");
+    // Weak boundary joins cleanly: the literal-parity normalization
+    // (`asinh(-2) → -asinh(2)`) lets the boundary root dedup against the
+    // band endpoint instead of surviving as a degenerate extra interval.
+    assert_eq!(solve("abs(sinh(x)) <= 2"), "[-asinh(2), asinh(2)]");
+    // sinh² > 0 punctures at the argument's zero.
+    assert_eq!(solve("sinh(x)^2 > 0"), "(-infinity, 0) U (0, infinity)");
+    // cosh² threshold at/below the minimum settles exactly.
+    assert_eq!(solve("cosh(x)^2 < 1"), "No solution");
+    assert_eq!(solve("cosh(x)^2 >= 1"), "All real numbers");
+}
+
+#[test]
+fn hyperbolic_restricted_domains_still_decline() {
+    // A NON-polynomial argument must not claim ℝ (true set: (0, ∞)).
     let restricted = solve("tanh(ln(x)) < 1");
     assert!(
         restricted.starts_with("solve("),

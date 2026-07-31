@@ -8064,12 +8064,11 @@ fn try_solve_even_power_or_abs_trig_inequality(
         if let Expr::Function(fn_id, args) = ctx_.get(e) {
             if args.len() == 1 && contains_var(ctx_, args[0], var) {
                 if let Some(f) = ctx_.builtin_of(*fn_id) {
-                    // Tanh/Cosh (F4 hyperbolic member): total domain, no
-                    // poles — the square/abs reduction and its edge arms
-                    // apply verbatim; their sub-solves settle at the RANGE
-                    // edges (`tanh ⋚ ±1`, `cosh ⋚ 1`) through
-                    // `try_solve_hyperbolic_range_edge_inequality` and
-                    // decline honestly for interior thresholds.
+                    // Tanh/Cosh/Sinh (F4 hyperbolic member): total domain,
+                    // no poles — the square/abs reduction and its edge arms
+                    // apply verbatim; their sub-solves settle through
+                    // `try_solve_hyperbolic_range_edge_inequality` (range
+                    // edges exactly, interior thresholds by ar*-inversion).
                     if matches!(
                         f,
                         BuiltinFn::Sin
@@ -8077,6 +8076,7 @@ fn try_solve_even_power_or_abs_trig_inequality(
                             | BuiltinFn::Tan
                             | BuiltinFn::Tanh
                             | BuiltinFn::Cosh
+                            | BuiltinFn::Sinh
                     ) {
                         return Some((f, args[0]));
                     }
@@ -8324,7 +8324,7 @@ fn solve_trig_square_or_abs_rel(
     // machinery, same as `sin(ln(x))² ≥ 0` → «ℝ if x > 0»).
     let pole_free = matches!(
         trig_fn,
-        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tanh | BuiltinFn::Cosh
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tanh | BuiltinFn::Cosh | BuiltinFn::Sinh
     );
     let zero = BigRational::zero();
     if t < zero {
@@ -8470,7 +8470,7 @@ fn try_solve_hyperbolic_range_edge_inequality(
         if let Expr::Function(fn_id, args) = ctx_.get(e) {
             if args.len() == 1 && contains_var(ctx_, args[0], var) {
                 if let Some(f) = ctx_.builtin_of(*fn_id) {
-                    if matches!(f, BuiltinFn::Tanh | BuiltinFn::Cosh) {
+                    if matches!(f, BuiltinFn::Tanh | BuiltinFn::Cosh | BuiltinFn::Sinh) {
                         return Some((f, args[0]));
                     }
                 }
@@ -8478,6 +8478,24 @@ fn try_solve_hyperbolic_range_edge_inequality(
         }
         None
     };
+    // Also match the SQUARE `hyper(g)²` and ABS `|hyper(g)|` spellings: their
+    // even-power reduction produces two rays with SYMBOLIC ar*-endpoints that
+    // the set algebra cannot order (the F7 trap), so they reduce HERE — the
+    // inverse of an odd increasing function keeps `−ar(r) < ar(r)` true by
+    // the math, never by a comparator.
+    let hyper_sq_abs = |ctx_: &Context, e: ExprId| -> Option<(BuiltinFn, ExprId, bool)> {
+        if let Expr::Pow(base, exp) = ctx_.get(e) {
+            if as_rational_const(ctx_, *exp) == Some(BigRational::from_integer(2.into())) {
+                let (f, g) = hyper_of(ctx_, *base)?;
+                return Some((f, g, true));
+            }
+            return None;
+        }
+        let inner = match_abs_argument(ctx_, e)?;
+        let (f, g) = hyper_of(ctx_, inner)?;
+        Some((f, g, false))
+    };
+    let mut square_mode: Option<bool> = None; // Some(is_square) when sq/abs form
     let (hyper_fn, g, c_expr, op) = if let Some((f, g)) = hyper_of(&simplifier.context, eq.lhs) {
         if contains_var(&simplifier.context, eq.rhs, var) {
             return None;
@@ -8488,6 +8506,18 @@ fn try_solve_hyperbolic_range_edge_inequality(
             return None;
         }
         (f, g, eq.lhs, flip_inequality(eq.op.clone()))
+    } else if let Some((f, g, sq)) = hyper_sq_abs(&simplifier.context, eq.lhs) {
+        if contains_var(&simplifier.context, eq.rhs, var) {
+            return None;
+        }
+        square_mode = Some(sq);
+        (f, g, eq.rhs, eq.op.clone())
+    } else if let Some((f, g, sq)) = hyper_sq_abs(&simplifier.context, eq.rhs) {
+        if contains_var(&simplifier.context, eq.lhs, var) {
+            return None;
+        }
+        square_mode = Some(sq);
+        (f, g, eq.lhs, flip_inequality(eq.op.clone()))
     } else {
         return None;
     };
@@ -8495,6 +8525,14 @@ fn try_solve_hyperbolic_range_edge_inequality(
     // (`tanh(x)² < 1` → branch `tanh(x) < sqrt(1)`): fold before reading.
     let (c_expr, _) = simplifier.simplify(c_expr);
     let c = as_rational_const(&simplifier.context, c_expr)?;
+
+    // SQUARE/ABS reduction to the power-1 relation `hyper(g) {op} …` or the
+    // even-function band: `T = hyper²` (or `|hyper|`) is compared against the
+    // rational `t`, and every case lands on machinery below with a KNOWN
+    // endpoint order.
+    if let Some(is_square) = square_mode {
+        return solve_hyperbolic_square_or_abs_rel(simplifier, hyper_fn, g, is_square, op, c, var);
+    }
     // Total-domain gate: a polynomial argument is defined on all of ℝ.
     let g_poly = cas_math::polynomial::Polynomial::from_expr(&simplifier.context, g, var).ok()?;
     if g_poly.degree() < 1 {
@@ -8517,8 +8555,24 @@ fn try_solve_hyperbolic_range_edge_inequality(
                     _ => None,
                 }
             } else {
-                None // interior threshold: needs artanh inversion (follow-up)
+                // INTERIOR threshold |c| < 1: tanh is strictly increasing on
+                // its total domain, so `tanh(g) {op} c ⟺ g {op} atanh(c)` —
+                // a single monotone relation the linear/poly solver isolates
+                // without any symbolic-endpoint set algebra.
+                let inv = simplifier
+                    .context
+                    .call_builtin(BuiltinFn::Atanh, vec![c_expr]);
+                let (inv, _) = simplifier.simplify(inv);
+                solve_relation_set(simplifier, var, g, inv, op)
             }
+        }
+        BuiltinFn::Sinh => {
+            // sinh: strictly increasing bijection ℝ → ℝ — invert for ANY c.
+            let inv = simplifier
+                .context
+                .call_builtin(BuiltinFn::Asinh, vec![c_expr]);
+            let (inv, _) = simplifier.simplify(inv);
+            solve_relation_set(simplifier, var, g, inv, op)
         }
         BuiltinFn::Cosh => {
             // cosh(g) ∈ [1, ∞), with cosh(g) = 1 ⟺ g = 0.
@@ -8553,11 +8607,238 @@ fn try_solve_hyperbolic_range_edge_inequality(
                     _ => None,
                 }
             } else {
-                None // c > 1: needs arcosh inversion (follow-up)
+                // c > 1: cosh is EVEN with minimum 1 at g = 0, so
+                // `cosh(g) {op} c ⟺ |g| {op} acosh(c)` — a band or its
+                // complement with SYMBOLIC endpoints ±acosh(c). The core set
+                // algebra cannot order symbolic endpoints (the F7 trap), so
+                // the band is built DIRECTLY for an AFFINE g = k·x + b,
+                // oriented by the RATIONAL slope's sign; higher degrees
+                // decline honestly.
+                let a_pos = simplifier
+                    .context
+                    .call_builtin(BuiltinFn::Acosh, vec![c_expr]);
+                let (a_pos, _) = simplifier.simplify(a_pos);
+                build_affine_symmetric_band_or_complement(simplifier, &g_poly, a_pos, op)
             }
         }
         _ => None,
     }
+}
+
+/// Build `lo < g < hi` (or its complement) for an AFFINE `g = k·x + b` with
+/// SYMMETRIC symbolic bounds `±hi_u` (`hi_u ≥ 0` by construction: it is
+/// `ar*(r)` for `r ≥ 0`). The x-endpoints `(±hi_u − b)/k` are ordered by the
+/// RATIONAL slope's sign — never by a symbolic comparator (the F7 trap the
+/// core set algebra cannot avoid). Non-affine `g` declines.
+fn build_affine_symmetric_band_or_complement(
+    simplifier: &mut Simplifier,
+    g_poly: &cas_math::polynomial::Polynomial,
+    hi_u: ExprId,
+    op: cas_ast::RelOp,
+) -> Option<SolutionSet> {
+    use cas_ast::{BoundType, Interval, RelOp};
+    use cas_solver_core::solution_set::{neg_inf, pos_inf};
+    use num_traits::{Signed, Zero};
+
+    if g_poly.degree() != 1 {
+        return None;
+    }
+    let b = g_poly.coeffs[0].clone();
+    let k = g_poly.coeffs[1].clone();
+    if k.is_zero() {
+        return None;
+    }
+    let lo_u = {
+        let n = simplifier.context.add(Expr::Neg(hi_u));
+        simplifier.simplify(n).0
+    };
+    let mut endpoint = |u: ExprId| -> ExprId {
+        let b_expr = simplifier.context.add(Expr::Number(b.clone()));
+        let k_expr = simplifier.context.add(Expr::Number(k.clone()));
+        let shifted = simplifier.context.add(Expr::Sub(u, b_expr));
+        let scaled = simplifier.context.add(Expr::Div(shifted, k_expr));
+        simplifier.simplify(scaled).0
+    };
+    let (lo, hi) = if k.is_positive() {
+        (endpoint(lo_u), endpoint(hi_u))
+    } else {
+        (endpoint(hi_u), endpoint(lo_u))
+    };
+    match op {
+        RelOp::Lt | RelOp::Leq => {
+            let bt = if matches!(op, RelOp::Lt) {
+                BoundType::Open
+            } else {
+                BoundType::Closed
+            };
+            Some(SolutionSet::Continuous(Interval {
+                min: lo,
+                min_type: bt.clone(),
+                max: hi,
+                max_type: bt,
+            }))
+        }
+        RelOp::Gt | RelOp::Geq => {
+            let bt = if matches!(op, RelOp::Gt) {
+                BoundType::Open
+            } else {
+                BoundType::Closed
+            };
+            let ninf = neg_inf(&mut simplifier.context);
+            let pinf = pos_inf(&mut simplifier.context);
+            Some(SolutionSet::Union(vec![
+                Interval {
+                    min: ninf,
+                    min_type: BoundType::Open,
+                    max: lo,
+                    max_type: bt.clone(),
+                },
+                Interval {
+                    min: hi,
+                    min_type: bt,
+                    max: pinf,
+                    max_type: BoundType::Open,
+                },
+            ]))
+        }
+        _ => None,
+    }
+}
+
+/// Reduce `hyper(g)² {op} t` (`is_square`) or `|hyper(g)| {op} t` to exact
+/// sets: range edges settle to ℝ/∅/{g = 0}/g ≠ 0, and interior thresholds
+/// build the symmetric ar*-band DIRECTLY for affine `g` (see
+/// `build_affine_symmetric_band_or_complement` — the even-power split's
+/// generic route produces rays with symbolic ar*-endpoints the set algebra
+/// cannot order). `t` is the already-normalized rational threshold.
+fn solve_hyperbolic_square_or_abs_rel(
+    simplifier: &mut Simplifier,
+    hyper_fn: cas_ast::BuiltinFn,
+    g: ExprId,
+    is_square: bool,
+    op: cas_ast::RelOp,
+    t: num_rational::BigRational,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BuiltinFn, RelOp};
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    let g_poly = cas_math::polynomial::Polynomial::from_expr(&simplifier.context, g, var).ok()?;
+    if g_poly.degree() < 1 {
+        return None;
+    }
+    let zero = BigRational::zero();
+    let one = BigRational::from_integer(1.into());
+
+    // `g = 0` / `g ≠ 0` via the full solver on the POLYNOMIAL relation
+    // (rational endpoints — the set algebra is safe there).
+    macro_rules! g_eq_zero {
+        () => {{
+            let z = simplifier.context.num(0);
+            solve_relation_set(simplifier, var, g, z, RelOp::Eq)
+        }};
+    }
+    macro_rules! g_ne_zero {
+        () => {{
+            let z = simplifier.context.num(0);
+            let lo = solve_relation_set(simplifier, var, g, z, RelOp::Lt)?;
+            let hi = solve_relation_set(simplifier, var, g, z, RelOp::Gt)?;
+            Some(cas_solver_core::solution_set::union_solution_sets(
+                &simplifier.context,
+                lo,
+                hi,
+            ))
+        }};
+    }
+
+    if matches!(hyper_fn, BuiltinFn::Cosh) {
+        // T = cosh² ∈ [1, ∞) (or |cosh| = cosh ≥ 1): squaring is monotone on
+        // the positive side, so `cosh² {op} t ⟺ cosh {op} √t` for t > 0 —
+        // and both spellings compare against the minimum via `t vs 1`
+        // (√t ⋚ 1 ⟺ t ⋚ 1 exactly).
+        if t <= zero {
+            return match op {
+                RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+                RelOp::Gt | RelOp::Geq => Some(SolutionSet::AllReals),
+                _ => None,
+            };
+        }
+        return if t < one {
+            match op {
+                RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+                RelOp::Gt | RelOp::Geq => Some(SolutionSet::AllReals),
+                _ => None,
+            }
+        } else if t == one {
+            match op {
+                RelOp::Lt => Some(SolutionSet::Empty),
+                RelOp::Leq => g_eq_zero!(),
+                RelOp::Geq => Some(SolutionSet::AllReals),
+                RelOp::Gt => g_ne_zero!(),
+                _ => None,
+            }
+        } else {
+            // Threshold above the minimum: band at acosh(√t) (or acosh(t)).
+            let t_expr = simplifier.context.add(Expr::Number(t));
+            let c_new = if is_square {
+                let sq = simplifier.context.call("sqrt", vec![t_expr]);
+                simplifier.simplify(sq).0
+            } else {
+                t_expr
+            };
+            let a_pos = simplifier
+                .context
+                .call_builtin(BuiltinFn::Acosh, vec![c_new]);
+            let (a_pos, _) = simplifier.simplify(a_pos);
+            build_affine_symmetric_band_or_complement(simplifier, &g_poly, a_pos, op)
+        };
+    }
+
+    // Odd increasing hyper (sinh / tanh): T = hyper² (or |hyper|) with
+    // |hyper(g)| {op} r ⟺ the symmetric band ar*(±r) — plus tanh's range
+    // ceiling |tanh| < 1.
+    if t < zero {
+        return match op {
+            RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+            RelOp::Gt | RelOp::Geq => Some(SolutionSet::AllReals),
+            _ => None,
+        };
+    }
+    if t == zero {
+        return match op {
+            RelOp::Lt => Some(SolutionSet::Empty),
+            RelOp::Leq => g_eq_zero!(),
+            RelOp::Geq => Some(SolutionSet::AllReals),
+            RelOp::Gt => g_ne_zero!(),
+            _ => None,
+        };
+    }
+    // r = √t for the square, r = t for the abs; tanh saturates at r ≥ 1
+    // (both spellings: r ≥ 1 ⟺ t ≥ 1 exactly).
+    if matches!(hyper_fn, BuiltinFn::Tanh) && t >= one {
+        return match op {
+            RelOp::Lt | RelOp::Leq => Some(SolutionSet::AllReals),
+            // |tanh| never reaches 1: ≥ r and > r are both empty for r ≥ 1.
+            RelOp::Gt | RelOp::Geq => Some(SolutionSet::Empty),
+            _ => None,
+        };
+    }
+    let t_expr = simplifier.context.add(Expr::Number(t));
+    let r_expr = if is_square {
+        let sq = simplifier.context.call("sqrt", vec![t_expr]);
+        simplifier.simplify(sq).0
+    } else {
+        t_expr
+    };
+    let inv_fn = match hyper_fn {
+        BuiltinFn::Sinh => BuiltinFn::Asinh,
+        BuiltinFn::Tanh => BuiltinFn::Atanh,
+        _ => return None,
+    };
+    let hi_u = simplifier.context.call_builtin(inv_fn, vec![r_expr]);
+    let (hi_u, _) = simplifier.simplify(hi_u);
+    build_affine_symmetric_band_or_complement(simplifier, &g_poly, hi_u, op)
 }
 
 fn try_solve_reciprocal_trig_inequality(

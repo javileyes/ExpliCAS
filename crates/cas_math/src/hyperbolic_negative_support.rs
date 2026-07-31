@@ -48,6 +48,19 @@ pub fn try_rewrite_hyperbolic_negative_expr(
         return rewrite_for_builtin(ctx, fn_id, *inner, RewritePattern::ExplicitNeg);
     }
 
+    // Case 1b: NEGATIVE NUMERIC LITERAL, f(-2) (stored as `Number(-2)`, not
+    // `Neg(2)`, so Case 1 never saw it — the solver's inverse builders emit
+    // `asinh(-2)` while the direct band builders emit `-asinh(2)`, and the
+    // structurally distinct twins defeated boundary-root dedup). Rewrite via
+    // the same parity table with the positive literal as the inner argument.
+    if let Expr::Number(n) = ctx.get(arg) {
+        use num_traits::Signed as _;
+        if n.is_negative() {
+            let pos = ctx.add(Expr::Number(-n.clone()));
+            return rewrite_for_builtin(ctx, fn_id, pos, RewritePattern::ExplicitNeg);
+        }
+    }
+
     // Case 2: subtraction-like argument, f(a-b) with canonical swap to f(b-a).
     let (a, b) = extract_sub_like_pair(ctx, arg)?;
     if !dedup_node_count_within(ctx, a, 20) || !dedup_node_count_within(ctx, b, 20) {
