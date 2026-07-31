@@ -220,6 +220,8 @@ fn template_for(key: &str, lang: Language) -> Option<&'static str> {
         "series.product_of_powers_as_power_of_factorials" => ("Convertir el producto de potencias en potencia de factoriales", "Convert the product of powers into a power of factorials"),
         "series.count_equal_factors_in_product" => ("Contar factores iguales en el producto", "Count the equal factors in the product"),
         "fraction.common_denominator" => ("Llevar a denominador común", "Put over a common denominator"),
+        "fraction.find_common_denominator" => ("Llevar a denominador común: {0}", "Put over a common denominator: {0}"),
+        "fraction.sum_fractions" => ("Sumar las fracciones", "Add the fractions"),
         "fraction.simplify_numerator_and_denominator" => ("Simplificar el numerador y el denominador", "Simplify the numerator and the denominator"),
         "gradient.component" => ("Derivar respecto de {0}, tratando las demás variables como constantes", "Differentiate with respect to {0}, treating the other variables as constants"),
         "lineintegral.formula_vector" => ("∮F·dr: sustituir la parametrización en F, derivar r(t), ensamblar Σ Fᵢ·rᵢ\u{2032} e integrar en [{0}, {1}]", "∮F·dr: substitute the parametrization into F, differentiate r(t), assemble Σ Fᵢ·rᵢ\u{2032} and integrate over [{0}, {1}]"),

@@ -11739,3 +11739,66 @@ fn equiv_honors_value_domain_axis() {
         );
     }
 }
+
+/// Los substeps de suma de fracciones (denominador común) publican el título
+/// LOCALIZADO vía `desc_key` y LaTeX declarado en `*_latex`, con `before`/`after`
+/// en texto plano. El defecto que esto pinnea: títulos hardcodeados en inglés
+/// ("Find common denominator: 6") ignorando `--lang`, y LaTeX crudo en los
+/// campos plain — el wire lo escapaba como texto (`\text{\unicode{x5C}frac…}`)
+/// y la web mostraba símbolos en vez de fracciones renderizadas.
+#[test]
+fn fraction_sum_substeps_are_localized_and_carry_clean_latex() {
+    for (lang_args, common_title, sum_title) in [
+        (
+            &[][..],
+            "Llevar a denominador común: 6",
+            "Sumar las fracciones",
+        ),
+        (
+            &["--lang", "en"][..],
+            "Put over a common denominator: 6",
+            "Add the fractions",
+        ),
+    ] {
+        let mut args = vec!["eval", "1/2+1/3", "--format", "json", "--steps", "on"];
+        args.extend_from_slice(lang_args);
+        let (output, _code) = run_cli(&args);
+        let wire = parse_wire(&output);
+
+        let steps = wire["steps"].as_array().expect("steps array");
+        let substeps = steps
+            .iter()
+            .find_map(|s| {
+                let subs = s["substeps"].as_array()?;
+                (!subs.is_empty()).then_some(subs)
+            })
+            .expect("a step with substeps");
+        assert_eq!(substeps.len(), 2, "expected 2 substeps: {output}");
+
+        assert_eq!(substeps[0]["title"], common_title, "in: {output}");
+        assert_eq!(substeps[0]["before"], "1/2 + 1/3");
+        assert_eq!(substeps[0]["after"], "3/6 + 2/6");
+        assert_eq!(
+            substeps[0]["before_latex"], "\\frac{1}{2} + \\frac{1}{3}",
+            "declared LaTeX must reach the wire untouched: {output}"
+        );
+        assert_eq!(substeps[0]["after_latex"], "\\frac{3}{6} + \\frac{2}{6}");
+
+        assert_eq!(substeps[1]["title"], sum_title, "in: {output}");
+        assert_eq!(substeps[1]["before"], "3/6 + 2/6");
+        assert_eq!(substeps[1]["after"], "5/6");
+        assert_eq!(substeps[1]["before_latex"], "\\frac{3}{6} + \\frac{2}{6}");
+        assert_eq!(substeps[1]["after_latex"], "\\frac{5}{6}");
+
+        // Ningún lado publica el escape-de-texto sobre LaTeX (el síntoma web).
+        for sub in substeps {
+            for field in ["before_latex", "after_latex"] {
+                let side = sub[field].as_str().expect("latex side");
+                assert!(
+                    !side.contains("\\text") && !side.contains("\\unicode"),
+                    "{field} leaked text-escaped LaTeX: {side}"
+                );
+            }
+        }
+    }
+}
