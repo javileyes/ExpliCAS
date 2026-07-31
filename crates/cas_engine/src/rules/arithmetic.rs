@@ -1926,6 +1926,42 @@ define_rule!(
     }
 );
 
+pub fn register(simplifier: &mut crate::Simplifier) {
+    // High-priority short-circuit rules first
+    simplifier.add_rule(Box::new(
+        ExpandTrigSineProductTripleAngleToEnableCancellationRule,
+    ));
+    simplifier.add_rule(Box::new(CancelExactAdditivePairsRule));
+    simplifier.add_rule(Box::new(CollapseExactZeroTrigDoubleAngleCosVariantRule));
+    simplifier.add_rule(Box::new(ExpandTrigSquareIdentityToEnableCancellationRule));
+    simplifier.add_rule(Box::new(ExpandTrigPhaseShiftToEnableCancellationRule));
+    simplifier.add_rule(Box::new(ExpandTrigSumToProductToEnableCancellationRule));
+    simplifier.add_rule(Box::new(
+        ExpandHyperbolicPythagoreanFactorToEnableCancellationRule,
+    ));
+    simplifier.add_rule(Box::new(
+        ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
+    ));
+    simplifier.add_rule(Box::new(ExpandOddHalfPowerToEnableCancellationRule));
+    simplifier.add_rule(Box::new(ExpandLogProductPowerToEnableCancellationRule));
+    simplifier.add_rule(Box::new(ExpandLogAbsMulDivToEnableCancellationRule));
+    simplifier.add_rule(Box::new(CollapseExactZeroThreeTermSubsetRule));
+    simplifier.add_rule(Box::new(CollapseExactZeroCommonScaledDifferenceRule));
+    simplifier.add_rule(Box::new(CollapseExactZeroProductFactorRule));
+    simplifier.add_rule(Box::new(CollapseExactOneShiftedQuotientRule));
+    simplifier.add_rule(Box::new(SubSelfToZeroRule)); // priority 500: before expansion
+    simplifier.add_rule(Box::new(SubtractExpandedSumDiffCubesQuotientRule));
+
+    simplifier.add_rule(Box::new(AddZeroRule));
+    simplifier.add_rule(Box::new(MulOneRule));
+    simplifier.add_rule(Box::new(NormalizeMulNegRule)); // Lift Neg out of Mul for canonical form
+    simplifier.add_rule(Box::new(MulZeroRule));
+    simplifier.add_rule(Box::new(DivZeroRule));
+    simplifier.add_rule(Box::new(CombineConstantsRule));
+    simplifier.add_rule(Box::new(SimplifyNumericExponentsRule));
+    simplifier.add_rule(Box::new(AddInverseRule));
+}
+
 mod fractions;
 mod general;
 mod hyperbolic;
