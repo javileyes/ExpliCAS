@@ -38,6 +38,18 @@ pub fn try_eval_pow_literal(ctx: &mut Context, base: ExprId, exp: ExprId) -> Opt
         return None;
     }
 
+    // The exponent cap alone does not bound the RESULT once giant literals
+    // flow through the tree (a bignum product): `(2^123456)^500` passes
+    // `|exp| ≤ 1000` yet would materialize 18M digits. Project the result
+    // size (f64 decides resource spending only, never a value) and decline
+    // past the same ceiling the bignum surface uses.
+    let projected_bits = (exp_i.unsigned_abs() as f64)
+        * (crate::big_materialize::log2_estimate(base_q.numer())
+            + crate::big_materialize::log2_estimate(base_q.denom()));
+    if projected_bits * 0.302 > crate::big_materialize::BIGNUM_MAX_DIGITS as f64 {
+        return None;
+    }
+
     // Edge case: a^0
     if exp_i == 0 {
         if base_q.is_zero() {

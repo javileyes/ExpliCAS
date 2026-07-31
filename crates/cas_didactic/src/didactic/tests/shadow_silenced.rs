@@ -271,6 +271,7 @@ fn shadow_silenced_template_instance_rates_derive_route() {
             inv_trig: EvalInvTrigPolicy::Strict,
             assume_scope: EvalAssumeScope::Real,
             numeric_display: EvalNumericDisplay::Exact,
+            approx_hint: false,
         };
         let _json = evaluate_eval_command_pretty_with_session(
             None,

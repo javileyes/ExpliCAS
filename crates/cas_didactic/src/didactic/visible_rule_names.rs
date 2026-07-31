@@ -120,6 +120,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
             "Aplicar la identidad pitagórica hiperbólica"
         }
         "Consecutive Factorial Ratio" => "Cancelar factoriales consecutivos",
+        "Giant Literal Exact Arithmetic" => "Completar la aritmética exacta con el literal gigante",
         "Rationalize"
         | "Rationalize Cube Root Denominator"
         | "Rationalize Linear Sqrt Denominator"
@@ -783,6 +784,9 @@ pub(crate) fn rule_name_es_to_en(es: &str) -> &str {
         "Cancelar factores comunes" => "Cancel common factors",
         "Cancelar factores en una fracción" => "Cancel factors in a fraction",
         "Cancelar factoriales consecutivos" => "Cancel consecutive factorials",
+        "Completar la aritmética exacta con el literal gigante" => {
+            "Complete the exact arithmetic with the giant literal"
+        }
         "Cancelar fracciones iguales" => "Cancel equal fractions",
         "Cancelar la potencia en la fracción" => "Cancel the power in the fraction",
         "Normalizar la resta dentro del valor absoluto" => {

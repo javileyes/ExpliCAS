@@ -3596,8 +3596,8 @@
                                 <span class="result-approx-text">&asymp; ${escapeHtml(result.result_approx).replace('*10^', '×10^')}</span>
                                 <button class="copy-btn" onclick="copyApproxText(this)">📋</button>
                             </div>` : ''}
-                            ${result.bignum_available ? `
-                            <button class="bignum-btn" onclick="evaluateBignumOf(this)" title="${t('card.bignum.title')}">🔢 ${t('card.bignum.label')}</button>` : ''}
+                            ${result.bignum_available && (typeof result.ref === 'number' || !result.result_truncated) ? `
+                            <button class="bignum-btn" data-bignum-target="${typeof result.ref === 'number' ? '#' + result.ref : escapeHtml(result.result)}" onclick="evaluateBignumOf(this)" title="${t('card.bignum.title')}">🔢 ${t('card.bignum.label')}</button>` : ''}
                         </div>
 
                         ${hasRequirements ? `
@@ -4095,17 +4095,17 @@
             copyExpression(btn, row ? (row.dataset.approx || '') : '');
         }
 
-        // «Calcular bignum»: launch a NEW cell evaluating bignum(<result>).
-        // The engine only offers this button (bignum_available) for symbolic
-        // numeric results whose materialization passes bignum's size gates,
-        // so the result string here is always the compact symbolic form.
+        // «Calcular bignum»: launch a NEW cell evaluating bignum(<target>).
+        // The target is the cell's #N reference whenever it has one — exact
+        // by construction and immune to display truncation (pasting a
+        // truncated digit string would evaluate a silently WRONG number);
+        // the plain result text is the fallback only for ref-less cells and
+        // only when the wire delivered it complete.
         function evaluateBignumOf(btn) {
             if (evalInFlight) return;
-            const section = btn.closest('.result-section');
-            const rm = section ? section.querySelector('.result-math') : null;
-            const raw = rm ? (rm.dataset.result || '') : '';
-            if (!raw) return;
-            input.value = 'bignum(' + raw + ')';
+            const target = btn.dataset.bignumTarget || '';
+            if (!target) return;
+            input.value = 'bignum(' + target + ')';
             evaluateExpression();
         }
 

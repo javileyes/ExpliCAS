@@ -130,6 +130,39 @@ fn is_plain_number_form(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// A literal this many digits big can only have entered the tree through
+/// deliberate materialization (`bignum`, big combinatorics) — every normal
+/// fold is capped well below it. Presence of one is the user saying "I am
+/// in digits-land".
+pub const GIANT_LITERAL_MIN_DIGITS: u64 = 2_000;
+
+/// Trigger for the engine's bignum-contagion rule: a `Mul`/`Div` mixing one
+/// DIRECT giant-literal operand with one non-literal operand — exactly the
+/// shape the capped normal folds leave stuck (`N/5^1234` after `#4` resolved
+/// to a bignum product). Whether the completion is affordable is then the
+/// materializer's own gates' call, not this trigger's.
+pub fn node_mixes_giant_literal(ctx: &Context, expr: ExprId) -> bool {
+    let (lhs, rhs) = match ctx.get(expr) {
+        Expr::Mul(l, r) | Expr::Div(l, r) => (*l, *r),
+        _ => return false,
+    };
+    let is_giant = |id: ExprId| {
+        plain_number_bits(ctx, id)
+            .is_some_and(|bits| bits as f64 * DIGITS_PER_BIT > GIANT_LITERAL_MIN_DIGITS as f64)
+    };
+    (is_giant(lhs) && !is_plain_number_form(ctx, rhs))
+        || (is_giant(rhs) && !is_plain_number_form(ctx, lhs))
+}
+
+/// Total bits of a plain-number-form operand (`None` for anything else).
+fn plain_number_bits(ctx: &Context, expr: ExprId) -> Option<u64> {
+    match ctx.get(expr) {
+        Expr::Number(r) => Some(rational_bits(r)),
+        Expr::Neg(inner) => plain_number_bits(ctx, *inner),
+        _ => None,
+    }
+}
+
 /// Estimated total digits (numerator + denominator) of the exact value,
 /// `None` outside the materialization grammar. Advisory and cheap (O(tree),
 /// never multiplies): powers and factorials use the SAME formulas as the
@@ -213,7 +246,7 @@ fn pow_exact_bounded(base: &BigRational, e: &BigInt, max_digits: u64) -> Option<
 
 /// `log2(|x|)` to ~15 significant digits: exponent from the bit length plus
 /// the fractional part from the top 53 bits.
-fn log2_estimate(x: &BigInt) -> f64 {
+pub(crate) fn log2_estimate(x: &BigInt) -> f64 {
     let bits = x.bits();
     if bits == 0 {
         return 0.0;

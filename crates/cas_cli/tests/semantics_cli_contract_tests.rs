@@ -12211,3 +12211,74 @@ fn bignum_available_mirrors_materialization_gates() {
     let wire = parse_wire(&output);
     assert!(wire.get("bignum_available").is_none(), "in: {output}");
 }
+
+/// Contagio bignum: un producto/cociente que mezcla un literal GIGANTE ya
+/// materializado (solo bignum()/combinatoria grande los crea) con un operando
+/// numérico simbólico completa la aritmética exacta materializando el nodo
+/// entero bajo los gates de bignum. Sobre el techo queda mixto, honesto. El
+/// guard de tamaño en el fold de potencias acota el primo de F13 que este
+/// flujo destapaba ((2^123456)^500 pasaba el cap de exponente hacia 18M de
+/// dígitos).
+#[test]
+fn giant_literal_contagion_completes_exact_arithmetic() {
+    // División: numerador coprimo → racional exacta completa (37164 + / + 863).
+    let (output, _code) = run_cli(&[
+        "eval",
+        "bignum(2^123456)/5^1234",
+        "--format",
+        "json",
+        "--max-chars",
+        "100",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_chars"], 38028, "in: {output}");
+    assert!(
+        wire["result"].as_str().expect("result").starts_with("91021647594683810219"),
+        "in: {output}"
+    );
+
+    // Producto: colapsa a UN entero (2^124456).
+    let (output, _code) = run_cli(&[
+        "eval",
+        "bignum(2^123456)*2^1000",
+        "--format",
+        "json",
+        "--max-chars",
+        "100",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_chars"], 37465, "in: {output}");
+
+    // Cancelación exacta a través del contagio.
+    let (output, _code) = run_cli(&["eval", "bignum(2^123456)/2^123456", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1", "in: {output}");
+
+    // Sobre el techo (8.6M dígitos): mixto intacto, sin minutos de CPU.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "bignum(2^123456)/5^12345678",
+        "--format",
+        "json",
+        "--max-chars",
+        "100",
+    ]);
+    let wire = parse_wire(&output);
+    let result = wire["result"].as_str().expect("result");
+    assert!(
+        result.contains("5^12345678") || wire["result_truncated"] == true,
+        "mixed form must survive over the ceiling: {output}"
+    );
+
+    // Guard del fold de potencias: base gigante ^500 queda simbólica.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "bignum(2^123456)^500",
+        "--format",
+        "json",
+        "--max-chars",
+        "100",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_chars"], 37168, "^500 stays symbolic: {output}");
+}

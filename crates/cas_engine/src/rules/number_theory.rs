@@ -26,6 +26,35 @@ define_rule!(
 );
 
 define_rule!(
+    GiantLiteralArithmeticRule,
+    "Giant Literal Exact Arithmetic",
+    Some(crate::target_kind::TargetKindSet::MUL | crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr, _parent_ctx| {
+        // Bignum contagion: a product/quotient mixing an already-materialized
+        // giant literal (only bignum()/big combinatorics create those — the
+        // user is in digits-land) with a symbolic numeric operand is exactly
+        // what the capped normal folds leave stuck: `#4/5^1234` resolved to
+        // `N/5^1234`. Complete the arithmetic by materializing the WHOLE node
+        // under bignum's own size gates — over the ceiling it declines in
+        // microseconds and the mixed form stays, honestly.
+        if !cas_math::big_materialize::node_mixes_giant_literal(ctx, expr) {
+            return None;
+        }
+        let value = cas_math::big_materialize::try_materialize_exact(
+            ctx,
+            expr,
+            cas_math::big_materialize::BIGNUM_MAX_DIGITS,
+        )?;
+        let rewritten = ctx.add(cas_ast::Expr::Number(value));
+        Some(
+            Rewrite::new(rewritten)
+                .desc("Exact arithmetic with a giant literal")
+                .local(expr, rewritten),
+        )
+    }
+);
+
+define_rule!(
     NumberTheoryRule,
     "Number Theory Operations",
     Some(crate::target_kind::TargetKindSet::ADD | crate::target_kind::TargetKindSet::FUNCTION),
@@ -81,6 +110,7 @@ define_rule!(
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ConsecutiveFactorialRatioRule));
+    simplifier.add_rule(Box::new(GiantLiteralArithmeticRule));
     simplifier.add_rule(Box::new(NumberTheoryRule));
 }
 
