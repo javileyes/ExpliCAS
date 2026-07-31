@@ -1,6 +1,7 @@
 //! Support for cancelling common symbolic factors in Add/Add fractions.
 
 use crate::expr_destructure::as_div;
+use crate::expr_terms::collect_additive_terms_flat_add;
 use crate::fraction_factors::{
     build_mul_from_factors_int_pow as build_mul_from_factors, collect_mul_factors_int_pow,
     find_factor_exp, merge_factor_multiset as factors_to_vec,
@@ -23,10 +24,8 @@ pub fn try_rewrite_div_add_symmetric_factor_expr(
         return None;
     }
 
-    let mut num_terms = Vec::new();
-    let mut den_terms = Vec::new();
-    collect_add_terms(ctx, num, &mut num_terms);
-    collect_add_terms(ctx, den, &mut den_terms);
+    let num_terms = collect_additive_terms_flat_add(ctx, num);
+    let den_terms = collect_additive_terms_flat_add(ctx, den);
     if num_terms.len() < 2 || den_terms.len() < 2 {
         return None;
     }
@@ -63,16 +62,6 @@ pub fn try_rewrite_div_add_symmetric_factor_expr(
     }
 
     Some(DivAddSymmetricFactorRewrite { rewritten })
-}
-
-fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_add_terms(ctx, *l, terms);
-            collect_add_terms(ctx, *r, terms);
-        }
-        _ => terms.push(expr),
-    }
 }
 
 fn compute_common_factors(ctx: &Context, terms: &[ExprId]) -> Vec<(ExprId, i64)> {

@@ -3,6 +3,7 @@
 
 use crate::build::mul2_raw;
 use crate::expr_destructure::as_div;
+use crate::expr_terms::collect_additive_terms_flat_add;
 use crate::fraction_factors::{
     collect_mul_factors_int_pow, find_factor_exp, merge_factor_multiset as factors_to_vec,
 };
@@ -34,8 +35,7 @@ pub fn try_rewrite_div_expand_num_for_cancel_expr(
         return None;
     }
 
-    let mut den_terms = Vec::new();
-    collect_add_terms(ctx, den, &mut den_terms);
+    let den_terms = collect_additive_terms_flat_add(ctx, den);
     if den_terms.is_empty() {
         return None;
     }
@@ -76,8 +76,7 @@ pub fn try_rewrite_div_expand_num_for_cancel_expr(
             outer = mul2_raw(ctx, outer, f);
         }
 
-        let mut add_terms = Vec::new();
-        collect_add_terms(ctx, candidate, &mut add_terms);
+        let add_terms = collect_additive_terms_flat_add(ctx, candidate);
         if add_terms.len() < 2 {
             continue;
         }
@@ -135,16 +134,6 @@ fn collect_mul_factors_flat(ctx: &Context, num: ExprId) -> Vec<ExprId> {
         }
     }
     factors
-}
-
-fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_add_terms(ctx, *l, terms);
-            collect_add_terms(ctx, *r, terms);
-        }
-        _ => terms.push(expr),
-    }
 }
 
 fn has_shared_factor(ctx: &Context, a: &[(ExprId, i64)], b: &[(ExprId, i64)]) -> bool {

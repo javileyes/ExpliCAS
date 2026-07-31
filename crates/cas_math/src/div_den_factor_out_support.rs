@@ -2,6 +2,7 @@
 
 use crate::build::mul2_raw;
 use crate::expr_destructure::as_div;
+use crate::expr_terms::collect_additive_terms_flat_add;
 use crate::fraction_factors::{
     build_mul_from_factors_int_pow as build_mul_from_factors, collect_mul_factors_int_pow,
     find_factor_exp, merge_factor_multiset as factors_to_vec,
@@ -27,8 +28,7 @@ pub fn try_rewrite_div_den_factor_out_expr(
         return None;
     }
 
-    let mut den_terms = Vec::new();
-    collect_add_terms(ctx, den, &mut den_terms);
+    let den_terms = collect_additive_terms_flat_add(ctx, den);
     if den_terms.len() < 2 {
         return None;
     }
@@ -114,16 +114,6 @@ pub fn try_rewrite_div_den_factor_out_expr(
     }
 
     Some(DivDenFactorOutRewrite { rewritten })
-}
-
-fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_add_terms(ctx, *l, terms);
-            collect_add_terms(ctx, *r, terms);
-        }
-        _ => terms.push(expr),
-    }
 }
 
 #[cfg(test)]

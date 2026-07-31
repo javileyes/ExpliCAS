@@ -2,6 +2,7 @@
 //! by factoring a common coefficient from terms.
 
 use crate::build::mul2_raw;
+use crate::expr_terms::collect_additive_terms_flat_add;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
@@ -46,8 +47,7 @@ pub fn try_rewrite_div_scalar_into_add_expr(
         return None;
     }
 
-    let mut terms = Vec::new();
-    collect_add_terms(ctx, add_id, &mut terms);
+    let terms = collect_additive_terms_flat_add(ctx, add_id);
     if terms.len() < 2 {
         return None;
     }
@@ -119,16 +119,6 @@ pub fn try_rewrite_div_scalar_into_add_expr(
         rewritten,
         kind: DivScalarIntoAddRewriteKind::FactorCommonCoefficientFromSum,
     })
-}
-
-fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_add_terms(ctx, *l, terms);
-            collect_add_terms(ctx, *r, terms);
-        }
-        _ => terms.push(expr),
-    }
 }
 
 fn extract_rational_coeff(ctx: &Context, term: ExprId, one_id: ExprId) -> (BigRational, ExprId) {
