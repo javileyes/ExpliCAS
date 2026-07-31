@@ -210,6 +210,28 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   cas_engine/cas_math, estos últimos en ficheros con el mismo nombre
   `reciprocal_trig_log_domain.rs`, que huele a módulo copiado entero).
 
+### L14 — Tres suposiciones de utillaje que el troceo destapó (todas corregidas)
+- **Origen:** P7, troceo de `focused_rule_substeps.rs` (2026-07-31).
+- **Qué falló, y por qué vale registrarlo:** las tres son la misma clase de
+  error —dar por hecho un patrón sin comprobarlo— y las tres fallaron
+  *ruidosamente*, que es lo que salvó el paso:
+  1. **Los módulos de test no siempre se llaman `tests`.** Aquí son cinco con
+     nombre propio (`limit_notable_tests`, `named_identity_matcher_tests`…).
+     El extractor solo reconocía `mod tests`, y el analizador de visibilidad
+     solo leía un fichero `tests.rs`, así que dejó privadas funciones que los
+     tests importan por nombre → E0432. Ahora se lee el directorio entero.
+  2. **Las rutas `super::` también están en producción, no solo en tests.**
+     L9 se quedó corta: `super::visible_rule_names::…` y
+     `super::nested_fraction_analysis::…` dejan de resolver al bajar un nivel.
+     La reescritura a `super::super::` hay que aplicarla a TODO bloque movido.
+  3. **Una función puede usarse sin llamarse.** `reduce(gcd_usize)` la pasa
+     como valor; un detector de llamadas que busca `nombre(` no la ve y la deja
+     privada. Ahora cuenta también que otro módulo la NOMBRE.
+- **Regla general que dejan las tres, y la de L10 y la del `endswith`:** cuando
+  una herramienta de análisis decide *visibilidad* o *pertenencia*, equivocarse
+  por exceso es inocuo y por defecto rompe. Elegir siempre la
+  sobreaproximación.
+
 ---
 
 ## Cerrados

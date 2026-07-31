@@ -107,9 +107,10 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 | P5 | ~~Test-monolitos (`cli_contract_tests.rs` y compañía) → un fichero por dominio~~ | Bajo | **HECHO 2026-07-31** — ver más abajo |
 | P6 | ~~Dedup de `collect_add_terms` / `unary_builtin_arg`~~ | Bajo | **HECHO en parte 2026-07-31; el resto NO es dedup** — ver abajo |
 
-**Campaña completa: los 6 puntos ejecutados.** Balance de líneas en los ficheros
-padres, con la suite invariante en las seis verificaciones completas
-(362 binarios, 12.771 tests OK, 0 fallos, 371 ignorados):
+**Campaña completa: los 6 puntos del plan, más el sexto god-file (P7).** Balance
+de líneas en los ficheros padres, con la suite invariante en las siete
+verificaciones completas (362 binarios, 12.771 tests OK, 0 fallos, 371
+ignorados):
 
 | # | Fichero | Antes | Padre después |
 |---|---|---:|---:|
@@ -119,6 +120,33 @@ padres, con la suite invariante en las seis verificaciones completas
 | P3 | `limits_support.rs` | 19.957 | 171 |
 | P4 | `solve_backend_local.rs` | 15.616 | 165 |
 | P5 | 4 test-monolitos | 60.611 | 56 ficheros |
+| P7 | `focused_rule_substeps.rs` | 26.006 | 562 |
+
+Los **seis god-files** del diagnóstico inicial —el 21% del código— quedan
+desmontados. El mayor `.rs` que sobrevive en el workspace ya no es ninguno de
+ellos.
+
+## P7 ejecutado (2026-07-31) — el sexto god-file, que el plan no había numerado
+
+`didactic/focused_rule_substeps.rs` aparecía en la lista de cuellos de botella
+pero se quedó sin acción propia en la tabla del plan. Tras P1–P6 era **el mayor
+`.rs` del workspace** y el que crecía linealmente con el Frente E: cada regla
+que gana narración añadía aquí su builder (123 toques en 4 meses).
+
+Otro iceberg: 780 fns bajo una API de **3 `pub(crate)`** y 3 consumidores, todos
+dentro de cas_didactic. Salen los 5 módulos de test con nombre propio (1.462
+líneas, 52 tests) y las 783 fns se reparten en 14 submódulos por el tipo de
+regla que narran (`d82789e3a`).
+
+Este fichero destapó tres fallos de mi propio utillaje, los tres de la misma
+clase —una suposición no comprobada— y los tres detectados porque fallaron
+**ruidosamente** (ver L14): los módulos de test no siempre se llaman `tests`;
+las rutas `super::` también están en código de producción, no solo en tests; y
+una función puede usarse sin llamarse (`reduce(gcd_usize)` la pasa como valor).
+
+La regla que dejan esos tres, más la de L10 y la del `endswith`: **cuando una
+herramienta decide visibilidad o pertenencia, equivocarse por exceso es inocuo
+y por defecto rompe — sobreaproximar siempre.**
 
 ## P6 ejecutado en parte (2026-07-31) — y la parte que falta no es dedup
 
