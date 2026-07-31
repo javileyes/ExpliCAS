@@ -923,10 +923,20 @@ pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) 
                 })
                 .collect(),
         ),
-        // A `Residual` (unsolved fragment) or `Conditional` (guarded cases) operand: the domain
-        // restriction is resolved elsewhere; `Empty` is the accepted historical result here.
-        (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _)
-        | (_, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) => SolutionSet::Empty,
+        // A `Residual` (unsolved fragment) operand: `Empty` here FABRICATED
+        // «No solution» out of an unsolved fragment (the F4 hyperbolic member
+        // reached exactly this arm through the abs split before its
+        // solver-layer guard). Propagate the fragment instead — the same
+        // accepted best-effort as the union arm: a non-claim is never worse
+        // than a definitive empty. (2026-07-31; the abs-split path guards
+        // upstream in `combine_abs_branch_sets`, this covers every OTHER
+        // consumer of the shared algebra.)
+        (r @ SolutionSet::Residual(_), _) | (_, r @ SolutionSet::Residual(_)) => r,
+        // A `Conditional` (guarded cases) operand still returns `Empty`
+        // (HISTORICAL): propagating it would OVER-claim — the guarded case
+        // sets would silently drop the other operand's constraint. Flipping
+        // this half needs a per-consumer audit (named follow-up).
+        (SolutionSet::Conditional(_), _) | (_, SolutionSet::Conditional(_)) => SolutionSet::Empty,
         // A `PeriodicIntervalUnion` operand: same solver-layer deferral as the
         // union arm above — clipping/intersecting windows needs endpoint
         // arithmetic this core cannot do. Fail loud in debug rather than
@@ -1748,5 +1758,33 @@ mod tests {
             crate::value_domain::ValueDomain::ComplexEnabled,
         );
         assert!(matches!(complex, SolutionSet::Discrete(v) if v == vec![r1, r2]));
+    }
+
+    #[test]
+    fn intersect_with_residual_operand_propagates_the_fragment() {
+        // FLIPPED 2026-07-31: `Residual ∩ X` returned `Empty` — «No solution»
+        // FABRICATED from an unsolved fragment (the documented «accepted
+        // historical result»). The fragment now propagates, mirroring the
+        // union arm's best-effort: a non-claim is never worse than a
+        // definitive empty. `Conditional ∩ X` STAYS Empty (propagating it
+        // would OVER-claim by dropping the other operand's constraint —
+        // its flip needs a per-consumer audit first).
+        let mut ctx = Context::new();
+        let frag = ctx.var("unsolved");
+        let lo = ctx.num(0);
+        let hi = ctx.num(1);
+        let band = SolutionSet::Continuous(Interval {
+            min: lo,
+            min_type: BoundType::Closed,
+            max: hi,
+            max_type: BoundType::Closed,
+        });
+        let left = intersect_solution_sets(&ctx, SolutionSet::Residual(frag), band.clone());
+        assert!(matches!(left, SolutionSet::Residual(e) if e == frag));
+        let right = intersect_solution_sets(&ctx, band.clone(), SolutionSet::Residual(frag));
+        assert!(matches!(right, SolutionSet::Residual(e) if e == frag));
+        let cond = SolutionSet::Conditional(vec![]);
+        let with_cond = intersect_solution_sets(&ctx, cond, band);
+        assert!(matches!(with_cond, SolutionSet::Empty));
     }
 }
