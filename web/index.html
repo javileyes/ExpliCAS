@@ -2814,6 +2814,7 @@
                         "card.result": "✨ Resultado",
                         "card.terms_count": "{0} términos",
                         "card.large_polynomial": "Polinomio grande",
+                        "card.digits_count": "{0} dígitos",
                         "card.requires": "⚠️ Requiere",
                         "card.error_prefix": "❌ Error: {0}",
                         "substeps.show": "▶ Mostrar sub-pasos",
@@ -2942,6 +2943,7 @@
                         "card.result": "✨ Result",
                         "card.terms_count": "{0} terms",
                         "card.large_polynomial": "Large polynomial",
+                        "card.digits_count": "{0} digits",
                         "card.requires": "⚠️ Requires",
                         "card.error_prefix": "❌ Error: {0}",
                         "substeps.show": "▶ Show sub-steps",
@@ -3268,6 +3270,8 @@
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
                     result_approx: data.result_approx || null,
                     bignum_available: data.bignum_available === true,
+                    result_chars: data.result_chars || 0,
+                    result_truncated: data.result_truncated === true,
                     error: undefined,
                     assignment: assignment,
                     variables: knownVariables,
@@ -3329,6 +3333,8 @@
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
                     result_approx: data.result_approx || null,
                     bignum_available: data.bignum_available === true,
+                    result_chars: data.result_chars || 0,
+                    result_truncated: data.result_truncated === true,
                     error: data.error,
                     // Variable assignment fields from server
                     assignment: data.assignment || null,
@@ -3477,6 +3483,15 @@
 
             const hasSteps = result.steps && result.steps.length > 0;
             const isPolyResult = result.result && result.result.length > 500;
+            // A giant NUMBER (bignum, big nPr, ...) is not a polynomial: its
+            // chip reports the digit count instead. Truncated results carry
+            // the FULL count in result_chars; untruncated ones count exactly.
+            const isNumericGiant = isPolyResult && /^-?[\d\/]+$/.test(result.result);
+            const giantDigits = isNumericGiant
+                ? (result.result_truncated && result.result_chars
+                    ? result.result_chars
+                    : (result.result.match(/\d/g) || []).length)
+                : 0;
             const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
             const hasWarnings = normalizeWarnings(result.warnings).length > 0;
             const hasRequirements = result.required_display && result.required_display.length > 0;
@@ -3583,7 +3598,7 @@
                             <div class="result-label">
                                 ${t('card.result')}
                                 ${result.stats && result.stats.term_count ? `<span class="poly-badge">${t('card.terms_count', result.stats.term_count.toLocaleString())}</span>` : ''}
-                                ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">${t('card.large_polynomial')}</span>` : ''}
+                                ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">${isNumericGiant ? t('card.digits_count', giantDigits.toLocaleString()) : t('card.large_polynomial')}</span>` : ''}
                             </div>
                             <div class="result-math" data-latex="${escapeHtml(result.result_latex || result.result || '')}" data-result="${escapeHtml(result.result || '')}">
                                 ${isPolyResult
