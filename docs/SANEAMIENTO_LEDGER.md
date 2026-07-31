@@ -135,31 +135,38 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 ### L13 — Los helpers duplicados HAN DERIVADO: el nombre no es un contrato
 - **Origen:** P6, paso previo obligatorio de diffear antes de fusionar (2026-07-31).
 - **Qué:** agrupadas por cuerpo normalizado, las copias del mismo nombre no son
-  copias:
+  copias. `unary_builtin_arg` llegó a tener **cuatro semánticas distintas**
+  bajo un solo nombre: una que no desenvuelve nada, una que desenvuelve
+  `__hold`, una equivalente a ésa escrita de otro modo, y una que desenvuelve
+  **`abs`**.
+- **Avance 2026-07-31** (`7d7799400`, `1e0ba51da`, y el commit de este cierre
+  parcial):
 
-  | helper | definiciones | variantes distintas |
-  |---|---:|---:|
-  | `collect_add_terms` | 18 | **15** |
-  | `unary_builtin_arg` | 14 | **10** |
+  | helper | al empezar | ahora |
+  |---|---|---|
+  | `collect_add_terms` | 18 definiciones / 15 variantes | 14 / 14 |
+  | `unary_builtin_arg` | 14 definiciones / 10 variantes | **6 / 6** |
 
-  Una de las de `collect_add_terms` ni siquiera comparte firma
-  (`&mut Context` en `div_add_common_factor_from_den_support.rs`), lo que
-  delata semántica distinta, no un simple retoque.
-- **Por qué importa:** el riesgo que se temía —«un fix en una copia no llega a
-  las otras»— es peor de lo previsto: quien lea `collect_add_terms` en un
-  fichero y asuma el comportamiento del que conoce se equivocará en 13 de cada
-  18 casos. Y confirma que **fusionar a ciegas habría sido un cambio de
-  comportamiento en trece sitios**, no una limpieza.
-- **Hecho:** consolidado el único cluster genuinamente idéntico (4 copias en
-  los `div_*_support` de cas_math → `collect_additive_terms_flat_add` de
-  `expr_terms.rs`).
-- **Pendiente, y NO es mecánico:** las 14 variantes restantes piden un análisis
-  caso por caso —¿es deriva accidental o especialización legítima?—. Si es lo
-  segundo, el arreglo no es fusionar sino **renombrar**, para que el nombre deje
-  de prometer algo que no cumple. Quedan además los clusters idénticos de
-  `unary_builtin_arg` (3 en cas_math, 2 en cas_solver y 2 cruzando
-  cas_engine/cas_math, estos últimos en ficheros con el mismo nombre
-  `reciprocal_trig_log_domain.rs`, que huele a módulo copiado entero).
+  Consolidadas las 4 copias idénticas de `collect_add_terms` y las 7 de
+  `unary_builtin_arg` (4 equivalentes + 3 idénticas), en dos canónicos de
+  `cas_math::expr_destructure` cuyos nombres dicen lo que hacen:
+  `unary_builtin_arg_through_hold` y `unary_builtin_arg_no_hold`. La de
+  cas_solver_core se **renombró** a `unary_builtin_arg_through_abs` en vez de
+  fusionarse, que es el arreglo correcto cuando la copia hace otra cosa.
+- **Hipótesis descartada por el camino:** los dos `reciprocal_trig_log_domain.rs`
+  de cas_math y cas_engine NO son un módulo copiado; comparten el nombre de
+  fichero y un helper de 7 líneas, nada más.
+- **Pregunta abierta que esto destapó, y que NO se toca a ciegas:** las policies
+  de integración usan la variante que **no** desenvuelve `__hold`. Como
+  `__hold` lo crean reglas de expand/factor, un integrando protegido no casaría
+  ahí. Añadir el unwrap cambiaría el comportamiento de las policies, así que
+  queda documentado —los dos canónicos son vecinos y sus nombres exhiben la
+  diferencia— hasta que alguien construya el caso que decida si es deliberado
+  o un descuido.
+- **Lo que queda:** las 14 variantes de `collect_add_terms` son todas
+  singletons; ahí no hay dedup posible, solo el trabajo caso por caso de decidir
+  si cada nombre miente. Y el barrido de helpers de TEST (`solve_display` ×22,
+  `simplify_str` ×19…) sigue pendiente, con el mismo método: diffear primero.
 
 ### L14 — Tres suposiciones de utillaje que el troceo destapó (todas corregidas)
 - **Origen:** P7, troceo de `focused_rule_substeps.rs` (2026-07-31).

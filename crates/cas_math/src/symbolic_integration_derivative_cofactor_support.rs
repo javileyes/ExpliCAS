@@ -5,6 +5,7 @@
 //! multiplicative cofactor. Route-specific domain, scale, and primitive policy
 //! stays in `symbolic_integration_support`.
 
+use crate::expr_destructure::unary_builtin_arg_no_hold;
 use crate::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
@@ -155,7 +156,7 @@ where
     let mut matching_index = None;
 
     for (idx, factor) in factors.iter().enumerate() {
-        let Some(candidate_arg) = unary_builtin_arg(ctx, *factor, builtin) else {
+        let Some(candidate_arg) = unary_builtin_arg_no_hold(ctx, *factor, builtin) else {
             continue;
         };
         if arg_matches(ctx, candidate_arg) {
@@ -177,17 +178,6 @@ where
     ))
 }
 
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
 fn signed_unary_builtin_arg(
     ctx: &Context,
     expr: ExprId,
@@ -195,9 +185,9 @@ fn signed_unary_builtin_arg(
 ) -> Option<(ExprId, BigRational)> {
     match ctx.get(expr) {
         Expr::Neg(inner) => {
-            unary_builtin_arg(ctx, *inner, builtin).map(|arg| (arg, -BigRational::one()))
+            unary_builtin_arg_no_hold(ctx, *inner, builtin).map(|arg| (arg, -BigRational::one()))
         }
-        _ => unary_builtin_arg(ctx, expr, builtin).map(|arg| (arg, BigRational::one())),
+        _ => unary_builtin_arg_no_hold(ctx, expr, builtin).map(|arg| (arg, BigRational::one())),
     }
 }
 

@@ -112,3 +112,26 @@ pub fn unary_builtin_arg_through_hold(
     };
     (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin)).then_some(args[0])
 }
+
+/// Destruct a unary call to `builtin` WITHOUT stripping `__hold`.
+///
+/// The counterpart to [`unary_builtin_arg_through_hold`]. The integration
+/// policies use this one, so a held tree does NOT match here. Whether that is
+/// deliberate or an oversight is an open question (ledger L13); until it is
+/// answered, the two behaviours live side by side with names that say which is
+/// which, instead of three private copies all called `unary_builtin_arg`.
+#[inline]
+pub fn unary_builtin_arg_no_hold(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}

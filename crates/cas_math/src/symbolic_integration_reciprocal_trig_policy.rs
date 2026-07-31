@@ -6,6 +6,7 @@
 //! source-side `tan`/`cot` evidence. Higher-level integration routes stay in
 //! `symbolic_integration_support` so route order remains explicit there.
 
+use crate::expr_destructure::unary_builtin_arg_no_hold;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
@@ -178,7 +179,7 @@ pub(crate) fn indexed_trig_log_derivative_numerator_factor(
 ) -> Option<usize> {
     let numerator_builtin = trig_log_derivative_numerator_builtin(denominator_builtin)?;
     factors.iter().enumerate().find_map(|(idx, factor)| {
-        unary_builtin_arg(ctx, *factor, numerator_builtin)
+        unary_builtin_arg_no_hold(ctx, *factor, numerator_builtin)
             .is_some_and(|arg| compare_expr(ctx, arg, expected_arg) == Ordering::Equal)
             .then_some(idx)
     })
@@ -280,17 +281,6 @@ fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(value.into()))
 }
 
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
 fn trig_pole_builtin_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
     let (builtin, arg) = match ctx.get(expr) {
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(*fn_id)?, args[0]),
@@ -310,9 +300,9 @@ fn signed_unary_builtin_arg(
 ) -> Option<(ExprId, BigRational)> {
     match ctx.get(expr) {
         Expr::Neg(inner) => {
-            unary_builtin_arg(ctx, *inner, builtin).map(|arg| (arg, -BigRational::one()))
+            unary_builtin_arg_no_hold(ctx, *inner, builtin).map(|arg| (arg, -BigRational::one()))
         }
-        _ => unary_builtin_arg(ctx, expr, builtin).map(|arg| (arg, BigRational::one())),
+        _ => unary_builtin_arg_no_hold(ctx, expr, builtin).map(|arg| (arg, BigRational::one())),
     }
 }
 

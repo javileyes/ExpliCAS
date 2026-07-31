@@ -8,6 +8,7 @@
 //! explicit.
 
 use crate::build::mul2_raw;
+use crate::expr_destructure::unary_builtin_arg_no_hold;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
@@ -23,7 +24,7 @@ pub(crate) fn reciprocal_hyperbolic_power_arg(
     // n == 1: a bare `Function` denominator (e.g. `1/cosh(x)` is `Div(1, cosh(x))`,
     // not a `Pow`). Higher powers carry an explicit `Pow(base, n)`.
     if power == 1 {
-        return unary_builtin_arg(ctx, den, builtin);
+        return unary_builtin_arg_no_hold(ctx, den, builtin);
     }
     let (base, exp) = match ctx.get(den) {
         Expr::Pow(base, exp) => (*base, *exp),
@@ -82,7 +83,7 @@ pub(crate) fn indexed_reciprocal_hyperbolic_square_parts(
 }
 
 pub(crate) fn hyperbolic_tangent_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    unary_builtin_arg(ctx, expr, BuiltinFn::Tanh)
+    unary_builtin_arg_no_hold(ctx, expr, BuiltinFn::Tanh)
 }
 
 pub(crate) fn indexed_hyperbolic_tangent_factor_arg(
@@ -103,7 +104,7 @@ pub(crate) fn indexed_hyperbolic_reciprocal_derivative_numerator_factor(
 ) -> Option<usize> {
     let policy = hyperbolic_reciprocal_derivative_policy(denominator_builtin)?;
     factors.iter().enumerate().find_map(|(idx, factor)| {
-        unary_builtin_arg(ctx, *factor, policy.numerator_builtin)
+        unary_builtin_arg_no_hold(ctx, *factor, policy.numerator_builtin)
             .is_some_and(|arg| compare_expr(ctx, arg, expected_arg) == Ordering::Equal)
             .then_some(idx)
     })
@@ -406,17 +407,6 @@ fn build_hyperbolic_sinh_reciprocal_fourth_integral(
 
 fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(value.into()))
-}
-
-fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin) =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
 }
 
 #[cfg(test)]
