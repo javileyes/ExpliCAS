@@ -12181,3 +12181,33 @@ fn approx_hint_field_is_opt_in_and_informative() {
     let wire = parse_wire(&output);
     assert!(wire.get("result_approx").is_none(), "in: {output}");
 }
+
+/// `bignum_available` (la oferta del botón «Calcular bignum») comparte el
+/// opt-in de los hints Y los gates de tamaño de bignum: solo aparece para
+/// resultados numéricos SIMBÓLICOS que la materialización aceptaría. Nunca
+/// promete lo que bignum rechazaría, y nunca existe sin el flag.
+#[test]
+fn bignum_available_mirrors_materialization_gates() {
+    for (expr, expected) in [
+        ("2^1234567", true),  // gigante simbólico bajo el techo
+        ("12345!", true),     // ídem factorial
+        ("300000!", false),   // sobre el techo (1.5M dígitos)
+        ("5^123456789", false), // 86M dígitos
+        ("2^500", false),     // ya materializado por el fold
+        ("sqrt(2)", false),   // fuera de gramática
+        ("x^123456789", false), // variable libre
+    ] {
+        let (output, _code) = run_cli(&["eval", expr, "--approx-hint", "--format", "json"]);
+        let wire = parse_wire(&output);
+        assert_eq!(
+            wire.get("bignum_available").is_some(),
+            expected,
+            "{expr}: in {output}"
+        );
+    }
+
+    // Sin flag: ausente incluso para el candidato perfecto.
+    let (output, _code) = run_cli(&["eval", "2^1234567", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert!(wire.get("bignum_available").is_none(), "in: {output}");
+}

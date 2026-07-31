@@ -28,6 +28,12 @@ fn build_expr_result_payload(
     } else {
         None
     };
+    // «Calcular bignum» affordance: same opt-in flag, same size gates as
+    // bignum itself — the button can never promise a materialization the
+    // meta-function would refuse.
+    let bignum_available = (approx_hint
+        && cas_math::big_materialize::bignum_would_materialize(ctx, result_expr))
+    .then_some(true);
 
     // LaTeX is for typesetting, and typesetting has a practical size ceiling:
     // MathJax locks the page up on six-figure token counts (a bignum() result
@@ -51,6 +57,7 @@ fn build_expr_result_payload(
         result_chars: char_count,
         result_latex,
         result_approx,
+        bignum_available,
         stats,
         hash,
     }

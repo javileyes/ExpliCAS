@@ -97,6 +97,7 @@ pub(super) fn build_eval_output(
         result_truncated: payload.result_truncated,
         result_latex,
         result_approx: payload.result_approx,
+        bignum_available: payload.bignum_available,
         strategy,
         steps_mode,
         steps_count,

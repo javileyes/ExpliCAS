@@ -527,6 +527,23 @@
             white-space: nowrap;
         }
 
+        /* «Calcular bignum» affordance under a symbolic giant result. */
+        .bignum-btn {
+            margin-top: 8px;
+            padding: 4px 12px;
+            font-size: 0.8em;
+            border-radius: 8px;
+            border: 1px solid var(--border, rgba(255,255,255,0.15));
+            background: rgba(59, 130, 246, 0.12);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .bignum-btn:hover {
+            background: rgba(59, 130, 246, 0.25);
+        }
+
         /* Scrollable expression content */
         .expression-input {
             overflow-x: auto;
@@ -2761,6 +2778,8 @@
                         "input.stop.title": "Detener la evaluación en curso",
                         "eval.cancelled": "Evaluación cancelada",
                         "eval.session_restored": "Variables y funciones restauradas",
+                        "card.bignum.label": "Calcular bignum",
+                        "card.bignum.title": "Evaluar bignum(resultado) en una celda nueva: todos los dígitos exactos",
                         "input.clear.title": "Limpiar la expresión",
                         "input.clear.aria_label": "Limpiar la expresión",
                         "kb.vars.title": "Variables declaradas con := — ver, insertar o eliminar",
@@ -2887,6 +2906,8 @@
                         "input.stop.title": "Stop the running evaluation",
                         "eval.cancelled": "Evaluation cancelled",
                         "eval.session_restored": "Variables and functions restored",
+                        "card.bignum.label": "Compute bignum",
+                        "card.bignum.title": "Evaluate bignum(result) in a new cell: every exact digit",
                         "input.clear.title": "Clear the expression",
                         "input.clear.aria_label": "Clear the expression",
                         "kb.vars.title": "Variables declared with := — view, insert or delete",
@@ -3246,6 +3267,7 @@
                     assumptions_used: data.assumptions_used || [],
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
                     result_approx: data.result_approx || null,
+                    bignum_available: data.bignum_available === true,
                     error: undefined,
                     assignment: assignment,
                     variables: knownVariables,
@@ -3306,6 +3328,7 @@
                     assumptions_used: data.assumptions_used || [],
                     equivalence_diagnostics: data.equivalence_diagnostics || null,
                     result_approx: data.result_approx || null,
+                    bignum_available: data.bignum_available === true,
                     error: data.error,
                     // Variable assignment fields from server
                     assignment: data.assignment || null,
@@ -3577,6 +3600,8 @@
                                 <span class="result-approx-text">&asymp; ${escapeHtml(result.result_approx).replace('*10^', '×10^')}</span>
                                 <button class="copy-btn" onclick="copyApproxText(this)">📋</button>
                             </div>` : ''}
+                            ${result.bignum_available ? `
+                            <button class="bignum-btn" onclick="evaluateBignumOf(this)" title="${t('card.bignum.title')}">🔢 ${t('card.bignum.label')}</button>` : ''}
                         </div>
 
                         ${hasRequirements ? `
@@ -4072,6 +4097,20 @@
         function copyApproxText(btn) {
             const row = btn.closest('.result-approx');
             copyExpression(btn, row ? (row.dataset.approx || '') : '');
+        }
+
+        // «Calcular bignum»: launch a NEW cell evaluating bignum(<result>).
+        // The engine only offers this button (bignum_available) for symbolic
+        // numeric results whose materialization passes bignum's size gates,
+        // so the result string here is always the compact symbolic form.
+        function evaluateBignumOf(btn) {
+            if (evalInFlight) return;
+            const section = btn.closest('.result-section');
+            const rm = section ? section.querySelector('.result-math') : null;
+            const raw = rm ? (rm.dataset.result || '') : '';
+            if (!raw) return;
+            input.value = 'bignum(' + raw + ')';
+            evaluateExpression();
         }
 
         function copyExpression(btn, text) {

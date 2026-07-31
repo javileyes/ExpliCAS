@@ -367,6 +367,12 @@ pub struct EvalWireOutput {
     /// presentation, and reads differently from `result`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result_approx: Option<String>,
+    /// `Some(true)` when the SYMBOLIC numeric result would materialize under
+    /// `bignum()`'s size gates — the UI affordance for a «compute the exact
+    /// digits» action. Absent otherwise (and always absent without the
+    /// `approx_hint` opt-in).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bignum_available: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strategy: Option<String>,
     pub steps_mode: String,
@@ -411,6 +417,7 @@ pub struct EvalOutputBuild<'a> {
     pub result_chars: usize,
     pub result_latex: Option<String>,
     pub result_approx: Option<String>,
+    pub bignum_available: Option<bool>,
     pub strategy: Option<String>,
     pub steps_mode: &'a str,
     pub steps_count: usize,
@@ -455,6 +462,7 @@ impl EvalWireOutput {
             result_chars: parts.result_chars,
             result_latex: parts.result_latex,
             result_approx: parts.result_approx,
+            bignum_available: parts.bignum_available,
             strategy: parts.strategy,
             steps_mode: parts.steps_mode.to_string(),
             steps_count: parts.steps_count,
@@ -2599,6 +2607,7 @@ mod tests {
             result_chars: 3,
             result_latex: None,
             result_approx: None,
+            bignum_available: None,
             strategy: Some("expand".to_string()),
             steps_mode: "off",
             steps_count: 0,

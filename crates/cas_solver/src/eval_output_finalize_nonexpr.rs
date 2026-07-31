@@ -17,6 +17,7 @@ fn build_nonexpr_result_payload(
         // Non-expression results (solution sets, booleans, text) have no
         // single numeric reading — the `≈` hint is an expr-only surface.
         result_approx: None,
+        bignum_available: None,
         stats: ExprStatsWire::default(),
         hash: None,
     }

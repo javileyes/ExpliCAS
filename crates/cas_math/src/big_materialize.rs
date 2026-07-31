@@ -99,6 +99,76 @@ fn integer_literal(ctx: &Context, expr: ExprId) -> Option<BigInt> {
     Some(if negative { -value } else { value })
 }
 
+/// Would `bignum(expr)` produce NEW digits? True only for a SYMBOLIC numeric
+/// expression (a bare number is already materialized) whose estimated size
+/// passes the same gates the materialization itself applies. This is the
+/// availability predicate for UI affordances (the web's «Calcular bignum»
+/// button): sharing the gate formulas keeps the button from ever promising
+/// what `bignum` would refuse — `12345!` offers, `300000!` (1.5M digits) and
+/// `5^123456789` (86M) stay silent.
+pub fn bignum_would_materialize(ctx: &Context, expr: ExprId) -> bool {
+    if is_plain_number_form(ctx, expr) {
+        return false;
+    }
+    match estimate_exact_digits(ctx, expr) {
+        Some(digits) => digits <= BIGNUM_MAX_DIGITS as f64,
+        None => false,
+    }
+}
+
+/// A value that is ALREADY in materialized display form — a number, a
+/// rational `a/b` of two numbers, or a negation of either. `bignum` on
+/// these produces no new digits.
+fn is_plain_number_form(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Neg(inner) => is_plain_number_form(ctx, *inner),
+        Expr::Div(l, r) => {
+            matches!(ctx.get(*l), Expr::Number(_)) && matches!(ctx.get(*r), Expr::Number(_))
+        }
+        _ => false,
+    }
+}
+
+/// Estimated total digits (numerator + denominator) of the exact value,
+/// `None` outside the materialization grammar. Advisory and cheap (O(tree),
+/// never multiplies): powers and factorials use the SAME formulas as the
+/// materialization gates; products/quotients sum child estimates.
+fn estimate_exact_digits(ctx: &Context, expr: ExprId) -> Option<f64> {
+    match ctx.get(expr) {
+        Expr::Number(r) => Some(rational_bits(r) as f64 * DIGITS_PER_BIT),
+        Expr::Neg(inner) | Expr::Hold(inner) => estimate_exact_digits(ctx, *inner),
+        Expr::Mul(l, r) | Expr::Div(l, r) => {
+            Some(estimate_exact_digits(ctx, *l)? + estimate_exact_digits(ctx, *r)?)
+        }
+        Expr::Pow(base, exp) => {
+            let e = integer_literal(ctx, *exp)?;
+            let magnitude = e.magnitude().to_u64()? as f64;
+            match ctx.get(*base) {
+                // Numeric base: precise via fractional log2 (same as the gate).
+                Expr::Number(r) => {
+                    let log2_base = log2_estimate(r.numer()) + log2_estimate(r.denom());
+                    Some(magnitude * log2_base * DIGITS_PER_BIT + 1.0)
+                }
+                // Composite base: digits(b^e) ≤ e·digits(b) — conservative.
+                _ => Some(magnitude * estimate_exact_digits(ctx, *base)?),
+            }
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.sym_name(*fn_id) {
+            "fact" | "factorial" => {
+                let n = integer_literal(ctx, args[0])?;
+                if n.is_negative() {
+                    return None;
+                }
+                Some(factorial_digits_estimate(n.to_u64()?))
+            }
+            "decimal" => estimate_exact_digits(ctx, args[0]),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn rational_bits(r: &BigRational) -> u64 {
     r.numer().bits() + r.denom().bits()
 }
@@ -254,6 +324,29 @@ mod tests {
 
         let neg = materialize("(-2)^101").expect("(-2)^101");
         assert!(neg.is_negative());
+    }
+
+    #[test]
+    fn bignum_availability_mirrors_the_materialization_gates() {
+        let mut ctx = Context::new();
+        let check = |ctx: &mut Context, src: &str| {
+            let expr = parse(src, ctx).expect(src);
+            bignum_would_materialize(ctx, expr)
+        };
+        // Symbolic giants under the ceiling: offer.
+        assert!(check(&mut ctx, "2^1234567"));
+        assert!(check(&mut ctx, "12345!"));
+        assert!(check(&mut ctx, "-(2^1234567)"));
+        assert!(check(&mut ctx, "1/2^1234567"));
+        // Over the ceiling or out of grammar: silent.
+        assert!(!check(&mut ctx, "300000!"));
+        assert!(!check(&mut ctx, "5^123456789"));
+        assert!(!check(&mut ctx, "2^(1/2)"));
+        assert!(!check(&mut ctx, "x^123456789"));
+        // Already materialized numbers: nothing to offer.
+        assert!(!check(&mut ctx, "123456789"));
+        assert!(!check(&mut ctx, "5/6"));
+        assert!(!check(&mut ctx, "-42"));
     }
 
     #[test]

@@ -6,6 +6,7 @@ pub(crate) struct EvalOutputResultPayload {
     pub(crate) result_chars: usize,
     pub(crate) result_latex: Option<String>,
     pub(crate) result_approx: Option<String>,
+    pub(crate) bignum_available: Option<bool>,
     pub(crate) stats: ExprStatsWire,
     pub(crate) hash: Option<String>,
 }
