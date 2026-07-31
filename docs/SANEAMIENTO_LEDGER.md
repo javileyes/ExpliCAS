@@ -172,25 +172,6 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   si cada nombre miente. Y el barrido de helpers de TEST (`solve_display` ×22,
   `simplify_str` ×19…) sigue pendiente, con el mismo método: diffear primero.
 
-### L15 — CERRADO: wrong answer 7/3 por colisión de temps opacos (P0, preexistente)
-- **Origen:** sondas de la pregunta abierta de L13 (2026-07-31/08-01); fix en
-  `a8a7dbdc2`.
-- **Qué:** `integrate(cos(x)*(sin(x)+1)^2, x)` devolvía `7/3` — una constante
-  como primitiva. Atribución por worktree: preexistente a toda la campaña.
-  Causa: `prepare_opaque_shared_substitution` (cas_math) generaba temps
-  `__opq0…` sin comprobar colisiones; en rondas opacas ANIDADAS el árbol ya
-  contiene `__opq0` del nivel exterior y `sin(x/2) := __opq0` fusionaba dos
-  átomos (verificación algebraica: con s=o, N/D = 56/24 = 7/3 exacto). Segundo
-  defecto en la misma copia: el matcher greedy quemaba el `shared_limit` en
-  pares duplicados del mismo átomo.
-- **La parte que confirma L13 con daño real:** el asignador hermano de
-  `cas_engine::polynomial_identity_support` YA tenía ambos fixes (siembra con
-  `collect_variables` + `dedup_expr_ids`). El fix se aplicó una vez y nunca
-  viajó a la copia de cas_math. «Un fix en una copia no llega a las otras» dejó
-  de ser un riesgo teórico: era un P0 en producción.
-- **Tests:** 2 regresiones unitarias rápidas en cas_math + 2 end-to-end
-  `#[ignore]` (~150 s cada uno) en `cas_engine/tests/opaque_quotient_soundness.rs`.
-
 ### L16 — El input del 7/3 ahora CUELGA, y el presupuesto no lo poda
 - **Origen:** destapado por el fix de L15 (2026-08-01).
 - **Qué:** con el colapso erróneo eliminado, `integrate(cos(x)*(sin(x)+1)^2, x)`
@@ -235,6 +216,25 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 ---
 
 ## Cerrados
+
+### L15 — CERRADO: wrong answer 7/3 por colisión de temps opacos (P0, preexistente)
+- **Origen:** sondas de la pregunta abierta de L13 (2026-07-31/08-01); fix en
+  `a8a7dbdc2`.
+- **Qué:** `integrate(cos(x)*(sin(x)+1)^2, x)` devolvía `7/3` — una constante
+  como primitiva. Atribución por worktree: preexistente a toda la campaña.
+  Causa: `prepare_opaque_shared_substitution` (cas_math) generaba temps
+  `__opq0…` sin comprobar colisiones; en rondas opacas ANIDADAS el árbol ya
+  contiene `__opq0` del nivel exterior y `sin(x/2) := __opq0` fusionaba dos
+  átomos (verificación algebraica: con s=o, N/D = 56/24 = 7/3 exacto). Segundo
+  defecto en la misma copia: el matcher greedy quemaba el `shared_limit` en
+  pares duplicados del mismo átomo.
+- **La parte que confirma L13 con daño real:** el asignador hermano de
+  `cas_engine::polynomial_identity_support` YA tenía ambos fixes (siembra con
+  `collect_variables` + `dedup_expr_ids`). El fix se aplicó una vez y nunca
+  viajó a la copia de cas_math. «Un fix en una copia no llega a las otras» dejó
+  de ser un riesgo teórico: era un P0 en producción.
+- **Tests:** 2 regresiones unitarias rápidas en cas_math + 2 end-to-end
+  `#[ignore]` (~150 s cada uno) en `cas_engine/tests/opaque_quotient_soundness.rs`.
 
 ### L1 — rustfmt sucio preexistente → CERRADO 2026-07-31 (`711914960`)
 Eran **seis** hunks en cinco ficheros, no dos: la entrada original solo vio el
