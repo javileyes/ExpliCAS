@@ -603,7 +603,39 @@ fn interval_pow(
         }
         let (blo, bhi) = base;
         if blo.is_negative() {
-            return None;
+            // ODD root over a (partially) negative base: `x^(p/q)` with q odd
+            // and p odd is real and MONOTONE INCREASING on all of ℝ
+            // (`x^(1/q)` is the odd real root; an odd `p` keeps monotonicity).
+            // The Cardano cubic endpoints spell `cbrt(negative)` as
+            // `Pow(u, 1/3)` — without this branch their bound chain returned
+            // `None`, the interval algebra fell to the value-blind structural
+            // order, and `solve(abs(x³−x)<1)` dropped whole solution regions.
+            // Even q (√ of a negative) or even p (non-monotone across 0)
+            // still decline.
+            use num_integer::Integer as _;
+            if root.is_multiple_of(2) || p.is_even() {
+                return None;
+            }
+            let precision = BigInt::from(10).pow(40);
+            let blo = round_down(&blo, &precision);
+            let bhi = round_up(&bhi, &precision);
+            let times = p.abs().to_u32().unwrap_or(0);
+            let signed_root = |v: &BigRational| -> Option<(BigRational, BigRational)> {
+                if v.is_negative() {
+                    let (lo, hi) = nth_root_bounds(&-v.clone(), root)?;
+                    Some((-hi, -lo))
+                } else {
+                    nth_root_bounds(v, root)
+                }
+            };
+            // p odd ⟹ v^p preserves sign and order; q odd ⟹ signed root does.
+            let (rlo, _) = signed_root(&rational_pow_u32(&blo, times))?;
+            let (_, rhi) = signed_root(&rational_pow_u32(&bhi, times))?;
+            return if p.is_negative() {
+                interval_recip((rlo, rhi))
+            } else {
+                Some((rlo, rhi))
+            };
         }
         // Round the base OUTWARD to bounded precision before powering: a 50-digit
         // bound raised to p=63 otherwise explodes to ~200k-digit rationals inside
@@ -787,8 +819,15 @@ mod tests {
                                                                        // The P0-F-log root: e^(1/3)/(1 - e^(1/3)) ~ -3.53 must prove negative so
                                                                        // the log-equation domain filter (x > 0) can drop it.
         assert_eq!(sign("e^(1/3) / (1 - e^(1/3))"), Some(ConstSign::Negative));
-        // Negative base with a fractional exponent: never guessed.
-        assert_eq!(sign("(-2)^(1/3)"), None);
+        // Negative base with an ODD fractional exponent: the REAL odd-root
+        // convention the engine already commits to elsewhere
+        // (`as_nth_root_value` orders `Pow(neg, 1/odd)` as the negative real
+        // root; the drop-non-real guard keeps `(-8)^(1/3) = -2`). Decided by
+        // odd monotonicity since the cubic-abs cycle (2026-07-31) — the
+        // Cardano endpoints spell `cbrt(negative)` exactly this way.
+        assert_eq!(sign("(-2)^(1/3)"), Some(ConstSign::Negative));
+        // EVEN roots of negatives stay undecided (no real value).
+        assert_eq!(sign("(-2)^(1/2)"), None);
     }
 
     #[test]

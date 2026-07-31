@@ -327,7 +327,6 @@ fn compare_nth_root_surds(ctx: &Context, a: ExprId, b: ExprId) -> Option<Orderin
 
 /// Order two expression ids so the first is `<=` the second under `compare_values`.
 pub(crate) fn order_pair_by_value(ctx: &Context, a: ExprId, b: ExprId) -> (ExprId, ExprId) {
-    eprintln!("ORDER-PAIR-BY-VALUE called");
     if compare_values(ctx, a, b) == Ordering::Greater {
         (b, a)
     } else {

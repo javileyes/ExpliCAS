@@ -75,7 +75,11 @@ fn range_boundaries_and_affine_arguments() {
 
 #[test]
 fn sinh_is_unconditional_and_forward_trig_is_untouched() {
-    assert_eq!(solve("sinh(x) = -3"), "{ asinh(-3) }");
+    // `-asinh(3)` since the literal-parity normalization (`asinh(-3)` stores
+    // `Number(-3)`, which the odd-parity table now canonicalizes like the
+    // explicit `Neg` spelling — the ar*-inversion cycle 2026-07-31, where
+    // value-equal structurally-distinct twins defeated boundary dedup).
+    assert_eq!(solve("sinh(x) = -3"), "{ -asinh(3) }");
     // The forward trig / log solvers are unchanged.
     assert_eq!(
         solve("sin(x) = 1/2"),

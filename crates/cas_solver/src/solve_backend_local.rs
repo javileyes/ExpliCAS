@@ -3183,6 +3183,35 @@ fn try_solve_single_abs_equals_polynomial(
 /// remainder — bare `|f| {op} c` (constant remainder), reciprocal/sign,
 /// isolated-abs (`|f| = g`), poly-in-|x|, and multi-abs relations keep their
 /// own, already-correct handlers (this dispatches strictly after them).
+/// Collect the FINITE interval endpoints and discrete points of `set` (the
+/// values the core set algebra will have to ORDER during intersect/union).
+fn collect_finite_set_endpoints(ctx: &Context, set: &SolutionSet, out: &mut Vec<ExprId>) {
+    use cas_solver_core::solution_set::{is_infinity, is_neg_infinity};
+    let mut push = |e: ExprId| {
+        if !is_infinity(ctx, e) && !is_neg_infinity(ctx, e) && !out.contains(&e) {
+            out.push(e);
+        }
+    };
+    match set {
+        SolutionSet::Continuous(iv) => {
+            push(iv.min);
+            push(iv.max);
+        }
+        SolutionSet::Union(ivs) => {
+            for iv in ivs {
+                push(iv.min);
+                push(iv.max);
+            }
+        }
+        SolutionSet::Discrete(pts) => {
+            for &p in pts {
+                push(p);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn try_solve_single_abs_polynomial_relation(
     simplifier: &mut Simplifier,
     eq: &Equation,
@@ -3287,6 +3316,45 @@ fn try_solve_single_abs_polynomial_relation(
     let neg_branch = solve_branch(simplifier, neg_expr, &neg_poly)?;
     let pos_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Geq)?;
     let neg_domain = solve_relation_set(simplifier, var, f, zero, RelOp::Lt)?;
+
+    // ORDER GUARD (2026-07-31, cubic abs — the F9 playbook): the region ∩
+    // branch assembly below runs through the core set algebra, whose endpoint
+    // order falls back to a VALUE-BLIND structural compare. Single-real-root
+    // cubic endpoints (Cardano `cbrt` sums) are decidable through the
+    // const-bounds oracle (odd-root negative-base bounds, this cycle); the
+    // casus-irreducibilis TRIG endpoints (`4·cos(arccos(…)/3 − 4π/3)·√⅓`)
+    // are still beyond it — committing would silently drop whole regions
+    // (`|x³−4x| < 2` lost `(0, 1)…`), so any UNDECIDABLE endpoint pair
+    // declines the whole relation to an honest residual instead.
+    let mut endpoints: Vec<ExprId> = Vec::new();
+    for set in [&pos_branch, &neg_branch, &pos_domain, &neg_domain] {
+        collect_finite_set_endpoints(&simplifier.context, set, &mut endpoints);
+    }
+    for i in 0..endpoints.len() {
+        for j in (i + 1)..endpoints.len() {
+            if cas_solver_core::solution_set::try_compare_values(
+                &simplifier.context,
+                endpoints[i],
+                endpoints[j],
+            )
+            .is_none()
+            {
+                // Echo the ORIGINAL relation: falling through (None) lets the
+                // generic isolation reorient into a MANGLED self-referential
+                // residual (`solve(x − cbrt(4x+2) = 0)`).
+                return Some((
+                    cas_solver_core::solve_outcome::residual_solution_set(
+                        &mut simplifier.context,
+                        eq.lhs,
+                        eq.rhs,
+                        eq.op.clone(),
+                        var,
+                    ),
+                    Vec::new(),
+                ));
+            }
+        }
+    }
 
     // Narration: the textbook sign split, one line per case with the
     // SUBSTITUTED relation as its equation. Branch roots are candidates the
@@ -6933,36 +7001,51 @@ fn try_solve_abs_threshold_inequality(
 
     // c > 0: reduce to the two-sided inequality / the outside union.
     let neg_c = simplifier.context.add(Expr::Number(-c_value));
-    let result = match op {
-        RelOp::Lt => {
-            let upper = solve_concrete_side(g, c_expr, RelOp::Lt, var, simplifier, opts, ctx)?;
-            let lower = solve_concrete_side(g, neg_c, RelOp::Gt, var, simplifier, opts, ctx)?;
-            cas_solver_core::solution_set::intersect_solution_sets(
-                &simplifier.context,
-                upper,
-                lower,
-            )
-        }
-        RelOp::Leq => {
-            let upper = solve_concrete_side(g, c_expr, RelOp::Leq, var, simplifier, opts, ctx)?;
-            let lower = solve_concrete_side(g, neg_c, RelOp::Geq, var, simplifier, opts, ctx)?;
-            cas_solver_core::solution_set::intersect_solution_sets(
-                &simplifier.context,
-                upper,
-                lower,
-            )
-        }
-        RelOp::Gt => {
-            let upper = solve_concrete_side(g, c_expr, RelOp::Gt, var, simplifier, opts, ctx)?;
-            let lower = solve_concrete_side(g, neg_c, RelOp::Lt, var, simplifier, opts, ctx)?;
-            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, upper, lower)
-        }
-        RelOp::Geq => {
-            let upper = solve_concrete_side(g, c_expr, RelOp::Geq, var, simplifier, opts, ctx)?;
-            let lower = solve_concrete_side(g, neg_c, RelOp::Leq, var, simplifier, opts, ctx)?;
-            cas_solver_core::solution_set::union_solution_sets(&simplifier.context, upper, lower)
-        }
+    let (upper_op, lower_op, conj) = match op {
+        RelOp::Lt => (RelOp::Lt, RelOp::Gt, true),
+        RelOp::Leq => (RelOp::Leq, RelOp::Geq, true),
+        RelOp::Gt => (RelOp::Gt, RelOp::Lt, false),
+        RelOp::Geq => (RelOp::Geq, RelOp::Leq, false),
         _ => return None,
+    };
+    let upper = solve_concrete_side(g, c_expr, upper_op, var, simplifier, opts, ctx)?;
+    let lower = solve_concrete_side(g, neg_c, lower_op, var, simplifier, opts, ctx)?;
+    // ORDER GUARD (2026-07-31, cubic abs — mirror of the sign-split
+    // handler's): the combination below runs through the core set algebra,
+    // whose endpoint order falls back to a VALUE-BLIND structural compare.
+    // When the sign-split handler declines a cubic (undecidable
+    // casus-irreducibilis TRIG endpoints), the relation falls HERE and the
+    // same blind combination bridged disjoint regions (`|x³−4x| < 2`).
+    // Any undecidable endpoint pair declines to an honest residual instead.
+    let mut endpoints: Vec<ExprId> = Vec::new();
+    for set in [&upper, &lower] {
+        collect_finite_set_endpoints(&simplifier.context, set, &mut endpoints);
+    }
+    for i in 0..endpoints.len() {
+        for j in (i + 1)..endpoints.len() {
+            if cas_solver_core::solution_set::try_compare_values(
+                &simplifier.context,
+                endpoints[i],
+                endpoints[j],
+            )
+            .is_none()
+            {
+                // Honest echo of the ORIGINAL relation (see the sign-split
+                // handler's guard: falling through mangles the residual).
+                return Some(cas_solver_core::solve_outcome::residual_solution_set(
+                    &mut simplifier.context,
+                    eq.lhs,
+                    eq.rhs,
+                    eq.op.clone(),
+                    var,
+                ));
+            }
+        }
+    }
+    let result = if conj {
+        cas_solver_core::solution_set::intersect_solution_sets(&simplifier.context, upper, lower)
+    } else {
+        cas_solver_core::solution_set::union_solution_sets(&simplifier.context, upper, lower)
     };
     Some(result)
 }
@@ -12833,6 +12916,22 @@ fn solve_local_core_inner(
         set
     };
 
+    // BIQUADRATIC INEQUALITY recovery (2026-07-31, cubic-abs cycle): the
+    // generic isolation takes the 4th root of both sides UNCONDITIONALLY
+    // (`x⁴ − x² + 1 > 0` → `|x| > (x²−1)^(1/4)`, a self-referential branch
+    // with a possibly NEGATIVE radicand) and asserted «No solution» for a
+    // tautology (the z-quadratic has disc < 0 ⟹ constant sign ⟹ ℝ). Re-derive
+    // through the EXACT z = x² sign analysis when the incumbent looks lossy;
+    // correct incumbents (`x⁴−x²<1` → (−√φ, √φ)) are never touched.
+    let set = if matches!(
+        set,
+        SolutionSet::Empty | SolutionSet::Residual(_) | SolutionSet::Conditional(_)
+    ) {
+        try_solve_biquadratic_inequality(simplifier, eq, var).unwrap_or(set)
+    } else {
+        set
+    };
+
     // A polynomial whose deflated quartic factor splits into two rational quadratics
     // (`x⁵-5x³+x²-5 = (x+1)(x²-5)(x²-x+1)` drops the `±√5` roots): peel the rational roots and solve
     // the quadratic factors. Replaces a `Residual`/`Conditional`; augments a `Discrete` the normal
@@ -14163,6 +14262,366 @@ fn try_solve_abs_ratio_equality(
         return Some(SolutionSet::Empty);
     }
     Some(SolutionSet::Discrete(kept))
+}
+
+/// BIQUADRATIC INEQUALITY `a·x⁴ + b·x² + c {op} 0` solved EXACTLY through the
+/// `z = x²` substitution (2026-07-31, cubic-abs cycle): the z-quadratic's sign
+/// chart is decided by RATIONAL arithmetic only (discriminant sign, root signs
+/// via `√d ⋚ t ⟺ d ⋚ t²`), and every x-shape (bands, punctured bands, outside
+/// unions, point sets) is built DIRECTLY with `√z` endpoint expressions — no
+/// symbolic comparator anywhere. Registered as a RECOVERY for lossy incumbents
+/// only: the generic isolation's unconditional 4th root asserted «No solution»
+/// for the tautology `x⁴ − x² + 1 > 0`.
+fn try_solve_biquadratic_inequality(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+) -> Option<SolutionSet> {
+    use cas_ast::{BoundType, Interval, RelOp};
+    use num_rational::BigRational;
+    use num_traits::{Signed, Zero};
+
+    if !matches!(eq.op, RelOp::Lt | RelOp::Leq | RelOp::Gt | RelOp::Geq) {
+        return None;
+    }
+    let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+    let (diff, _) = simplifier.simplify(diff);
+    let poly = cas_math::polynomial::Polynomial::from_expr(&simplifier.context, diff, var).ok()?;
+    if poly.degree() != 4 || poly.coeffs.len() != 5 {
+        return None;
+    }
+    let zero = BigRational::zero();
+    if !poly.coeffs[1].is_zero() || !poly.coeffs[3].is_zero() {
+        return None;
+    }
+    let (mut a, mut b, mut c0) = (
+        poly.coeffs[4].clone(),
+        poly.coeffs[2].clone(),
+        poly.coeffs[0].clone(),
+    );
+    if a.is_zero() {
+        return None;
+    }
+    // Normalize to a > 0 (flip the relation for a < 0).
+    let mut op = eq.op.clone();
+    if a.is_negative() {
+        a = -a;
+        b = -b;
+        c0 = -c0;
+        op = flip_inequality(op);
+    }
+    let disc = &b * &b - BigRational::from_integer(4.into()) * &a * &c0;
+
+    // Shape builders with KNOWN endpoint order (√z ≥ 0 by construction).
+    let sqrt_of_z = |simplifier: &mut Simplifier, num: BigRational| -> ExprId {
+        // z as an exact expression: rational, or (−b ± √d)/(2a) built below.
+        let z = simplifier.context.add(Expr::Number(num));
+        let call = simplifier.context.call("sqrt", vec![z]);
+        simplifier.simplify(call).0
+    };
+    let sqrt_of_expr = |simplifier: &mut Simplifier, z: ExprId| -> ExprId {
+        let call = simplifier.context.call("sqrt", vec![z]);
+        simplifier.simplify(call).0
+    };
+    let neg_of = |simplifier: &mut Simplifier, e: ExprId| -> ExprId {
+        let n = simplifier.context.add(Expr::Neg(e));
+        simplifier.simplify(n).0
+    };
+    let band = |simplifier: &mut Simplifier, r: ExprId, closed: bool| -> SolutionSet {
+        let bt = if closed {
+            BoundType::Closed
+        } else {
+            BoundType::Open
+        };
+        let lo = neg_of(simplifier, r);
+        SolutionSet::Continuous(Interval {
+            min: lo,
+            min_type: bt.clone(),
+            max: r,
+            max_type: bt,
+        })
+    };
+    let outside = |simplifier: &mut Simplifier, r: ExprId, closed: bool| -> Vec<Interval> {
+        let bt = if closed {
+            BoundType::Closed
+        } else {
+            BoundType::Open
+        };
+        let lo = neg_of(simplifier, r);
+        let ninf = cas_solver_core::solution_set::neg_inf(&mut simplifier.context);
+        let pinf = cas_solver_core::solution_set::pos_inf(&mut simplifier.context);
+        vec![
+            Interval {
+                min: ninf,
+                min_type: BoundType::Open,
+                max: lo,
+                max_type: bt.clone(),
+            },
+            Interval {
+                min: r,
+                min_type: bt,
+                max: pinf,
+                max_type: BoundType::Open,
+            },
+        ]
+    };
+    let zero_point = |simplifier: &mut Simplifier| -> ExprId { simplifier.context.num(0) };
+
+    if disc < zero {
+        // Constant sign: q(z) > 0 for every z (a > 0).
+        return match op {
+            RelOp::Gt | RelOp::Geq => Some(SolutionSet::AllReals),
+            RelOp::Lt | RelOp::Leq => Some(SolutionSet::Empty),
+            _ => None,
+        };
+    }
+    if disc.is_zero() {
+        // q(z) = a·(z − z0)², z0 = −b/(2a) rational.
+        let z0 = -&b / (BigRational::from_integer(2.into()) * &a);
+        return Some(match op {
+            RelOp::Lt => SolutionSet::Empty,
+            RelOp::Geq => SolutionSet::AllReals,
+            RelOp::Leq => {
+                // x² = z0.
+                if z0.is_negative() {
+                    SolutionSet::Empty
+                } else if z0.is_zero() {
+                    let z = zero_point(simplifier);
+                    SolutionSet::Discrete(vec![z])
+                } else {
+                    let r = sqrt_of_z(simplifier, z0);
+                    let nr = neg_of(simplifier, r);
+                    SolutionSet::Discrete(vec![nr, r])
+                }
+            }
+            RelOp::Gt => {
+                // x² ≠ z0.
+                if z0.is_negative() {
+                    SolutionSet::AllReals
+                } else if z0.is_zero() {
+                    let z = zero_point(simplifier);
+                    let ninf = cas_solver_core::solution_set::neg_inf(&mut simplifier.context);
+                    let pinf = cas_solver_core::solution_set::pos_inf(&mut simplifier.context);
+                    SolutionSet::Union(vec![
+                        Interval {
+                            min: ninf,
+                            min_type: BoundType::Open,
+                            max: z,
+                            max_type: BoundType::Open,
+                        },
+                        Interval {
+                            min: z,
+                            min_type: BoundType::Open,
+                            max: pinf,
+                            max_type: BoundType::Open,
+                        },
+                    ])
+                } else {
+                    let r = sqrt_of_z(simplifier, z0.clone());
+                    let nr = neg_of(simplifier, r);
+                    let ninf = cas_solver_core::solution_set::neg_inf(&mut simplifier.context);
+                    let pinf = cas_solver_core::solution_set::pos_inf(&mut simplifier.context);
+                    SolutionSet::Union(vec![
+                        Interval {
+                            min: ninf,
+                            min_type: BoundType::Open,
+                            max: nr,
+                            max_type: BoundType::Open,
+                        },
+                        Interval {
+                            min: nr,
+                            min_type: BoundType::Open,
+                            max: r,
+                            max_type: BoundType::Open,
+                        },
+                        Interval {
+                            min: r,
+                            min_type: BoundType::Open,
+                            max: pinf,
+                            max_type: BoundType::Open,
+                        },
+                    ])
+                }
+            }
+            _ => return None,
+        });
+    }
+
+    // disc > 0: distinct roots z1 < z2 = (−b ∓ √d)/(2a). Root SIGNS decided by
+    // rational arithmetic: `√d ⋚ t ⟺ d ⋚ t²` for t ≥ 0 (and √d > t for t < 0).
+    let cmp_sqrt_d = |t: &BigRational| -> std::cmp::Ordering {
+        if t.is_negative() {
+            return std::cmp::Ordering::Greater;
+        }
+        disc.cmp(&(t * t))
+    };
+    // sign(z2) = sign(−b + √d) = cmp(√d, b) ; sign(z1) = sign(−b − √d) = cmp(−b, √d).
+    let z2_sign = cmp_sqrt_d(&b); // Greater ⟹ z2 > 0, Equal ⟹ z2 = 0, Less ⟹ z2 < 0
+    let z1_sign = cmp_sqrt_d(&-&b).reverse();
+    // Exact z-root expressions (rational when disc is a perfect square, else surds).
+    let build_z = |simplifier: &mut Simplifier, plus: bool| -> ExprId {
+        let d_expr = simplifier.context.add(Expr::Number(disc.clone()));
+        let sq = simplifier.context.call("sqrt", vec![d_expr]);
+        let neg_b = simplifier.context.add(Expr::Number(-&b));
+        let num = if plus {
+            simplifier.context.add(Expr::Add(neg_b, sq))
+        } else {
+            simplifier.context.add(Expr::Sub(neg_b, sq))
+        };
+        let den = simplifier
+            .context
+            .add(Expr::Number(BigRational::from_integer(2.into()) * &a));
+        let q = simplifier.context.add(Expr::Div(num, den));
+        simplifier.simplify(q).0
+    };
+    use std::cmp::Ordering as Ord2;
+    Some(match op {
+        // q(z) < 0 ⟺ z ∈ (z1, z2); with z = x²: z1 < x² < z2.
+        RelOp::Lt | RelOp::Leq => {
+            let closed = matches!(op, RelOp::Leq);
+            match z2_sign {
+                Ord2::Less => SolutionSet::Empty,
+                Ord2::Equal => {
+                    // x² < 0 impossible; x² ≤ z2 = 0 ⟹ x = 0 (z1 < 0 ✓).
+                    if closed {
+                        let z = zero_point(simplifier);
+                        SolutionSet::Discrete(vec![z])
+                    } else {
+                        SolutionSet::Empty
+                    }
+                }
+                Ord2::Greater => {
+                    let z2e = build_z(simplifier, true);
+                    let r2 = sqrt_of_expr(simplifier, z2e);
+                    match z1_sign {
+                        Ord2::Less => band(simplifier, r2, closed),
+                        Ord2::Equal => {
+                            // x² > 0: puncture the band at 0 (strict only).
+                            if closed {
+                                band(simplifier, r2, true)
+                            } else {
+                                let z = zero_point(simplifier);
+                                let lo = neg_of(simplifier, r2);
+                                SolutionSet::Union(vec![
+                                    Interval {
+                                        min: lo,
+                                        min_type: BoundType::Open,
+                                        max: z,
+                                        max_type: BoundType::Open,
+                                    },
+                                    Interval {
+                                        min: z,
+                                        min_type: BoundType::Open,
+                                        max: r2,
+                                        max_type: BoundType::Open,
+                                    },
+                                ])
+                            }
+                        }
+                        Ord2::Greater => {
+                            let z1e = build_z(simplifier, false);
+                            let r1 = sqrt_of_expr(simplifier, z1e);
+                            let bt = if closed {
+                                BoundType::Closed
+                            } else {
+                                BoundType::Open
+                            };
+                            let n2 = neg_of(simplifier, r2);
+                            let n1 = neg_of(simplifier, r1);
+                            SolutionSet::Union(vec![
+                                Interval {
+                                    min: n2,
+                                    min_type: bt.clone(),
+                                    max: n1,
+                                    max_type: bt.clone(),
+                                },
+                                Interval {
+                                    min: r1,
+                                    min_type: bt.clone(),
+                                    max: r2,
+                                    max_type: bt,
+                                },
+                            ])
+                        }
+                    }
+                }
+            }
+        }
+        // q(z) > 0 ⟺ z < z1 ∨ z > z2: x² < z1 OR x² > z2.
+        RelOp::Gt | RelOp::Geq => {
+            let closed = matches!(op, RelOp::Geq);
+            match z2_sign {
+                Ord2::Less => SolutionSet::AllReals,
+                Ord2::Equal => {
+                    // x² ≥ 0 = z2 always (Geq ⟹ ℝ); strict punctures 0.
+                    if closed {
+                        SolutionSet::AllReals
+                    } else {
+                        let z = zero_point(simplifier);
+                        let ninf = cas_solver_core::solution_set::neg_inf(&mut simplifier.context);
+                        let pinf = cas_solver_core::solution_set::pos_inf(&mut simplifier.context);
+                        SolutionSet::Union(vec![
+                            Interval {
+                                min: ninf,
+                                min_type: BoundType::Open,
+                                max: z,
+                                max_type: BoundType::Open,
+                            },
+                            Interval {
+                                min: z,
+                                min_type: BoundType::Open,
+                                max: pinf,
+                                max_type: BoundType::Open,
+                            },
+                        ])
+                    }
+                }
+                Ord2::Greater => {
+                    let z2e = build_z(simplifier, true);
+                    let r2 = sqrt_of_expr(simplifier, z2e);
+                    let mut ivs = outside(simplifier, r2, closed);
+                    match z1_sign {
+                        Ord2::Less => {}
+                        Ord2::Equal => {
+                            if closed {
+                                let z = zero_point(simplifier);
+                                ivs.insert(
+                                    1,
+                                    Interval {
+                                        min: z,
+                                        min_type: BoundType::Closed,
+                                        max: z,
+                                        max_type: BoundType::Closed,
+                                    },
+                                );
+                            }
+                        }
+                        Ord2::Greater => {
+                            let z1e = build_z(simplifier, false);
+                            let r1 = sqrt_of_expr(simplifier, z1e);
+                            let bt = if closed {
+                                BoundType::Closed
+                            } else {
+                                BoundType::Open
+                            };
+                            let n1 = neg_of(simplifier, r1);
+                            ivs.insert(
+                                1,
+                                Interval {
+                                    min: n1,
+                                    min_type: bt.clone(),
+                                    max: r1,
+                                    max_type: bt,
+                                },
+                            );
+                        }
+                    }
+                    SolutionSet::Union(ivs)
+                }
+            }
+        }
+        _ => return None,
+    })
 }
 
 /// Recover the degenerate `coefficient = 0` branch of a PARAMETRIC linear equation whose solution is a
