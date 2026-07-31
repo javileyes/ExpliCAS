@@ -12041,3 +12041,67 @@ fn bignum_materializes_exact_giants_with_size_gate() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result"], "bignum(x!)", "in: {output}");
 }
+
+/// La franja mixta de la cancelación de factoriales: un lado bajo el techo de
+/// plegado (1000) y el otro encima, con gap cancelable. El fold del hijo
+/// destruía el par antes de que la regla DIV lo viera: `1001!/1000!` producía
+/// `(1/1000!)·1001!` con 1000! materializado a 2568 dígitos. El gate declina
+/// ese fold usando EL MISMO predicado que acepta el brazo numérico de la
+/// regla, así que un par no plegado siempre se cancela después.
+#[test]
+fn mixed_band_factorial_ratio_cancels_instead_of_folding_one_side() {
+    let (output, _code) = run_cli(&["eval", "1001!/1000!", "--format", "json", "--steps", "on"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1001", "in: {output}");
+    assert_eq!(
+        wire["required_display"].as_array().map(Vec::len),
+        Some(0),
+        "decidable literal condition must discharge: {output}"
+    );
+    let steps = wire["steps"].as_array().expect("steps");
+    assert!(
+        steps
+            .iter()
+            .any(|s| s["rule"] == "Cancelar factoriales consecutivos"),
+        "expected ratio narration: {output}"
+    );
+
+    // Invertida: denominador mayor.
+    let (output, _code) = run_cli(&["eval", "1000!/1001!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1/1001", "in: {output}");
+
+    // Gap ancho dentro del techo (600): falling factorial exacto de 1845
+    // dígitos, referencia externa (Python), sin materializar 1500! ni 900!.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "1500!/900!",
+        "--format",
+        "json",
+        "--max-chars",
+        "2000",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_chars"], 1845, "in: {output}");
+    let result = wire["result"].as_str().expect("result");
+    assert!(
+        result.starts_with("71260560833908506616"),
+        "head: {}",
+        &result[..30.min(result.len())]
+    );
+
+    // Fuera de la franja no cambia nada: pares pequeños siguen en el fold
+    // por lados (misma narración de siempre), y el factorial SUELTO bajo el
+    // techo sigue plegando.
+    let (output, _code) = run_cli(&["eval", "1000!/999!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1000", "in: {output}");
+
+    let (output, _code) = run_cli(&["eval", "5!/3!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "20", "in: {output}");
+
+    let (output, _code) = run_cli(&["eval", "1000!", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_chars"], 2568, "bare 1000! must still fold: {output}");
+}

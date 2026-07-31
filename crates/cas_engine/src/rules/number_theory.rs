@@ -29,13 +29,28 @@ define_rule!(
     NumberTheoryRule,
     "Number Theory Operations",
     Some(crate::target_kind::TargetKindSet::ADD | crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
         if let Some(rewrite) = try_rewrite_pascal_choose_identity_expr(ctx, expr) {
             return Some(
                 Rewrite::new(rewrite.rewritten)
                     .desc("Apply Pascal's identity")
                     .local(expr, rewrite.rewritten),
             );
+        }
+
+        // Folding a factorial whose Div-sibling is the other half of a
+        // CANCELABLE pair would destroy the cancellation before the
+        // DIV-targeted ConsecutiveFactorialRatioRule sees it (bottom-up
+        // order): `1001!/1000!` became `(1/1000!)·1001!` with 1000!
+        // materialized to 2568 digits instead of just `1001`. The pair
+        // predicate is the ratio rule's own accept condition, shared so the
+        // two can never disagree.
+        if let Some(parent) = parent_ctx.immediate_parent() {
+            if cas_math::number_theory_support::factorial_fold_blocked_by_div_sibling(
+                ctx, expr, parent,
+            ) {
+                return None;
+            }
         }
 
         let (result, desc) = match dispatch_number_theory_call(ctx, expr)? {

@@ -536,6 +536,55 @@ pub fn try_rewrite_consecutive_factorial_ratio_expr(
     })
 }
 
+/// The numeric factorial pair the DIV-targeted ratio rule WILL cancel: both
+/// arguments non-negative, NOT both under the fold ceiling (those belong to
+/// plain per-side evaluation, keeping its narration), and a nonzero gap
+/// within the ceiling (a longer cancelled span would materialize the same
+/// kind of astronomical product the fold refuses).
+///
+/// Shared VERBATIM by [`rewrite_numeric_factorial_ratio`] and the
+/// factorial-fold gate in the engine's number-theory rule, so the two can
+/// never disagree: a fold declined without the ratio then firing would
+/// strand the pair unevaluated.
+pub fn numeric_factorial_pair_is_cancelable(a: &BigInt, b: &BigInt) -> bool {
+    if a.is_negative() || b.is_negative() {
+        return false;
+    }
+    let fold_max = BigInt::from(FACTORIAL_FOLD_MAX);
+    if a <= &fold_max && b <= &fold_max {
+        return false;
+    }
+    let gap = (a - b).abs();
+    !gap.is_zero() && gap <= fold_max
+}
+
+/// True when `expr` is a factorial call sitting under `parent = Div(...)`
+/// whose two sides are factorial calls over integer literals forming a
+/// cancelable pair. Folding either side first would DESTROY the pair before
+/// the DIV rule sees it — the `1001!/1000!` band, where one argument is
+/// under the fold ceiling and the other above it.
+pub fn factorial_fold_blocked_by_div_sibling(ctx: &Context, expr: ExprId, parent: ExprId) -> bool {
+    if extract_factorial_call_arg(ctx, expr).is_none() {
+        return false;
+    }
+    let Expr::Div(lhs, rhs) = ctx.get(parent) else {
+        return false;
+    };
+    let (Some(lhs_arg), Some(rhs_arg)) = (
+        extract_factorial_call_arg(ctx, *lhs),
+        extract_factorial_call_arg(ctx, *rhs),
+    ) else {
+        return false;
+    };
+    let (Some(a), Some(b)) = (
+        extract_integer_bigint(ctx, lhs_arg),
+        extract_integer_bigint(ctx, rhs_arg),
+    ) else {
+        return false;
+    };
+    numeric_factorial_pair_is_cancelable(&a, &b)
+}
+
 /// Cancel `n!/d!` for integer literals without materializing either factorial:
 /// the quotient is the falling-factorial product `(low+1)···high` — the same
 /// exact BigInt arithmetic `perm`/`choose` use — or its reciprocal when the
@@ -547,29 +596,16 @@ fn rewrite_numeric_factorial_ratio(
     num_val: BigInt,
     den_val: BigInt,
 ) -> Option<ConsecutiveFactorialRatioRewrite> {
-    // A negative literal has no factorial — leave the expression alone.
-    if num_val.is_negative() || den_val.is_negative() {
-        return None;
-    }
-    // Both under the const-fold ceiling: plain factorial evaluation already
-    // folds each side exactly, and that (already narrated) path stays the
-    // owner so existing step output does not shift.
-    let fold_max = BigInt::from(FACTORIAL_FOLD_MAX);
-    if num_val <= fold_max && den_val <= fold_max {
+    if !numeric_factorial_pair_is_cancelable(&num_val, &den_val) {
         return None;
     }
 
     let (low_arg, low_val, high_val, inverted) = match num_val.cmp(&den_val) {
         std::cmp::Ordering::Greater => (den_arg, den_val, num_val, false),
         std::cmp::Ordering::Less => (num_arg, num_val, den_val, true),
+        // Unreachable: a cancelable pair has a nonzero gap.
         std::cmp::Ordering::Equal => return None,
     };
-
-    // Cap the cancelled span like the factorial fold itself: a longer product
-    // would materialize the same kind of astronomical number the fold refuses.
-    if &high_val - &low_val > fold_max {
-        return None;
-    }
 
     let mut product = BigInt::one();
     let mut factor = &low_val + 1;

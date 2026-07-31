@@ -3570,8 +3570,18 @@
             // Scroll to new card
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-            if (window.MathJax && !isPolyResult) {
-                MathJax.typesetPromise([card]);
+            if (window.MathJax) {
+                if (isPolyResult) {
+                    // The big result lives in an escaped <pre> and must not
+                    // reach MathJax, but the HEADER (the user's own input
+                    // echo) is small and deserves typesetting — skipping the
+                    // whole card left it showing raw `$\frac{1001!}{1000!}$`.
+                    // (Steps typeset themselves on expand, as always.)
+                    const header = card.querySelector('.expression-header');
+                    if (header) MathJax.typesetPromise([header]);
+                } else {
+                    MathJax.typesetPromise([card]);
+                }
             }
         }
 
