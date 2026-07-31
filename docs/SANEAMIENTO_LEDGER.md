@@ -181,11 +181,44 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   que esté bien diseñada, significa que estrecharla es un cambio de contrato con
   39 ficheros, no una limpieza.
 
+### L13 — Los helpers duplicados HAN DERIVADO: el nombre no es un contrato
+- **Origen:** P6, paso previo obligatorio de diffear antes de fusionar (2026-07-31).
+- **Qué:** agrupadas por cuerpo normalizado, las copias del mismo nombre no son
+  copias:
+
+  | helper | definiciones | variantes distintas |
+  |---|---:|---:|
+  | `collect_add_terms` | 18 | **15** |
+  | `unary_builtin_arg` | 14 | **10** |
+
+  Una de las de `collect_add_terms` ni siquiera comparte firma
+  (`&mut Context` en `div_add_common_factor_from_den_support.rs`), lo que
+  delata semántica distinta, no un simple retoque.
+- **Por qué importa:** el riesgo que se temía —«un fix en una copia no llega a
+  las otras»— es peor de lo previsto: quien lea `collect_add_terms` en un
+  fichero y asuma el comportamiento del que conoce se equivocará en 13 de cada
+  18 casos. Y confirma que **fusionar a ciegas habría sido un cambio de
+  comportamiento en trece sitios**, no una limpieza.
+- **Hecho:** consolidado el único cluster genuinamente idéntico (4 copias en
+  los `div_*_support` de cas_math → `collect_additive_terms_flat_add` de
+  `expr_terms.rs`).
+- **Pendiente, y NO es mecánico:** las 14 variantes restantes piden un análisis
+  caso por caso —¿es deriva accidental o especialización legítima?—. Si es lo
+  segundo, el arreglo no es fusionar sino **renombrar**, para que el nombre deje
+  de prometer algo que no cumple. Quedan además los clusters idénticos de
+  `unary_builtin_arg` (3 en cas_math, 2 en cas_solver y 2 cruzando
+  cas_engine/cas_math, estos últimos en ficheros con el mismo nombre
+  `reciprocal_trig_log_domain.rs`, que huele a módulo copiado entero).
+
 ---
 
 ## Cerrados
 
-_(ninguno todavía)_
+### L2 — Helpers de test duplicados por todo el workspace → reformulado
+Sustituido por L13, que mide lo mismo con más precisión y sobre el código de
+producción: el problema no es el número de copias sino que han divergido.
+El barrido de helpers de test (`solve_display` ×22, `simplify_str` ×19…) sigue
+pendiente, pero hay que abordarlo con el mismo método: diffear primero.
 
 ---
 

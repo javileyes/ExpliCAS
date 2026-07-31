@@ -103,9 +103,57 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 | P1 | ~~`orchestrator.rs` → directorio `orchestrator/`~~ | Medio, mecánico | **HECHO 2026-07-31** — ver más abajo |
 | P2 | ~~`rules/arithmetic.rs` → repartir las reglas en la taxonomía de `rules/`~~ | Medio, mecánico | **HECHO 2026-07-31, con cambio de plan medido** — ver más abajo |
 | P3 | ~~`symbolic_integration_support.rs` y `limits_support.rs` → API curada~~ | Medio | **HECHO 2026-07-31; la parte «curar la API» no tenía recorrido** — ver más abajo |
-| P4 | `solve_backend_local.rs` → partir por familia de ecuación | Medio | Reparte el churn más alto del repo; menos conflictos en paralelo |
+| P4 | ~~`solve_backend_local.rs` → partir por familia de ecuación~~ | Medio | **HECHO 2026-07-31**: 15.616 → 165 líneas, 10 submódulos por familia |
 | P5 | ~~Test-monolitos (`cli_contract_tests.rs` y compañía) → un fichero por dominio~~ | Bajo | **HECHO 2026-07-31** — ver más abajo |
-| P6 | Dedup de `collect_add_terms` / `unary_builtin_arg` y similares | Bajo | Elimina deriva silenciosa entre 13–14 copias |
+| P6 | ~~Dedup de `collect_add_terms` / `unary_builtin_arg`~~ | Bajo | **HECHO en parte 2026-07-31; el resto NO es dedup** — ver abajo |
+
+**Campaña completa: los 6 puntos ejecutados.** Balance de líneas en los ficheros
+padres, con la suite invariante en las seis verificaciones completas
+(362 binarios, 12.771 tests OK, 0 fallos, 371 ignorados):
+
+| # | Fichero | Antes | Padre después |
+|---|---|---:|---:|
+| P1 | `orchestrator.rs` | 42.307 | 4.065 |
+| P2 | `rules/arithmetic.rs` | 39.346 | 1.988 |
+| P3 | `symbolic_integration_support.rs` | 29.999 | 359 |
+| P3 | `limits_support.rs` | 19.957 | 171 |
+| P4 | `solve_backend_local.rs` | 15.616 | 165 |
+| P5 | 4 test-monolitos | 60.611 | 56 ficheros |
+
+## P6 ejecutado en parte (2026-07-31) — y la parte que falta no es dedup
+
+El paso previo del protocolo (diffear antes de fusionar) cambió el trabajo por
+completo. Agrupadas por cuerpo normalizado, **las copias no son copias**:
+
+| helper | definiciones | variantes distintas |
+|---|---:|---:|
+| `collect_add_terms` | 18 | **15** |
+| `unary_builtin_arg` | 14 | **10** |
+
+Han derivado. Fusionarlas a ciegas —que es lo que la auditoría llamaba «dedup»—
+habría sido un cambio de comportamiento en trece sitios, no una limpieza. Una
+copia ni comparte firma (`&mut Context`), lo que delata semántica distinta.
+
+Se consolidó **solo el cluster genuinamente idéntico**: las 4 copias privadas de
+`collect_add_terms` en los `div_*_support` de cas_math, que ya tenían un hogar
+canónico esperando en `expr_terms.rs` (`collect_additive_terms_flat_add`, mismo
+cuerpo exacto). 52 líneas menos.
+
+Para las 14 variantes restantes, el arreglo probablemente **no sea fusionar sino
+renombrar**: si cada una hace algo distinto, el problema es que el nombre promete
+algo que no cumple. Eso es caso por caso, y queda en L13.
+
+## P4 ejecutado (2026-07-31) — el churn repartido
+
+`solve_backend_local.rs`, el fichero más tocado del repo después de los tests
+(184 toques en 4 meses), pasa de **15.616 a 165 líneas** en el padre, con las
+191 fns repartidas en 10 submódulos por familia de ecuación e inecuación
+(`dcc5ab0ec`). El padre conserva los `use`, los 6 structs —incluida la API
+pública `LocalSolveBackend`— y su `impl`.
+
+De los seis puntos, éste es donde el troceo rinde exactamente lo prometido:
+repartir el churn. Un fix de inecuaciones y otro de radicales ya no aterrizan en
+el mismo fichero, que era el mecanismo concreto de conflicto.
 
 P1, P2 y P5 son independientes entre sí y se pueden hacer en sesiones separadas sin pisarse.
 
