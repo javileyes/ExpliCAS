@@ -857,6 +857,17 @@ fn polynomial_power_substitution_from_base(
     }
 
     let coefficient = scale / new_exponent.clone();
+    build_scaled_power_antiderivative(ctx, coefficient, base, new_exponent)
+}
+
+/// Shared tail for the u-du power routes: build `coefficient · base^new_exponent`,
+/// routing negative exponents through the reciprocal-power presentation.
+fn build_scaled_power_antiderivative(
+    ctx: &mut Context,
+    coefficient: BigRational,
+    base: ExprId,
+    new_exponent: BigRational,
+) -> Option<ExprId> {
     if new_exponent < BigRational::zero() {
         return Some(rational_coefficient_times_reciprocal_power(
             ctx,
@@ -866,7 +877,7 @@ fn polynomial_power_substitution_from_base(
         ));
     }
 
-    let power_exp = ctx.add(Expr::Number(new_exponent.clone()));
+    let power_exp = ctx.add(Expr::Number(new_exponent));
     let power = ctx.add(Expr::Pow(base, power_exp));
     if coefficient.is_one() {
         return Some(power);
@@ -874,6 +885,66 @@ fn polynomial_power_substitution_from_base(
 
     let coefficient_expr = ctx.add(Expr::Number(coefficient));
     Some(mul2_raw(ctx, coefficient_expr, power))
+}
+
+/// u-du power fallback when the base is NOT a polynomial in `var`:
+/// `∫ s·u'·uⁿ dx = s·u^{n+1}/(n+1)` for any `u` the symbolic differentiator
+/// can handle, with the cofactor required to equal `s·u'` EXACTLY (rational
+/// `s`, structural factor-multiset comparison — conservative, never lossy).
+///
+/// This is what catches `∫cos(x)·(sin(x)+1)² dx` — the affine-shifted trig
+/// power that the polynomial route rejects (`sin(x)+1` no baja a polinomio) y
+/// que sin esta vía caía al carril Weierstrass patológico (ledger L16).
+fn symbolic_power_substitution_from_base(
+    ctx: &mut Context,
+    cofactor: ExprId,
+    base: ExprId,
+    exponent: BigRational,
+    var: &str,
+) -> Option<ExprId> {
+    let negative_one = BigRational::from_integer((-1).into());
+    if exponent == negative_one {
+        return None;
+    }
+    if !contains_named_var(ctx, base, var) {
+        return None;
+    }
+    // Cota de protección: la diferenciación simbólica es capaz pero no gratis.
+    if crate::expr_complexity::node_count_tree(ctx, base) > 64 {
+        return None;
+    }
+
+    let derivative =
+        crate::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, base, var)?;
+
+    let (cof_factors, cof_coef) =
+        crate::trig_power_identity_support::extract_as_product(ctx, cofactor)?;
+    let (der_factors, der_coef) =
+        crate::trig_power_identity_support::extract_as_product(ctx, derivative)?;
+    if der_coef.is_zero() || cof_factors.len() != der_factors.len() {
+        return None;
+    }
+
+    let mut cof_sorted = cof_factors;
+    let mut der_sorted = der_factors;
+    cof_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    der_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    if cof_sorted
+        .iter()
+        .zip(der_sorted.iter())
+        .any(|(c, d)| compare_expr(ctx, *c, *d) != Ordering::Equal)
+    {
+        return None;
+    }
+
+    let scale = cof_coef / der_coef;
+    let new_exponent = exponent + BigRational::one();
+    if new_exponent.is_zero() {
+        return None;
+    }
+
+    let coefficient = scale / new_exponent.clone();
+    build_scaled_power_antiderivative(ctx, coefficient, base, new_exponent)
 }
 
 pub(super) fn polynomial_power_substitution_antiderivative(
@@ -907,7 +978,13 @@ pub(super) fn polynomial_power_substitution_antiderivative(
         };
 
         if let Some(integral) =
-            polynomial_power_substitution_from_base(ctx, cofactor, base, exponent, var)
+            polynomial_power_substitution_from_base(ctx, cofactor, base, exponent.clone(), var)
+        {
+            return Some(integral);
+        }
+
+        if let Some(integral) =
+            symbolic_power_substitution_from_base(ctx, cofactor, base, exponent, var)
         {
             return Some(integral);
         }

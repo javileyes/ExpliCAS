@@ -1935,3 +1935,24 @@ fn integrate_contract_polynomial_trig_log_substitution_explains_u_and_du() {
         );
     }
 }
+#[test]
+fn integrate_contract_shifted_trig_power_u_du_keeps_composed_form() {
+    // Regresión de L16-pista-(a): sin la vía u-du simbólica, este integrando
+    // caía al carril Weierstrass y colgaba (>240 s tras cerrar el wrong
+    // answer 7/3 de L15). La primitiva debe salir en forma compuesta.
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*(sin(x)+1)^2, x)"),
+        "1/3 * (sin(x) + 1)^3"
+    );
+}
+#[test]
+fn integrate_contract_shifted_trig_power_u_du_higher_power_and_offset() {
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*(sin(x)+1)^3, x)"),
+        "1/4 * (sin(x) + 1)^4"
+    );
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*(sin(x)+2)^2, x)"),
+        "1/3 * (sin(x) + 2)^3"
+    );
+}
