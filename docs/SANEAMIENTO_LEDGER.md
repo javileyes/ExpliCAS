@@ -71,6 +71,37 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 - **Acción propuesta:** re-medir por binario en aislamiento antes de invertir en
   acelerar «las cuatro suites lentas».
 
+### L6 — El grafo de llamadas del orquestador es una bola sin costuras
+- **Origen:** P1, medición previa al troceo (2026-07-31).
+- **Qué:** las 692 fns de producción de `orchestrator.rs` tienen 1.795 aristas
+  de llamada internas. Una agrupación guiada por el grafo (propagación de
+  etiquetas) alcanza 98,8% de cohesión pero metiendo **627 de las 692 en un
+  único grupo**: no hay clústeres naturales que seguir. La partición por
+  familia de nombre deja el 34,1% de las llamadas dentro del módulo, frente al
+  11,1% de una partición seudoaleatoria.
+- **Por qué importa:** fija la expectativa para P2–P4. Trocear estos ficheros
+  compra navegabilidad, tamaño de fichero y menos conflictos — **no compra
+  desacoplamiento**. Quien prometa lo segundo con un movimiento de módulos se
+  equivoca; desacoplar aquí exige rediseño (introducir interfaces, invertir
+  dependencias), que es trabajo de diseño y no de mudanza.
+- **Dato útil que sí salió:** existen 41 primitivas compartidas (llamadas
+  desde 4 o más familias) que ahora viven en `orchestrator/support.rs`. Esa
+  caja de herramientas sí es una capa real, no una etiqueta.
+- **Hallazgo negativo, para no repetir la búsqueda:** el compilador no emite
+  **ni un** `dead_code` tras estrechar la visibilidad (548 `pub(super)`, 144
+  privadas). El orquestador no tiene funciones huérfanas de nivel superior: es
+  sedimento *vivo*, no muerto.
+
+### L7 — Nombres de módulo autogenerados que ensombrecen crates de std
+- **Origen:** P1 (2026-07-31), pisado y corregido en el momento.
+- **Qué:** el bucket residual del troceo se llamaba `core`, y `mod core` +
+  `use core::*` ensombrece el crate `core` de Rust. Compilaba y los tests
+  pasaban, pero dejaba la trampa de que un futuro `core::mem::…` escrito en ese
+  módulo resolviera al módulo local. Renombrado a `general`.
+- **Acción para P2–P4:** al generar nombres de módulo, comprobarlos contra
+  `core`, `std`, `alloc`, `test`, `proc_macro` y los nombres de crates del
+  workspace antes de emitir.
+
 ---
 
 ## Cerrados

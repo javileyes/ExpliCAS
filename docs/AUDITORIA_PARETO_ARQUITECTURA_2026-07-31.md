@@ -100,7 +100,7 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 
 | # | Acción | Esfuerzo | Beneficio |
 |---|---|---|---|
-| P1 | `orchestrator.rs` → directorio `orchestrator/` (mod.rs re-exporta los 4 items pub; submódulos por familia de prefijo; shortcuts de regresión a `regression_shortcuts/`; tests inline a fichero propio) | Medio, mecánico | Navegabilidad, menos conflictos, sedimento visible y auditable |
+| P1 | ~~`orchestrator.rs` → directorio `orchestrator/`~~ | Medio, mecánico | **HECHO 2026-07-31** — ver más abajo |
 | P2 | `rules/arithmetic.rs` → repartir las 30 reglas en la taxonomía existente de `rules/`, helpers a `rules/support/`; re-export desde el path original | Medio, mecánico | El catch-all desaparece; cada regla vive con su familia |
 | P3 | `symbolic_integration_support.rs` y `limits_support.rs` → directorios con `mod.rs` de API curada (re-export explícito) e internals privados | Medio | Reduce la superficie de 91 pub; recorta el acoplamiento aferente a cas_math |
 | P4 | `solve_backend_local.rs` → partir por familia de ecuación | Medio | Reparte el churn más alto del repo; menos conflictos en paralelo |
@@ -108,6 +108,63 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 | P6 | Dedup de `collect_add_terms` / `unary_builtin_arg` y similares | Bajo | Elimina deriva silenciosa entre 13–14 copias |
 
 P1, P2 y P5 son independientes entre sí y se pueden hacer en sesiones separadas sin pisarse.
+
+## P1 ejecutado (2026-07-31)
+
+`orchestrator.rs`, **42.307 → 4.065 líneas** en el padre, repartido en 20
+ficheros, en tres commits (`1ef2121d1`, `51ce1d0c2`, `079eeffc9`):
+
+| Paso | Qué | Resultado |
+|---|---|---|
+| 1/4 | sale el `mod tests` inline (711 tests, 12.225 líneas) | 42.307 → 30.081 |
+| 2/4 | las 692 fns de producción → 10 submódulos por familia + `support` | padre: 4.065 |
+| 3/4 | los 711 tests → 9 submódulos con **las mismas familias** | `tests.rs`: 31 líneas |
+
+Ningún fichero pasa de 4.787 líneas. La API pública (`Orchestrator`, `new`,
+`for_expand`, `simplify_pipeline`) no se toca, y los dos únicos consumidores
+(`lib.rs` y `engine/orchestration.rs`) no se enteran.
+
+### Lo que se midió ANTES de partir, y cambia la expectativa
+
+El grafo de llamadas de las 692 fns **es una bola**. Agrupar guiándose por el
+grafo (propagación de etiquetas) da 98,8% de cohesión metiendo 627 de las 692
+en un solo grupo: no hay costuras naturales. La partición por familia de nombre
+deja el 34,1% de las llamadas dentro del módulo, contra el 11,1% de una
+partición al azar — los nombres llevan estructura real, pero dos tercios de las
+llamadas siguen cruzando módulo.
+
+**Conclusión que vale para P2, P3 y P4: trocear compra navegabilidad, tamaño de
+fichero y menos conflictos; NO compra desacoplamiento.** Desacoplar de verdad
+exige rediseño —interfaces, inversión de dependencias—, que es trabajo de
+diseño, no de mudanza. Prometer lo segundo moviendo ficheros sería falso.
+
+Lo que sí apareció como capa real: **41 primitivas compartidas**, llamadas
+desde 4 o más familias (`build_mul_expr_from_factors_root`,
+`isolated_simplify_rewrites_to_zero`, `finish_standard_root_shortcut`…), ahora
+en `orchestrator/support.rs`.
+
+### Visibilidad mínima: el paso 2 del protocolo de código muerto
+
+En vez de marcar las 692 como `pub(super)` —cómodo, y habría cegado el lint—,
+se marcaron solo las **548** que se usan fuera de su módulo; **144 quedan
+privadas**. Con eso el compilador ya puede certificar, y su veredicto es un
+hallazgo negativo que ahorra futuras búsquedas: **ni un solo `dead_code`**. El
+orquestador no tiene funciones huérfanas de nivel superior; su sedimento está
+vivo.
+
+### Retoques inevitables (no son movimiento puro, y se declaran)
+
+Desangrar el bloque de tests y añadir `pub(super)` alarga líneas, así que
+rustfmt vuelve a partirlas: 86 firmas quedaron reformateadas. El fichero estaba
+limpio de rustfmt en HEAD y sigue limpio. La verificación se hizo comparando
+las 692 fns contra HEAD normalizando espacios, prefijo de visibilidad y el
+reajuste de rustfmt: **0 cuerpos alterados**, ninguna fn perdida, duplicada ni
+añadida.
+
+Y una trampa que conviene no repetir en P2–P4: el bucket residual se llamaba
+`core`, y `mod core` **ensombrece el crate `core` de Rust**. Compilaba y pasaba
+los tests, pero envenenaba cualquier `core::mem::…` futuro escrito en ese
+módulo. Renombrado a `general`; anotado como L7.
 
 ## P5 ejecutado (2026-07-31)
 
