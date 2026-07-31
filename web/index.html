@@ -3195,7 +3195,13 @@
                         inv_trig: branchModeSelect.value,
                         complex: complexModeSelect.value,
                         numeric_display: numericDisplaySelect.value,
-                        time_budget_ms: DEFAULT_TIME_BUDGET_MS,
+                        // NO time budget in wasm mode, on purpose: the
+                        // computation runs in a worker on the USER'S machine
+                        // and the ⏹ Stop button is the cancellation control.
+                        // A cooperative budget here only produced puzzling
+                        // «Partial result …» warnings on long bignum runs.
+                        // The server route below keeps its budget: shared
+                        // resource, hard SLA.
                         approx_hint: true
                     })
                 );
