@@ -341,10 +341,27 @@ si fija soundness (condiciones, dominios), tu cambio es el problema.
 entera en cada iteración intermedia multiplica por 3-4 el tiempo del ciclo sin
 añadir señal: los fallos que caza una iteración temprana (compila, el emisor
 emite, el contrato pertinente pasa) los caza también un comando de segundos.
-Medido 2026-07-28: **~19 min son puro tiempo de test**, y cuatro suites que
-lanzan el binario por caso se llevan 12 de ellos (`cli_contract_tests` 267 s,
-`nonaffine_trig_principal_drop_contract_tests` 185 s, `stress_solve_tests`
-139 s, `steps_divergence_gate_tests` 138 s).
+**Re-medido 2026-07-31 (la cifra anterior había quedado MUY obsoleta):** la
+suma de tiempos de test de los 361 binarios es de **265 s (4,4 min)**, no los
+~19 min medidos el 2026-07-28. La campaña de perf del orquestador y los fixes
+de F13 cambiaron el reparto por completo:
+
+| suite | medido 07-28 | medido 07-31 |
+|---|---:|---:|
+| `cli_contract_tests` | 267 s | 59 s |
+| `steps_divergence_gate_tests` | 138 s | 63 s |
+| `stress_solve_tests` | 139 s | **2 s** |
+| `nonaffine_trig_principal_drop_contract_tests` | 185 s | **1 s** |
+
+Los dos últimos corren hoy el mismo número de tests que entonces (80 y 3), así
+que el speedup es real y no un filtro que se los salte. Como suites lentas de
+verdad quedan solo `steps_divergence_gate_tests` y `cli_contract_tests`, que
+entre las dos son el 46% del tiempo de test.
+
+**La lección va más allá del número:** un plan de acelerar CI apoyado en las
+cifras viejas habría optimizado dos suites que ya tardan 1 y 2 segundos. Antes
+de invertir en tiempos, re-medir — misma lección de «medir, no heredar» que
+dejó la campaña de perf del orquestador.
 
 Cadencia que conserva todas las garantías y quita casi toda la espera:
 1. **Iterando** — `cargo test -p <crate_tocado> <filtro>` y el test de contrato

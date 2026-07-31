@@ -11,33 +11,6 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 
 ## Abiertos
 
-### L1 — El repo no está limpio de `rustfmt` (preexistente)
-- **Origen:** P5, troceo de `semantics_cli_contract_tests` (2026-07-31).
-- **Qué:** dos hunks que `rustfmt --check` rechaza desde antes del troceo, en
-  el test `bignum_available_mirrors_materialization_gates` y un vecino. Tras el
-  troceo viven en `semantics_cli_contract_tests/misc_numeric.rs` y
-  `misc_core.rs`, con el mismo contenido (verificado comparando el diff de
-  rustfmt antes y después).
-- **Por qué importa:** mientras `cargo fmt --check` esté rojo de base, no puede
-  usarse como gate: cualquier suciedad nueva se camufla entre la vieja.
-- **Acción propuesta:** un commit de formato aislado (`cargo fmt`) sobre esos
-  hunks; después, `cargo fmt --check` sirve ya como gate binario.
-- **Riesgo:** nulo (solo espacio en blanco), pero es cirugía → commit propio.
-
-### L2 — Helpers de test duplicados por todo el workspace
-- **Origen:** P5, barrido de `crates/*/tests` (2026-07-31).
-- **Qué:** el mismo helper reescrito en muchos ficheros de test:
-  `solve_display` ×22, `simplify_str` ×19, `solve` ×16, `label` ×9,
-  `create_full_simplifier` ×9, `parse_wire` ×5, `run_cli` ×3.
-- **Por qué importa:** es el mismo patrón de deriva silenciosa que
-  `collect_add_terms` ×13 y `unary_builtin_arg` ×14 en `src`. Un arreglo en una
-  copia no llega a las otras, y en helpers de test eso se traduce en suites que
-  creen estar comprobando lo mismo y no lo comprueban.
-- **Acción propuesta:** **primero diffear** las implementaciones (§4 del
-  protocolo). Las idénticas → crate `cas_test_support` como `dev-dependency`.
-  Las divergentes → cada divergencia es un hallazgo propio antes de fusionar.
-- **Riesgo:** medio. No fusionar a ciegas.
-
 ### L3 — `metamorphic_simplification_tests.rs` es infraestructura, no casos
 - **Origen:** P5 (2026-07-31), decidido NO trocear.
 - **Qué:** 18.923 líneas con **139 tests y 316 helpers**. La proporción está
@@ -48,28 +21,6 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   que es cirugía.
 - **Acción propuesta:** pasada propia que extraiga la infraestructura por
   responsabilidad, con tests verdes entre cada extracción.
-
-### L4 — Rutas `--exact` obsoletas en la documentación
-- **Origen:** P5 (2026-07-31).
-- **Qué:** al pasar los tests a submódulos, sus rutas quedan cualificadas
-  (`solving::test_eval_...`). Los repro con `--exact <nombre_desnudo>` de
-  `SLOW_CI_TEST_LEDGER.md` ya no casan. Los `--test <binario>` sí siguen
-  válidos: la convención `tests/<nombre>/main.rs` conserva el nombre del target.
-- **Acción propuesta:** barrer los `--exact` de `docs/` y prefijarlos, o
-  quitarles el `--exact` (el filtro por subcadena sigue funcionando).
-- **Riesgo:** nulo, es documentación.
-
-### L5 — La atribución de tiempo de CI puede estar inflada
-- **Origen:** P5 (2026-07-31), medición incidental.
-- **Qué:** `.claude/skills/auto-mejora/SKILL.md` da `cli_contract_tests` = 267 s
-  y sostiene que cuatro suites se llevan 12 de los ~19 min. Medido aislado hoy:
-  **57 s**. La cifra de 267 s salió de una corrida `--workspace` completa, es
-  decir con contención de CPU entre binarios.
-- **Por qué importa:** es exactamente el patrón ya registrado en memoria de
-  «atribución heredada FALSA: medir, no heredar». Si el reparto real del tiempo
-  es otro, el plan de acelerar CI está optimizando el objetivo equivocado.
-- **Acción propuesta:** re-medir por binario en aislamiento antes de invertir en
-  acelerar «las cuatro suites lentas».
 
 ### L6 — El grafo de llamadas del orquestador es una bola sin costuras
 - **Origen:** P1, medición previa al troceo (2026-07-31).
@@ -235,6 +186,40 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 ---
 
 ## Cerrados
+
+### L1 — rustfmt sucio preexistente → CERRADO 2026-07-31 (`711914960`)
+Eran **seis** hunks en cinco ficheros, no dos: la entrada original solo vio el
+que el troceo de P5 puso delante. Todos formato puro (encadenados que caben en
+una línea, un `pub use` desordenado, una tabla de comentarios realineada).
+`cargo fmt --all --check` da exit 0 y ya sirve como gate binario.
+**Lección:** una entrada de ledger escrita desde un solo punto de observación
+subestima el alcance; al cerrarla, volver a medir en todo el workspace.
+
+### L4 — Rutas `--exact` obsoletas → CERRADO 2026-07-31 (`3b282cc84`)
+Ocho comandos prefijados con su submódulo real (buscado, no adivinado) y
+verificado que vuelven a ejecutar. Las otras cuatro referencias eran filtros por
+subcadena y no necesitaban cambio.
+`ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md` se deja intacto pese a sus 15
+referencias: es un archivo histórico y reescribirlo falsearía lo ejecutado
+entonces.
+
+### L5 — Atribución de tiempo de CI → CERRADO 2026-07-31
+La sospecha se confirma, y por más margen del previsto. Suma de tiempos de test
+de los 361 binarios: **265 s (4,4 min)**, no los ~19 min medidos el 07-28.
+
+| suite | 07-28 | 07-31 |
+|---|---:|---:|
+| `cli_contract_tests` | 267 s | 59 s |
+| `steps_divergence_gate_tests` | 138 s | 63 s |
+| `stress_solve_tests` | 139 s | **2 s** |
+| `nonaffine_trig_principal_drop_contract_tests` | 185 s | **1 s** |
+
+Los dos últimos corren el mismo número de tests que entonces (80 y 3), así que
+el speedup es real —campaña de perf del orquestador y fixes de F13—, no un
+filtro que se los salte. Corregido `.claude/skills/auto-mejora/SKILL.md`, que
+era el documento que habría dirigido el trabajo.
+**Lección:** un plan de acelerar CI sobre las cifras viejas habría optimizado
+dos suites que ya tardan 1 y 2 segundos. Medir, no heredar.
 
 ### L2 — Helpers de test duplicados por todo el workspace → reformulado
 Sustituido por L13, que mide lo mismo con más precisión y sobre el código de
