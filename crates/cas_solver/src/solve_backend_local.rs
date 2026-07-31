@@ -12406,6 +12406,22 @@ fn solve_local_core_inner(
                 let (g, _) = simplifier.simplify(g);
                 let cond = ImplicitCondition::NonNegative(g);
                 if !conds.contains(&cond) {
+                    // F10 m3 (frontier-audit 2026-07-14): a PARAMETER-only range
+                    // condition (`√x + 3 = y` ⟹ `y − 3 ≥ 0`) can never act as a
+                    // root filter — substituting the root leaves it unchanged —
+                    // so it must be PUBLISHED. The isolated spelling
+                    // `√x = y − 3` already publishes it through the isolation
+                    // path; this gives the shifted spelling parity. Solve-var
+                    // conditions keep their existing owners (the filter below),
+                    // and constant targets are decided by the answer itself,
+                    // never displayed.
+                    if !cas_solver_core::isolation_utils::contains_var(&simplifier.context, g, var)
+                        && cas_math::numeric_eval::as_rational_const(&simplifier.context, g)
+                            .is_none()
+                        && !cas_ast::collect_variables(&simplifier.context, g).is_empty()
+                    {
+                        ctx.note_required_condition(cond.clone());
+                    }
                     conds.push(cond);
                 }
             }

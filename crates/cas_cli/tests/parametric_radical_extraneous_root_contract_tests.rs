@@ -67,6 +67,39 @@ fn radicand_dominance_drops_the_symbol_coefficient_root() {
     assert_eq!(solve("sqrt(2*b*x+1) = x"), "{ sqrt(b^2 + 1) + b }");
 }
 
+fn solve_conditions(input: &str) -> Vec<String> {
+    let out = Command::new(cargo::cargo_bin!("cas_cli"))
+        .args(["eval", &format!("solve({input}, x)"), "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+    let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+    wire["required_conditions"]
+        .as_array()
+        .map(|cs| {
+            cs.iter()
+                .filter_map(|c| c["expr_display"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn parameter_only_range_condition_is_published() {
+    // F10 member 3: the leftover range condition of a SHIFTED radical
+    // (`√x + 3 = y` ⟹ `√x = y − 3 ≥ 0`) contains no solve variable, so it
+    // can never act as a root filter — it must be PUBLISHED. The isolated
+    // spelling already did; the shifted spellings now have parity.
+    assert!(solve_conditions("sqrt(x)+3 = y").contains(&"y - 3".to_string()));
+    assert!(solve_conditions("y = sqrt(x)+3").contains(&"y - 3".to_string()));
+    assert!(solve_conditions("sqrt(x)-y = 2").contains(&"y + 2".to_string()));
+    // Parity target (the isolated spelling, pre-existing owner).
+    assert!(solve_conditions("sqrt(x) = y-3").contains(&"y - 3".to_string()));
+    // Numeric thresholds decide by value — no noise condition is published.
+    assert!(!solve_conditions("sqrt(x)+3 = 5")
+        .iter()
+        .any(|c| c == "2" || c == "5 - 3"));
+}
+
 #[test]
 fn numeric_and_constant_controls_are_untouched() {
     // Numeric radicand: rational back-substitution already filtered these.
