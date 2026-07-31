@@ -377,4 +377,40 @@ impl WasmSession {
         self.engine = cas_solver::runtime::Engine::new();
         self.state = cas_session::SessionState::new();
     }
+
+    /// Snapshot the WHOLE session — engine context arena, `#N` store and
+    /// `:=` environment — as one byte buffer. The worker posts this to the
+    /// page before each evaluation; when the user stops a computation the
+    /// worker is terminated (a BigInt product cannot be interrupted), and
+    /// [`Self::restore`] rebuilds the session in the replacement worker so
+    /// `#N` references keep resolving. Returns `undefined` on encode failure
+    /// (the page then simply has no snapshot to restore).
+    pub fn snapshot(&self) -> Option<Vec<u8>> {
+        self.state
+            .encode_snapshot_bytes(&self.engine.simplifier.context, WASM_SNAPSHOT_DOMAIN)
+            .ok()
+    }
+
+    /// Restore a session captured by [`Self::snapshot`] into this instance.
+    /// Returns `false` (leaving the fresh session untouched) if the bytes
+    /// are incompatible — e.g. a snapshot from a different engine build.
+    pub fn restore(&mut self, bytes: &[u8]) -> bool {
+        match cas_session::SessionState::decode_compatible_snapshot_bytes(
+            bytes,
+            WASM_SNAPSHOT_DOMAIN,
+        ) {
+            Ok(Some((context, state))) => {
+                self.engine = cas_solver::runtime::Engine::with_context(context);
+                self.state = state;
+                true
+            }
+            _ => false,
+        }
+    }
 }
+
+/// Snapshot/restore always happen inside ONE tab and ONE wasm build, so the
+/// cache-key domain is a constant seal (the header's MAGIC/VERSION guards
+/// cross-build compatibility); per-request domain still travels in each
+/// eval's own options, exactly as before.
+const WASM_SNAPSHOT_DOMAIN: &str = "generic";

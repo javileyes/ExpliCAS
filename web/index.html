@@ -2777,7 +2777,7 @@
                         "input.stop.label": "⏹ Parar",
                         "input.stop.title": "Detener la evaluación en curso",
                         "eval.cancelled": "Evaluación cancelada",
-                        "eval.session_restored": "Variables y funciones restauradas",
+                        "eval.session_restored": "Sesión restaurada (variables, funciones y referencias #N)",
                         "card.bignum.label": "Calcular bignum",
                         "card.bignum.title": "Evaluar bignum(resultado) en una celda nueva: todos los dígitos exactos",
                         "input.clear.title": "Limpiar la expresión",
@@ -2906,7 +2906,7 @@
                         "input.stop.label": "⏹ Stop",
                         "input.stop.title": "Stop the running evaluation",
                         "eval.cancelled": "Evaluation cancelled",
-                        "eval.session_restored": "Variables and functions restored",
+                        "eval.session_restored": "Session restored (variables, functions and #N references)",
                         "card.bignum.label": "Compute bignum",
                         "card.bignum.title": "Evaluate bignum(result) in a new cell: every exact digit",
                         "input.clear.title": "Clear the expression",
@@ -3164,46 +3164,21 @@
         }
 
         // Stop the running evaluation. In wasm mode the worker is TERMINATED
-        // (a BigInt product cannot be interrupted cooperatively) and a fresh
-        // engine spawns; the page then silently replays the session's `:=`
-        // declarations so variables and functions survive. In server mode
-        // the fetch is aborted and the server's own hard timeout reaps the
-        // subprocess. #N references to past results do not survive a stop.
+        // (a BigInt product cannot be interrupted cooperatively), a fresh
+        // engine spawns, and the pre-eval session snapshot the dead worker
+        // posted is restored into it — #N references and := bindings both
+        // survive the stop. In server mode the fetch is aborted (the session
+        // lives server-side in its own snapshot files) and the server's hard
+        // timeout reaps the subprocess.
         function stopEvaluation() {
             if (window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled) {
                 window.EXPLICAS_WASM.stop()
-                    .then(() => replaySessionDeclarations())
+                    .then((restored) => {
+                        if (restored) console.info('ExpliCAS:', t('eval.session_restored'));
+                    })
                     .catch((error) => console.error('ExpliCAS: engine restart after stop failed', error));
             } else if (evalAbortController) {
                 evalAbortController.abort();
-            }
-        }
-
-        // Re-declare every `:=` binding in the fresh wasm engine, in
-        // insertion order (JS string keys preserve it, which here matches
-        // chronology — a rebound name replays its LATEST value). Values are
-        // the engine's own plain renders, so they re-parse; a binding that
-        // fails to replay is logged and skipped rather than blocking the
-        // rest.
-        async function replaySessionDeclarations() {
-            if (!(window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled)) return;
-            const decls = [];
-            for (const [name, value] of Object.entries(sessionVariables)) {
-                decls.push(`${name} := ${value}`);
-            }
-            for (const [name, meta] of Object.entries(sessionFunctions)) {
-                const params = (meta.params || []).join(', ');
-                decls.push(`${name}(${params}) := ${meta.display}`);
-            }
-            for (const decl of decls) {
-                try {
-                    await window.EXPLICAS_WASM.eval(decl, JSON.stringify({ steps: 'off' }));
-                } catch (error) {
-                    console.warn('ExpliCAS: declaration did not replay after stop:', decl, error);
-                }
-            }
-            if (decls.length > 0) {
-                console.info('ExpliCAS:', t('eval.session_restored'));
             }
         }
 

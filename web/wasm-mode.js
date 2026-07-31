@@ -29,6 +29,9 @@
         worker: null,
         pending: new Map(),
         nextId: 1,
+        // Latest pre-eval session snapshot (Uint8Array) posted by the
+        // worker: the recovery point when a stop terminates the worker.
+        lastSnapshot: null,
     };
     window.EXPLICAS_WASM = state;
 
@@ -58,6 +61,10 @@
                         detail: { version: msg.version },
                     }));
                     resolveReady();
+                    return;
+                }
+                if (msg.kind === 'snapshot') {
+                    state.lastSnapshot = msg.snapshot || null;
                     return;
                 }
                 if (msg.kind === 'result') {
@@ -101,11 +108,13 @@
 
     // Hard-cancel whatever the worker is computing (the Stop button). A Web
     // Worker cannot be interrupted cooperatively mid-BigInt, so this
-    // TERMINATES it — losing the engine-side session — and spawns a fresh
-    // one. Every in-flight promise rejects with `explicasCancelled` so the
-    // page can tell a user stop from a real error; the page is responsible
-    // for replaying its declaration log once the returned promise resolves
-    // (new worker ready).
+    // TERMINATES it and spawns a fresh one; the pre-eval snapshot the dead
+    // worker posted is then restored into the replacement, so the WHOLE
+    // session — #N references included — survives the stop. Every in-flight
+    // promise rejects with `explicasCancelled` so the page can tell a user
+    // stop from a real error. Resolves to true when the session was
+    // restored, false when there was nothing to restore (or it failed —
+    // then the fresh session starts empty, same as the pre-snapshot era).
     state.stop = function () {
         if (state.worker) {
             state.worker.terminate();
@@ -116,6 +125,26 @@
             entry.reject(error);
         }
         state.pending.clear();
-        return spawnWorker();
+        const snapshot = state.lastSnapshot;
+        return spawnWorker().then(() => {
+            if (!snapshot) return false;
+            return new Promise((resolve) => {
+                const id = state.nextId++;
+                state.pending.set(id, {
+                    resolve: (wire) => {
+                        try {
+                            resolve(JSON.parse(wire).restored === true);
+                        } catch {
+                            resolve(false);
+                        }
+                    },
+                    reject: () => resolve(false),
+                });
+                // Structured-clone copy on purpose (no transfer list):
+                // lastSnapshot must stay usable for a second stop before
+                // the next evaluation refreshes it.
+                state.worker.postMessage({ id, kind: 'restore', snapshot });
+            });
+        });
     };
 })();

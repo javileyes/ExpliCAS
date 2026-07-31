@@ -238,3 +238,85 @@ fn test_session_snapshot_save_load_preserves_function_bindings() {
     let binding = restored_env.get_function("f").expect("restored function");
     assert_eq!(binding.params, vec!["x".to_string()]);
 }
+
+/// The wasm stop/restore cycle, natively: encode the session to BYTES (no
+/// filesystem), decode into a fresh engine+state, and verify that BOTH the
+/// `#N` store and the `:=` environment keep resolving. This is the coverage
+/// for `WasmSession::snapshot`/`restore`, which are thin wrappers over these
+/// two calls.
+#[test]
+fn snapshot_bytes_roundtrip_preserves_refs_and_bindings() {
+    use cas_api_models::{
+        EvalAssumeScope, EvalBranchMode, EvalBudgetPreset, EvalComplexMode, EvalConstFoldMode,
+        EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
+        EvalValueDomain,
+    };
+
+    fn config(expr: &str) -> crate::eval::EvalCommandConfig<'_> {
+        crate::eval::EvalCommandConfig {
+            expr,
+            auto_store: true,
+            max_chars: 2000,
+            time_budget_ms: None,
+            steps_mode: EvalStepsMode::Off,
+            budget_preset: EvalBudgetPreset::Standard,
+            strict: false,
+            domain: EvalDomainMode::Generic,
+            context_mode: EvalContextMode::Auto,
+            branch_mode: EvalBranchMode::Strict,
+            expand_policy: EvalExpandPolicy::Auto,
+            complex_mode: EvalComplexMode::Auto,
+            const_fold: EvalConstFoldMode::Safe,
+            value_domain: EvalValueDomain::Real,
+            complex_branch: EvalBranchMode::Principal,
+            inv_trig: EvalInvTrigPolicy::Strict,
+            assume_scope: EvalAssumeScope::Real,
+            numeric_display: cas_api_models::EvalNumericDisplay::Exact,
+            approx_hint: false,
+        }
+    }
+    fn eval(
+        engine: &mut cas_solver::runtime::Engine,
+        state: &mut SessionState,
+        expr: &str,
+    ) -> cas_api_models::EvalWireOutput {
+        crate::eval::evaluate_eval_command_in_memory_with_state(
+            engine,
+            state,
+            config(expr),
+            cas_solver_core::eval_option_axes::Language::Es,
+            |_steps, _events, _ctx, _mode| Vec::new(),
+        )
+        .expect("eval")
+    }
+
+    let mut engine = cas_solver::runtime::Engine::new();
+    let mut state = SessionState::new();
+    let first = eval(&mut engine, &mut state, "20 + 22");
+    assert_eq!(first.result, "42");
+    assert_eq!(first.stored_id, Some(1));
+    eval(&mut engine, &mut state, "zz := 7");
+
+    // The worker's pre-eval snapshot…
+    let bytes = state
+        .encode_snapshot_bytes(&engine.simplifier.context, "generic")
+        .expect("encode");
+
+    // …restored into a brand-new engine after the worker was terminated.
+    let (context, restored_state) =
+        SessionState::decode_compatible_snapshot_bytes(&bytes, "generic")
+            .expect("decode")
+            .expect("compatible");
+    let mut engine2 = cas_solver::runtime::Engine::with_context(context);
+    let mut state2 = restored_state;
+
+    let resumed = eval(&mut engine2, &mut state2, "#1 + zz");
+    assert_eq!(resumed.result, "49", "wire: {:?}", resumed.result);
+
+    // A wrong domain seal declines instead of restoring garbage.
+    assert!(
+        SessionState::decode_compatible_snapshot_bytes(&bytes, "strict")
+            .expect("decode ok")
+            .is_none()
+    );
+}
