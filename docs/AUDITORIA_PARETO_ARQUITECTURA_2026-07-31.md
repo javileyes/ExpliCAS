@@ -104,11 +104,139 @@ Candidatos a consolidarse en `cas_ast::views` / helpers comunes de `cas_math`.
 | P2 | `rules/arithmetic.rs` → repartir las 30 reglas en la taxonomía existente de `rules/`, helpers a `rules/support/`; re-export desde el path original | Medio, mecánico | El catch-all desaparece; cada regla vive con su familia |
 | P3 | `symbolic_integration_support.rs` y `limits_support.rs` → directorios con `mod.rs` de API curada (re-export explícito) e internals privados | Medio | Reduce la superficie de 91 pub; recorta el acoplamiento aferente a cas_math |
 | P4 | `solve_backend_local.rs` → partir por familia de ecuación | Medio | Reparte el churn más alto del repo; menos conflictos en paralelo |
-| P5 | Test-monolitos (`cli_contract_tests.rs` y compañía) → un fichero por dominio | Bajo | Riesgo casi nulo; el fichero más tocado del repo deja de ser imán de conflictos |
+| P5 | ~~Test-monolitos (`cli_contract_tests.rs` y compañía) → un fichero por dominio~~ | Bajo | **HECHO 2026-07-31** — ver más abajo |
 | P6 | Dedup de `collect_add_terms` / `unary_builtin_arg` y similares | Bajo | Elimina deriva silenciosa entre 13–14 copias |
 
-**Regla de oro para ejecutar:** solo movimientos de módulo, cero cambios de lógica.
-`cargo test --workspace` completo **antes** de empezar (clean git ≠ green tests) y tras cada
-paso; gate steps-on/off si se roza simplificación; commit por paso; sin push (push = deploy);
-jamás amend sobre hash-stamps. P1, P2 y P5 son independientes entre sí y se pueden hacer en
-sesiones separadas sin pisarse.
+P1, P2 y P5 son independientes entre sí y se pueden hacer en sesiones separadas sin pisarse.
+
+## P5 ejecutado (2026-07-31)
+
+Cuatro monolitos, **60.611 líneas planas → 56 ficheros**, en cuatro commits de
+movimiento puro (`efd79191a`, `0b553e318`, `b67ffa1fa`, `befbd71ca`):
+
+| Fichero | Antes | Tests | Después | Eje de troceo |
+|---|---:|---:|---|---|
+| `cas_cli/tests/cli_contract_tests` | 10.393 | 228 | main + 15 | dominio matemático |
+| `cas_cli/tests/integrate_contract_tests` | 16.778 | 381 | main + 14 | técnica de integración |
+| `cas_cli/tests/semantics_cli_contract_tests` | 12.284 | 505 | main + 20 | comando × tema |
+| `cas_solver/tests/diff_step_contract_tests` | 21.156 | 264 | main + 7 | familia de función derivada |
+
+**Decisión de diseño: un solo binario por suite.** La convención de cargo
+`tests/<nombre>/main.rs` (no `tests/<nombre>.rs` — en un crate raíz los `mod`
+se resuelven en el *mismo* directorio, de ahí un `E0583` inicial) mantiene el
+nombre del target, así que los `cargo test --test <bin>` del
+`SLOW_CI_TEST_LEDGER` siguen valiendo y no se añaden 56 binarios al enlazado de
+un workspace que ya tuvo que apagar debuginfo. Sin `nextest` ni CI de tests,
+cargo ejecuta los binarios en serie: más binarios no habría acelerado nada.
+Los submódulos heredan imports y helpers vía `use super::*`.
+
+**Lección sobre los ejes.** El eje por dominio matemático solo sirve para
+suites genuinamente multidominio. En un fichero monotemático no separa nada
+(371 de 381 de integrate caían en «integración»): ahí la costura útil es *cómo*
+se hace, no *qué* se hace. Y los criterios transversales —`verification`,
+`steps`— deben ir los ÚLTIMOS de la lista de reglas: como criterio primario se
+tragan todo (`steps` capturaba 175 de 225 tests de derive) porque casi todo
+test verifica y casi todo test mira los pasos.
+
+**Verificación.** Cada troceo se comprobó con un verificador independiente que
+compara los bloques `#[test]` contra el commit padre: 1.378 bloques idénticos
+byte a byte, ningún nombre perdido ni añadido. Suite completa verde antes
+(12.771 tests) y después. Único retoque no-movimiento: colapsar las rachas de
+líneas en blanco que dejan los tests al salir, exigido por rustfmt.
+
+**Lo que NO se hizo, y por qué.** `metamorphic_simplification_tests.rs` (18.923
+líneas) queda intacto: son 139 tests contra 316 helpers, o sea un fichero de
+infraestructura. Trocearlo exige mover maquinaria, que es cirugía y no
+movimiento. Anotado como L3 en `SANEAMIENTO_LEDGER.md`.
+
+Los sospechosos observados durante los movimientos (rustfmt sucio preexistente,
+helpers de test duplicados ×22/×19/×16, rutas `--exact` obsoletas en docs,
+atribución de tiempo de CI probablemente inflada) están en
+`SANEAMIENTO_LEDGER.md` — anotados, no tocados.
+
+## Protocolo: sanear mientras se reestructura
+
+La reestructuración es la mejor oportunidad de censo del código (al mover 1.445 funciones se
+*ve* cada una), así que conviene auditar en el mismo pase. Pero la disciplina es estricta:
+**observar mientras se mueve, sí; operar mientras se mueve, no.** Cada tipo de cambio va en su
+propio commit.
+
+### 1. Separación estricta move / cirugía
+
+Un commit de movimiento puro es verificable casi mecánicamente: `git diff --color-moved`
+muestra los bloques trasladados, los tests quedan verdes trivialmente, y ante una regresión
+posterior `git bisect` distingue al instante "move" de "cirugía". Mezclar en un commit "moví
+esto" con "de paso borré aquello" hace el diff inauditable y esconde regresiones (cicatrices
+propias del repo: *bisect antes de creer la atribución*, *git limpio ≠ tests verdes*).
+
+- Commits de move: **cero cambios de lógica**, ni un rename de variable.
+- Commits de saneamiento: pequeños y temáticos (un duplicado, un cluster muerto), para que
+  bisect y revert sigan siendo baratos.
+
+### 2. Código muerto: la reestructuración ES el detector
+
+`cas_math` expone 1.044 funciones `pub`, y el lint `dead_code` **no puede señalar nada
+público** (para el compilador, "alguien externo podría usarla"). Por eso detectar muerto hoy es
+adivinar con grep. La secuencia correcta invierte el problema:
+
+1. **Mover** a submódulos (P1–P3) — verde.
+2. **Estrechar visibilidad**: API curada en `mod.rs`, internals a `pub(crate)`/privado — verde.
+3. **Dejar que el compilador señale**: lo que quede sin llamar tras el estrechamiento es
+   candidato certificado, no especulado. Grep especula; el compilador certifica.
+4. Solo entonces, decidir cortes (con las salvaguardas del punto 3).
+
+### 3. Salvaguardas contra el falso-muerto
+
+Dos trampas concretas de este repo hacen mentiroso el "0 referencias" de grep:
+
+- **Despacho dinámico**: las 101 reglas se registran vía registry (`register`,
+  `target_types`, allowlist de funciones del engine que además fallan **en silencio** si no se
+  cablean). Un helper puede tener cero referencias directas y estar vivo vía registro. Lección
+  ya registrada: el sweep de 0-referencias es seguro en plumbing, **cargado en crates de
+  dominio**.
+- **Semillas de universalidad compleja**: los residuales vivos de Fase 2 (sinh↔exp con
+  argumento constante, `|i|` anidado, equivalencia tri-estado, roots-of-unity) tienen
+  infraestructura a medio usar que hoy parece muerta y es el andamio de mañana.
+
+Protocolo: **cuarentena antes que borrado**. Todo candidato se contrasta contra los backlogs
+de frentes vivos (docs de fases y auditorías); en caso de duda se marca con
+`#[allow(dead_code)]` + comentario de *por qué vive* (o módulo de semillas explícito) en vez
+de borrarse. Borrar es barato de deshacer en git pero caro de *re-descubrir*; la cuarentena
+mantiene la semilla visible. Un candidato solo se borra si: el compilador lo señala tras el
+estrechamiento **y** no aparece en registries/allowlists **y** no casa con ningún frente vivo.
+
+### 4. Duplicados: diffear antes de fusionar
+
+Las 13 copias de `collect_add_terms` (y las 14 de `unary_builtin_arg`) probablemente **ya no
+son idénticas** — alguna habrá recibido un fix que las otras no. Fusionar a ciegas cambia el
+comportamiento en 12 sitios de golpe. Paso previo obligatorio: diff de implementaciones.
+
+- Idénticas (byte a byte o semánticamente verificadas) → consolidar sin miedo.
+- Divergentes → la divergencia es un **hallazgo en sí misma** (¿bug de deriva o divergencia
+  intencional?) que merece su propio mini-análisis antes de tocar nada. No se fusiona en el
+  mismo commit que se investiga.
+
+### 5. Acoplamientos: salen gratis en el move
+
+Al mover una función a su submódulo, los `use` que hay que arrastrar *son* la medida de su
+acoplamiento — el move los hace visibles uno a uno. No hay que buscarlos: hay que anotarlos.
+
+### 6. El ledger de sospechosos
+
+Durante cada move se lleva un ledger (p. ej. `docs/SANEAMIENTO_LEDGER.md`) donde se anota
+sin actuar: muerto-aparente, duplicado, acoplamiento raro, shortcut de regresión que podría
+generalizarse. Coste cero, no frena el move ni abre madrigueras a mitad de refactor. Las
+tandas de saneamiento posteriores se alimentan del ledger, no de la memoria.
+
+### 7. Ritmo y verificación
+
+```
+move (verde) → estrechar visibilidad (verde) → sanear con el compilador como oráculo (verde + gate)
+```
+
+- `cargo test --workspace` completo **antes** de empezar (clean git ≠ green tests) y tras
+  cada paso — con `&&` en las cadenas de shell, nunca `| tail` ni `; echo OK` (falsos verdes
+  ya documentados).
+- Gate steps-on/off si el corte roza simplificación.
+- Commit por paso; sin push (push = deploy); jamás amend sobre hash-stamps.
+- Si un saneamiento rompe algo no trivial de atribuir: worktree-bisect antes de revertir.
