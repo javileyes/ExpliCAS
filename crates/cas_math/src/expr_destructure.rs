@@ -116,10 +116,28 @@ pub fn unary_builtin_arg_through_hold(
 /// Destruct a unary call to `builtin` WITHOUT stripping `__hold`.
 ///
 /// The counterpart to [`unary_builtin_arg_through_hold`]. The integration
-/// policies use this one, so a held tree does NOT match here. Whether that is
-/// deliberate or an oversight is an open question (ledger L13); until it is
-/// answered, the two behaviours live side by side with names that say which is
-/// which, instead of three private copies all called `unary_builtin_arg`.
+/// policies use this one, so a held tree does NOT match here.
+///
+/// DECIDED (2026-08-01, closes the L13 open question): this is the CORRECT
+/// default for integration policies, not an oversight. Evidence:
+/// * `integrate_symbolic_expr` never unwraps holds at entry, so a held node at
+///   a match point yields an UNEVALUATED integral — a visible, safe residual,
+///   never a wrong answer.
+/// * In realistic pipelines holds dissolve before reaching the backend:
+///   `__hold` is transparent to Add/Mul views, so distribution strips it (the
+///   `integrate(cos(x)*expand((sin(x)+1)^2), x)` probe integrates correctly).
+/// * Where holds DO arrive, the integration code already unwraps them at the
+///   observed seams (`general.rs`, `by_parts.rs`, `logs_exp.rs`) — transparency
+///   is opt-in per seam, matching how holds are handled engine-wide.
+/// * A blanket see-through default would be RISKIER: matching through a hold
+///   and rebuilding from the inner nodes silently drops the barrier that
+///   expand/factor installed to stop known manglings
+///   (see `definite_integration.rs`, "known to mangle without the `__hold`
+///   barrier").
+///
+/// So: use this variant by default in integration matchers; reach for
+/// [`unary_builtin_arg_through_hold`] only at seams where a held tree has been
+/// OBSERVED, and mind the barrier you are removing when you rebuild.
 #[inline]
 pub fn unary_builtin_arg_no_hold(
     ctx: &Context,

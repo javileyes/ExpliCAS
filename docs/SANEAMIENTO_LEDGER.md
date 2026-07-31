@@ -156,17 +156,59 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 - **Hipótesis descartada por el camino:** los dos `reciprocal_trig_log_domain.rs`
   de cas_math y cas_engine NO son un módulo copiado; comparten el nombre de
   fichero y un helper de 7 líneas, nada más.
-- **Pregunta abierta que esto destapó, y que NO se toca a ciegas:** las policies
-  de integración usan la variante que **no** desenvuelve `__hold`. Como
-  `__hold` lo crean reglas de expand/factor, un integrando protegido no casaría
-  ahí. Añadir el unwrap cambiaría el comportamiento de las policies, así que
-  queda documentado —los dos canónicos son vecinos y sus nombres exhiben la
-  diferencia— hasta que alguien construya el caso que decida si es deliberado
-  o un descuido.
+- **Pregunta abierta → DECIDIDA 2026-08-01:** `no_hold` es el default CORRECTO
+  para las policies de integración. Evidencia: (a) la entrada
+  `integrate_symbolic_expr` no desenvuelve holds, así que un hold en un punto
+  de match produce integral SIN evaluar — residual visible y seguro, nunca
+  wrong answer; (b) en pipelines reales el hold se disuelve por distribución
+  antes de llegar al backend (sonda `integrate(cos·expand((sin+1)²))` integra
+  bien); (c) donde los holds SÍ llegan, el código ya los desenvuelve costura a
+  costura (`general.rs`, `by_parts.rs`, `logs_exp.rs`); (d) un see-through
+  indiscriminado sería MÁS arriesgado: casar a través del hold y reconstruir
+  con los nodos internos tira la barrera que expand/factor instaló contra
+  manglings conocidos. Decisión grabada en el doc-comment del canónico.
 - **Lo que queda:** las 14 variantes de `collect_add_terms` son todas
   singletons; ahí no hay dedup posible, solo el trabajo caso por caso de decidir
   si cada nombre miente. Y el barrido de helpers de TEST (`solve_display` ×22,
   `simplify_str` ×19…) sigue pendiente, con el mismo método: diffear primero.
+
+### L15 — CERRADO: wrong answer 7/3 por colisión de temps opacos (P0, preexistente)
+- **Origen:** sondas de la pregunta abierta de L13 (2026-07-31/08-01); fix en
+  `a8a7dbdc2`.
+- **Qué:** `integrate(cos(x)*(sin(x)+1)^2, x)` devolvía `7/3` — una constante
+  como primitiva. Atribución por worktree: preexistente a toda la campaña.
+  Causa: `prepare_opaque_shared_substitution` (cas_math) generaba temps
+  `__opq0…` sin comprobar colisiones; en rondas opacas ANIDADAS el árbol ya
+  contiene `__opq0` del nivel exterior y `sin(x/2) := __opq0` fusionaba dos
+  átomos (verificación algebraica: con s=o, N/D = 56/24 = 7/3 exacto). Segundo
+  defecto en la misma copia: el matcher greedy quemaba el `shared_limit` en
+  pares duplicados del mismo átomo.
+- **La parte que confirma L13 con daño real:** el asignador hermano de
+  `cas_engine::polynomial_identity_support` YA tenía ambos fixes (siembra con
+  `collect_variables` + `dedup_expr_ids`). El fix se aplicó una vez y nunca
+  viajó a la copia de cas_math. «Un fix en una copia no llega a las otras» dejó
+  de ser un riesgo teórico: era un P0 en producción.
+- **Tests:** 2 regresiones unitarias rápidas en cas_math + 2 end-to-end
+  `#[ignore]` (~150 s cada uno) en `cas_engine/tests/opaque_quotient_soundness.rs`.
+
+### L16 — El input del 7/3 ahora CUELGA, y el presupuesto no lo poda
+- **Origen:** destapado por el fix de L15 (2026-08-01).
+- **Qué:** con el colapso erróneo eliminado, `integrate(cos(x)*(sin(x)+1)^2, x)`
+  pasa de mentir en segundos a moler >240 s: el colapso actuaba de válvula de
+  escape de una búsqueda patológica preexistente. El molino medido NO es la
+  ruta opaca (devuelve None al instante tras el fix) sino la **estrategia 2**
+  de `div_expand_cancel` (expand-then-compare con simplifies completos sobre
+  formas trig expandidas, ~150 s por invocación) repetida por el router de
+  integración, que además eligió Weierstrass/medio-ángulo para un integrando
+  con sustitución u=1+sin evidente.
+- **Hallazgo agravante:** `--budget standard` NO poda el bucle (exit 124 con
+  presupuesto activo) — hay trabajo no medido por el sistema de presupuesto.
+- **Doctrina aplicable:** familia C5 («HANG de oscilación expand↔factor — fix
+  de orquestación, no apresurar»). No se parchea en caliente: mejor un hang
+  honesto que una respuesta incorrecta instantánea. Pistas para el fix de
+  orquestación: (a) por qué el router no prueba u-du antes del carril
+  Weierstrass; (b) metrar la estrategia 2 en el presupuesto; (c) considerar
+  abstención de estrategia 2 cuando la abstracción opaca es parcial.
 
 ### L14 — Tres suposiciones de utillaje que el troceo destapó (todas corregidas)
 - **Origen:** P7, troceo de `focused_rule_substeps.rs` (2026-07-31).
