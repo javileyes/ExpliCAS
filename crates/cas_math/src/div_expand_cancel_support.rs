@@ -12,7 +12,7 @@ use crate::fraction_factors::{
 };
 use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 use crate::opaque_atoms::{
-    collect_function_calls_with_pow_limit, extract_opaque_rational_power_atom,
+    collect_function_calls_with_pow_limit, dedup_expr_ids, extract_opaque_rational_power_atom,
     extract_opaque_reciprocal_power_base, extract_opaque_signed_rational_power_atom,
 };
 use crate::opaque_function_calls_support::match_shared_calls_structural;
@@ -486,8 +486,17 @@ pub(crate) fn find_shared_opaque_calls(
     depth_limit: usize,
     shared_limit: usize,
 ) -> Vec<(ExprId, ExprId)> {
+    // Dedup BEFORE matching: the greedy matcher pairs occurrence-by-occurrence,
+    // so a call repeated on both sides (e.g. `cos(x/2)` seven times) burns the
+    // whole `shared_limit` on duplicate pairs of the same atom and leaves the
+    // other shared atoms unabstracted. That partial abstraction is what sent
+    // the strategy-0 nested simplify into pathological trig grinds. The
+    // sibling in `cas_engine::polynomial_identity_support` already dedups its
+    // call list; this copy had never received that fix either.
     let num_calls = collect_function_calls_with_pow_limit(ctx, num, depth_limit, 18);
+    let num_calls = dedup_expr_ids(ctx, &num_calls);
     let den_calls = collect_function_calls_with_pow_limit(ctx, den, depth_limit, 18);
+    let den_calls = dedup_expr_ids(ctx, &den_calls);
     let mut shared = match_shared_calls_structural(ctx, &num_calls, &den_calls, shared_limit);
     if shared.len() > shared_limit {
         return Vec::new();
@@ -550,6 +559,16 @@ fn try_exact_poly_quotient_expr(ctx: &mut Context, num: ExprId, den: ExprId) -> 
 }
 
 /// Replace matched shared function calls with fresh temporary variables.
+///
+/// The temp names MUST avoid every variable already present in the fraction:
+/// nested opaque rounds (e.g. `Rationalize Linear Sqrt Denominator` firing
+/// inside the strategy-0 simplify of an outer opaque round) receive trees that
+/// already contain `__opq0`-style variables from the outer round. Reusing the
+/// name silently FUSES two distinct atoms and the "exact" polynomial quotient
+/// collapses a non-constant fraction to a constant (wrong answer `7/3` from
+/// `integrate(cos(x)*(sin(x)+1)^2, x)`, 2026-07-31). The sibling allocator in
+/// `cas_engine::polynomial_identity_support` already seeds its used-name set
+/// this way; this copy had never received that fix.
 pub(crate) fn prepare_opaque_shared_substitution(
     ctx: &mut Context,
     num: ExprId,
@@ -559,9 +578,21 @@ pub(crate) fn prepare_opaque_shared_substitution(
     let mut substituted_num = num;
     let mut substituted_den = den;
     let mut temp_vars = Vec::with_capacity(shared.len());
+    let mut used_temp_names: std::collections::BTreeSet<String> =
+        cas_ast::collect_variables(ctx, num)
+            .into_iter()
+            .chain(cas_ast::collect_variables(ctx, den))
+            .collect();
 
     for (i, (num_call, den_call)) in shared.iter().enumerate() {
-        let temp_name = format!("__opq{}", i);
+        let mut idx = i;
+        let temp_name = loop {
+            let candidate = format!("__opq{idx}");
+            if used_temp_names.insert(candidate.clone()) {
+                break candidate;
+            }
+            idx += 1;
+        };
         let temp_var = ctx.var(&temp_name);
         let shared_root_family =
             extract_root_family_signature(ctx, *num_call).and_then(|(num_base, num_root_index)| {
@@ -703,6 +734,51 @@ where
 
     if matches!(simplified_ctx.get(simplified), Expr::Div(_, _)) {
         return None;
+    }
+
+    #[cfg(feature = "opq-diag")]
+    {
+        fn sexp(ctx: &Context, e: ExprId) -> String {
+            match ctx.get(e) {
+                Expr::Number(n) => format!("{n}"),
+                Expr::Variable(v) => ctx.sym_name(*v).to_string(),
+                Expr::Constant(c) => format!("{c:?}"),
+                Expr::Add(l, r) => format!("(+ {} {})", sexp(ctx, *l), sexp(ctx, *r)),
+                Expr::Sub(l, r) => format!("(- {} {})", sexp(ctx, *l), sexp(ctx, *r)),
+                Expr::Mul(l, r) => format!("(* {} {})", sexp(ctx, *l), sexp(ctx, *r)),
+                Expr::Div(l, r) => format!("(/ {} {})", sexp(ctx, *l), sexp(ctx, *r)),
+                Expr::Pow(l, r) => format!("(^ {} {})", sexp(ctx, *l), sexp(ctx, *r)),
+                Expr::Neg(i) => format!("(neg {})", sexp(ctx, *i)),
+                Expr::Function(f, args) => format!(
+                    "({} {})",
+                    ctx.sym_name(*f),
+                    args.iter()
+                        .map(|a| sexp(ctx, *a))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
+                other => format!("({other:?})"),
+            }
+        }
+        eprintln!(
+            "[opq-diag] sub_num = {}",
+            sexp(&simplified_ctx, plan.substituted_num)
+        );
+        eprintln!(
+            "[opq-diag] sub_den = {}",
+            sexp(&simplified_ctx, plan.substituted_den)
+        );
+        eprintln!(
+            "[opq-diag] nested-simplified = {}",
+            sexp(&simplified_ctx, simplified)
+        );
+        for (call, temp) in &plan.temp_vars {
+            eprintln!(
+                "[opq-diag] temp {} := {}",
+                sexp(&simplified_ctx, *temp),
+                sexp(&simplified_ctx, *call)
+            );
+        }
     }
 
     let final_result =
@@ -1364,6 +1440,83 @@ mod tests {
         assert_eq!(
             render_expr(&ctx, rewrite.rewritten),
             "((u^2 + 1)^(1/2))^2 + (u^2 + 1)^(1/2) + 1"
+        );
+    }
+
+    #[test]
+    fn diag_opaque_quotient_should_not_collapse_trig_ratio_to_constant() {
+        let mut ctx = Context::new();
+        let num = parse("4*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^2 + 4*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^4 + 20/3*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^3 + cos(x/2)*cos(x/2)*(2*(sin(x/2))^5 + (cos(x/2))^3*(sin(x/2 - x/2) + 2*sin(x/2)*cos(x/2)))", &mut ctx).expect("num");
+        let den = parse("cos(x/2)*(cos(x/2))^6 + 3*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^2 + 3*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^4 + cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^6", &mut ctx).expect("den");
+        let expr = ctx.add(Expr::Div(num, den));
+        let out = try_rewrite_div_expand_to_cancel_expr_with_thread_guards(
+            &mut ctx,
+            expr,
+            |_, _| None,
+            |_, e| e,
+            |_, _, _| None,
+        );
+        match out {
+            Some(rw) => {
+                println!("KIND {:?}", rw.kind);
+                println!("REWRITTEN {}", render_expr(&ctx, rw.rewritten));
+            }
+            None => println!("NONE"),
+        }
+    }
+
+    #[test]
+    fn opaque_temp_names_avoid_variables_already_in_the_fraction() {
+        // Regresión del wrong answer 7/3 (2026-07-31): una ronda opaca anidada
+        // recibía un árbol que YA contenía `__opq0` y reutilizaba ese nombre
+        // para su propio temp, fusionando dos átomos distintos.
+        let mut ctx = Context::new();
+        let num = parse("__opq0^2 * sin(x) + sin(x)", &mut ctx).expect("num");
+        let den = parse("__opq0 + sin(x)", &mut ctx).expect("den");
+        let call = parse("sin(x)", &mut ctx).expect("call");
+        let plan = prepare_opaque_shared_substitution(&mut ctx, num, den, &[(call, call)]);
+        assert_eq!(plan.temp_vars.len(), 1);
+        let (_, temp) = plan.temp_vars[0];
+        let name = match ctx.get(temp) {
+            Expr::Variable(sym) => ctx.sym_name(*sym).to_string(),
+            other => panic!("temp no es variable: {other:?}"),
+        };
+        assert_ne!(name, "__opq0", "el temp reutilizó un nombre ya presente");
+        // y el __opq0 preexistente debe seguir intacto en el árbol sustituido
+        assert!(cas_ast::collect_variables(&ctx, plan.substituted_num).contains("__opq0"));
+    }
+
+    #[test]
+    fn shared_call_matching_dedups_repeated_occurrences() {
+        // Regresión del agotamiento del `shared_limit`: siete `cos(x)` a cada
+        // lado quemaban el límite en pares duplicados del MISMO átomo y
+        // dejaban `sin(x)` sin abstraer (abstracción parcial = molino).
+        let mut ctx = Context::new();
+        let num = parse(
+            "cos(x)*cos(x)*cos(x) + cos(x)*sin(x) + cos(x)*cos(x)*sin(x)",
+            &mut ctx,
+        )
+        .expect("num");
+        let den = parse("cos(x)*cos(x) + sin(x)*cos(x) + sin(x)", &mut ctx).expect("den");
+        let shared = find_shared_opaque_calls(&ctx, num, den, 4, 3);
+        let mut uniq: Vec<ExprId> = Vec::new();
+        for (nc, _) in &shared {
+            if !uniq
+                .iter()
+                .any(|u| compare_expr(&ctx, *u, *nc) == Ordering::Equal)
+            {
+                uniq.push(*nc);
+            }
+        }
+        assert_eq!(
+            uniq.len(),
+            shared.len(),
+            "el matcher devolvió pares duplicados del mismo átomo"
+        );
+        assert!(
+            shared.len() >= 2,
+            "cos y sin deberían abstraerse ambos; solo salió {}",
+            shared.len()
         );
     }
 }
