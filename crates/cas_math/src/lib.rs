@@ -158,6 +158,7 @@ pub mod root_den_rationalize_support;
 pub mod root_forms;
 pub mod root_power_canonical_support;
 pub mod rootsum_numeric;
+pub mod sci_approx;
 pub mod semantic_equality;
 pub mod sqrt_square_support;
 pub mod subresultant_prs;

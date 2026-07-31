@@ -11872,3 +11872,94 @@ fn inverted_symbolic_factorial_ratio_cancels_to_reciprocal() {
         "domain condition on the shorter factorial must survive: {required:?} in {output}"
     );
 }
+
+/// `approx` de magnitudes fuera del alcance de f64 (potencias y factoriales
+/// astronómicos) produce notación científica `mantisa·10^k` por aritmética
+/// exacta con cota de error (carril sci), sin materializar el número. El f64
+/// sigue siendo dueño de todo su rango histórico. Referencias verificadas
+/// externamente con aritmética decimal de 60 dígitos / factorial exacto.
+#[test]
+fn approx_big_magnitude_produces_scientific_notation() {
+    // Potencia gigante: el caso que motivó el carril.
+    let (output, _code) = run_cli(&["eval", "approx(5^123456789)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "2.20110600528·10^86292592", "in: {output}");
+    assert_eq!(
+        wire["result_latex"], "2.20110600528\\cdot {10}^{86292592}",
+        "in: {output}"
+    );
+    assert_eq!(
+        wire["required_display"].as_array().map(Vec::len),
+        Some(0),
+        "approximation must not emit conditions: {output}"
+    );
+
+    // Recíproca: exponente decimal negativo (texto plano usa la forma dividida).
+    let (output, _code) = run_cli(&["eval", "approx(5^-123456789)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(
+        wire["result_latex"], "4.5431705588\\cdot {10}^{-86292593}",
+        "in: {output}"
+    );
+
+    // Factorial más allá del techo de plegado (1000!): dígitos exactos.
+    let (output, _code) = run_cli(&["eval", "approx(12345!)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "3.44364246919·10^45150", "in: {output}");
+
+    // Factorial YA materializado (1000! pliega a 2568 dígitos): carril directo.
+    let (output, _code) = run_cli(&["eval", "approx(1000!)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "4.02387260077·10^2567", "in: {output}");
+
+    // Producto compuesto dentro de la gramática del carril.
+    let (output, _code) = run_cli(&["eval", "approx(3*5^123456789)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "6.60331801585·10^86292592", "in: {output}");
+
+    // evalf es el mismo brazo.
+    let (output, _code) = run_cli(&["eval", "evalf(1000000!)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "8.26393168833·10^5565708", "in: {output}");
+}
+
+/// La frontera f64 queda cerrada por ambos lados: justo dentro (2^1023) sigue
+/// siendo del carril f64 histórico; justo fuera (2^1024, exp10 = 308 pero
+/// > f64::MAX) la sirve el carril exacto sin hueco residual.
+#[test]
+fn approx_f64_borderline_has_no_residual_gap() {
+    let (output, _code) = run_cli(&["eval", "approx(2^1023)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "8.98846567431×10^307", "in: {output}");
+
+    let (output, _code) = run_cli(&["eval", "approx(2^1024)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1.79769313486·10^308", "in: {output}");
+
+    // El rango f64 clásico no cambia ni un glifo.
+    let (output, _code) = run_cli(&["eval", "approx(2^100)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "1.26765060023×10^30", "in: {output}");
+
+    // Residual honesto fuera de la gramática (base simbólica).
+    let (output, _code) = run_cli(&["eval", "approx(x^123456789)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "approx(x^123456789)", "in: {output}");
+}
+
+/// Los cuelgues F13 que interceptaban el argumento antes de llegar a approx
+/// quedan cerrados: potencias enteras gigantes ya no se materializan ni en el
+/// extractor de factores de raíz (exponente entero = nada que extraer) ni en
+/// el guard exacto de división por cero (cap = el techo de plegado).
+#[test]
+fn big_integer_powers_no_longer_hang_the_simplifier() {
+    for (input, expected) in [
+        ("5^(-123456789)", "1 / 5^123456789"),
+        ("10^86297568", "10^86297568"),
+        ("5^100000", "5^100000"),
+    ] {
+        let (output, _code) = run_cli(&["eval", input, "--format", "json", "--no-pretty"]);
+        let wire = parse_wire(&output);
+        assert_eq!(wire["result"], expected, "in: {output}");
+    }
+}

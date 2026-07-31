@@ -1443,6 +1443,13 @@ fn exact_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
             if base.is_zero() && e <= 0 {
                 return None; // 0^0 indeterminate, 0^(neg) undefined
             }
+            // Beyond the materialization cap the exact value would be
+            // astronomically large (`5^123456789` hung here inside the
+            // div-by-zero guard). `None` is the CONSERVATIVE answer for a
+            // prover — "undecided", never a wrong keep/drop.
+            if i64::from(e.unsigned_abs()) > crate::const_eval::MAX_ABS_POW {
+                return None;
+            }
             let mut acc = BigRational::one();
             for _ in 0..e.unsigned_abs() {
                 acc *= &base;

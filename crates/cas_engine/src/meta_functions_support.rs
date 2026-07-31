@@ -92,15 +92,35 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
             if let Some(rewrite) = try_approx_definite_integral(ctx, arg) {
                 return Some(rewrite);
             }
+            // Big-magnitude lane: |value| beyond f64's reach (|exp10| > 308,
+            // e.g. `5^123456789`, `12345!`) is approximated in exact
+            // integer/rational arithmetic as `mantissa·10^k`. It runs BEFORE
+            // the f64 surface but declines everything f64 can represent, so
+            // the f64 contract keeps owning its entire historical range.
+            if let Some(rewrite) = try_approx_sci_magnitude(ctx, arg, 309) {
+                return Some(rewrite);
+            }
             if let Some(value) = cas_math::rootsum_numeric::numeric_eval_with_rootsum(ctx, arg) {
-                let rational = cas_math::decimal_display::approx_display_rational(value)?;
-                let number = ctx.add(Expr::Number(rational));
-                let decimal_sym = ctx.intern_symbol("decimal");
-                let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
-                return Some(MetaFunctionRewrite {
-                    rewritten: node,
-                    desc: "approx(x) -> numeric value (12 significant digits)",
-                });
+                if let Some(rational) = cas_math::decimal_display::approx_display_rational(value) {
+                    let number = ctx.add(Expr::Number(rational));
+                    let decimal_sym = ctx.intern_symbol("decimal");
+                    let node = ctx.add(Expr::Function(decimal_sym, vec![number]));
+                    return Some(MetaFunctionRewrite {
+                        rewritten: node,
+                        desc: "approx(x) -> numeric value (12 significant digits)",
+                    });
+                }
+                // f64 produced a non-finite value: retry the exact lane
+                // ungated for the exp10 == ±308 borderline. If that declines
+                // too, abort the arm exactly like the historical `?` did.
+                return try_approx_sci_magnitude(ctx, arg, 308);
+            }
+            // f64 could not evaluate at all. Before the complex/partial
+            // fallbacks, give the ungated exact lane the exp10 == ±308
+            // borderline f64 overflows on (`2^1024` ≈ 1.8·10^308): the gated
+            // pass above declined it, and the fold cap kept it symbolic.
+            if let Some(rewrite) = try_approx_sci_magnitude(ctx, arg, 308) {
+                return Some(rewrite);
             }
             // Complex fallback (ComplexEnabled only): closed values the real
             // path rejects (`approx(ln(i))`, `approx(2^i)`) evaluate through
@@ -141,6 +161,49 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
         }
         _ => None,
     }
+}
+
+/// `approx(5^123456789)` / `approx(12345!)`: scientific-notation
+/// approximation `mantissa·10^k` of a closed numeric expression whose
+/// magnitude f64 cannot represent. The arithmetic is exact
+/// integer/rational with a tracked error bound (`cas_math::sci_approx`);
+/// the gate `|exp10| > 308` leaves everything f64-representable to the
+/// existing f64 surface, byte-for-byte.
+///
+/// The result is `__hold(decimal(mantissa) · 10^k)`: `decimal(…)` is the
+/// established numeric-presentation node, and the `__hold` keeps the
+/// simplifier away from the `10^k` — eager big-integer power
+/// materialization (frontier F13) would otherwise hang on the very
+/// exponents this lane exists for.
+///
+/// `min_abs_exp10` is the smallest |decimal exponent| the lane serves: `309`
+/// on the primary pass (everything strictly beyond f64), relaxed to `308` on
+/// the borderline retry after f64 itself failed (`2^1024` has exp10 = 308
+/// yet exceeds `f64::MAX`). Below the threshold the lane declines, keeping
+/// the f64 surface — and the decimal-node idempotence path — untouched.
+fn try_approx_sci_magnitude(
+    ctx: &mut Context,
+    arg: ExprId,
+    min_abs_exp10: u32,
+) -> Option<MetaFunctionRewrite> {
+    let sci = cas_math::sci_approx::try_sci_approx_expr(ctx, arg)?;
+    if sci.exp10.magnitude() < &num_bigint::BigUint::from(min_abs_exp10) {
+        return None;
+    }
+    let mantissa = ctx.add(Expr::Number(sci.mantissa));
+    let decimal_sym = ctx.intern_symbol("decimal");
+    let mantissa_decimal = ctx.add(Expr::Function(decimal_sym, vec![mantissa]));
+    let ten = ctx.num(10);
+    let exponent = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+        sci.exp10,
+    )));
+    let power = ctx.add(Expr::Pow(ten, exponent));
+    let product = ctx.add(Expr::Mul(mantissa_decimal, power));
+    let held = cas_ast::hold::wrap_hold(ctx, product);
+    Some(MetaFunctionRewrite {
+        rewritten: held,
+        desc: "approx(x) -> scientific-notation approximation (12 significant digits)",
+    })
 }
 
 /// `approx(integrate(N/D, x, a, b))`: numeric value of a definite integral

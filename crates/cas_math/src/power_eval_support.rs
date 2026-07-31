@@ -158,6 +158,15 @@ pub fn try_rewrite_evaluate_power_expr(
         let numer = e.numer();
         let denom = e.denom();
 
+        // Integer exponents have no root factor to extract (the 1st root is
+        // trivial: out = base, in = 1), so falling through would MATERIALIZE
+        // b^e eagerly — O(len²) BigInt work that hangs on astronomically
+        // large integer exponents like 5^(-123456789) (frontier F13).
+        // Integer powers belong to the capped const-fold, not this rule.
+        if denom.is_one() {
+            return None;
+        }
+
         if let Some(n) = denom.to_u32() {
             let b_num = b.numer();
             let b_den = b.denom();
