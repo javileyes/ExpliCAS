@@ -93,8 +93,9 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
         // results stay re-enterable; it evaluates to itself (symbolic node).
         "root_sum" => arity == 3,
         // Numeric presentation surface: approx/evalf evaluate, decimal is the
-        // display wrapper their results carry.
-        "approx" | "evalf" | "decimal" => arity == 1,
+        // display wrapper their results carry; bignum materializes exact
+        // giant values (size-gated).
+        "approx" | "evalf" | "decimal" | "bignum" => arity == 1,
         "sum" | "product" => arity == 4,
         // taylor(f, x) (default order) / taylor(f, x, n) / taylor(f, x, point, n) and `series`.
         "taylor" | "series" => matches!(arity, 2..=4),

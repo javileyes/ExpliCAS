@@ -23,7 +23,12 @@ fn build_expr_result_payload(
         None
     };
 
-    let result_latex = if !truncated {
+    // LaTeX is for typesetting, and typesetting has a practical size ceiling:
+    // MathJax locks the page up on six-figure token counts (a bignum() result
+    // carries up to 2M digits). Past the cap the wire publishes plain text
+    // only — same contract as a truncated result.
+    const RESULT_LATEX_MAX_CHARS: usize = 50_000;
+    let result_latex = if !truncated && char_count <= RESULT_LATEX_MAX_CHARS {
         Some(crate::eval_output_latex_style::render_expr_latex_for_eval(
             ctx,
             result_expr,

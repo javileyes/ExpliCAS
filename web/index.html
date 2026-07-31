@@ -1130,6 +1130,20 @@
             transform: translateY(0);
         }
 
+        /* While an evaluation runs the SAME button is the stop control:
+           distinct color so the affordance change is unmistakable. */
+        .submit-btn.stop-mode {
+            background: linear-gradient(135deg, #b3541e, #d9480f);
+        }
+
+        .submit-btn.stop-mode:hover {
+            box-shadow: 0 4px 15px rgba(217, 72, 15, 0.45);
+        }
+
+        .submit-btn.stop-mode .loading {
+            margin-right: 8px;
+        }
+
         /* Mobile-only controls: the hamburger that collects the header
            actions and the gear that folds the mode selects away. Hidden on
            desktop, where everything fits inline. */
@@ -2722,6 +2736,10 @@
                         "input.numeric_display.label": "Números",
                         "input.expression.placeholder": "Introduce una expresión... (p. ej., expand((1+x)^5), solve(x^2=4, x))",
                         "input.submit.label": "Evaluar",
+                        "input.stop.label": "⏹ Parar",
+                        "input.stop.title": "Detener la evaluación en curso",
+                        "eval.cancelled": "Evaluación cancelada",
+                        "eval.session_restored": "Variables y funciones restauradas",
                         "input.clear.title": "Limpiar la expresión",
                         "input.clear.aria_label": "Limpiar la expresión",
                         "kb.vars.title": "Variables declaradas con := — ver, insertar o eliminar",
@@ -2844,6 +2862,10 @@
                         "input.numeric_display.label": "Numbers",
                         "input.expression.placeholder": "Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))",
                         "input.submit.label": "Evaluate",
+                        "input.stop.label": "⏹ Stop",
+                        "input.stop.title": "Stop the running evaluation",
+                        "eval.cancelled": "Evaluation cancelled",
+                        "eval.session_restored": "Variables and functions restored",
                         "input.clear.title": "Clear the expression",
                         "input.clear.aria_label": "Clear the expression",
                         "kb.vars.title": "Variables declared with := — view, insert or delete",
@@ -3052,7 +3074,17 @@
             input.value = historyIndex >= 0 ? history[historyIndex] : '';
         }
 
+        // Evaluation-in-flight state for the Evaluar ⇄ Parar button: while a
+        // computation runs, the SAME button is the stop control — clicking
+        // it cancels instead of launching a second evaluation.
+        let evalInFlight = false;
+        let evalAbortController = null; // server mode: aborts the fetch
+
         async function evaluateExpression() {
+            if (evalInFlight) {
+                stopEvaluation();
+                return;
+            }
             const expr = input.value.trim();
             if (!expr) return;
 
@@ -3060,20 +3092,74 @@
             history.unshift(expr);
             historyIndex = -1;
 
-            // Show loading state
-            submitBtn.innerHTML = '<span class="loading"></span>';
-            submitBtn.disabled = true;
+            // The button becomes the stop control (enabled on purpose).
+            evalInFlight = true;
+            submitBtn.innerHTML = '<span class="loading"></span>' + t('input.stop.label');
+            submitBtn.classList.add('stop-mode');
+            submitBtn.title = t('input.stop.title');
 
             try {
                 const result = await callAPI(expr);
                 addExpressionCard(expr, result);
             } catch (error) {
-                addErrorCard(expr, error.message);
+                if (error && (error.explicasCancelled || error.name === 'AbortError')) {
+                    addErrorCard(expr, t('eval.cancelled'));
+                } else {
+                    addErrorCard(expr, error.message);
+                }
             } finally {
+                evalInFlight = false;
+                evalAbortController = null;
                 submitBtn.innerHTML = t('input.submit.label');
+                submitBtn.classList.remove('stop-mode');
+                submitBtn.title = '';
                 submitBtn.disabled = false;
                 input.value = '';
                 input.focus();
+            }
+        }
+
+        // Stop the running evaluation. In wasm mode the worker is TERMINATED
+        // (a BigInt product cannot be interrupted cooperatively) and a fresh
+        // engine spawns; the page then silently replays the session's `:=`
+        // declarations so variables and functions survive. In server mode
+        // the fetch is aborted and the server's own hard timeout reaps the
+        // subprocess. #N references to past results do not survive a stop.
+        function stopEvaluation() {
+            if (window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled) {
+                window.EXPLICAS_WASM.stop()
+                    .then(() => replaySessionDeclarations())
+                    .catch((error) => console.error('ExpliCAS: engine restart after stop failed', error));
+            } else if (evalAbortController) {
+                evalAbortController.abort();
+            }
+        }
+
+        // Re-declare every `:=` binding in the fresh wasm engine, in
+        // insertion order (JS string keys preserve it, which here matches
+        // chronology — a rebound name replays its LATEST value). Values are
+        // the engine's own plain renders, so they re-parse; a binding that
+        // fails to replay is logged and skipped rather than blocking the
+        // rest.
+        async function replaySessionDeclarations() {
+            if (!(window.EXPLICAS_WASM && window.EXPLICAS_WASM.enabled)) return;
+            const decls = [];
+            for (const [name, value] of Object.entries(sessionVariables)) {
+                decls.push(`${name} := ${value}`);
+            }
+            for (const [name, meta] of Object.entries(sessionFunctions)) {
+                const params = (meta.params || []).join(', ');
+                decls.push(`${name}(${params}) := ${meta.display}`);
+            }
+            for (const decl of decls) {
+                try {
+                    await window.EXPLICAS_WASM.eval(decl, JSON.stringify({ steps: 'off' }));
+                } catch (error) {
+                    console.warn('ExpliCAS: declaration did not replay after stop:', decl, error);
+                }
+            }
+            if (decls.length > 0) {
+                console.info('ExpliCAS:', t('eval.session_restored'));
             }
         }
 
@@ -3149,10 +3235,14 @@
                 };
             }
             try {
-                // Call the real API with session_id for per-tab isolation
+                // Call the real API with session_id for per-tab isolation.
+                // The AbortController is the Stop button's handle on this
+                // request; the server's hard timeout reaps the subprocess.
+                evalAbortController = new AbortController();
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    signal: evalAbortController.signal,
                     body: JSON.stringify({
                         expression: expr,
                         session_id: SESSION_ID,

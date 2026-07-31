@@ -77,6 +77,24 @@ pub(crate) fn try_rewrite_meta_function_expr_in_domain(
                 desc: "expand(x) -> expanded form",
             })
         }
+        // bignum(x): the deliberate, cost-gated OPPOSITE of approx — fully
+        // materialize an astronomically large exact value (`bignum(123456!)`
+        // prints all 574,965 digits). The size gate decides in microseconds
+        // from bit counts/Stirling, so an over-ceiling request
+        // (`bignum(5^123456789)`, 86M digits) stays an instant honest
+        // residual; the user's escape hatch there is approx().
+        "bignum" => {
+            let value = cas_math::big_materialize::try_materialize_exact(
+                ctx,
+                arg,
+                cas_math::big_materialize::BIGNUM_MAX_DIGITS,
+            )?;
+            let rewritten = ctx.add(Expr::Number(value));
+            Some(MetaFunctionRewrite {
+                rewritten,
+                desc: "bignum(x) -> exact digits (size-gated)",
+            })
+        }
         // approx(x) / evalf(x): the explicit numeric-presentation surface.
         // Exact-only everywhere else; here the value is evaluated in f64
         // (root_sum-aware: sums over the numeric roots of the resultant) and

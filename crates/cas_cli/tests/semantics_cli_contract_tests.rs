@@ -11963,3 +11963,81 @@ fn big_integer_powers_no_longer_hang_the_simplifier() {
         assert_eq!(wire["result"], expected, "in: {output}");
     }
 }
+
+/// `bignum(x)` materializa el valor exacto de expresiones numéricas gigantes
+/// (potencias enteras, factoriales) con presupuesto previo por tamaño: la
+/// decisión de coste se toma de los bits/Stirling ANTES de multiplicar nada.
+/// Sobre el techo (~600k dígitos) queda como residual instantáneo — la
+/// alternativa es approx(). Referencias externas (Python exacto).
+#[test]
+fn bignum_materializes_exact_giants_with_size_gate() {
+    // 2^123456 = 37.164 dígitos: entero exacto, sin truncar con max-chars alto.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "bignum(2^123456)",
+        "--format",
+        "json",
+        "--max-chars",
+        "40000",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_chars"], 37164, "in: {output}");
+    assert_eq!(wire["result_truncated"], false);
+    let result = wire["result"].as_str().expect("result");
+    assert!(
+        result.starts_with("91021647594683810219"),
+        "head: {}",
+        &result[..30.min(result.len())]
+    );
+    // 37k chars < cap de LaTeX (50k): el latex existe para la web.
+    assert!(wire["result_latex"].is_string(), "latex expected: {output}");
+
+    // Con el max-chars por defecto (2000) el mismo valor llega truncado,
+    // con el conteo completo y Sin latex.
+    let (output, _code) = run_cli(&["eval", "bignum(2^123456)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_truncated"], true);
+    assert_eq!(wire["result_chars"], 37164);
+    assert!(wire["result_latex"].is_null(), "no latex when truncated");
+
+    // 60.206 dígitos: por encima del cap de LaTeX aunque quepa en el wire —
+    // el texto plano viaja entero y MathJax no recibe 60k tokens.
+    let (output, _code) = run_cli(&[
+        "eval",
+        "bignum(2^200000)",
+        "--format",
+        "json",
+        "--max-chars",
+        "70000",
+    ]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result_truncated"], false);
+    assert_eq!(wire["result_chars"], 60206);
+    assert!(
+        wire["result_latex"].is_null(),
+        "latex must be capped past 50k chars: {output}"
+    );
+
+    // Consistencia con el fold pequeño existente.
+    let (output, _code) = run_cli(&["eval", "bignum(100!)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    let (folded, _code) = run_cli(&["eval", "100!", "--format", "json"]);
+    let folded_wire = parse_wire(&folded);
+    assert_eq!(wire["result"], folded_wire["result"], "bignum(100!) == 100!");
+
+    // Sobre el techo: residual instantáneo, jamás minutos de multiplicación.
+    for over in ["bignum(5^123456789)", "bignum(300000!)", "bignum(1000000!)"] {
+        let (output, _code) = run_cli(&["eval", over, "--format", "json"]);
+        let wire = parse_wire(&output);
+        let result = wire["result"].as_str().expect("result");
+        assert!(
+            result.starts_with("bignum("),
+            "{over} must stay residual: {output}"
+        );
+    }
+
+    // Fuera de gramática: simbólico intacto.
+    let (output, _code) = run_cli(&["eval", "bignum(x!)", "--format", "json"]);
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "bignum(x!)", "in: {output}");
+}
