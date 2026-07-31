@@ -77,7 +77,10 @@ pub fn greek_glyph_name(c: char) -> Option<&'static str> {
 /// variable renderer so `α`-typed and `alpha`-typed symbols BOTH display as
 /// real Greek. Exact whole-name match only (`beta1` stays `beta1`).
 pub fn greek_name_latex(name: &str) -> Option<&'static str> {
-    GREEK.iter().find(|(_, n, _)| *n == name).map(|(_, _, l)| *l)
+    GREEK
+        .iter()
+        .find(|(_, n, _)| *n == name)
+        .map(|(_, _, l)| *l)
 }
 
 /// Canonicalize a raw var/func TOKEN from the command wire: a token that is

@@ -256,7 +256,10 @@ fn giant_literal_contagion_completes_exact_arithmetic() {
     let wire = parse_wire(&output);
     assert_eq!(wire["result_chars"], 38028, "in: {output}");
     assert!(
-        wire["result"].as_str().expect("result").starts_with("91021647594683810219"),
+        wire["result"]
+            .as_str()
+            .expect("result")
+            .starts_with("91021647594683810219"),
         "in: {output}"
     );
 

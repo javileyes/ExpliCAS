@@ -9,11 +9,11 @@ pub use crate::runtime_session::{SolverEvalSession, SolverEvalStore, StatelessEv
 pub use crate::solver_entrypoints_eval::to_display_steps;
 pub use crate::solver_options::SolverOptions;
 pub use cas_ast::ordering::compare_expr;
+pub use cas_engine::orchestrator_shortcut_profile_report;
 pub use cas_engine::rules;
 pub use cas_engine::{
     Engine, Orchestrator, ParentContext, Rewrite, Rule, RuleProfiler, SimpleRule, Simplifier,
 };
-pub use cas_engine::orchestrator_shortcut_profile_report;
 pub use cas_solver_core::assume_scope::AssumeScope;
 pub use cas_solver_core::branch_policy::BranchPolicy;
 pub use cas_solver_core::budget_model::{Budget, BudgetExceeded, Metric, Operation, PassStats};

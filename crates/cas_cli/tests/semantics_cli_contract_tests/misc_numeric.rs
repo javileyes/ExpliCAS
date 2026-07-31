@@ -277,12 +277,12 @@ fn approx_hint_field_is_opt_in_and_informative() {
 #[test]
 fn bignum_available_mirrors_materialization_gates() {
     for (expr, expected) in [
-        ("2^1234567", true),  // gigante simbólico bajo el techo
-        ("12345!", true),     // ídem factorial
-        ("300000!", false),   // sobre el techo (1.5M dígitos)
+        ("2^1234567", true),    // gigante simbólico bajo el techo
+        ("12345!", true),       // ídem factorial
+        ("300000!", false),     // sobre el techo (1.5M dígitos)
         ("5^123456789", false), // 86M dígitos
-        ("2^500", false),     // ya materializado por el fold
-        ("sqrt(2)", false),   // fuera de gramática
+        ("2^500", false),       // ya materializado por el fold
+        ("sqrt(2)", false),     // fuera de gramática
         ("x^123456789", false), // variable libre
     ] {
         let (output, _code) = run_cli(&["eval", expr, "--approx-hint", "--format", "json"]);

@@ -339,10 +339,7 @@ pub fn try_rewrite_factor_common_integer_from_add_expr_with_policy(
     // gain) that only adds step noise, so those sums keep their input form.
     if constants_only {
         let coefficients_collapse = coef_left.abs() == gcd && coef_right.abs() == gcd;
-        if !coefficients_collapse
-            && !contains_radical(ctx, left)
-            && !contains_radical(ctx, right)
-        {
+        if !coefficients_collapse && !contains_radical(ctx, left) && !contains_radical(ctx, right) {
             return None;
         }
     }
