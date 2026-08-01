@@ -47,8 +47,8 @@ cada migración (subir a API, bajar a exclusivo, o quedar interno del núcleo).
 | 2 | CancelExactAdditivePairs | 18 | 15 | 1 | ~~2~~ **0** ✔ D1c-2 |
 | 3 | ExpandTrigSineProductTripleAngle | 28 | 18 | 6 | ~~4~~ **2**† D1c-3 |
 | 4 | ExpandOddHalfPower | 14 | 2 | 8 | ~~4~~ **0** ✔ D1c-4 |
-| 5 | ExpandHyperbolicPythagoreanFactor | 33 | 15 | 12 | **6** |
-| 6 | ExpandHyperbolicAngleSumDiff | 24 | 15 | 1 | **8** |
+| 5 | ExpandHyperbolicPythagoreanFactor | 33 | 15 | 12 | ~~6~~ **0** ✔ D1c-5 |
+| 6 | ExpandHyperbolicAngleSumDiff | 24 | 15 | 1 | ~~8~~ **1**† D1c-6 |
 | 7 | ExpandLogAbsMulDiv | 29 | 17 | 0 | **12** |
 | 8 | ExpandLogProductPower | 30 | 17 | 0 | **13** |
 | 9 | ExpandTrigSquareIdentity | 28 | 15 | 0 | **13** |
@@ -95,7 +95,19 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   disparadores bajando gratis por irradiación (PhaseShift 92→90,
   DoubleAngleCos 20→18, SumToProduct 16→14, TrigSquare 13→11,
   LogProductPower 13→11, LogAbsMulDiv 12→9, HypPythagorean 6→5).
-- Pendiente D1c: 8 restantes por arrastre ascendente (5, 8, 9, 11, 11, 14,
-  18, 90) + el residual trig de TripleAngle. Cada peldaño decide por helper:
-  promover a API / bajar a exclusivo / dejar interno del núcleo / submódulo
-  de familia.
+- **D1c-5/6 (2026-08-02, ciclo 100% declarativo — cero moves)**: dos neutros
+  promovidos (`apply_sign_to_expr` 9/25, `expr_matches_negation_for_cancellation`
+  10/25 — ya vivían en support; API: **29**) y `hyperbolic.rs` DECLARADO
+  submódulo de familia del núcleo (los 10 helpers hyperbolic compartidos ya
+  vivían allí — cabecera con la lista). El criterio de frontera evoluciona:
+  **un disparador está migrado cuando su cierre ⊆ API neutra ∪ submódulo de
+  familia declarado ∪ exclusivos** — el acoplamiento de familia no
+  desaparece: se DECLARA y se audita por lista. HypPythagorean 0 ✔;
+  HypAngleSumDiff 1† (`split_linear_angle_term_for_phase_shift_cancellation`,
+  familia angular de `phase_shift.rs` — cae con los peldaños trig). Global
+  sin-decidir 139 → **127**, con irradiación de nuevo (PhaseShift 90→88,
+  DoubleAngleCos 18→16, SumToProduct 14→12, TrigSquare 11→10).
+- Pendiente D1c: los 6 trig/log restantes (9, 10, 11, 12, 16, 88) + los
+  residuales angulares †. El perfil de logs dirá si nace `logarithms.rs`
+  como familia declarada; los trig convergen en el submódulo angular
+  (phase_shift + trig + trig_angles) que PhaseShift (88) ancla.

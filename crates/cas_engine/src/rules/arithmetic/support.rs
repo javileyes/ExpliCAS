@@ -12,12 +12,15 @@
 //! `expr_contains_any_builtin`, `expr_matches_negation_after_default_simplify`,
 //! `abs_argument`, `small_positive_integer_value`, `extract_sqrt_argument` y
 //! `expr_contains_sqrt_or_half_power` (D1c-3/4, detectores y extractores
-//! estructurales neutros — cuatro ya vivían aquí sin declarar). NO promovidos
-//! a propósito: `extract_sin_or_cos_linear_term_for_phase_shift` y
-//! `maybe_trig_square_zero_candidate` son de FAMILIA trig, no del motor
-//! neutro — semilla del futuro submódulo trig del núcleo (peldaños D1c
-//! 9-12); TripleAngle queda con arrastre 2 declarado hasta entonces. Tres
-//! grupos:
+//! estructurales neutros — cuatro ya vivían aquí sin declarar);
+//! `apply_sign_to_expr` y `expr_matches_negation_for_cancellation`
+//! (D1c-5/6, aplicador de signo y matcher de negación — ya vivían aquí). NO
+//! promovidos a propósito: `extract_sin_or_cos_linear_term_for_phase_shift`,
+//! `maybe_trig_square_zero_candidate` y
+//! `split_linear_angle_term_for_phase_shift_cancellation` son de FAMILIA
+//! angular/trig — semilla del submódulo de esa familia (peldaños D1c 9-12);
+//! la familia hyperbolic ya tiene el suyo declarado (`hyperbolic.rs`,
+//! D1c-5/6). Tres grupos:
 //! veredicto de equivalencia-para-cancelación (`exprs_match_for_*`,
 //! `exprs_equal_up_to_*`, `canonicalize_nested_integer_powers`),
 //! candidato/colección (`collect_add_terms`,

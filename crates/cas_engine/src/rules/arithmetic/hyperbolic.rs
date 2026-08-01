@@ -1,6 +1,20 @@
-//! `arithmetic`: familia `hyperbolic`.
+//! `arithmetic`: familia `hyperbolic` — declarada en D1c-5/6 (2026-08-02)
+//! **submódulo de familia del núcleo de cancelación**.
 //!
-//! Ver la cabecera de `arithmetic.rs` para el contexto.
+//! Además de sus reglas, aloja la maquinaria hyperbolic COMPARTIDA entre los
+//! dos disparadores de la familia y los mega-entries del motor (inventario
+//! `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`): `extract_{sinh,cosh,hyperbolic}_power_shape`,
+//! `maybe_hyperbolic_pythagorean_factor_zero_candidate`,
+//! `maybe_hyperbolic_angle_sum_diff_zero_candidate`,
+//! `is_direct_hyperbolic_angle_sum_diff_call`,
+//! `try_expand_direct_hyperbolic_angle_sum_diff{_call,_for_cancellation}`,
+//! `try_rewrite_hyperbolic_angle_sum_diff_for_cancellation`,
+//! `extract_hyperbolic_linear_multiple_term_for_fast_recursive_identity`.
+//! Igual que la API neutra de `support.rs`, esta lista es FRONTERA declarada:
+//! un disparador hyperbolic consume API neutra + esta familia + sus
+//! exclusivos, y nada más.
+//!
+//! Ver la cabecera de `arithmetic.rs` para el contexto del troceo.
 
 use super::*;
 

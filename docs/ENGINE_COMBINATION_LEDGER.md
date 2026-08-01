@@ -114,13 +114,14 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 811 (newest first)
+Active entries: 812 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,powers}.rs` + inventario D1 — primer peldaño de la... | ARQUITECTURA (D1c-1: primer disparador migrado — el arrastre de cubos era API sin nombre)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general}.rs` + inventario D1 — segundo peldaño por... | ARQUITECTURA (D1c-2: segundo disparador migrado — el umbral descubre la API, la semántica la cierra)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,powers}.rs` + inventario D1 — peldaños #3 ... | ARQUITECTURA (D1c-3/4: la promoción neutra irradia; la familia trig se declara semilla, no API)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,hyperbolic}.rs` + inventario D1 — peldaños #5 (Hyp... | ARQUITECTURA (D1c-5/6: la familia hyperbolic se declara submódulo del núcleo — ciclo 100% declarativo)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23462,3 +23463,12 @@ Active entries: 811 (newest first)
   - **La promoción neutra IRRADIA**: subir a API un helper compartido abarata el cierre de TODOS los que lo comparten — siete disparadores bajaron sin tocarlos. Corolario operativo: promover primero los compartidos de MAYOR alcance (11/25 antes que 6/25) maximiza la irradiación por peldaño.
   - **«Arrastre» mide CONTRATO, no ubicación**: cuatro de los seis promovidos ya vivían en support.rs — les faltaba la declaración, no la mudanza. La frontera de una API es su cabecera y su criterio, no el fichero.
   - **Un helper con nombre de familia no se promueve al motor neutro aunque muchos lo compartan**: la alternativa correcta es el submódulo de familia del núcleo (semilla declarada), o la API neutra se vuelve un cajón — el «no promovido a propósito» documentado vale tanto como la promoción.
+
+## 2026-08-02 - ARQUITECTURA (D1c-5/6: la familia hyperbolic se declara submódulo del núcleo — ciclo 100% declarativo)
+
+- area: `rules/arithmetic/{support,hyperbolic}.rs` + inventario D1 — peldaños #5 (HypPythagorean) y #6 (HypAngleSumDiff). El sondeo físico enseñó que la topología YA era correcta: los 2 arrastres neutros (`apply_sign_to_expr` 9/25, `expr_matches_negation_for_cancellation` 10/25) ya vivían en support.rs, y los 10 de familia hyperbolic ya vivían TODOS en `hyperbolic.rs` — el ciclo es de CONTRATO, cero moves: promoción declarada de los neutros (API: 29) y `hyperbolic.rs` declarado **submódulo de familia del núcleo** con su lista en cabecera. El criterio de frontera evoluciona y queda escrito en el inventario: un disparador está migrado cuando su cierre ⊆ API neutra ∪ submódulo de familia DECLARADO ∪ exclusivos — el acoplamiento de familia no desaparece: se declara y se audita por lista. HypPythagorean → 0; HypAngleSumDiff → 1† (el splitter angular de `phase_shift.rs`, cae con los peldaños trig). Global sin-decidir 139 → **127** con irradiación de nuevo (PhaseShift 90→88, DoubleAngleCos 18→16, SumToProduct 14→12, TrigSquare 11→10).
+- status: `retained`. Sondas de vida de ambos disparadores: las tres identidades núcleo cierran (`cosh²−sinh²−1 → 0`, `cosh(x+y)−(cosh·cosh+sinh·sinh) → 0`, `sinh(x+y)` ídem); frontera informativa anotada: la forma COCIENTE `(cosh²−1)/sinh − sinh` NO cierra (eco fiel residual — el disparador no posee la grafía dividida; candidata de capacidad futura, no de este ciclo). Suite/clippy/cadena verdes, reparto exacto; huella patrón conocido.
+- decision: retener. Siguientes: los 2 logs (9, 11) — si su arrastre es de familia log, `logarithms.rs` recibe la misma declaración; después los 4 trig convergiendo en el submódulo angular que PhaseShift (88) ancla.
+- retained learning:
+  - **Cuando la topología física ya es correcta, el peldaño es un CONTRATO, no una mudanza**: declarar la frontera (cabecera con lista auditable) convierte «arrastre» en «familia declarada» sin tocar una línea de código — y la métrica debe decir la verdad («sin decidir» ≠ «desacoplado»: 10 helpers cambiaron de columna, no de naturaleza).
+  - **La sonda de vida que NO cierra también es entregable**: la grafía cociente del Pythagorean quedó anotada como frontera de capacidad con repro — el peldaño de arquitectura deja semillas de capacidad sin abrirlas (disciplina de alcance).
