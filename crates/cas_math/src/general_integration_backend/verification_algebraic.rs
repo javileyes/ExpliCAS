@@ -341,6 +341,11 @@ fn radicand_nonnegativity_is_represented(
     })
 }
 
+// NOTA (clase L15): este asignador queda FUERA del canónico
+// `cas_ast::fresh_names` a propósito — su semántica de STRIDE
+// (saltos de MAX_RELATIONS+1) espacia los índices por relación y no es la
+// asignación uno-a-uno ni la base de lote. Si alguna vez se toca, comparar
+// contra las primitivas canónicas antes de duplicar lógica.
 fn fresh_atom_name(ctx: &Context, root: ExprId, index: usize) -> String {
     let existing = cas_ast::collect_variables(ctx, root);
     let mut suffix = index;

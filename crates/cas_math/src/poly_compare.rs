@@ -63,17 +63,6 @@ pub(crate) fn poly_is_zero(ctx: &Context, expr: ExprId) -> bool {
 /// `Infinity`/`Undefined`/`Matrix` are NEVER atomized: an `∞` indeterminate
 /// would "prove" `∞ − ∞ = 0`. Their presence bails the whole check.
 
-/// Primer índice `N` tal que `{prefix}{N}` y todos los siguientes están
-/// libres en `taken`. Clase L15: los átomos sintéticos deben esquivar las
-/// variables ya presentes en el árbol o el gate fusiona átomo y variable.
-fn fresh_suffix_base(taken: &rustc_hash::FxHashSet<String>, prefix: &str) -> usize {
-    taken
-        .iter()
-        .filter_map(|n| n.strip_prefix(prefix).and_then(|s| s.parse::<usize>().ok()))
-        .max()
-        .map_or(0, |m| m + 1)
-}
-
 pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     if poly_is_zero(ctx, expr) {
         return true;
@@ -90,10 +79,15 @@ pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     // The folds happen INSIDE `atomize_non_poly` (which walks Div too — the
     // Laurent utilities in `opaque_atoms` don't, and the Gate-1 numerator
     // carries its e^x inside embedded fractions).
-    let taken: rustc_hash::FxHashSet<String> =
-        cas_ast::collect_variables(ctx, expr).into_iter().collect();
-    let atom_base = fresh_suffix_base(&taken, "__polyzero_atom_");
-    let root_base = fresh_suffix_base(&taken, "__polyzero_root_");
+    // Nombres sintéticos vía el asignador canónico (cas_ast::fresh_names,
+    // clase L15). Se precalculan aquí porque atomize/collect reciben bases
+    // numéricas simples; el conjunto ya queda marcado y es monótono.
+    let mut taken = cas_ast::fresh_names::taken_variable_names(ctx, &[expr]);
+    // Bases de LOTE (esquema `prefix{base+i}`): exigen la semántica max+1 de
+    // `fresh_suffix_base` — con huecos en taken, el primer-libre de
+    // `alloc_indexed_name` colisionaría más adelante.
+    let atom_base = cas_ast::fresh_names::fresh_suffix_base(&taken, "__polyzero_atom_");
+    let root_base = cas_ast::fresh_names::fresh_suffix_base(&taken, "__polyzero_root_");
     let mut exps = Vec::new();
     collect_e_exponents_full(ctx, expr, &mut exps, 0);
     let expfold = if exps.is_empty() {
@@ -101,10 +95,7 @@ pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     } else {
         crate::opaque_atoms::find_exp_base(ctx, &exps, 16).map(|g| {
             let expatom_name = if taken.contains("__polyzero_expatom") {
-                format!(
-                    "__polyzero_expatom_{}",
-                    fresh_suffix_base(&taken, "__polyzero_expatom_")
-                )
+                cas_ast::fresh_names::alloc_indexed_name(&mut taken, "__polyzero_expatom_", 0)
             } else {
                 "__polyzero_expatom".to_string()
             };

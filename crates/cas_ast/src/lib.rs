@@ -4,6 +4,7 @@ pub mod eq; // __eq__ equation wrapper utilities (canonical implementation)
 pub mod error; // Error types for AST operations
 pub mod expr_path; // Path-based occurrence identification (V2.9.16)
 pub mod expression;
+pub mod fresh_names; // Nombres sintéticos que esquivan los del árbol (clase L15)
 pub mod greek; // Greek-letter input aliases (α ≡ alpha) + LaTeX name mapping
 pub mod hold; // __hold barrier utilities (canonical implementation)
 pub mod ordering; // Canonical ordering utilities

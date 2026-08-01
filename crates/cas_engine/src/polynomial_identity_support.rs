@@ -15,7 +15,6 @@ use cas_math::poly_convert::try_multipoly_from_expr_with_var_limit;
 use cas_math::substitute::{substitute_power_aware, SubstituteOptions};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
-use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PolynomialIdentityProofKind {
@@ -437,18 +436,15 @@ fn rewrite_simple_divisions_for_negative_root_relation(
 
 fn allocate_opaque_temp(
     ctx: &mut Context,
-    used_names: &mut BTreeSet<String>,
+    used_names: &mut std::collections::HashSet<String>,
     preferred_idx: usize,
 ) -> (String, ExprId) {
-    let mut idx = preferred_idx;
-    loop {
-        let temp_name = format!("__opq{}", idx);
-        if used_names.insert(temp_name.clone()) {
-            let temp_var = ctx.var(&temp_name);
-            return (temp_name, temp_var);
-        }
-        idx += 1;
-    }
+    // Delegado en el asignador canónico (cas_ast::fresh_names, clase L15):
+    // este era uno de los TRES implementadores del patrón, y la deriva entre
+    // copias fue la causa del wrong answer 7/3.
+    let temp_name = cas_ast::fresh_names::alloc_indexed_name(used_names, "__opq", preferred_idx);
+    let temp_var = ctx.var(&temp_name);
+    (temp_name, temp_var)
 }
 
 fn try_opaque_zero(
@@ -489,8 +485,8 @@ fn try_opaque_zero(
     let mut sub_expr = expr;
     let mut substitutions: Vec<(String, ExprId)> = Vec::new();
     let mut temp_names: Vec<String> = Vec::new();
-    let mut used_temp_names: BTreeSet<String> =
-        cas_ast::collect_variables(ctx, expr).into_iter().collect();
+    let mut used_temp_names: std::collections::HashSet<String> =
+        cas_ast::collect_variables(ctx, expr);
     let mut atom_idx = 0;
     let mut reciprocal_power_relations: Vec<(usize, ExprId, u32)> = Vec::new();
     let mut negative_reciprocal_power_relations: Vec<(usize, ExprId, u32)> = Vec::new();

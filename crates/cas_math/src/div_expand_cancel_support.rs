@@ -588,21 +588,10 @@ pub(crate) fn prepare_opaque_shared_substitution(
     let mut substituted_num = num;
     let mut substituted_den = den;
     let mut temp_vars = Vec::with_capacity(shared.len());
-    let mut used_temp_names: std::collections::BTreeSet<String> =
-        cas_ast::collect_variables(ctx, num)
-            .into_iter()
-            .chain(cas_ast::collect_variables(ctx, den))
-            .collect();
+    let mut used_temp_names = cas_ast::fresh_names::taken_variable_names(ctx, &[num, den]);
 
     for (i, (num_call, den_call)) in shared.iter().enumerate() {
-        let mut idx = i;
-        let temp_name = loop {
-            let candidate = format!("__opq{idx}");
-            if used_temp_names.insert(candidate.clone()) {
-                break candidate;
-            }
-            idx += 1;
-        };
+        let temp_name = cas_ast::fresh_names::alloc_indexed_name(&mut used_temp_names, "__opq", i);
         let temp_var = ctx.var(&temp_name);
         let shared_root_family =
             extract_root_family_signature(ctx, *num_call).and_then(|(num_base, num_root_index)| {
