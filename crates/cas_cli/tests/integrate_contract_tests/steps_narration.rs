@@ -1967,3 +1967,35 @@ fn declined_spans_recover_precision_from_the_structural_diff() {
         "the span must be the fraction that reduces: {before} / {after}"
     );
 }
+#[test]
+fn integrate_contract_shifted_trig_power_narrates_u_du() {
+    // La vía u-du simbólica (L16 pista (a)) debe narrar como el libro de
+    // texto: identificar u y du con la base afín, y aplicar la regla de
+    // potencia — no el "Usar sustitución" genérico sin evidencia.
+    let input = "integrate(cos(x)*(sin(x)+1)^2, x)";
+    let substeps = integration_substeps(input);
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Identificar u y du"),
+        "expected concrete u/du substep for {input}, got {substeps:?}"
+    );
+    assert_u_du_substep_labels(&substeps, input);
+    let u_du = substeps
+        .iter()
+        .find(|substep| substep["title"] == "Identificar u y du")
+        .expect("u/du substep");
+    assert!(
+        u_du["before"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("sin(x) + 1"),
+        "u debe ser la base afín sin(x)+1, got {u_du:?}"
+    );
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar regla de potencia para integrales"),
+        "expected power-rule application substep for {input}, got {substeps:?}"
+    );
+}

@@ -182,6 +182,12 @@ pub(super) fn generate_focused_rule_substeps_at_depth(
         return integration_polynomial_derivative_table_substeps;
     }
 
+    let integration_symbolic_power_substitution_substeps =
+        generate_symbolic_power_substitution_substeps(ctx, step);
+    if !integration_symbolic_power_substitution_substeps.is_empty() {
+        return integration_symbolic_power_substitution_substeps;
+    }
+
     let integration_log_power_product_table_substeps =
         generate_log_power_product_table_integration_substeps(ctx, step);
     if !integration_log_power_product_table_substeps.is_empty() {

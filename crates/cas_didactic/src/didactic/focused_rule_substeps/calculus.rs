@@ -2775,3 +2775,116 @@ fn integral_residual_policy_substep_for_expr(ctx: &Context, expr: ExprId) -> Opt
         _ => None,
     }
 }
+
+/// Narración rica de la vía u-du SIMBÓLICA
+/// (`symbolic_power_substitution_from_base` en cas_math): integrando
+/// `s·u'·uⁿ` con `u` NO polinómica (`∫cos·(sin+1)² = (sin+1)³/3`).
+///
+/// Doble cerrojo para no robar narraciones ya fijadas: (a) la base NO baja a
+/// `Polynomial` (las polinómicas conservan sus narradores), y (b) el `after`
+/// lleva la huella exacta de la ruta — `c·uⁿ⁺¹` sobre la MISMA base. Si
+/// cualquiera falla, traza vacía y el siguiente narrador decide.
+pub(super) fn generate_symbolic_power_substitution_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if matches!(
+        ctx.get(after),
+        Expr::Function(after_fn, after_args)
+            if ctx.sym_name(*after_fn) == "integrate" && after_args.len() == 2
+    ) {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+
+    // Pow(base, n) con n racional, base con la variable y NO polinómica.
+    let factors = cas_math::expr_nary::mul_leaves(ctx, args[0]);
+    if factors.len() < 2 {
+        return Vec::new();
+    }
+    let mut found: Option<(ExprId, num_rational::BigRational)> = None;
+    for factor in &factors {
+        let Expr::Pow(base, exp) = ctx.get(*factor) else {
+            continue;
+        };
+        let Some(exponent) = cas_ast::views::as_rational_const(ctx, *exp, 8) else {
+            continue;
+        };
+        if !contains_named_var(ctx, *base, &var_name) {
+            continue;
+        }
+        if Polynomial::from_expr(ctx, *base, &var_name).is_ok() {
+            continue;
+        }
+        found = Some((*base, exponent));
+        break;
+    }
+    let Some((base, exponent)) = found else {
+        return Vec::new();
+    };
+
+    // Huella del after: `c·base^(n+1)` (c racional opcional) sobre la MISMA base.
+    let expected_exp = exponent + num_rational::BigRational::from_integer(1.into());
+    let after_factors = cas_math::expr_nary::mul_leaves(ctx, after);
+    let mut pow_matches = false;
+    for factor in &after_factors {
+        let Expr::Pow(after_base, after_exp) = ctx.get(*factor) else {
+            continue;
+        };
+        let Some(after_exponent) = cas_ast::views::as_rational_const(ctx, *after_exp, 8) else {
+            continue;
+        };
+        if after_exponent == expected_exp
+            && cas_ast::ordering::compare_expr(ctx, *after_base, base) == std::cmp::Ordering::Equal
+        {
+            pow_matches = true;
+            break;
+        }
+    }
+    if !pow_matches {
+        return Vec::new();
+    }
+
+    // u y du, con la derivada plegada a la forma que escribiría el estudiante.
+    let mut scratch = ctx.clone();
+    let Some(derivative) = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        base,
+        &var_name,
+    ) else {
+        return Vec::new();
+    };
+    let derivative = simplify_expr_in_context(&mut scratch, derivative);
+
+    vec![
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
+            format!("u = {}", display_expr(ctx, base)),
+            format!("du = {} dx", display_expr(&scratch, derivative)),
+        )
+        .with_before_latex(format!("u = {}", latex_expr(ctx, base)))
+        .with_after_latex(format!("du = {}\\,dx", latex_expr(&scratch, derivative))),
+        SubStep::new(
+            "Usar regla de potencia para integrales",
+            display_expr(ctx, args[0]),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
