@@ -329,6 +329,39 @@ fn ln_interval_bounds((al, ah): (BigRational, BigRational)) -> Option<(BigRation
     Some((lo, hi))
 }
 
+/// Rational enclosure of `asinh(r) = ln(r + √(r² + 1))` for RATIONAL `r`.
+/// The log argument is positive for every real `r` (it is `e^{asinh(r)}`), so
+/// the composition of the exact sqrt and ln enclosures is total.
+fn asinh_point_bounds(r: &BigRational) -> Option<(BigRational, BigRational)> {
+    let t = r * r + BigRational::one();
+    let (slo, shi) = sqrt_bounds(&t)?;
+    ln_interval_bounds((r + slo, r + shi))
+}
+
+/// Rational enclosure of `acosh(r) = ln(r + √(r² − 1))` for RATIONAL `r ≥ 1`.
+fn acosh_point_bounds(r: &BigRational) -> Option<(BigRational, BigRational)> {
+    if r < &BigRational::one() {
+        return None;
+    }
+    let t = r * r - BigRational::one();
+    let (slo, shi) = sqrt_bounds(&t)?;
+    ln_interval_bounds((r + slo, r + shi))
+}
+
+/// Rational enclosure of `atanh(r) = ½·ln((1 + r)/(1 − r))` for RATIONAL
+/// `|r| < 1` — the argument is an exact positive rational, so this is the ln
+/// enclosure of a point, halved.
+fn atanh_point_bounds(r: &BigRational) -> Option<(BigRational, BigRational)> {
+    let one = BigRational::one();
+    if r.abs() >= one {
+        return None;
+    }
+    let arg = (&one + r) / (&one - r);
+    let (lo, hi) = ln_interval_bounds((arg.clone(), arg))?;
+    let half = BigRational::new(1.into(), 2.into());
+    Some((lo * &half, hi * half))
+}
+
 /// Tight rational bounds `(lo, hi)` with `lo <= sin(c) <= hi` (or `cos`) for a
 /// RATIONAL `c` in radians, via the Taylor series truncated with the RIGOROUS
 /// Lagrange remainder `|R_n| <= |c|^(n+1)/(n+1)!` (every derivative of sin/cos is
@@ -570,6 +603,34 @@ fn const_value_bounds_depth(
                 cos_arg_bounds(bounds(args[0])?)
             } else if ctx.is_builtin_call(expr, BuiltinFn::Tan) && args.len() == 1 {
                 tan_arg_bounds(bounds(args[0])?)
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Asinh) && args.len() == 1 {
+                // asinh is monotone increasing on all of ℝ: per-endpoint
+                // enclosures via the exact log form asinh(r) = ln(r + √(r²+1)).
+                let (al, ah) = bounds(args[0])?;
+                let (lo, _) = asinh_point_bounds(&al)?;
+                let (_, hi) = asinh_point_bounds(&ah)?;
+                Some((lo, hi))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Acosh) && args.len() == 1 {
+                // acosh is monotone increasing on [1, ∞); a lower endpoint
+                // below 1 leaves the domain and the walk declines.
+                let (al, ah) = bounds(args[0])?;
+                if al < BigRational::one() {
+                    return None;
+                }
+                let (lo, _) = acosh_point_bounds(&al)?;
+                let (_, hi) = acosh_point_bounds(&ah)?;
+                Some((lo, hi))
+            } else if ctx.is_builtin_call(expr, BuiltinFn::Atanh) && args.len() == 1 {
+                // atanh is monotone increasing on (−1, 1); endpoints must stay
+                // strictly inside or the value is unbounded.
+                let (al, ah) = bounds(args[0])?;
+                let one = BigRational::one();
+                if al <= -one.clone() || ah >= one {
+                    return None;
+                }
+                let (lo, _) = atanh_point_bounds(&al)?;
+                let (_, hi) = atanh_point_bounds(&ah)?;
+                Some((lo, hi))
             } else {
                 None
             }
@@ -771,6 +832,53 @@ mod tests {
         let mut ctx = Context::new();
         let e = parse(src, &mut ctx).expect("parse");
         provable_const_sign(&ctx, e)
+    }
+
+    fn bounds_of(src: &str) -> Option<(BigRational, BigRational)> {
+        let mut ctx = Context::new();
+        let e = parse(src, &mut ctx).expect("parse");
+        const_value_bounds(&ctx, e)
+    }
+
+    fn assert_encloses(src: &str, value: f64) {
+        let (lo, hi) = bounds_of(src).unwrap_or_else(|| panic!("no bounds for {src}"));
+        let lo_f = lo.numer().to_string().parse::<f64>().unwrap()
+            / lo.denom().to_string().parse::<f64>().unwrap();
+        let hi_f = hi.numer().to_string().parse::<f64>().unwrap()
+            / hi.denom().to_string().parse::<f64>().unwrap();
+        // The enclosure is exact rational; the f64 projection of its endpoints
+        // can round past the reference by an ulp, so bracket with a test-side
+        // epsilon far above f64 noise and far below the enclosure width gate.
+        assert!(
+            lo_f <= value + 1e-9 && value - 1e-9 <= hi_f,
+            "{src}: [{lo_f}, {hi_f}] does not enclose {value}"
+        );
+        assert!(
+            hi_f - lo_f < 0.01,
+            "{src}: enclosure too loose: [{lo_f}, {hi_f}]"
+        );
+    }
+
+    /// The inverse-hyperbolic enclosures are exact log-form compositions:
+    /// asinh(r) = ln(r + sqrt(r^2+1)), acosh(r) = ln(r + sqrt(r^2-1)) for r >= 1,
+    /// atanh(r) = ln((1+r)/(1-r))/2 for |r| < 1. They order interval endpoints
+    /// like `asinh(1)` vs `0` EXACTLY in the reciprocal-hyperbolic sign split.
+    #[test]
+    fn inverse_hyperbolic_point_bounds_enclose_the_values() {
+        assert_encloses("asinh(1)", 0.881373587019543);
+        assert_encloses("asinh(-3)", -1.8184464592320668);
+        assert_encloses("acosh(2)", 1.3169578969248166);
+        assert_encloses("acosh(1)", 0.0);
+        assert_encloses("atanh(1/2)", 0.5493061443340549);
+        assert_encloses("atanh(-1/2)", -0.5493061443340549);
+    }
+
+    /// Out-of-domain arguments decline instead of inventing bounds.
+    #[test]
+    fn inverse_hyperbolic_bounds_respect_domains() {
+        assert!(bounds_of("acosh(1/2)").is_none());
+        assert!(bounds_of("atanh(2)").is_none());
+        assert!(bounds_of("atanh(1)").is_none());
     }
 
     #[test]

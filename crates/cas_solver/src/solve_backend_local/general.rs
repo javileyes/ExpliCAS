@@ -728,7 +728,54 @@ pub(super) fn combine_piu_sets(
                 )
             }
         }
-        _ => None,
+        // NON-periodic pieces (the hyperbolic reciprocals: `1/sinh(x) > 1`
+        // sub-solves to the rays `(0, ∞)` and `(−∞, asinh 1)`): delegate to
+        // the general set algebra, but ONLY when every cross-set endpoint
+        // pair is decidable by the EXACT fallible comparator — the general
+        // algebra orders with the TOTAL `compare_values`, whose value-blind
+        // structural fallback corrupts sets on unordered pairs (molde F9:
+        // indecidible ⟹ decline, never guess).
+        (s1, s2) => {
+            let interval_like = |s: &SolutionSet| {
+                matches!(
+                    s,
+                    SolutionSet::Continuous(_) | SolutionSet::Union(_) | SolutionSet::Discrete(_)
+                )
+            };
+            if !interval_like(&s1) || !interval_like(&s2) {
+                return None;
+            }
+            fn endpoints(s: &SolutionSet, out: &mut Vec<cas_ast::ExprId>) {
+                match s {
+                    SolutionSet::Continuous(i) => out.extend([i.min, i.max]),
+                    SolutionSet::Union(v) => {
+                        for i in v {
+                            out.extend([i.min, i.max]);
+                        }
+                    }
+                    SolutionSet::Discrete(pts) => out.extend(pts.iter().copied()),
+                    _ => {}
+                }
+            }
+            let (mut p1, mut p2) = (Vec::new(), Vec::new());
+            endpoints(&s1, &mut p1);
+            endpoints(&s2, &mut p2);
+            let ctx = &simplifier.context;
+            for &a in &p1 {
+                for &b in &p2 {
+                    if a != b
+                        && cas_solver_core::solution_set::try_compare_values(ctx, a, b).is_none()
+                    {
+                        return None;
+                    }
+                }
+            }
+            Some(if intersect {
+                cas_solver_core::solution_set::intersect_solution_sets(ctx, s1, s2)
+            } else {
+                cas_solver_core::solution_set::union_solution_sets(ctx, s1, s2)
+            })
+        }
     }
 }
 

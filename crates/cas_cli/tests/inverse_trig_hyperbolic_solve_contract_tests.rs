@@ -171,3 +171,41 @@ fn genuinely_unknown_functions_keep_the_no_definida_error() {
         );
     }
 }
+
+#[test]
+fn reciprocal_hyperbolic_inequalities_solve_by_sign_case_split() {
+    // The reciprocal-trig sign-split handler now owns the hyperbolic family
+    // too (sech/csch/coth desugar to `1/cosh` etc.). Before, the transformed
+    // relation leaked as a MISLEADING residual: `2/tanh(x) > 4` echoed
+    // `solve(tanh(x) < 1/2, x)`, whose solution `(−∞, atanh(1/2))` is NOT the
+    // true set — the naive flip drops the sign case (for `tanh < 0` the
+    // reciprocal is negative and the relation is false). Now the split solves
+    // each window through the full pipeline and intersects/unions EXACTLY
+    // (endpoints ordered by the new asinh/acosh/atanh enclosures in
+    // `const_value_bounds`; an undecidable pair still declines — molde F9).
+    assert_eq!(solve("csch(x) > 1"), "(0, asinh(1))");
+    assert_eq!(solve("coth(x) > 2"), "(0, atanh(1/2))");
+    assert_eq!(solve("coth(x) <= -2"), "[-atanh(1/2), 0)");
+    assert_eq!(solve("2/tanh(x) > 4"), "(0, atanh(1/2))");
+    assert_eq!(solve("-3/sinh(x) > 1"), "(-asinh(3), 0)");
+    assert_eq!(
+        solve("sech(x) < 1/2"),
+        "(-infinity, -acosh(2)) U (acosh(2), infinity)"
+    );
+    // Range boundary: cosh ≥ 1 makes `1/cosh < 2` a tautology.
+    assert_eq!(solve("1/cosh(x) < 2"), "All real numbers");
+}
+
+#[test]
+fn reciprocal_circular_windows_are_untouched_by_the_hyperbolic_extension() {
+    // The circular family keeps its periodic-window owner (PIU): extending
+    // the matcher to sinh/cosh/tanh must not disturb sin/cos/tan.
+    assert_eq!(
+        solve("1/sin(x) > 2"),
+        "{ (k·2·pi, 1/6·pi + k·2·pi), (5/6·pi + k·2·pi, pi + k·2·pi) : k ∈ ℤ }"
+    );
+    assert_eq!(
+        solve("1/cos(x) <= -2"),
+        "{ [-2/3·pi + k·2·pi, -1/2·pi + k·2·pi), (1/2·pi + k·2·pi, 2/3·pi + k·2·pi] : k ∈ ℤ }"
+    );
+}

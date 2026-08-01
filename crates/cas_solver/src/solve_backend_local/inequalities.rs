@@ -3075,7 +3075,15 @@ pub(super) fn try_solve_reciprocal_trig_inequality(
     let (lhs, _) = simplifier.simplify(eq.lhs);
     let (rhs, _) = simplifier.simplify(eq.rhs);
 
-    // Match `A · trig(g)^(−1)` or `A / trig(g)` (sin/cos/tan only).
+    // Match `A · h(g)^(−1)` or `A / h(g)` for h ∈ {sin, cos, tan} (circular)
+    // and {sinh, cosh, tanh} (hyperbolic — the parser desugars sech/csch/coth
+    // to these reciprocals, so `sech(x) < 1/2` arrives as `1/cosh(x) < 1/2`).
+    // The sign case split below is agnostic of WHICH function `s` is; the
+    // per-window relations delegate to the full solve pipeline, which owns
+    // both families (`cosh > 2` → symmetric rays, `tanh < 1/2` → ray). Note
+    // the cot caveat below does NOT apply to coth: tanh has no poles, so
+    // `coth = 1/tanh` is exact as functions — unlike `1/tan`, which is
+    // undefined at tan's poles where cot itself is 0.
     let recip_trig = |ctx_: &Context, e: ExprId| -> Option<(BigRational, BuiltinFn, ExprId)> {
         let (coeff, core) = peel_rational_coefficient(ctx_, e);
         if coeff.is_zero() {
@@ -3085,7 +3093,15 @@ pub(super) fn try_solve_reciprocal_trig_inequality(
             if let Expr::Function(fn_id, args) = ctx_.get(e2) {
                 if args.len() == 1 && contains_var(ctx_, args[0], var) {
                     if let Some(f) = ctx_.builtin_of(*fn_id) {
-                        if matches!(f, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan) {
+                        if matches!(
+                            f,
+                            BuiltinFn::Sin
+                                | BuiltinFn::Cos
+                                | BuiltinFn::Tan
+                                | BuiltinFn::Sinh
+                                | BuiltinFn::Cosh
+                                | BuiltinFn::Tanh
+                        ) {
                             return Some((f, args[0]));
                         }
                     }
