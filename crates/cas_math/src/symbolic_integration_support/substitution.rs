@@ -887,6 +887,84 @@ fn build_scaled_power_antiderivative(
     Some(mul2_raw(ctx, coefficient_expr, power))
 }
 
+/// Potencia con exponente racional viendo a través de `Neg`: el parser
+/// guarda `u^(-3)` como `Pow(u, Neg(3))` y `polynomial_power_factor` (que
+/// solo casa `Number`) devolvía None — por eso `∫cos·(sin+2)^(-3)` ni entraba
+/// en la ruta y caía al molino Weierstrass.
+fn signed_power_factor(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = cas_ast::views::as_rational_const(ctx, *exp, 12)?;
+    Some((*base, exponent))
+}
+
+/// u-du sobre formas `Div`: `∫ s·u′/uᵐ dx` con `u` NO polinómica.
+///
+/// `m>1` → `s·u^{1−m}/(1−m)` (misma cola compartida, presentación recíproca);
+/// `m=1` → `s·ln(|u|)`. Triple cerrojo para no robar a los dueños existentes:
+/// bases función-desnuda (∫cos/sin y familia, con sus rutas propias) y bases
+/// polinómicas declinan, y el cofactor debe ser `s·u′` EXACTO.
+pub(super) fn symbolic_power_substitution_div_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (base, m) = match signed_power_factor(ctx, den) {
+        Some((b, e)) if e > BigRational::zero() => (b, e),
+        Some(_) => return None,
+        None => (den, BigRational::one()),
+    };
+    if matches!(ctx.get(base), Expr::Function(_, _)) {
+        return None;
+    }
+    if !contains_named_var(ctx, base, var) {
+        return None;
+    }
+    if Polynomial::from_expr(ctx, base, var).is_ok() {
+        return None;
+    }
+    if crate::expr_complexity::node_count_tree(ctx, base) > 64 {
+        return None;
+    }
+
+    let derivative =
+        crate::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, base, var)?;
+    let (cof_factors, cof_coef) = crate::trig_power_identity_support::extract_as_product(ctx, num)?;
+    let (der_factors, der_coef) =
+        crate::trig_power_identity_support::extract_as_product(ctx, derivative)?;
+    if der_coef.is_zero() || cof_factors.len() != der_factors.len() {
+        return None;
+    }
+    let mut cof_sorted = cof_factors;
+    let mut der_sorted = der_factors;
+    cof_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    der_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    if cof_sorted
+        .iter()
+        .zip(der_sorted.iter())
+        .any(|(c, d)| compare_expr(ctx, *c, *d) != Ordering::Equal)
+    {
+        return None;
+    }
+    let scale = cof_coef / der_coef;
+
+    if m == BigRational::one() {
+        let abs = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+        let ln = ctx.call_builtin(BuiltinFn::Ln, vec![abs]);
+        if scale == BigRational::one() {
+            return Some(ln);
+        }
+        let scale_expr = ctx.add(Expr::Number(scale));
+        return Some(mul2_raw(ctx, scale_expr, ln));
+    }
+
+    let new_exponent = BigRational::one() - m;
+    let coefficient = scale / new_exponent.clone();
+    build_scaled_power_antiderivative(ctx, coefficient, base, new_exponent)
+}
+
 /// u-du power fallback when the base is NOT a polynomial in `var`:
 /// `∫ s·u'·uⁿ dx = s·u^{n+1}/(n+1)` for any `u` the symbolic differentiator
 /// can handle, with the cofactor required to equal `s·u'` EXACTLY (rational
@@ -958,7 +1036,9 @@ pub(super) fn polynomial_power_substitution_antiderivative(
     }
 
     for (power_index, factor) in factors.iter().enumerate() {
-        let Some((base, exponent)) = polynomial_power_factor(ctx, *factor) else {
+        let poly_pf = polynomial_power_factor(ctx, *factor);
+        let from_polynomial_route = poly_pf.is_some();
+        let Some((base, exponent)) = poly_pf.or_else(|| signed_power_factor(ctx, *factor)) else {
             continue;
         };
 
@@ -977,10 +1057,12 @@ pub(super) fn polynomial_power_substitution_antiderivative(
             build_balanced_mul(ctx, &cofactor_factors)
         };
 
-        if let Some(integral) =
-            polynomial_power_substitution_from_base(ctx, cofactor, base, exponent.clone(), var)
-        {
-            return Some(integral);
+        if from_polynomial_route {
+            if let Some(integral) =
+                polynomial_power_substitution_from_base(ctx, cofactor, base, exponent.clone(), var)
+            {
+                return Some(integral);
+            }
         }
 
         if let Some(integral) =

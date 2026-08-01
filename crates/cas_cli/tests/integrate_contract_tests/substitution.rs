@@ -1956,3 +1956,31 @@ fn integrate_contract_shifted_trig_power_u_du_higher_power_and_offset() {
         "1/3 * (sin(x) + 2)^3"
     );
 }
+#[test]
+fn integrate_contract_shifted_trig_reciprocal_u_du_textbook_forms() {
+    // Extensión Div de la vía u-du simbólica: ∫s·u′/uᵐ con base compuesta no
+    // polinómica. Antes: forma de medio ángulo ilegible (m=2), HANG (m=3 vía
+    // exponente negativo) y forma no-libro para el logaritmo.
+    assert_eq!(
+        simplified_integral("integrate(cos(x)/(sin(x)+2)^2, x)"),
+        "-1 / (sin(x) + 2)"
+    );
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*(sin(x)+2)^(-3), x)"),
+        "-1 / (2 * (sin(x) + 2)^2)"
+    );
+}
+#[test]
+fn integrate_contract_shifted_log_u_du_abs_semantics() {
+    // m=1 → s·ln(|u|), y el |·| queda en manos de la decidibilidad del signo:
+    // sin(x)+2 ∈ [1,3] es positivo demostrable y el abs se pela; sinh(x)+3
+    // puede anularse y el abs se conserva.
+    assert_eq!(
+        simplified_integral("integrate(cos(x)/(sin(x)+2), x)"),
+        "ln(sin(x) + 2)"
+    );
+    assert_eq!(
+        simplified_integral("integrate(cosh(x)/(sinh(x)+3), x)"),
+        "ln(|sinh(x) + 3|)"
+    );
+}

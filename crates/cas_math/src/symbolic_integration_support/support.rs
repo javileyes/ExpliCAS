@@ -965,6 +965,15 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        // u-du simbólica sobre Div (∫s·u′/uᵐ con u compuesta no polinómica):
+        // ANTES del clúster trig, que para bases desplazadas produce formas de
+        // medio ángulo válidas pero ilegibles (o directamente muele). Los
+        // dueños de bases función-desnuda y polinómicas conservan los suyos
+        // por los cerrojos internos de la ruta.
+        if let Some(integral) = symbolic_power_substitution_div_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = nested_trig_log_derivative_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
