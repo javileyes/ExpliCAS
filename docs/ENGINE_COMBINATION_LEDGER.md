@@ -114,9 +114,10 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 807 (newest first)
+Active entries: 808 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23419,3 +23420,15 @@ Active entries: 807 (newest first)
 - retained learning:
   - **La pregunta «¿quién es disparador y quién es núcleo?» la responde el TAMAÑO del cierre, no el nombre**: los cinco `Collapse*` con cierre ≈fichero no son reglas mal factorizadas sino el motor con nombre de regla — migrarlos sería mover el motor entero. El cierre per-entry separa en minutos lo que la lectura de 713 helpers no separaría en días.
   - **El orden de una cirugía por peldaños sale del ARRASTRE medido, no de la familia semántica**: barato-primero paga el molde donde equivocarse cuesta poco, y el arrastre del caro ya dice QUÉ pedirá (submódulo, no API) antes de abrirlo.
+
+## 2026-08-02 - ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
+
+- area: `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11 fns de la API de facto que vivían dispersas (10 en `general.rs`, 1 en `fractions.rs`) se MUEVEN a `support.rs`, que ya tenía las otras 7: los 18 helpers del inventario D1a quedan físicamente juntos, y la cabecera de `support.rs` declara la frontera (tres grupos: veredicto / candidato / rewrite-entorno) con la regla operativa de D1c escrita: los disparadores migrados importan de AQUÍ y de sus exclusivos, y su «arrastre» medido baja a cero por peldaño. El glob re-export del padre (`pub(crate) use <mod>::*`) hace el move invisible para todos los call-sites — cero imports tocados, cero visibilidades tocadas.
+- status: `retained`. Move certificado por verificación directorio-completo contra HEAD: 713 fns antes y después, ninguna falta/sobra/duplicada, **0 cuerpos cambiados** (normalizados); `cargo check` limpio A LA PRIMERA (los helpers aguas abajo ya eran `pub(super)` visibles vía `super::*`); `cargo test --workspace --no-run` completo (gate L10 de visibilidades).
+- capture:
+  - El verificador D0 (`verify_move --ref HEAD` sobre el fichero padre) NO aplica a un move intra-directorio: compara contra el monolito en REF, que ya no existe — dio «sobran 713». La verificación correcta es conjunto-de-fns-del-DIRECTORIO (HEAD por fichero vía `git show` vs working tree), misma normalización. Anotado para generalizar el script si D1c lo repite mucho.
+- observed: suite workspace completa verde (veredicto del OUTPUT), clippy -D warnings, cadena make completa, huella sin deltas semánticos (move puro).
+- decision: retener. Siguiente: D1c-1, el disparador de arrastre 1 (`SubtractExpandedSumDiffCubesQuotientRule`) — identificar su único helper-arrastre, decidir destino (API/exclusivo/interno), migrar sus imports a explícitos y pinear sus sondas.
+- retained learning:
+  - **Un glob re-export en el padre convierte los moves intra-directorio en transparentes** — y a la vez es exactamente lo que D1c debe ELIMINAR por disparador (imports explícitos) para que «solo importa la API» sea un invariante verificable con grep, no una esperanza. El glob compra baratura de mudanza al precio de invisibilidad del acoplamiento: útil DURANTE la consolidación, deuda DESPUÉS.
+  - **La herramienta de verificación se elige por la TOPOLOGÍA del move** (monolito→dir vs intra-dir): reutilizar el verificador cómodo con la referencia equivocada da un veredicto absurdo en vez de un fallo ruidoso — el «sobran 713» era la herramienta gritando que la pregunta estaba mal hecha.

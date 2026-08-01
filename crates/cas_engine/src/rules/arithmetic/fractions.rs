@@ -4,23 +4,6 @@
 
 use super::*;
 
-pub(super) fn exprs_equal_up_to_same_denominator(
-    ctx: &mut cas_ast::Context,
-    lhs: cas_ast::ExprId,
-    rhs: cas_ast::ExprId,
-) -> bool {
-    let Expr::Div(lhs_num, lhs_den) = ctx.get(lhs).clone() else {
-        return false;
-    };
-    let Expr::Div(rhs_num, rhs_den) = ctx.get(rhs).clone() else {
-        return false;
-    };
-
-    compare_expr(ctx, lhs_den, rhs_den) == Ordering::Equal
-        && (exprs_match_for_cancellation_leaf(ctx, lhs_num, rhs_num)
-            || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs_num, rhs_num))
-}
-
 pub(super) fn exprs_equal_up_to_fraction_parts_for_cancellation(
     ctx: &mut cas_ast::Context,
     lhs: cas_ast::ExprId,

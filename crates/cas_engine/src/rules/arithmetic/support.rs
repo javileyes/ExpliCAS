@@ -1,6 +1,19 @@
-//! `arithmetic`: familia `support`.
+//! `arithmetic`: familia `support` — y, desde D1b (2026-08), el hogar físico
+//! de la **API del motor de cancelación**.
 //!
-//! Ver la cabecera de `arithmetic.rs` para el contexto.
+//! Los 18 helpers alcanzados desde ≥12 de los 25 entries `define_rule!`
+//! (inventario `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`) viven aquí, en tres
+//! grupos: veredicto de equivalencia-para-cancelación (`exprs_match_for_*`,
+//! `exprs_equal_up_to_*`), candidato/colección (`collect_add_terms`,
+//! `collect_signed_mul_factors`, `signed_term_expr`,
+//! `normalize_signed_add_term`, `strip_term_negation`,
+//! `term_has_matrix_product_factor`) y rewrite/entorno (`build_signed_sum_expr`,
+//! `build_scaled_expr`, `run_default_simplify`,
+//! `ambient_pipeline_value_domain`). Los disparadores migrados por D1c deben
+//! importar de AQUÍ (y de sus exclusivos) — no del resto de internals; la
+//! meta medible es que su «arrastre» (tabla del inventario) baje a cero.
+//!
+//! Ver la cabecera de `arithmetic.rs` para el contexto del troceo.
 
 use super::*;
 
@@ -3357,4 +3370,315 @@ pub(super) fn try_build_exact_zero_shared_passthrough_difference_rewrite(
 
     (compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal)
         .then_some(child_rewrite)
+}
+
+pub(super) fn exprs_equal_up_to_same_denominator(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let Expr::Div(lhs_num, lhs_den) = ctx.get(lhs).clone() else {
+        return false;
+    };
+    let Expr::Div(rhs_num, rhs_den) = ctx.get(rhs).clone() else {
+        return false;
+    };
+
+    compare_expr(ctx, lhs_den, rhs_den) == Ordering::Equal
+        && (exprs_match_for_cancellation_leaf(ctx, lhs_num, rhs_num)
+            || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs_num, rhs_num))
+}
+fn collect_add_terms(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    out: &mut Vec<cas_ast::ExprId>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(lhs, rhs) => {
+            collect_add_terms(ctx, *lhs, out);
+            collect_add_terms(ctx, *rhs, out);
+        }
+        _ => out.push(expr),
+    }
+}
+pub(super) fn exprs_equal_up_to_add_term_order(
+    ctx: &cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let mut lhs_terms = Vec::new();
+    let mut rhs_terms = Vec::new();
+    collect_add_terms(ctx, lhs, &mut lhs_terms);
+    collect_add_terms(ctx, rhs, &mut rhs_terms);
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let mut lhs_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .map(|term| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: term
+                }
+            )
+        })
+        .collect();
+    let mut rhs_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .map(|term| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: term
+                }
+            )
+        })
+        .collect();
+
+    lhs_terms.sort();
+    rhs_terms.sort();
+    lhs_terms == rhs_terms
+}
+pub(super) fn exprs_equal_up_to_add_term_multiset_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let lhs_terms = AddView::from_expr(ctx, lhs).terms;
+    let rhs_terms = AddView::from_expr(ctx, rhs).terms;
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let lhs_signed_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .map(|(term_expr, sign)| signed_term_expr(ctx, term_expr, sign))
+        .collect();
+    let rhs_signed_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .map(|(term_expr, sign)| signed_term_expr(ctx, term_expr, sign))
+        .collect();
+
+    let mut used_rhs = vec![false; rhs_signed_terms.len()];
+    for lhs_term in lhs_signed_terms {
+        let Some(match_index) =
+            rhs_signed_terms
+                .iter()
+                .enumerate()
+                .find_map(|(index, rhs_term)| {
+                    (!used_rhs[index]
+                        && exprs_match_for_cancellation_leaf(ctx, lhs_term, *rhs_term))
+                    .then_some(index)
+                })
+        else {
+            return false;
+        };
+        used_rhs[match_index] = true;
+    }
+
+    true
+}
+fn collect_signed_mul_factors(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    sign: &mut i8,
+    out: &mut Vec<cas_ast::ExprId>,
+) {
+    match ctx.get(expr).clone() {
+        Expr::Mul(lhs, rhs) => {
+            collect_signed_mul_factors(ctx, lhs, sign, out);
+            collect_signed_mul_factors(ctx, rhs, sign, out);
+        }
+        Expr::Neg(inner) => {
+            *sign *= -1;
+            collect_signed_mul_factors(ctx, inner, sign, out);
+        }
+        Expr::Number(n) if n < num_rational::BigRational::from_integer(0.into()) => {
+            *sign *= -1;
+            out.push(ctx.add(Expr::Number(-n)));
+        }
+        _ => out.push(expr),
+    }
+}
+pub(super) fn exprs_equal_up_to_mul_factor_order_and_sign(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let mut lhs_sign = 1_i8;
+    let mut rhs_sign = 1_i8;
+    let mut lhs_factors = Vec::new();
+    let mut rhs_factors = Vec::new();
+
+    collect_signed_mul_factors(ctx, lhs, &mut lhs_sign, &mut lhs_factors);
+    collect_signed_mul_factors(ctx, rhs, &mut rhs_sign, &mut rhs_factors);
+
+    if lhs_sign != rhs_sign || lhs_factors.len() != rhs_factors.len() {
+        return false;
+    }
+
+    // Matrix multiplication is non-commutative, so two products are equal only
+    // when their factors line up in the SAME order: `A·B` and `B·A` are
+    // generally different. Sorting the factor lists (the commutative-ring
+    // assumption) would wrongly collapse the commutator `A·B − B·A` to 0.
+    // When any factor is a matrix, keep the factors in evaluation order.
+    let has_matrix_factor = lhs_factors
+        .iter()
+        .chain(rhs_factors.iter())
+        .any(|factor| matches!(ctx.get(*factor), Expr::Matrix { .. }));
+    if !has_matrix_factor {
+        lhs_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+        rhs_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+    }
+
+    lhs_factors
+        .iter()
+        .zip(rhs_factors.iter())
+        .all(|(lhs_factor, rhs_factor)| {
+            compare_expr(ctx, *lhs_factor, *rhs_factor) == Ordering::Equal
+        })
+}
+/// The value domain of the ENCLOSING top-level pipeline (armed in
+/// `simplify_pipeline_inner` alongside the probe budget; RealOnly outside any
+/// armed pipeline, e.g. unit contexts). Speculative probe pipelines AND the
+/// structural real-only zero-identity matchers consult it — the matcher
+/// signatures (`(ctx, expr) -> bool`, ~45 fns) predate the value-domain axis,
+/// and this ambient carries the axis to them without rewriting every helper
+/// (audit 2026-07-30, causa C2).
+pub(crate) fn ambient_pipeline_value_domain() -> crate::semantics::ValueDomain {
+    DEFAULT_SIMPLIFY_PROBE_VALUE_DOMAIN.with(|vd| vd.get())
+}
+pub(super) fn strip_term_negation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => Some(inner),
+        Expr::Number(n) if n < num_rational::BigRational::from_integer(0.into()) => {
+            Some(ctx.add(Expr::Number(-n)))
+        }
+        _ => None,
+    }
+}
+/// Returns true if `root` contains a matrix literal that participates as a
+/// factor in a multiplication, division, or power — i.e. a non-commutative
+/// matrix product. Matrix literals that appear only as additive terms
+/// (`A + B`) or as standalone values do NOT count, so the commutative
+/// add-reordering matchers below stay enabled for matrix sums.
+///
+/// Matrix multiplication is non-commutative (`A·B ≠ B·A` in general), so any
+/// matcher that reorders multiplicative factors (the sorted factor compare,
+/// `normalize_core`, `exprs_equivalent`) is UNSOUND when a term is a matrix
+/// product: it would treat `A·B` and `B·A` as equal and cancel the commutator
+/// `A·B − B·A` to 0. When this predicate holds we restrict cancellation to the
+/// order-preserving `compare_expr`, which still cancels genuinely identical
+/// products (`A·B − A·B → 0`) while leaving `A·B − B·A` to evaluate to the
+/// true commutator.
+pub(crate) fn term_has_matrix_product_factor(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> bool {
+    // `in_product` marks subtrees reached through a multiplicative factor
+    // position (Mul/Div operand, or the base of a power).
+    let mut stack = vec![(root, false)];
+    while let Some((expr, in_product)) = stack.pop() {
+        // Some callers compare expressions carrying non-arena sentinel ExprIds
+        // (e.g. `ln_base_sentinel()`), whose index is out of bounds. Skip them:
+        // a sentinel can never be a matrix literal, and dereferencing it panics.
+        let Some(node) = ctx.nodes.get(expr.index()) else {
+            continue;
+        };
+        match node {
+            Expr::Matrix { data, .. } => {
+                if in_product {
+                    return true;
+                }
+                // Matrix entries are independent scalar expressions.
+                for &entry in data.iter() {
+                    stack.push((entry, false));
+                }
+            }
+            Expr::Mul(lhs, rhs) | Expr::Div(lhs, rhs) => {
+                stack.push((*lhs, true));
+                stack.push((*rhs, true));
+            }
+            Expr::Pow(base, exponent) => {
+                // A power is a repeated product (`M^n = M·M·…`), so a matrix base
+                // is a non-commutative product factor even at the root (e.g. the
+                // difference-of-squares factoring `M^2 − N^2 = (M−N)(M+N)` is
+                // unsound when `M·N ≠ N·M`). The exponent is a scalar position.
+                stack.push((*base, true));
+                stack.push((*exponent, false));
+            }
+            Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
+                stack.push((*lhs, false));
+                stack.push((*rhs, false));
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push((*inner, in_product)),
+            Expr::Function(_, args) => {
+                for &arg in args.iter() {
+                    stack.push((arg, false));
+                }
+            }
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+pub(super) fn exprs_match_for_cancellation_uncached(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    if term_has_matrix_product_factor(ctx, lhs) || term_has_matrix_product_factor(ctx, rhs) {
+        // Non-commutative matrix product present: only order-preserving
+        // structural equality is sound (see `term_has_matrix_product_factor`).
+        return compare_expr(ctx, lhs, rhs) == Ordering::Equal;
+    }
+    if compare_expr(ctx, lhs, rhs) == Ordering::Equal
+        || cas_math::expr_domain::exprs_equivalent(ctx, lhs, rhs)
+        || exprs_equal_up_to_add_term_order(ctx, lhs, rhs)
+        || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs, rhs)
+        || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs, rhs)
+        || exprs_equal_up_to_same_denominator(ctx, lhs, rhs)
+    {
+        return true;
+    }
+
+    let lhs_unheld = cas_ast::hold::unwrap_internal_hold(ctx, lhs);
+    let rhs_unheld = cas_ast::hold::unwrap_internal_hold(ctx, rhs);
+    if (lhs_unheld != lhs || rhs_unheld != rhs)
+        && (compare_expr(ctx, lhs_unheld, rhs_unheld) == Ordering::Equal
+            || cas_math::expr_domain::exprs_equivalent(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_add_term_order(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_same_denominator(ctx, lhs_unheld, rhs_unheld))
+    {
+        return true;
+    }
+
+    let lhs_normalized = cas_math::canonical_forms::normalize_core(ctx, lhs);
+    let rhs_normalized = cas_math::canonical_forms::normalize_core(ctx, rhs);
+    compare_expr(ctx, lhs_normalized, rhs_normalized) == Ordering::Equal
+        || cas_math::expr_domain::exprs_equivalent(ctx, lhs_normalized, rhs_normalized)
+        || exprs_equal_up_to_add_term_order(ctx, lhs_normalized, rhs_normalized)
+        || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs_normalized, rhs_normalized)
+        || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs_normalized, rhs_normalized)
+        || exprs_equal_up_to_same_denominator(ctx, lhs_normalized, rhs_normalized)
+}
+pub(super) fn signed_term_expr(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    sign: Sign,
+) -> cas_ast::ExprId {
+    match sign {
+        Sign::Pos => expr,
+        Sign::Neg => ctx.add(Expr::Neg(expr)),
+    }
 }
