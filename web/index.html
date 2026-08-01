@@ -1188,9 +1188,10 @@
             margin-right: 8px;
         }
 
-        /* Mobile-only controls: the hamburger that collects the header
-           actions and the gear that folds the mode selects away. Hidden on
-           desktop, where everything fits inline. */
+        /* The hamburger that collects the header actions (mobile only) and
+           the gear that folds the mode selects away (EVERY width: the four
+           selects are a wide, rarely-touched row, and hiding them buys back
+           the whole strip on a laptop too). */
         .menu-toggle,
         .options-toggle {
             display: none;
@@ -1202,6 +1203,23 @@
             font-size: 1.1em;
             padding: 8px 14px;
             transition: all 0.2s;
+        }
+
+        .options-toggle {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        /* The fold itself is width-independent — only the DEFAULT differs
+           (wide screens start unfolded, phones folded; see
+           initInputOptionsFold). */
+        .mode-control {
+            display: none;
+        }
+
+        .input-bar.options-open .mode-control {
+            display: flex;
         }
 
         .menu-toggle:hover,
@@ -1280,22 +1298,16 @@
                 flex-wrap: wrap;
             }
 
-            /* Mode selects fold behind the gear; the default bar is just
-               input + gear + Evaluar. */
+            /* Mode selects fold behind the gear (the fold rules themselves are
+               global now); the default bar is just input + gear + Evaluar, and
+               unfolded the selects sit two per row. */
             .options-toggle {
-                display: flex;
-                align-items: center;
                 height: 48px;
             }
 
             .mode-control {
-                display: none;
                 flex: 1 1 45%;
                 height: 48px;
-            }
-
-            .input-bar.options-open .mode-control {
-                display: flex;
             }
 
             .input-clear-wrap {
@@ -2828,9 +2840,13 @@
         const COMPLEX_MODE_STORAGE_KEY = 'expliCAS_complex_arithmetic';
         const NUMERIC_DISPLAY_STORAGE_KEY = 'expliCAS_numeric_display';
         const LANG_MODE_STORAGE_KEY = 'expliCAS_step_language';
+        // Wide-screen fold of the mode selects. localStorage (not session):
+        // like the ⌨️ panel, it is a lasting preference about the chrome, not
+        // part of the session's math.
+        const OPTIONS_OPEN_STORAGE_KEY = 'expliCAS_options_open';
 
         // ===== Interface i18n (es/en) — one catalog, driven by the ES/EN language toggle =====
-        // --- Mobile chrome: header menu + input options fold -------------
+        // --- Chrome folds: header menu (mobile) + input options (every width) --
         function toggleHeaderMenu(force) {
             const header = document.querySelector("header");
             const open = force !== undefined ? force : !header.classList.contains("menu-open");
@@ -2838,16 +2854,56 @@
             document.getElementById("menu-toggle").setAttribute("aria-expanded", String(open));
         }
 
-        function toggleInputOptions() {
+        // The gear works at every width; only what it REMEMBERS differs. On a
+        // wide screen the choice is a lasting preference (the selects have
+        // always been on show there, so that stays the default); on a phone the
+        // unfold is a temporary peek and the bar starts folded every time —
+        // opened it eats half the screen.
+        const optionsMediaSmall = window.matchMedia("(max-width: 720px)");
+
+        function applyInputOptionsFold(open) {
             const bar = document.querySelector(".input-bar");
-            const open = !bar.classList.contains("options-open");
             bar.classList.toggle("options-open", open);
             document.body.classList.toggle("options-open", open);
             document.getElementById("options-toggle").setAttribute("aria-expanded", String(open));
         }
 
-        // The gear hides the mode selects on mobile; a non-default mode must
-        // stay visible, so the gear carries a dot whenever one is active.
+        function toggleInputOptions(force) {
+            const bar = document.querySelector(".input-bar");
+            const open = force !== undefined ? force : !bar.classList.contains("options-open");
+            applyInputOptionsFold(open);
+            if (!optionsMediaSmall.matches) {
+                try { localStorage.setItem(OPTIONS_OPEN_STORAGE_KEY, open ? "1" : "0"); } catch (e) { }
+            }
+        }
+
+        // Also on crossing the phone/desktop boundary: a window that was narrow
+        // when the page loaded must not keep the selects hidden once it is wide
+        // (and vice versa) — the state that applies is the one for the width
+        // you are actually at.
+        function initInputOptionsFold() {
+            let open = false;
+            if (!optionsMediaSmall.matches) {
+                open = true;
+                try { open = localStorage.getItem(OPTIONS_OPEN_STORAGE_KEY) !== "0"; } catch (e) { }
+            }
+            applyInputOptionsFold(open);
+        }
+
+        if (optionsMediaSmall.addEventListener) {
+            optionsMediaSmall.addEventListener("change", initInputOptionsFold);
+        } else if (optionsMediaSmall.addListener) {
+            optionsMediaSmall.addListener(initInputOptionsFold);
+        }
+
+        // Straight away, NOT on DOMContentLoaded: the bar is already parsed
+        // above this script, and hiding the selects by default in CSS would
+        // otherwise show a wide screen one frame of a folded bar snapping open.
+        initInputOptionsFold();
+
+        // Folded, the gear is all that is left of the selects — and a mode that
+        // silently changes the semantics may not disappear with them, so the
+        // gear carries a dot whenever one is away from its default.
         const MODE_SELECT_DEFAULTS = {
             "domain-mode-select": "generic",
             "branch-mode-select": "strict",
