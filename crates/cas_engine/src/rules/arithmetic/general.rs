@@ -91,20 +91,6 @@ pub(crate) fn enter_default_simplify_probe_budget_scope(
     }
 }
 
-pub(super) fn abs_argument(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) && args.len() == 1 =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
 pub(super) fn build_signed_add_expr(
     ctx: &mut cas_ast::Context,
     terms: &[(cas_ast::ExprId, Sign)],

@@ -114,12 +114,13 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 810 (newest first)
+Active entries: 811 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,powers}.rs` + inventario D1 — primer peldaño de la... | ARQUITECTURA (D1c-1: primer disparador migrado — el arrastre de cubos era API sin nombre)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general}.rs` + inventario D1 — segundo peldaño por... | ARQUITECTURA (D1c-2: segundo disparador migrado — el umbral descubre la API, la semántica la cierra)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,general,powers}.rs` + inventario D1 — peldaños #3 ... | ARQUITECTURA (D1c-3/4: la promoción neutra irradia; la familia trig se declara semilla, no API)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23451,3 +23452,13 @@ Active entries: 810 (newest first)
 - decision: retener. Siguiente por arrastre: TripleAngle y OddHalfPower (4 c/u) — OJO: OddHalfPower tiene ∩API 2 y 8 exclusivos (perfil distinto: casi todo suyo, poco del motor); su peldaño dirá si el molde promover-vs-exclusivo se invierte.
 - retained learning:
   - **El umbral estadístico DESCUBRE la API; la promoción la CIERRA por semántica, no por recuento**: un helper `_for_cancellation` con 6 consumidores es API aunque el corte descriptivo (≥12) lo dejara fuera — y cada promoción abarata los cierres de todos los que lo compartían (el arrastre global baja más que lo que el peldaño toca).
+
+## 2026-08-02 - ARQUITECTURA (D1c-3/4: la promoción neutra irradia; la familia trig se declara semilla, no API)
+
+- area: `rules/arithmetic/{support,general,powers}.rs` + inventario D1 — peldaños #3 (TripleAngle) y #4 (OddHalfPower) juntos porque compartían la decisión. De sus 8 arrastres, SEIS son detectores/extractores estructurales NEUTROS del motor y se promueven (`expr_contains_any_builtin` y `expr_matches_negation_after_default_simplify` a 11/25 — a un pelo del umbral; `abs_argument`, `small_positive_integer_value`, `extract_sqrt_argument`, `expr_contains_sqrt_or_half_power`); cuatro de ellos YA VIVÍAN en support.rs sin declarar — su «arrastre» era de contrato, no de ubicación. Los DOS restantes (`extract_sin_or_cos_linear_term_for_phase_shift`, `maybe_trig_square_zero_candidate`) son de FAMILIA trig y NO van a la API neutra: quedan declarados como semilla del futuro submódulo trig del núcleo (peldaños 9-12), con TripleAngle honestamente en arrastre 2 hasta entonces. API: 27. Global 145 → **139** con SIETE disparadores bajando gratis (PhaseShift 92→90, DoubleAngleCos 20→18, SumToProduct 16→14, TrigSquare 13→11, LogProductPower 13→11, LogAbsMulDiv 12→9, HypPythagorean 6→5).
+- status: `retained`. Moves certificados (713 fns dir-completo, 0 faltan/sobran/cambiados); sondas OddHalfPower correctas (`x^(3/2) − x·√x → 0`, `x^(5/2) − x²·√x → 0`, cociente mixto → 0); la sonda de triple-ángulo eligió una forma que la regla NO posee (identidad `4·sin·sin(π/3±x) = sin(3x)`) y devolvió un residual honesto EQUIVALENTE (expande sin(3x); verificado a mano) — informa la frontera, no el peldaño; suite/clippy/cadena verdes reparto exacto.
+- decision: retener. Siguientes por arrastre: HypPythagorean (5) y HypAngleSumDiff (8) — el perfil hyperbolic dirá si nace un submódulo de familia hyperbolic o promociones neutras; los trig gordos al final con su submódulo.
+- retained learning:
+  - **La promoción neutra IRRADIA**: subir a API un helper compartido abarata el cierre de TODOS los que lo comparten — siete disparadores bajaron sin tocarlos. Corolario operativo: promover primero los compartidos de MAYOR alcance (11/25 antes que 6/25) maximiza la irradiación por peldaño.
+  - **«Arrastre» mide CONTRATO, no ubicación**: cuatro de los seis promovidos ya vivían en support.rs — les faltaba la declaración, no la mudanza. La frontera de una API es su cabecera y su criterio, no el fichero.
+  - **Un helper con nombre de familia no se promueve al motor neutro aunque muchos lo compartan**: la alternativa correcta es el submódulo de familia del núcleo (semilla declarada), o la API neutra se vuelve un cajón — el «no promovido a propósito» documentado vale tanto como la promoción.

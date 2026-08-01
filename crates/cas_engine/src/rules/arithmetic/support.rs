@@ -8,7 +8,16 @@
 //! canonicalizador-para-comparar del veredicto),
 //! `additive_term_is_nonfinite_or_undefined` y
 //! `combine_additive_numeric_constants_for_cancellation` (D1c-2, guard de
-//! no-finitos y combinador de constantes del candidato). Tres grupos:
+//! no-finitos y combinador de constantes del candidato);
+//! `expr_contains_any_builtin`, `expr_matches_negation_after_default_simplify`,
+//! `abs_argument`, `small_positive_integer_value`, `extract_sqrt_argument` y
+//! `expr_contains_sqrt_or_half_power` (D1c-3/4, detectores y extractores
+//! estructurales neutros — cuatro ya vivían aquí sin declarar). NO promovidos
+//! a propósito: `extract_sin_or_cos_linear_term_for_phase_shift` y
+//! `maybe_trig_square_zero_candidate` son de FAMILIA trig, no del motor
+//! neutro — semilla del futuro submódulo trig del núcleo (peldaños D1c
+//! 9-12); TripleAngle queda con arrastre 2 declarado hasta entonces. Tres
+//! grupos:
 //! veredicto de equivalencia-para-cancelación (`exprs_match_for_*`,
 //! `exprs_equal_up_to_*`, `canonicalize_nested_integer_powers`),
 //! candidato/colección (`collect_add_terms`,
@@ -3817,4 +3826,39 @@ pub(crate) fn additive_term_is_nonfinite_or_undefined(
     expr: cas_ast::ExprId,
 ) -> bool {
     cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(ctx, expr)
+}
+
+pub(super) fn abs_argument(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn extract_sqrt_argument(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            let half = num_rational::BigRational::new(1.into(), 2.into());
+            match ctx.get(*exp) {
+                Expr::Number(n) if *n == half => Some(*base),
+                _ => None,
+            }
+        }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
 }

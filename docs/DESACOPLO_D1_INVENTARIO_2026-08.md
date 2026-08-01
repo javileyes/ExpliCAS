@@ -45,8 +45,8 @@ cada migración (subir a API, bajar a exclusivo, o quedar interno del núcleo).
 |---|---|---:|---:|---:|---:|
 | 1 | SubtractExpandedSumDiffCubesQuotient | 3 | 2 | 0 | ~~1~~ **0** ✔ D1c-1 |
 | 2 | CancelExactAdditivePairs | 18 | 15 | 1 | ~~2~~ **0** ✔ D1c-2 |
-| 3 | ExpandTrigSineProductTripleAngle | 28 | 18 | 6 | **4** |
-| 4 | ExpandOddHalfPower | 14 | 2 | 8 | **4** |
+| 3 | ExpandTrigSineProductTripleAngle | 28 | 18 | 6 | ~~4~~ **2**† D1c-3 |
+| 4 | ExpandOddHalfPower | 14 | 2 | 8 | ~~4~~ **0** ✔ D1c-4 |
 | 5 | ExpandHyperbolicPythagoreanFactor | 33 | 15 | 12 | **6** |
 | 6 | ExpandHyperbolicAngleSumDiff | 24 | 15 | 1 | **8** |
 | 7 | ExpandLogAbsMulDiv | 29 | 17 | 0 | **12** |
@@ -83,6 +83,19 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   ellos el invariante «solo importa la API» se verifica con el CIERRE medido
   (`--per-entry`: arrastre 0), no con grep de imports. El grep aplicará a
   disparadores con fichero propio si D1c los saca del catálogo.
-- Pendiente D1c: los 11 restantes por arrastre ascendente (2, 4, 4, 6, 8,
-  12, 13, 13, 16, 21, 92). Cada peldaño decide por helper: promover a API /
-  bajar a exclusivo / dejar interno del núcleo.
+- **D1c-3/4 (2026-08-02)**: seis arrastres neutros PROMOVIDOS
+  (`expr_contains_any_builtin`, `expr_matches_negation_after_default_simplify`,
+  `abs_argument`, `small_positive_integer_value`, `extract_sqrt_argument`,
+  `expr_contains_sqrt_or_half_power` — cuatro ya vivían en support sin
+  declarar; API: 27). † NO promovidos a propósito:
+  `extract_sin_or_cos_linear_term_for_phase_shift` y
+  `maybe_trig_square_zero_candidate` son de FAMILIA trig — semilla del futuro
+  submódulo trig del núcleo (peldaños 9-12); TripleAngle queda con arrastre 2
+  declarado hasta entonces. OddHalfPower a 0. Global 145 → **139**, con siete
+  disparadores bajando gratis por irradiación (PhaseShift 92→90,
+  DoubleAngleCos 20→18, SumToProduct 16→14, TrigSquare 13→11,
+  LogProductPower 13→11, LogAbsMulDiv 12→9, HypPythagorean 6→5).
+- Pendiente D1c: 8 restantes por arrastre ascendente (5, 8, 9, 11, 11, 14,
+  18, 90) + el residual trig de TripleAngle. Cada peldaño decide por helper:
+  promover a API / bajar a exclusivo / dejar interno del núcleo / submódulo
+  de familia.

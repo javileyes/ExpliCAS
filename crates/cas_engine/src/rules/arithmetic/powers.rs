@@ -192,27 +192,6 @@ fn try_rewrite_odd_half_power_with_optional_simplify(
     try_rewrite_odd_half_power_target_aware(ctx, simplified)
 }
 
-pub(super) fn extract_sqrt_argument(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    match ctx.get(expr) {
-        Expr::Pow(base, exp) => {
-            let half = num_rational::BigRational::new(1.into(), 2.into());
-            match ctx.get(*exp) {
-                Expr::Number(n) if *n == half => Some(*base),
-                _ => None,
-            }
-        }
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
 fn extract_odd_half_power_outer_factor(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
