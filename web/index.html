@@ -1561,6 +1561,70 @@
             filter: brightness(1.25);
         }
 
+        /* "Complex is off" notice behind the inert i chip. Same dialog layout
+           as the exit confirmation, in the violet of the i it explains. */
+        .imag-info-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 1100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .imag-info-overlay.visible {
+            display: flex;
+        }
+
+        .imag-info-panel {
+            background: var(--bg-secondary);
+            border: 2px solid #8b5cf6;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(139, 92, 246, 0.3);
+            text-align: center;
+        }
+
+        .imag-info-panel h2 {
+            margin-bottom: 12px;
+            font-size: 1.2em;
+            color: #8b5cf6;
+        }
+
+        .imag-info-body {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 0.95em;
+        }
+
+        .imag-info-btn {
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px solid rgba(139, 92, 246, 0.4);
+            background: rgba(139, 92, 246, 0.15);
+            color: #8b5cf6;
+            transition: all 0.2s;
+        }
+
+        .imag-info-btn:hover {
+            background: rgba(139, 92, 246, 0.3);
+        }
+
+        [data-theme="light"] .imag-info-panel h2,
+        [data-theme="light"] .imag-info-btn {
+            color: #6d28d9;
+        }
+
         .variables-panel-overlay {
             position: fixed;
             top: 0;
@@ -1979,6 +2043,43 @@
             border-color: #8b5cf6;
         }
 
+        /* Imaginary unit, one tap from the field. It only inserts when the
+           Complex option is on — with it off the engine reads a bare i as an
+           ordinary variable, so an always-live key would be a trap. Off it is
+           a WHITE, inert-looking chip that does nothing but explain itself;
+           on it lights up pink with the violet letter of the ƒ family. */
+        .imag-unit-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            background: #ffffff;
+            border: 2px solid var(--border);
+            color: #334155;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.15em;
+            font-weight: 700;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            padding: 0 12px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .imag-unit-btn:hover {
+            border-color: var(--text-secondary);
+        }
+
+        .imag-unit-btn.active {
+            background: rgba(236, 72, 153, 0.2);
+            color: #a78bfa;
+        }
+
+        .imag-unit-btn.active:hover {
+            background: rgba(236, 72, 153, 0.32);
+            border-color: #8b5cf6;
+        }
+
         .examples-panel.fnmenu {
             border-color: #8b5cf6;
             box-shadow: 0 8px 32px rgba(139, 92, 246, 0.3);
@@ -2038,6 +2139,10 @@
             .decl-open-btn {
                 height: 48px;
                 padding: 0 12px;
+            }
+
+            .imag-unit-btn {
+                height: 48px;
             }
         }
 
@@ -2181,6 +2286,17 @@
         .kb-key.kb-g-fn {
             background: rgba(139, 92, 246, 0.16);
             border-color: rgba(139, 92, 246, 0.38);
+        }
+
+        /* i as the imaginary unit — only worn while the Complex option is on,
+           so the letter says which of its two meanings is live. Violet like
+           the i chip in the input bar, and TINTED TEXT too: on the abc layer
+           it stands among green variable keys, and the fill alone reads as
+           just one more letter. */
+        .kb-key.kb-g-imag {
+            background: rgba(139, 92, 246, 0.16);
+            border-color: rgba(139, 92, 246, 0.38);
+            color: #a78bfa;
         }
 
         /* f(x)-layer families: trigonometry cyan, calculus pink, algebra/solve
@@ -2348,6 +2464,22 @@
             color: #047857;
         }
 
+        /* On light the bar is already white, so the off state has to be drawn
+           by its border alone; the on state keeps the pink fill + violet i. */
+        [data-theme="light"] .imag-unit-btn {
+            border-color: #cbd5e1;
+        }
+
+        [data-theme="light"] .imag-unit-btn.active {
+            background: #fdeaf4;
+            border-color: #f3bcd9;
+            color: #6d28d9;
+        }
+
+        [data-theme="light"] .imag-unit-btn.active:hover {
+            background: #fbd8ea;
+        }
+
         /* Keypad functional-group tints on light: pale fills of the same
            hues. The pressed rule is restated LAST so it outranks these. */
         [data-theme="light"] .kb-key.kb-g-op {
@@ -2368,6 +2500,12 @@
         [data-theme="light"] .kb-key.kb-g-fn {
             background: #f1ebfd;
             border-color: #d7c9f4;
+        }
+
+        [data-theme="light"] .kb-key.kb-g-imag {
+            background: #f1ebfd;
+            border-color: #d7c9f4;
+            color: #6d28d9;
         }
 
         [data-theme="light"] .kb-key.kb-g-trig {
@@ -2532,6 +2670,12 @@
                 data-i18n-title="fnmenu.button.title" title="Insertar una función con sus argumentos ya colocados">
                 ƒ()
             </button>
+            <!-- Live state (white/inert vs pink+violet) is written by
+                 refreshImagUnitButton(), which also swaps the two i18n keys
+                 below so a language change re-translates the CURRENT state. -->
+            <button type="button" class="imag-unit-btn" id="imag-unit-btn"
+                data-i18n-aria="kb.imag.aria_off" aria-label="Unidad imaginaria i — los números complejos están desactivados"
+                data-i18n-title="kb.imag.title_off" title="Los números complejos están desactivados: actívalos en las opciones para poder escribir i">i</button>
             <button type="button" class="options-toggle" id="options-toggle" onclick="toggleInputOptions()"
                 aria-expanded="false"
                 data-i18n-aria="input.options_toggle.aria_label" aria-label="Opciones de evaluación"
@@ -2640,6 +2784,16 @@
             </h2>
             <div class="fnmenu-hint" id="fnmenu-group-hint" style="display:none"></div>
             <ul class="examples-list" id="fnmenu-group-list"></ul>
+        </div>
+    </div>
+
+    <!-- What the inert i chip says when tapped: where the Complex switch is. -->
+    <div class="imag-info-overlay" id="imag-info-overlay" onclick="hideImagInfo(event)">
+        <div class="imag-info-panel" onclick="event.stopPropagation()">
+            <h2 data-i18n="imag_info.title">Los números complejos están desactivados</h2>
+            <p class="imag-info-body" data-i18n="imag_info.body">Para escribir i como unidad imaginaria, pon el selector «Complejo» en on dentro de las opciones ⚙️. Con los complejos desactivados, i es una variable más.</p>
+            <button type="button" class="imag-info-btn" onclick="hideImagInfo()"
+                data-i18n="imag_info.ok">Entendido</button>
         </div>
     </div>
 
@@ -2869,7 +3023,15 @@
                         "kb.left.title": "Mover el cursor a la izquierda",
                         "kb.right.title": "Mover el cursor a la derecha",
                         "kb.shift.title": "Mayúsculas",
-                        "kb.euler.title": "Constante de Euler: e ≈ 2,71828 (E mayúscula es una variable normal)"
+                        "kb.euler.title": "Constante de Euler: e ≈ 2,71828 (E mayúscula es una variable normal)",
+                        "kb.imag.title_on": "Unidad imaginaria: inserta i (i² = −1)",
+                        "kb.imag.title_off": "Los números complejos están desactivados: actívalos en las opciones para poder escribir i",
+                        "kb.imag.aria_on": "Insertar la unidad imaginaria i",
+                        "kb.imag.aria_off": "Unidad imaginaria i — los números complejos están desactivados",
+                        "kb.imag_key.title": "Unidad imaginaria: i² = −1 (I mayúscula es una variable normal)",
+                        "imag_info.title": "Los números complejos están desactivados",
+                        "imag_info.body": "Para escribir i como unidad imaginaria, pon el selector «Complejo» en on dentro de las opciones ⚙️. Con los complejos desactivados, i es una variable más.",
+                        "imag_info.ok": "Entendido"
             },
             "en": {
                         "header.tagline": "Interactive Step-by-Step Math Simplifier",
@@ -2998,7 +3160,15 @@
                         "kb.left.title": "Move cursor left",
                         "kb.right.title": "Move cursor right",
                         "kb.shift.title": "Shift",
-                        "kb.euler.title": "Euler's constant: e ≈ 2.71828 (uppercase E is a plain variable)"
+                        "kb.euler.title": "Euler's constant: e ≈ 2.71828 (uppercase E is a plain variable)",
+                        "kb.imag.title_on": "Imaginary unit: inserts i (i² = −1)",
+                        "kb.imag.title_off": "Complex numbers are off: turn them on in the options to write i",
+                        "kb.imag.aria_on": "Insert the imaginary unit i",
+                        "kb.imag.aria_off": "Imaginary unit i — complex numbers are off",
+                        "kb.imag_key.title": "Imaginary unit: i² = −1 (uppercase I is a plain variable)",
+                        "imag_info.title": "Complex numbers are off",
+                        "imag_info.body": "To write i as the imaginary unit, set the “Complex” selector to on inside the ⚙️ options. With complex numbers off, i is just another variable.",
+                        "imag_info.ok": "Got it"
             }
         };
         let uiLang = 'es';
@@ -3061,7 +3231,57 @@
 
         complexModeSelect.addEventListener('change', () => {
             sessionStorage.setItem(COMPLEX_MODE_STORAGE_KEY, complexModeSelect.value);
+            // The i chip and the abc layer's i key both spell out which
+            // meaning of i is live, so both follow the switch immediately.
+            refreshImagUnitButton();
+            if (window.__kbReady) kbRefresh();
         });
+
+        // === Imaginary unit chip (i, between ƒ() and ⚙️) ===================
+        // Reads the select, never a cached flag: the option is the single
+        // source of truth and it is restored from sessionStorage above.
+        function isComplexOn() {
+            const el = document.getElementById('complex-mode-select');
+            return !!el && el.value === 'on';
+        }
+
+        function refreshImagUnitButton() {
+            const btn = document.getElementById('imag-unit-btn');
+            if (!btn) return;
+            const on = isComplexOn();
+            btn.classList.toggle('active', on);
+            // Swap the KEYS, not the translated strings: applyI18n() re-reads
+            // these datasets on a language change and gets the live state.
+            btn.dataset.i18nTitle = on ? 'kb.imag.title_on' : 'kb.imag.title_off';
+            btn.dataset.i18nAria = on ? 'kb.imag.aria_on' : 'kb.imag.aria_off';
+            btn.title = t(btn.dataset.i18nTitle);
+            btn.setAttribute('aria-label', t(btn.dataset.i18nAria));
+        }
+
+        function showImagInfo() {
+            document.getElementById('imag-info-overlay').classList.add('visible');
+        }
+
+        function hideImagInfo(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('imag-info-overlay').classList.remove('visible');
+            }
+        }
+
+        (function () {
+            const btn = document.getElementById('imag-unit-btn');
+            if (!btn) return;
+            // Same contract as the keypad keys: never steal the caret (or the
+            // selection) from the input — the insert happens where the user
+            // was typing, not at the end of the field.
+            btn.addEventListener('pointerdown', (ev) => { ev.preventDefault(); });
+            btn.addEventListener('click', () => {
+                if (!isComplexOn()) { showImagInfo(); return; }
+                kbInsertText('i');
+                if (window.__kbReady) kbOpenAfterInsert();
+            });
+            refreshImagUnitButton();
+        })();
 
         const numericDisplaySelect = document.getElementById('numeric-display-select');
         const savedNumericDisplay = sessionStorage.getItem(NUMERIC_DISPLAY_STORAGE_KEY);
@@ -4999,6 +5219,11 @@
                         // wears the constants color; shifted E is a plain
                         // variable and goes back to green.
                         if (ch === 'e') return { l: ch, i: ch, g: 'const', t: 'kb.euler.title' };
+                        // Same deal for i, but conditional: it is the
+                        // imaginary unit only while the Complex option is on,
+                        // so it wears violet exactly then — and never
+                        // shifted, since uppercase I is a plain variable.
+                        if (ch === 'i' && isComplexOn()) return { l: ch, i: ch, g: 'imag', t: 'kb.imag_key.title' };
                         return { l: ch, i: ch, g: 'var' };
                     }
                     if (k.a === 'shift' && kbShift) return Object.assign({}, k, { c: k.c + ' active' });
@@ -5297,6 +5522,7 @@
             ['fnmenu-panel-overlay', hideFnMenuPanel],
             ['variables-panel-overlay', hideVariablesPanel],
             ['functions-panel-overlay', hideFunctionsPanel],
+            ['imag-info-overlay', hideImagInfo],
         ];
 
         let backGuardLeaving = false;
