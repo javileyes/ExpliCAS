@@ -168,6 +168,12 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 - **Doctrina aplicable:** familia C5 («HANG de oscilación expand↔factor — fix
   de orquestación, no apresurar»). No se parchea en caliente: mejor un hang
   honesto que una respuesta incorrecta instantánea.
+- **Pista (a) COMPLETADA 2026-08-01 (`6d777223c`):** tabla u-du simbólica
+  `∫s·u′·F(u)` para F ∈ {exp, sin, cos, sinh, cosh} + gate semántico en
+  Werner/ProductToSum (declina con ángulos que contienen funciones — trataba
+  `sin(x)` como ángulo independiente y destrozaba la forma en la fase de
+  simplify, donde ningún router llega). La familia u-du queda entera: uⁿ,
+  1/uᵐ, ln|u| y tabla exterior, todo con narración identify-u/du + regla.
 - **Pista (a) AMPLIADA 2026-08-01 (`974698e5b`):** la vía u-du simbólica
   cubre también Div y potencias negativas (`∫s·u′/uᵐ`, con `m=1` → `s·ln(|u|)`
   y el abs delegado a la decidibilidad de signo). Mueren de rebote el hang de
