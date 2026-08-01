@@ -114,11 +114,12 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 809 (newest first)
+Active entries: 810 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,powers}.rs` + inventario D1 — primer peldaño de la... | ARQUITECTURA (D1c-1: primer disparador migrado — el arrastre de cubos era API sin nombre)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,general}.rs` + inventario D1 — segundo peldaño por... | ARQUITECTURA (D1c-2: segundo disparador migrado — el umbral descubre la API, la semántica la cierra)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23442,3 +23443,11 @@ Active entries: 809 (newest first)
 - retained learning:
   - **El «arrastre» de un disparador puede ser API sin bautizar**: si el helper compartido es semánticamente del grupo veredicto/candidato/rewrite, la migración correcta es PROMOVER, no duplicar ni re-importar — y la promoción abarata gratis los cierres de todos los demás entries que lo compartían.
   - **El primer peldaño barato paga el molde entero** (sondas pre → move → verificación dir-completa → sondas post → cierre re-medido): el mismo guion vale para los 11 restantes con coste marginal decreciente.
+
+## 2026-08-02 - ARQUITECTURA (D1c-2: segundo disparador migrado — el umbral descubre la API, la semántica la cierra)
+
+- area: `rules/arithmetic/{support,general}.rs` + inventario D1 — segundo peldaño por arrastre (2). Los dos arrastres de `CancelExactAdditivePairsRule` — `additive_term_is_nonfinite_or_undefined` (6 entries) y `combine_additive_numeric_constants_for_cancellation` (7) — se PROMUEVEN a la API (21): son primitivas del motor (guard de no-finitos del candidato; combinador de constantes aditivas `_for_cancellation`) con 6-7 consumidores, por debajo del umbral 12 que DESCUBRIÓ la API en D1a pero inequívocamente dentro por semántica. Arrastre del disparador → 0; global 147 → 145, con `CollapseExactZeroTrigDoubleAngleCosVariant` bajando 21 → 20 sin tocarla.
+- status: `retained`. Move certificado (713 fns dir-completo, 0 faltan/sobran/cambiados); sondas del disparador correctas post-move (`sin(x)+y−sin(x) → y`, `x/(x+1)+5−x/(x+1) → 5`, `2+a−2 → a`, `ln(x)+3−ln(x)−3 → 0`); suite/clippy/cadena verdes con reparto exacto; huella patrón conocido.
+- decision: retener. Siguiente por arrastre: TripleAngle y OddHalfPower (4 c/u) — OJO: OddHalfPower tiene ∩API 2 y 8 exclusivos (perfil distinto: casi todo suyo, poco del motor); su peldaño dirá si el molde promover-vs-exclusivo se invierte.
+- retained learning:
+  - **El umbral estadístico DESCUBRE la API; la promoción la CIERRA por semántica, no por recuento**: un helper `_for_cancellation` con 6 consumidores es API aunque el corte descriptivo (≥12) lo dejara fuera — y cada promoción abarata los cierres de todos los que lo compartían (el arrastre global baja más que lo que el peldaño toca).

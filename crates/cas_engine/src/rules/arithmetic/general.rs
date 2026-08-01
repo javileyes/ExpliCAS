@@ -187,67 +187,6 @@ pub(super) fn additive_scope_has_negative_term(
         .any(|(term_expr, term_sign)| additive_term_is_negative_like(ctx, term_expr, term_sign))
 }
 
-pub(super) fn combine_additive_numeric_constants_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    let view = AddView::from_expr(ctx, expr);
-    if view.terms.len() < 2 {
-        return None;
-    }
-
-    let mut saw_numeric = false;
-    let mut numeric_sum = BigRational::zero();
-    let mut rebuilt_terms = Vec::with_capacity(view.terms.len());
-    for (term_expr, term_sign) in view.terms {
-        if let Expr::Number(value) = ctx.get(term_expr).clone() {
-            saw_numeric = true;
-            match term_sign {
-                Sign::Pos => numeric_sum += value,
-                Sign::Neg => numeric_sum -= value,
-            }
-            continue;
-        }
-
-        rebuilt_terms.push((term_expr, term_sign));
-    }
-
-    if !saw_numeric {
-        return None;
-    }
-
-    if !numeric_sum.is_zero() {
-        let (sign, magnitude) = if numeric_sum < BigRational::zero() {
-            (Sign::Neg, -numeric_sum)
-        } else {
-            (Sign::Pos, numeric_sum)
-        };
-        rebuilt_terms.push((ctx.add(Expr::Number(magnitude)), sign));
-    }
-
-    let rebuilt = build_signed_sum_expr(ctx, &rebuilt_terms);
-    (compare_expr(ctx, rebuilt, expr) != Ordering::Equal).then_some(rebuilt)
-}
-
-/// True when `expr` is provably non-finite or undefined over the reals — it
-/// contains an `infinity`/`undefined` constant, or a division by a provably-zero
-/// denominator (`x/0`, `0/0`). Such a term must NOT cancel against a copy of
-/// itself: `inf - inf`, `undefined - undefined`, and `(1/0) - (1/0)` are all
-/// indeterminate/undefined, NOT `0`.
-/// True when `expr` carries a literal non-finite or undefined value — an
-/// `Infinity`/`Undefined` constant, or a division with a provably-zero
-/// denominator — anywhere in its tree. Subtracting such a term from itself does
-/// NOT cancel to `0` (`inf - inf`, `(1/0) - (1/0)` and `undefined - undefined`
-/// are indeterminate, not zero), so every structural additive-cancellation path
-/// must decline when this holds. Shared by the additive-pair cancellation rule
-/// and the orchestrator's exact-zero equivalence shortcut.
-pub(crate) fn additive_term_is_nonfinite_or_undefined(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> bool {
-    cas_math::arithmetic_cancel_support::expr_carries_nonfinite_or_undefined(ctx, expr)
-}
-
 pub(crate) fn try_rewrite_exact_additive_term_cancellation_expr(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,

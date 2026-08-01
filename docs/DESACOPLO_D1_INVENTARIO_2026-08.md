@@ -44,7 +44,7 @@ cada migración (subir a API, bajar a exclusivo, o quedar interno del núcleo).
 | # | disparador | cierre | ∩API | excl | arrastre |
 |---|---|---:|---:|---:|---:|
 | 1 | SubtractExpandedSumDiffCubesQuotient | 3 | 2 | 0 | ~~1~~ **0** ✔ D1c-1 |
-| 2 | CancelExactAdditivePairs | 18 | 15 | 1 | **2** |
+| 2 | CancelExactAdditivePairs | 18 | 15 | 1 | ~~2~~ **0** ✔ D1c-2 |
 | 3 | ExpandTrigSineProductTripleAngle | 28 | 18 | 6 | **4** |
 | 4 | ExpandOddHalfPower | 14 | 2 | 8 | **4** |
 | 5 | ExpandHyperbolicPythagoreanFactor | 33 | 15 | 12 | **6** |
@@ -72,6 +72,12 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   (`canonicalize_nested_integer_powers`) PROMOVIDO a la API (19 helpers: es
   el canonicalizador-para-comparar del grupo veredicto). Cierre de Cubes
   ⊆ API; arrastre global 148 → 147.
+- **D1c-2 (2026-08-02)**: disparador #2 migrado — sus dos arrastres
+  (`additive_term_is_nonfinite_or_undefined`, 6 entries;
+  `combine_additive_numeric_constants_for_cancellation`, 7) PROMOVIDOS
+  (API: 21). El umbral ≥12 descubrió la API; la semántica la cierra: ambos
+  son primitivas del motor con 6-7 consumidores. Arrastre global 147 → 145
+  (DoubleAngleCos bajó 21 → 20 gratis).
 - **Matización del criterio operativo**: los `define_rule!` viven en el
   CATÁLOGO del padre (diseño del troceo P2) y resuelven por su glob — para
   ellos el invariante «solo importa la API» se verifica con el CIERRE medido
