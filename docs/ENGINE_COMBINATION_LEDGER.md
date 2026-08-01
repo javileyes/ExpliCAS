@@ -114,8 +114,9 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 806 (newest first)
+Active entries: 807 (newest first)
 
+- 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23408,3 +23409,13 @@ Active entries: 806 (newest first)
   - **El probe de árbol-de-sub-solves es el discriminador barato splitter-vs-combinador** (2ª instancia del molde «instrumenta antes de implementar»): un eprintln en el entry recursivo respondió en una corrida lo que la lectura del dispatch no habría resuelto en una hora.
   - **Un dueño-estrategia con matcher direccional deja huérfana a la grafía gemela, y la huérfana cae al genérico de abajo** — que puede ser unsound para exactamente esa forma. Al cerrar un bug de orientación, sondear la gemela de TODA estrategia con gate direccional (3ª aparición de la familia orientación/wrapper tras coeficiente≠1 y Neg-en-exponente).
   - **Un top-N por tiempo rota su borde entre corridas y se disfraza de delta de contenido**: la invariante de huella a comparar es el UNIVERSO sin truncar (la clave hermana no-top), no la composición del top — el filtro por nombre de clave (`*_slowest_*`) no ve el ranking cuando está embebido en la selección del array.
+
+## 2026-08-02 - ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
+
+- area: `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el arnés D0 (`engine_decoupling_closure.py --per-entry` sobre `rules/arithmetic/`, `346d2c630`). Los 25 entries caen en CUATRO estratos: 5 mega-entries con cierre 595–635 (CollapseExactOne/Zero*, DivZero — su cierre es el fichero: SON el motor y no migran, son el destino del núcleo `cancellation`), 12 disparadores familiares (cierre 3–119, los migrables de D1c), el par aditivo (18) y 8 triviales (0 helpers). API de facto: **18 helpers** alcanzados desde ≥12/25, en exactamente los tres grupos que el plan pedía (veredicto de equivalencia-para-cancelación / candidato-colección / rewrite-entorno) — y `ambient_pipeline_value_domain` YA es API de facto (la costura D4 asoma gratis). Mapa D1c por arrastre ascendente (1, 2, 4, 4, 6, 8, 12, 13, 13, 16, 21, 92 — unión 148 helpers); 25/25 reglas registradas (ninguna muerta); `collect_add_terms` es a la vez API 16/25 y el duplicado de 14 variantes de L13 — al formalizar la API, la copia del motor es la canónica y las demás siguen renombrar-o-fusionar.
+- status: `retained` (ciclo de medida; docs-only, cero .rs ⟹ la suite no puede moverse — sin cadena, declarado como en D0).
+- observed: closure per-entry reproducible (JSON en scratchpad, comando en el doc); verificación de registro 25/25 contra `pub fn register`; baselines de huella re-copiados post-P0.
+- decision: retener. Siguiente: D1b/D1c empiezan por el disparador de arrastre 1 (SubtractExpandedSumDiffCubesQuotient) para pagar el molde barato; PhaseShift (92) el último — su arrastre ya anuncia (builders `build_general_phase_shift_*`) que pedirá submódulo propio del núcleo, no API.
+- retained learning:
+  - **La pregunta «¿quién es disparador y quién es núcleo?» la responde el TAMAÑO del cierre, no el nombre**: los cinco `Collapse*` con cierre ≈fichero no son reglas mal factorizadas sino el motor con nombre de regla — migrarlos sería mover el motor entero. El cierre per-entry separa en minutos lo que la lectura de 713 helpers no separaría en días.
+  - **El orden de una cirugía por peldaños sale del ARRASTRE medido, no de la familia semántica**: barato-primero paga el molde donde equivocarse cuesta poco, y el arrastre del caro ya dice QUÉ pedirá (submódulo, no API) antes de abrirlo.
