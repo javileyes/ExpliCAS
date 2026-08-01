@@ -332,6 +332,42 @@ fn test_eval_parametric_content_factor_branch() {
     assert_eq!(r("solve(x*(x-1)*(x+2)=0, x)"), "{ -2, 0, 1 }");
     assert_eq!(r("solve(y*sqrt(x+1)*(x-2)=0, x)"), "{ -1, 2 }");
 }
+
+#[test]
+fn test_eval_flipped_zero_product_orientation() {
+    // P0 (2026-08-01): the FLIPPED spelling `0 = A·B` fell to the generic mul
+    // isolation, which divided by the moved factor even when it carried the
+    // solve variable — dropping that factor's roots (`0 = (x−1)·(x+2)` gave
+    // `{ -2 }`). Division by a variable-carrying factor is sound exactly when
+    // the other side is nonzero; the `= 0` shape now splits per factor at the
+    // isolation chokepoint (zero-product), matching the normal orientation.
+    // Sibling gap left OPEN on purpose: `0 != A·B` still loses exclusions
+    // (needs complement/intersection machinery) — named stepping stone.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(r("solve(0=(x-1)*(x+2), x)"), "{ -2, 1 }");
+    assert_eq!(r("solve(0=x*(x-1), x)"), "{ 0, 1 }");
+    assert_eq!(r("solve(0=(x-1)*(x+2)*(x-3), x)"), "{ -2, 1, 3 }");
+    assert_eq!(r("solve(0=-(x-1)*(x+2), x)"), "{ 1, -2 }");
+    // The parametric content-factor hook now wraps a HEALTHY incumbent.
+    assert_eq!(
+        r("solve(0=y*(x-1)*(x+2), x)"),
+        "{ 1, -2 } if y != 0; All real numbers if y = 0"
+    );
+    // Controls: the normal orientation, constant-factor division, nonzero RHS
+    // (division stays sound there), a rootless factor (`e^x` → Empty branch),
+    // and the trig-product owner are all UNCHANGED.
+    assert_eq!(r("solve((x-1)*(x+2)=0, x)"), "{ -2, 1 }");
+    assert_eq!(r("solve(0=2*(x-1), x)"), "{ 1 }");
+    assert_eq!(r("solve(4=(x-1)*(x+2), x)"), "{ -3, 2 }");
+    assert_eq!(r("solve(0=e^x*(x-1), x)"), "{ 1 }");
+}
 #[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {
     // An identity equation whose solution is all reals RESTRICTED by a domain condition must show

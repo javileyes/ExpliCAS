@@ -574,6 +574,42 @@ where
     }
 
     let operands = derive_operands(state, left, right, var);
+    // ZERO-PRODUCT GUARD: dividing `A·B = 0` by a factor that still CONTAINS
+    // the solve variable drops that factor's roots (`0 = (x−1)·(x+2)`
+    // published a single root). Division by a variable-carrying factor is
+    // sound exactly when the other side is nonzero; for the `= 0` shape the
+    // equation splits per factor instead (zero-product property — same
+    // semantics as the strategy-level owner that handles the `A·B = 0`
+    // orientation). Inequalities keep their dedicated sign-split above; `!=`
+    // is left untouched (its correct set needs complement/intersection).
+    if op == RelOp::Eq && rhs_contains_variable(state, operands.moved_factor, var) {
+        let probe_ctx = context_snapshot(state);
+        let rhs_is_zero_literal = matches!(
+            probe_ctx.get(rhs),
+            cas_ast::Expr::Number(n) if num_traits::Zero::is_zero(n)
+        );
+        if rhs_is_zero_literal {
+            let left_eq = Equation {
+                lhs: left,
+                rhs,
+                op: RelOp::Eq,
+            };
+            let (left_set, mut split_steps) = solve_split_case(state, &left_eq)?;
+            let right_eq = Equation {
+                lhs: right,
+                rhs,
+                op: RelOp::Eq,
+            };
+            let (right_set, mut right_steps) = solve_split_case(state, &right_eq)?;
+            split_steps.append(&mut right_steps);
+            let snapshot = context_snapshot(state);
+            let union = crate::solution_set::union_solution_sets(&snapshot, left_set, right_set);
+            return Ok(merge_solved_with_existing_steps_prepend(
+                (union, split_steps),
+                existing_steps,
+            ));
+        }
+    }
     let moved_is_negative = is_known_negative(state, operands.moved_factor);
     let moved_desc = render_expr(state, operands.moved_factor);
     let plan = plan_mul(
@@ -1974,6 +2010,91 @@ mod tests {
         assert_eq!(
             solved.1,
             vec!["existing".to_string(), "fallback".to_string()]
+        );
+    }
+
+    #[test]
+    fn execute_mul_isolation_pipeline_splits_zero_product_when_moved_factor_carries_var() {
+        // `0 = (x−1)·(x+2)` regression: the moved factor carries the solve
+        // variable and RHS is literal zero — the pipeline must split per
+        // factor (zero-product) instead of dividing, which drops the moved
+        // factor's roots. The division plan must not even be built.
+        let mut state = MulHarness::default();
+        let x = state.context.var("x");
+        let one = state.context.num(1);
+        let two = state.context.num(2);
+        let left = state.context.add(Expr::Sub(x, one));
+        let right = state.context.add(Expr::Add(x, two));
+        let lhs = state.context.add(Expr::Mul(left, right));
+        let zero = state.context.num(0);
+
+        let solved =
+            execute_mul_isolation_pipeline_with_product_split_and_linear_collect_with_state(
+                &mut state,
+                lhs,
+                left,
+                right,
+                zero,
+                RelOp::Eq,
+                "x",
+                false,
+                vec!["existing".to_string()],
+                |state, left, right, rhs, op, var| {
+                    crate::solve_outcome::plan_product_zero_inequality_split_if_applicable(
+                        &mut state.context,
+                        left,
+                        right,
+                        rhs,
+                        op,
+                        var,
+                    )
+                },
+                |state, _equation| -> Result<(SolutionSet, Vec<String>), &'static str> {
+                    state.split_solve_count += 1;
+                    Ok((SolutionSet::Empty, vec!["factor".to_string()]))
+                },
+                |state| state.context.clone(),
+                |ctx, solved_sets| {
+                    crate::solve_outcome::finalize_product_zero_inequality_solved_sets(
+                        ctx,
+                        solved_sets,
+                    )
+                },
+                |state, expr, var| crate::isolation_utils::contains_var(&state.context, expr, var),
+                |state, _lhs, _rhs, _var| {
+                    state.linear_collect_count += 1;
+                    None
+                },
+                |state, left, right, var| {
+                    crate::solve_outcome::derive_mul_isolation_operands(
+                        &state.context,
+                        left,
+                        right,
+                        var,
+                    )
+                },
+                |_state, _expr| false,
+                |_state, _expr| "unused".to_string(),
+                |_state, _kept, _moved, _rhs, _op, _neg, _desc| {
+                    panic!("zero-product guard must preempt the division plan")
+                },
+                |_state, _equation| -> Result<(SolutionSet, Vec<String>), &'static str> {
+                    Err("recursive isolate should not run")
+                },
+                |_item| "mapped".to_string(),
+            )
+            .expect("zero-product guard should solve via factor split");
+
+        assert_eq!(state.split_solve_count, 2);
+        assert_eq!(state.linear_collect_count, 0);
+        assert!(matches!(solved.0, SolutionSet::Empty));
+        assert_eq!(
+            solved.1,
+            vec![
+                "factor".to_string(),
+                "factor".to_string(),
+                "existing".to_string()
+            ]
         );
     }
 
