@@ -7,5 +7,5 @@ pub use cas_math::expr_nary::{add_terms_signed, Sign};
 #[allow(unused_imports)]
 pub use cas_math::factor::factor;
 
-#[path = "../../cas_solver/tests/metamorphic_simplification_tests.rs"]
+#[path = "../../cas_solver/tests/metamorphic_simplification_tests/main.rs"]
 mod metamorphic_simplification_tests;
