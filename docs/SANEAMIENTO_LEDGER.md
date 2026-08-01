@@ -268,10 +268,14 @@ no tocado.
   cancel y powfold idénticos al control), pero el gate alimenta decisiones
   drop/keep y la doctrina es exactitud en el gate, no confianza en los
   consumidores. Cerrado con el patrón de bases desplazadas de L15.
-- **Pendiente menor anotado:** unificar los TRES implementadores del patrón
-  «nombre fresco esquivando el árbol» (engine, verification_algebraic,
-  poly_compare + el de div_expand) en un helper de cas_ast — misma familia
-  L13, sin urgencia.
+- **Pendiente menor CERRADO 2026-08-01 (`99d8af1a0`):** los tres
+  implementadores de semántica común unificados en `cas_ast::fresh_names`,
+  con DOS primitivas documentadas (`alloc_indexed_name` uno-a-uno /
+  `fresh_suffix_base` base-de-lote max+1) porque la propia migración tropezó
+  con la distinción: el primer-libre con HUECOS en taken habría reintroducido
+  la colisión de clase L15 en esquemas `base+i` — cazado por invariante antes
+  de commitear y convertido en test (`suffix_base_clears_gaps`). El asignador
+  de stride de `verification_algebraic` queda fuera a propósito, anotado.
 
 ### L11 — Detectores sec/csc de potencia impar → CERRADO 2026-08-01 (borrados)
 La cuarentena se resolvió haciendo el trabajo que el informe de saneamiento del
