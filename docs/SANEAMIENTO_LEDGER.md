@@ -165,6 +165,21 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   con sustitución u=1+sin evidente.
 - **Hallazgo agravante:** `--budget standard` NO poda el bucle (exit 124 con
   presupuesto activo) — hay trabajo no medido por el sistema de presupuesto.
+- **Pista (b) ESCOPADA 2026-08-01 (mecanismo exacto, sin parche):** el
+  `Budget` (`cas_solver_core::budget_model`, fachada en `cas_engine::budget`)
+  es un objeto POSEÍDO que se cobra explícitamente (`charge`/`scope` RAII) —
+  no hay thread-local. Los `Simplifier::with_default_rules()` que las reglas
+  crean ad-hoc en los callbacks estrategia-0/2 de `div_expand_cancel`
+  (`more_rules.rs:42/49` y hermanos en `exponents/rationalization.rs` y
+  `fractions/rationalize.rs`) nacen sin conexión al presupuesto del eval: todo
+  su trabajo es invisible al sistema. Tres vías, por coste: (1) darles un
+  presupuesto PROPIO modesto (`Budget` con topes pequeños) — acotado, ~3
+  call-sites, el cambio de comportamiento (simplifies anidados parciales) lo
+  juzgan suite+huella+steps-gate; (2) enhebrar el presupuesto padre hasta los
+  callbacks — cirugía de firma (`Rule::apply`/`ParentContext`); (3) instalar
+  thread-local del presupuesto vigente en el entry del eval — precedente en el
+  repo (memos thread-local con eje en la clave), pero estado global nuevo.
+  Recomendación: (1) como primer peldaño gateado.
 - **Doctrina aplicable:** familia C5 («HANG de oscilación expand↔factor — fix
   de orquestación, no apresurar»). No se parchea en caliente: mejor un hang
   honesto que una respuesta incorrecta instantánea.
