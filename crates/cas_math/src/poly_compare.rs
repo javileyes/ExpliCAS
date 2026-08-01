@@ -62,6 +62,18 @@ pub(crate) fn poly_is_zero(ctx: &Context, expr: ExprId) -> bool {
 ///
 /// `Infinity`/`Undefined`/`Matrix` are NEVER atomized: an `∞` indeterminate
 /// would "prove" `∞ − ∞ = 0`. Their presence bails the whole check.
+
+/// Primer índice `N` tal que `{prefix}{N}` y todos los siguientes están
+/// libres en `taken`. Clase L15: los átomos sintéticos deben esquivar las
+/// variables ya presentes en el árbol o el gate fusiona átomo y variable.
+fn fresh_suffix_base(taken: &rustc_hash::FxHashSet<String>, prefix: &str) -> usize {
+    taken
+        .iter()
+        .filter_map(|n| n.strip_prefix(prefix).and_then(|s| s.parse::<usize>().ok()))
+        .max()
+        .map_or(0, |m| m + 1)
+}
+
 pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     if poly_is_zero(ctx, expr) {
         return true;
@@ -78,19 +90,32 @@ pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     // The folds happen INSIDE `atomize_non_poly` (which walks Div too — the
     // Laurent utilities in `opaque_atoms` don't, and the Gate-1 numerator
     // carries its e^x inside embedded fractions).
+    let taken: rustc_hash::FxHashSet<String> =
+        cas_ast::collect_variables(ctx, expr).into_iter().collect();
+    let atom_base = fresh_suffix_base(&taken, "__polyzero_atom_");
+    let root_base = fresh_suffix_base(&taken, "__polyzero_root_");
     let mut exps = Vec::new();
     collect_e_exponents_full(ctx, expr, &mut exps, 0);
     let expfold = if exps.is_empty() {
         None
     } else {
         crate::opaque_atoms::find_exp_base(ctx, &exps, 16).map(|g| {
-            let u = ctx.var("__polyzero_expatom");
+            let expatom_name = if taken.contains("__polyzero_expatom") {
+                format!(
+                    "__polyzero_expatom_{}",
+                    fresh_suffix_base(&taken, "__polyzero_expatom_")
+                )
+            } else {
+                "__polyzero_expatom".to_string()
+            };
+            let u = ctx.var(&expatom_name);
             (g, u)
         })
     };
-    let powfold = collect_fractional_power_bases(ctx, expr);
+    let powfold = collect_fractional_power_bases(ctx, expr, root_base);
     let mut atoms: rustc_hash::FxHashMap<ExprId, ExprId> = rustc_hash::FxHashMap::default();
-    let Some(atomized) = atomize_non_poly(ctx, expr, &mut atoms, expfold, &powfold) else {
+    let Some(atomized) = atomize_non_poly(ctx, expr, &mut atoms, expfold, &powfold, atom_base)
+    else {
         return false;
     };
     // Nothing changed ⟹ same expression the direct attempt already rejected.
@@ -114,7 +139,9 @@ pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     for (base, (d, s_var)) in &powfold {
         let mut others = powfold.clone();
         others.remove(base);
-        let Some(base_atomized) = atomize_non_poly(ctx, *base, &mut atoms, expfold, &others) else {
+        let Some(base_atomized) =
+            atomize_non_poly(ctx, *base, &mut atoms, expfold, &others, atom_base)
+        else {
             continue;
         };
         let cas_ast::Expr::Variable(sv) = ctx.get(*s_var) else {
@@ -508,6 +535,7 @@ fn reduce_round(
 fn collect_fractional_power_bases(
     ctx: &mut Context,
     expr: ExprId,
+    root_base: usize,
 ) -> rustc_hash::FxHashMap<ExprId, (u32, ExprId)> {
     use num_traits::ToPrimitive;
     fn lcm(a: u32, b: u32) -> u32 {
@@ -571,7 +599,7 @@ fn collect_fractional_power_bases(
     denoms.retain(|_, d| *d >= 2);
     let mut out = rustc_hash::FxHashMap::default();
     for (i, (base, d)) in denoms.into_iter().enumerate() {
-        let s = ctx.var(&format!("__polyzero_root_{i}"));
+        let s = ctx.var(&format!("__polyzero_root_{}", root_base + i));
         out.insert(base, (d, s));
     }
     out
@@ -653,17 +681,19 @@ fn atomize_non_poly(
     atoms: &mut rustc_hash::FxHashMap<ExprId, ExprId>,
     expfold: Option<(ExprId, ExprId)>,
     powfold: &rustc_hash::FxHashMap<ExprId, (u32, ExprId)>,
+    atom_base: usize,
 ) -> Option<ExprId> {
     use cas_ast::Constant;
     fn atom_for(
         ctx: &mut Context,
         atoms: &mut rustc_hash::FxHashMap<ExprId, ExprId>,
         key: ExprId,
+        atom_base: usize,
     ) -> ExprId {
         if let Some(v) = atoms.get(&key) {
             return *v;
         }
-        let name = format!("__polyzero_atom_{}", atoms.len());
+        let name = format!("__polyzero_atom_{}", atom_base + atoms.len());
         let v = ctx.var(&name);
         atoms.insert(key, v);
         v
@@ -678,14 +708,14 @@ fn atomize_non_poly(
         cas_ast::Expr::Number(_) | cas_ast::Expr::Variable(_) => Some(expr),
         cas_ast::Expr::Constant(c) => match c {
             Constant::Infinity | Constant::Undefined => None,
-            _ => Some(atom_for(ctx, atoms, expr)),
+            _ => Some(atom_for(ctx, atoms, expr, atom_base)),
         },
         cas_ast::Expr::Add(a, b)
         | cas_ast::Expr::Sub(a, b)
         | cas_ast::Expr::Mul(a, b)
         | cas_ast::Expr::Div(a, b) => {
-            let na = atomize_non_poly(ctx, a, atoms, expfold, powfold)?;
-            let nb = atomize_non_poly(ctx, b, atoms, expfold, powfold)?;
+            let na = atomize_non_poly(ctx, a, atoms, expfold, powfold, atom_base)?;
+            let nb = atomize_non_poly(ctx, b, atoms, expfold, powfold, atom_base)?;
             if na == a && nb == b {
                 return Some(expr);
             }
@@ -698,7 +728,7 @@ fn atomize_non_poly(
             Some(ctx.add(rebuilt))
         }
         cas_ast::Expr::Neg(inner) => {
-            let ni = atomize_non_poly(ctx, inner, atoms, expfold, powfold)?;
+            let ni = atomize_non_poly(ctx, inner, atoms, expfold, powfold, atom_base)?;
             if ni == inner {
                 return Some(expr);
             }
@@ -747,7 +777,9 @@ fn atomize_non_poly(
                                 cas_ast::Expr::Div(pa, pb)
                             };
                             let rebuilt_id = ctx.add(rebuilt);
-                            return atomize_non_poly(ctx, rebuilt_id, atoms, expfold, powfold);
+                            return atomize_non_poly(
+                                ctx, rebuilt_id, atoms, expfold, powfold, atom_base,
+                            );
                         }
                     }
                 }
@@ -816,7 +848,7 @@ fn atomize_non_poly(
                                 let half = num_rational::BigRational::new(1.into(), 2.into());
                                 let half_node = ctx.add(cas_ast::Expr::Number(half));
                                 let key = ctx.add(cas_ast::Expr::Pow(m_node, half_node));
-                                let atom = atom_for(ctx, atoms, key);
+                                let atom = atom_for(ctx, atoms, key, atom_base);
                                 let coef_node = ctx.add(cas_ast::Expr::Number(coef));
                                 return Some(ctx.add(cas_ast::Expr::Mul(coef_node, atom)));
                             }
@@ -843,7 +875,7 @@ fn atomize_non_poly(
                             let c_node = ctx.add(cas_ast::Expr::Number(c.clone()));
                             let invq_node = ctx.add(cas_ast::Expr::Number(inv_q));
                             let key = ctx.add(cas_ast::Expr::Pow(c_node, invq_node));
-                            let s = atom_for(ctx, atoms, key);
+                            let s = atom_for(ctx, atoms, key, atom_base);
                             let mut cw = num_rational::BigRational::from_integer(1.into());
                             if w >= 0 {
                                 for _ in 0..w {
@@ -871,13 +903,13 @@ fn atomize_non_poly(
             // is a single opaque atom.
             let is_int_exp = exp_number(ctx, exp).is_some_and(|n| n.is_integer());
             if is_int_exp {
-                let nb = atomize_non_poly(ctx, base, atoms, expfold, powfold)?;
+                let nb = atomize_non_poly(ctx, base, atoms, expfold, powfold, atom_base)?;
                 if nb == base {
                     return Some(expr);
                 }
                 return Some(ctx.add(cas_ast::Expr::Pow(nb, exp)));
             }
-            Some(atom_for(ctx, atoms, expr))
+            Some(atom_for(ctx, atoms, expr, atom_base))
         }
         cas_ast::Expr::Function(f, args) => {
             // Denesting: sqrt(a + b·√n) with rational a,b,n denests exactly
@@ -915,7 +947,7 @@ fn atomize_non_poly(
                                             ctx.add(cas_ast::Expr::Sub(s1, s2))
                                         };
                                         return atomize_non_poly(
-                                            ctx, comb, atoms, expfold, powfold,
+                                            ctx, comb, atoms, expfold, powfold, atom_base,
                                         );
                                     }
                                 }
@@ -934,7 +966,7 @@ fn atomize_non_poly(
                         let c_node = ctx.add(cas_ast::Expr::Number(c));
                         let half_node = ctx.add(cas_ast::Expr::Number(half));
                         let key = ctx.add(cas_ast::Expr::Pow(c_node, half_node));
-                        return Some(atom_for(ctx, atoms, key));
+                        return Some(atom_for(ctx, atoms, key, atom_base));
                     }
                 }
             }
@@ -953,7 +985,7 @@ fn atomize_non_poly(
             let mut nargs = Vec::with_capacity(args.len());
             let mut changed = false;
             for a in &args {
-                let na = atomize_non_poly(ctx, *a, atoms, expfold, powfold)?;
+                let na = atomize_non_poly(ctx, *a, atoms, expfold, powfold, atom_base)?;
                 changed |= na != *a;
                 nargs.push(na);
             }
@@ -1023,7 +1055,7 @@ fn atomize_non_poly(
                                 num_rational::BigRational::from_integer(prime),
                             ));
                             let ln_p = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![p_node]);
-                            let atom = atom_for(ctx, atoms, ln_p);
+                            let atom = atom_for(ctx, atoms, ln_p, atom_base);
                             let coef = ctx.num(e);
                             let term = ctx.add(cas_ast::Expr::Mul(coef, atom));
                             acc = Some(match acc {
@@ -1084,19 +1116,19 @@ fn atomize_non_poly(
             };
             if let Some((num_b, den_b)) = ratio {
                 let den_node = ctx.call_builtin(den_b, nargs.clone());
-                let den_atom = atom_for(ctx, atoms, den_node);
+                let den_atom = atom_for(ctx, atoms, den_node, atom_base);
                 let num_atom = match num_b {
                     Some(nb) => {
                         let num_node = ctx.call_builtin(nb, nargs);
-                        atom_for(ctx, atoms, num_node)
+                        atom_for(ctx, atoms, num_node, atom_base)
                     }
                     None => ctx.num(1),
                 };
                 return Some(ctx.add(cas_ast::Expr::Div(num_atom, den_atom)));
             }
-            Some(atom_for(ctx, atoms, key))
+            Some(atom_for(ctx, atoms, key, atom_base))
         }
-        cas_ast::Expr::Hold(_) => Some(atom_for(ctx, atoms, expr)),
+        cas_ast::Expr::Hold(_) => Some(atom_for(ctx, atoms, expr, atom_base)),
         // Matrices / session refs: never atomize, never confirm.
         _ => None,
     }
@@ -1241,5 +1273,33 @@ mod tests {
         let e = parse("x + 1", &mut ctx).expect("e");
         let f = parse("x", &mut ctx).expect("f");
         assert!(!poly_negatively_proportional(&ctx, e, f));
+    }
+
+    #[test]
+    fn opaque_zero_gate_survives_adversarial_internal_names() {
+        // Clase L15: los átomos sintéticos (__polyzero_*) no comprobaban
+        // colisión con variables ya presentes. Un árbol que CONTIENE esos
+        // nombres fusionaba átomo y variable y el gate declaraba cero
+        // diferencias que no lo son.
+        let mut ctx = Context::new();
+        let e1 = cas_parser::parse("sin(x) - __polyzero_atom_0", &mut ctx).expect("e1");
+        assert!(
+            !poly_is_zero_opaque(&mut ctx, e1),
+            "sin(x) - __polyzero_atom_0 NO es identicamente cero"
+        );
+        let e2 = cas_parser::parse("e^x - __polyzero_expatom", &mut ctx).expect("e2");
+        assert!(
+            !poly_is_zero_opaque(&mut ctx, e2),
+            "e^x - __polyzero_expatom NO es identicamente cero"
+        );
+        let e3 = cas_parser::parse("x^(1/2) - __polyzero_root_0", &mut ctx).expect("e3");
+        assert!(
+            !poly_is_zero_opaque(&mut ctx, e3),
+            "sqrt(x) - __polyzero_root_0 NO es identicamente cero"
+        );
+        // y los ceros de verdad siguen cerrando aunque el nombre este presente
+        let e4 = cas_parser::parse("(sin(x)^2 + cos(x)^2 - 1) * __polyzero_atom_0", &mut ctx)
+            .expect("e4");
+        assert!(poly_is_zero_opaque(&mut ctx, e4), "pitagorica escalada = 0");
     }
 }
