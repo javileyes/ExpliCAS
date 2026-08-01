@@ -14,7 +14,9 @@
 //! `expr_contains_sqrt_or_half_power` (D1c-3/4, detectores y extractores
 //! estructurales neutros — cuatro ya vivían aquí sin declarar);
 //! `apply_sign_to_expr` y `expr_matches_negation_for_cancellation`
-//! (D1c-5/6, aplicador de signo y matcher de negación — ya vivían aquí). NO
+//! (D1c-5/6, aplicador de signo y matcher de negación — ya vivían aquí);
+//! `build_signed_add_expr` (D1c-7/8, constructor hermano de
+//! `build_signed_sum_expr`). NO
 //! promovidos a propósito: `extract_sin_or_cos_linear_term_for_phase_shift`,
 //! `maybe_trig_square_zero_candidate` y
 //! `split_linear_angle_term_for_phase_shift_cancellation` son de FAMILIA
@@ -3863,5 +3865,24 @@ pub(super) fn extract_sqrt_argument(
             Some(args[0])
         }
         _ => None,
+    }
+}
+
+pub(super) fn build_signed_add_expr(
+    ctx: &mut cas_ast::Context,
+    terms: &[(cas_ast::ExprId, Sign)],
+) -> cas_ast::ExprId {
+    let signed_terms: Vec<_> = terms
+        .iter()
+        .map(|(term, sign)| match sign {
+            Sign::Pos => *term,
+            Sign::Neg => ctx.add(Expr::Neg(*term)),
+        })
+        .collect();
+
+    match signed_terms.len() {
+        0 => ctx.num(0),
+        1 => signed_terms[0],
+        _ => build_balanced_add(ctx, &signed_terms),
     }
 }

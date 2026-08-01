@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 812 (newest first)
+Active entries: 813 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -122,6 +122,7 @@ Active entries: 812 (newest first)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general}.rs` + inventario D1 — segundo peldaño por... | ARQUITECTURA (D1c-2: segundo disparador migrado — el umbral descubre la API, la semántica la cierra)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,powers}.rs` + inventario D1 — peldaños #3 ... | ARQUITECTURA (D1c-3/4: la promoción neutra irradia; la familia trig se declara semilla, no API)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,hyperbolic}.rs` + inventario D1 — peldaños #5 (Hyp... | ARQUITECTURA (D1c-5/6: la familia hyperbolic se declara submódulo del núcleo — ciclo 100% declarativo)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,general,logarithms}.rs` + inventario D1 — peldaños... | ARQUITECTURA (D1c-7/8: la familia log se declara — 8 de 12 disparadores migrados, solo queda el bloque angular)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23472,3 +23473,12 @@ Active entries: 812 (newest first)
 - retained learning:
   - **Cuando la topología física ya es correcta, el peldaño es un CONTRATO, no una mudanza**: declarar la frontera (cabecera con lista auditable) convierte «arrastre» en «familia declarada» sin tocar una línea de código — y la métrica debe decir la verdad («sin decidir» ≠ «desacoplado»: 10 helpers cambiaron de columna, no de naturaleza).
   - **La sonda de vida que NO cierra también es entregable**: la grafía cociente del Pythagorean quedó anotada como frontera de capacidad con repro — el peldaño de arquitectura deja semillas de capacidad sin abrirlas (disciplina de alcance).
+
+## 2026-08-02 - ARQUITECTURA (D1c-7/8: la familia log se declara — 8 de 12 disparadores migrados, solo queda el bloque angular)
+
+- area: `rules/arithmetic/{support,general,logarithms}.rs` + inventario D1 — peldaños #7/#8 (los dos logs). Mismo guion que hyperbolic con un move mínimo: los 13 helpers de familia log ya vivían TODOS en `logarithms.rs` (declarado submódulo de familia con la lista en cabecera) y `build_signed_add_expr` — constructor hermano del ya-API `build_signed_sum_expr` — se mueve de general.rs a support.rs y se promueve (API: **30**). Ambos disparadores log quedan a 0. Global sin-decidir 127 → **113**. Quedan SOLO los 4 trig (10, 12, 16, 88) + residuales angulares †, todos convergiendo en el submódulo de familia angular (phase_shift + trig + trig_angles) que PhaseShift ancla — el peldaño final y el más gordo.
+- status: `retained`. Move certificado (713 fns dir-completo, 0 faltan/sobran/cambiados); sondas log cierran las 4 (`ln(|x·y|)−ln|x|−ln|y| → 0`, `ln(x²)−2·ln|x| → 0`, producto y cociente directos → 0 — la familia cubre las grafías con y sin |·|); suite/clippy/cadena verdes reparto exacto; huella patrón conocido.
+- decision: retener. El bloque angular final merece su propio análisis de entrada (88 helpers de PhaseShift + 3 residuales †): probablemente varios sub-peldaños con phase_shift.rs/trig.rs/trig_angles.rs como familia declarada multi-fichero, y quizá cirugía real (no solo declaración) si la intersección trig-entre-sí lo pide. La re-evaluación D2-vs-D4 (task #5) puede intercalarse ANTES si el análisis angular resulta L en vez de M.
+- retained learning:
+  - **Los constructores hermanos delatan API por SIMETRÍA**: `build_signed_add_expr` era arrastre mientras su gemelo `build_signed_sum_expr` era API 13/25 — un par build_X/build_Y con la misma forma y distinto alcance estadístico es UNA pieza de API partida por el muestreo, no dos decisiones.
+  - **Las familias se declaran en orden de nitidez, no de tamaño**: hyperbolic y log salieron casi gratis porque su maquinaria ya estaba coalescida en su fichero; el bloque angular quedó al final precisamente porque su maquinaria está REPARTIDA (phase_shift + trig + trig_angles) — la señal de que ahí la declaración sola no bastará.

@@ -91,25 +91,6 @@ pub(crate) fn enter_default_simplify_probe_budget_scope(
     }
 }
 
-pub(super) fn build_signed_add_expr(
-    ctx: &mut cas_ast::Context,
-    terms: &[(cas_ast::ExprId, Sign)],
-) -> cas_ast::ExprId {
-    let signed_terms: Vec<_> = terms
-        .iter()
-        .map(|(term, sign)| match sign {
-            Sign::Pos => *term,
-            Sign::Neg => ctx.add(Expr::Neg(*term)),
-        })
-        .collect();
-
-    match signed_terms.len() {
-        0 => ctx.num(0),
-        1 => signed_terms[0],
-        _ => build_balanced_add(ctx, &signed_terms),
-    }
-}
-
 pub(super) fn rebuild_subtractive_expr(
     ctx: &mut cas_ast::Context,
     lhs: cas_ast::ExprId,

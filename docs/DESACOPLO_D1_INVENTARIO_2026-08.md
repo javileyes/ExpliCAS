@@ -49,8 +49,8 @@ cada migración (subir a API, bajar a exclusivo, o quedar interno del núcleo).
 | 4 | ExpandOddHalfPower | 14 | 2 | 8 | ~~4~~ **0** ✔ D1c-4 |
 | 5 | ExpandHyperbolicPythagoreanFactor | 33 | 15 | 12 | ~~6~~ **0** ✔ D1c-5 |
 | 6 | ExpandHyperbolicAngleSumDiff | 24 | 15 | 1 | ~~8~~ **1**† D1c-6 |
-| 7 | ExpandLogAbsMulDiv | 29 | 17 | 0 | **12** |
-| 8 | ExpandLogProductPower | 30 | 17 | 0 | **13** |
+| 7 | ExpandLogAbsMulDiv | 29 | 17 | 0 | ~~12~~ **0** ✔ D1c-7 |
+| 8 | ExpandLogProductPower | 30 | 17 | 0 | ~~13~~ **0** ✔ D1c-8 |
 | 9 | ExpandTrigSquareIdentity | 28 | 15 | 0 | **13** |
 | 10 | ExpandTrigSumToProduct | 34 | 18 | 0 | **16** |
 | 11 | CollapseExactZeroTrigDoubleAngleCosVariant | 39 | 18 | 0 | **21** |
@@ -107,7 +107,12 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   familia angular de `phase_shift.rs` — cae con los peldaños trig). Global
   sin-decidir 139 → **127**, con irradiación de nuevo (PhaseShift 90→88,
   DoubleAngleCos 18→16, SumToProduct 14→12, TrigSquare 11→10).
-- Pendiente D1c: los 6 trig/log restantes (9, 10, 11, 12, 16, 88) + los
-  residuales angulares †. El perfil de logs dirá si nace `logarithms.rs`
-  como familia declarada; los trig convergen en el submódulo angular
-  (phase_shift + trig + trig_angles) que PhaseShift (88) ancla.
+- **D1c-7/8 (2026-08-02)**: `logarithms.rs` declarado submódulo de familia
+  (13 helpers listados en cabecera — todos ya vivían allí) y
+  `build_signed_add_expr` promovido (API: **30**). Ambos logs a 0. Sondas:
+  `ln(|x·y|)−ln|x|−ln|y| → 0`, `ln(x²)−2·ln|x| → 0`, producto y cociente
+  directos → 0. Global sin-decidir 127 → **113**.
+- Pendiente D1c: SOLO los 4 trig (TrigSquare 10, SumToProduct 12,
+  DoubleAngleCos 16, PhaseShift 88) + los residuales angulares † — todos
+  convergen en el submódulo de familia angular (phase_shift + trig +
+  trig_angles). Es el peldaño final y el más gordo: PhaseShift lo ancla.

@@ -1,6 +1,23 @@
-//! `arithmetic`: familia `logarithms`.
+//! `arithmetic`: familia `logarithms` — declarada en D1c-7/8 (2026-08-02)
+//! **submódulo de familia del núcleo de cancelación**.
 //!
-//! Ver la cabecera de `arithmetic.rs` para el contexto.
+//! Además de sus reglas, aloja la maquinaria log COMPARTIDA entre los dos
+//! disparadores de la familia y los mega-entries del motor (inventario
+//! `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`):
+//! `collect_log_arg_terms_for_cancellation`,
+//! `normalize_log_argument_for_cancellation`,
+//! `try_extract_scaled_log_term_parts`, `extract_scaled_log_abs_mul_div`,
+//! `log_cancellation_component_matches`,
+//! `log_terms_match_up_to_abs_subject_for_cancellation`,
+//! `try_normalize_log_term_for_fast_match`,
+//! `log_arg_supports_product_power_cancellation_expansion`,
+//! `maybe_log_{abs_mul_div,product_power}_zero_candidate`,
+//! `try_match_log_abs_mul_div_cancellation_side`,
+//! `try_match_log_product_power_cancellation{_components,}_side`.
+//! Frontera declarada como en `hyperbolic.rs`: un disparador log consume API
+//! neutra (`support.rs`) + esta familia + sus exclusivos, y nada más.
+//!
+//! Ver la cabecera de `arithmetic.rs` para el contexto del troceo.
 
 use super::*;
 
