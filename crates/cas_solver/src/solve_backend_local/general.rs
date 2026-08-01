@@ -1901,15 +1901,35 @@ fn solve_local_core_inner(
                 } else {
                     r
                 };
-                let g = if coeff == num_rational::BigRational::from_integer(1.into()) {
-                    g
-                } else {
-                    let inv = simplifier.context.add(Expr::Number(coeff.recip()));
-                    simplifier.context.add(Expr::Mul(inv, g))
+                let g = match &coeff {
+                    RadicalCoeff::Rational(c) if num_traits::One::is_one(c) => g,
+                    RadicalCoeff::Rational(c) => {
+                        let inv = simplifier.context.add(Expr::Number(c.recip()));
+                        simplifier.context.add(Expr::Mul(inv, g))
+                    }
+                    // `c_sym·√f = −rest` ⟹ `√f = g/c_sym`: the range condition
+                    // `g/c_sym ≥ 0` holds WHATEVER the sign of `c_sym` is (a
+                    // genuine root has `g/c_sym = √f ≥ 0`), so the division is
+                    // usable here even though the coefficient's sign is
+                    // unknown — `y·√x = 2` carries `2/y ≥ 0`, which excludes
+                    // the spurious `x = 4/y²` for every `y < 0`.
+                    RadicalCoeff::Symbolic(c_sym) => simplifier.context.add(Expr::Div(g, *c_sym)),
                 };
                 let (g, _) = simplifier.simplify(g);
+                // Noise gate for the symbolic branch: a coefficient like `a²`
+                // makes `g/c` provably nonnegative (`1/a² ≥ 0`) — a condition
+                // that can never exclude anything, so recording it is noise.
+                let provably_vacuous = matches!(coeff, RadicalCoeff::Symbolic(_))
+                    && cas_math::prove_sign::prove_nonnegative_depth_with(
+                        &simplifier.context,
+                        g,
+                        6,
+                        true,
+                        |_, _, _| cas_math::tri_proof::TriProof::Unknown,
+                    )
+                    .is_proven();
                 let cond = ImplicitCondition::NonNegative(g);
-                if !conds.contains(&cond) {
+                if !provably_vacuous && !conds.contains(&cond) {
                     // F10 m3 (frontier-audit 2026-07-14): a PARAMETER-only range
                     // condition (`√x + 3 = y` ⟹ `y − 3 ≥ 0`) can never act as a
                     // root filter — substituting the root leaves it unchanged —

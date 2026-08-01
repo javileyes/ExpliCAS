@@ -474,7 +474,7 @@ pub(super) fn try_solve_radical_inequality(
     // the parametric ones were never solved by anyone. Decline keeps today's
     // behavior byte-identical; the equation-side range-condition publisher is
     // the coefficient-aware consumer.
-    if !num_traits::One::is_one(&coeff) {
+    if !coeff.is_unit() {
         return None;
     }
     // The radicand and the remainder must be sqrt-free (no nested / second radical

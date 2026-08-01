@@ -76,19 +76,38 @@ enum MonotonicFn {
     Log,
 }
 
-/// Split `d` into a single square-root term `±c·√f` (radicand containing `var`,
-/// `c` a POSITIVE rational magnitude — the coefficient's sign is folded into the
-/// term sign) and the remaining signed terms. Returns `(sign, c, f, rest_terms)`
-/// or None when there is not exactly one such radical.
+/// Split `d` into a single square-root term `±c·√f` (radicand containing `var`)
+/// and the remaining signed terms. Returns `(sign, c, f, rest_terms)` or None
+/// when there is not exactly one such radical.
 /// A signed additive term `(sign, expr)` in a decomposition.
 type SignedTerm = (i8, ExprId);
-/// `(radical_sign, coeff_magnitude, radicand, remaining_signed_terms)` from
-/// [`collect_radical_split`]. The coefficient travels as DATA so each consumer
+
+/// The coefficient of the isolated radical term, as DATA so each consumer
 /// decides its own scope: the range-condition publisher divides by it; the
-/// inequality case-split declines on `≠ 1` (its coefficiented numeric cases
-/// already normalize upstream — `2√x < 4` → `[0, 4)` — and the parametric ones
-/// were never its own).
-type RadicalSplit = (i8, num_rational::BigRational, ExprId, Vec<SignedTerm>);
+/// inequality case-split declines on anything but `Rational(1)` (its
+/// coefficiented numeric cases already normalize upstream — `2√x < 4` →
+/// `[0, 4)` — and the parametric ones were never its own).
+#[derive(Clone, Debug)]
+enum RadicalCoeff {
+    /// POSITIVE rational magnitude — the sign is folded into the term sign, so
+    /// consumers keep their `s >= 0` direction logic untouched.
+    Rational(num_rational::BigRational),
+    /// A sqrt-free cofactor with no occurrence of the solve variable, sign
+    /// UNKNOWN (`y·√x`): dividing by it is only usable where direction does
+    /// not matter (the `√f = g` range condition `g ≥ 0`), never in an
+    /// inequality without a sign split.
+    Symbolic(ExprId),
+}
+
+impl RadicalCoeff {
+    fn is_unit(&self) -> bool {
+        matches!(self, RadicalCoeff::Rational(c) if num_traits::One::is_one(c))
+    }
+}
+
+/// `(radical_sign, coeff, radicand, remaining_signed_terms)` from
+/// [`collect_radical_split`].
+type RadicalSplit = (i8, RadicalCoeff, ExprId, Vec<SignedTerm>);
 
 /// Local backend facade selected as the active backend.
 #[derive(Debug, Clone, Copy, Default)]

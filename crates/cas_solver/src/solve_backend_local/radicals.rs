@@ -422,21 +422,29 @@ pub(super) fn expr_contains_sqrt(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// `e` as `c·√f` with rational `c ≠ 0` and `f` containing `var`: a bare `√f`
-/// (`c = 1`), a binary `Mul(c, √f)` in either order (the post-simplify normal
-/// form of a rational coefficient — `√x/2` arrives as `Mul(1/2, √x)`), or a
-/// defensive `Div(√f, c)`. A non-rational cofactor (`y·√x`, `√2·√x`) is NOT a
-/// scaled radical: the whole term stays in `rest`, where the sqrt-freeness
-/// gates of every consumer decline it exactly as before.
-fn as_scaled_sqrt_with_var(
-    ctx: &Context,
-    e: ExprId,
-    var: &str,
-) -> Option<(num_rational::BigRational, ExprId)> {
+/// A signed capture from [`as_scaled_sqrt_with_var`]: rational coefficients
+/// arrive with their sign as a multiplier (folded upstream into the term
+/// sign); symbolic ones keep their literal form (sign unknown).
+enum ScaledSqrt {
+    Rational(num_rational::BigRational, ExprId),
+    Symbolic(ExprId, ExprId),
+}
+
+/// `e` as `c·√f` with `f` containing `var`: a bare `√f` (`c = 1`), a binary
+/// `Mul(c, √f)` in either order (the post-simplify normal form of a rational
+/// coefficient — `√x/2` arrives as `Mul(1/2, √x)`), a defensive `Div(√f, c)`,
+/// or a SYMBOLIC cofactor (`y·√x`, `a²·√x`) that is sqrt-free and free of
+/// `var`. A cofactor containing `var` or another radical is NOT a scaled
+/// radical: the whole term stays in `rest`, where the sqrt-freeness gates of
+/// every consumer decline it exactly as before.
+fn as_scaled_sqrt_with_var(ctx: &Context, e: ExprId, var: &str) -> Option<ScaledSqrt> {
     use num_traits::Zero;
     if let Some(f) = as_sqrt_radicand(ctx, e) {
         if expr_contains_named_var(ctx, f, var) {
-            return Some((num_rational::BigRational::from_integer(1.into()), f));
+            return Some(ScaledSqrt::Rational(
+                num_rational::BigRational::from_integer(1.into()),
+                f,
+            ));
         }
     }
     match ctx.get(e).clone() {
@@ -446,8 +454,14 @@ fn as_scaled_sqrt_with_var(
                     if expr_contains_named_var(ctx, f, var) {
                         if let Some(c) = cas_math::numeric_eval::as_rational_const(ctx, coeff) {
                             if !c.is_zero() {
-                                return Some((c, f));
+                                return Some(ScaledSqrt::Rational(c, f));
                             }
+                            return None;
+                        }
+                        if !expr_contains_named_var(ctx, coeff, var)
+                            && !expr_contains_sqrt(ctx, coeff)
+                        {
+                            return Some(ScaledSqrt::Symbolic(coeff, f));
                         }
                     }
                 }
@@ -463,7 +477,7 @@ fn as_scaled_sqrt_with_var(
             if c.is_zero() {
                 return None;
             }
-            Some((c.recip(), f))
+            Some(ScaledSqrt::Rational(c.recip(), f))
         }
         _ => None,
     }
@@ -499,7 +513,7 @@ pub(super) fn ctx_top_positive_rational_factor(ctx: &Context, e: ExprId) -> Opti
 }
 
 pub(super) fn collect_radical_split(ctx: &Context, d: ExprId, var: &str) -> Option<RadicalSplit> {
-    type Rad = (i8, num_rational::BigRational, ExprId);
+    type Rad = (i8, RadicalCoeff, ExprId);
     fn walk(
         ctx: &Context,
         e: ExprId,
@@ -522,20 +536,30 @@ pub(super) fn collect_radical_split(ctx: &Context, d: ExprId, var: &str) -> Opti
                 walk(ctx, inner, -sign, var, rad, rest)
             }
             _ => {
-                if let Some((c, radicand)) = as_scaled_sqrt_with_var(ctx, e, var) {
+                if let Some(scaled) = as_scaled_sqrt_with_var(ctx, e, var) {
                     if rad.is_some() {
                         return false; // a second radical
                     }
-                    // Fold the coefficient's sign into the term sign so the
-                    // magnitude is always positive — consumers then keep their
-                    // `s >= 0` direction logic untouched.
-                    use num_traits::Signed;
-                    let (s, mag) = if c.is_negative() {
-                        (-sign, -c)
-                    } else {
-                        (sign, c)
-                    };
-                    *rad = Some((s, mag, radicand));
+                    *rad = Some(match scaled {
+                        // Fold the rational coefficient's sign into the term
+                        // sign so the magnitude is always positive — consumers
+                        // keep their `s >= 0` direction logic untouched. A
+                        // SYMBOLIC coefficient's sign is unknown: it travels
+                        // literally, and only sign-insensitive consumers (the
+                        // `√f = g ⟹ g ≥ 0` range condition) may divide by it.
+                        ScaledSqrt::Rational(c, radicand) => {
+                            use num_traits::Signed;
+                            let (s, mag) = if c.is_negative() {
+                                (-sign, -c)
+                            } else {
+                                (sign, c)
+                            };
+                            (s, RadicalCoeff::Rational(mag), radicand)
+                        }
+                        ScaledSqrt::Symbolic(coeff, radicand) => {
+                            (sign, RadicalCoeff::Symbolic(coeff), radicand)
+                        }
+                    });
                     return true;
                 }
                 rest.push((sign, e));
@@ -1475,20 +1499,29 @@ mod collect_radical_split_tests {
         num_rational::BigRational::new(n.into(), d.into())
     }
 
+    #[track_caller]
+    fn assert_rational(s: i8, c: &RadicalCoeff, want_s: i8, want_c: num_rational::BigRational) {
+        assert_eq!(s, want_s);
+        match c {
+            RadicalCoeff::Rational(m) => assert_eq!(m, &want_c),
+            RadicalCoeff::Symbolic(_) => panic!("expected a rational coefficient"),
+        }
+    }
+
     #[test]
     fn bare_radical_keeps_unit_coefficient() {
         let (s, c, _f, rest) = split_of("sqrt(x) + 3 - y").expect("split");
-        assert_eq!((s, c), (1, rat(1, 1)));
+        assert_rational(s, &c, 1, rat(1, 1));
         assert_eq!(rest.len(), 2);
     }
 
     #[test]
     fn scaled_radical_carries_the_magnitude_with_sign_folded() {
         let (s, c, _f, _) = split_of("2*sqrt(x) + 1 - y").expect("split");
-        assert_eq!((s, c), (1, rat(2, 1)));
+        assert_rational(s, &c, 1, rat(2, 1));
         // A NEGATIVE coefficient folds into the sign; the magnitude stays positive.
         let (s, c, _f, _) = split_of("-2*sqrt(x) + 5 - y").expect("split");
-        assert_eq!((s, c), (-1, rat(2, 1)));
+        assert_rational(s, &c, -1, rat(2, 1));
     }
 
     #[test]
@@ -1509,7 +1542,7 @@ mod collect_radical_split_tests {
             .expect("factored normal form carries a positive rational factor");
         let (s, c, _f, rest) =
             collect_radical_split(&simplifier.context, inner, "x").expect("split after peel");
-        assert_eq!((s, c), (1, rat(1, 1)));
+        assert_rational(s, &c, 1, rat(1, 1));
         assert_eq!(rest.len(), 1);
         // A NEGATIVE top factor must NOT peel (an inequality would need an op flip).
         let neg = parse("-(sqrt(x) - 2*y)", &mut simplifier.context).expect("parse");
@@ -1523,11 +1556,22 @@ mod collect_radical_split_tests {
     }
 
     #[test]
-    fn symbolic_coefficient_is_not_a_scaled_radical() {
-        // `y·√x` must NOT be captured (c is not a rational constant): the whole
-        // term stays in `rest`, so no radical remains and the split declines —
-        // downstream consumers keep today's behavior for the symbolic family.
-        assert!(split_of("y*sqrt(x) - 2").is_none());
+    fn symbolic_coefficient_is_captured_as_data() {
+        // `y·√x − 2`: the sqrt-free, var-free cofactor `y` travels literally
+        // (sign unknown); `rest` stays sqrt-free so the publisher can build
+        // the sign-insensitive range condition `g/y ≥ 0`.
+        let (s, c, _f, rest) = split_of("y*sqrt(x) - 2").expect("split");
+        assert_eq!(s, 1);
+        assert!(matches!(c, RadicalCoeff::Symbolic(_)));
+        assert_eq!(rest.len(), 1);
+    }
+
+    #[test]
+    fn a_var_containing_cofactor_still_declines() {
+        // `x·√x` is NOT a coefficient (it contains the solve variable): the
+        // whole term stays in `rest`, and with no radical left the split
+        // declines — the sqrt-freeness gates downstream keep declining too.
+        assert!(split_of("x*sqrt(x) - 2").is_none());
     }
 
     #[test]

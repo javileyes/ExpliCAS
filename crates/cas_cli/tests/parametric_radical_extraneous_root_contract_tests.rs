@@ -214,3 +214,66 @@ fn coefficient_spellings_out_of_scope_stay_untouched() {
     assert_eq!(solve("2*sqrt(x) < 4"), "[0, 4)");
     assert_eq!(solve("sqrt(x+1) <= x"), "[phi, infinity)");
 }
+
+#[test]
+fn symbolic_coefficient_radical_publishes_the_sign_coupling_condition() {
+    // Cycle-2 sibling of the rational-coefficient fix: `c·√f = g` with a
+    // SYMBOLIC sqrt-free, var-free cofactor requires `g/c ≥ 0` no matter the
+    // sign of `c` (a genuine root has `g/c = √f ≥ 0`). Without it,
+    // `y·√x = 2 → {4/y²}` was spurious for every `y < 0` (at `y = −1`,
+    // `x = 4` gives `−1·2 = −2 ≠ 2`). The display normalizer sharpens the
+    // quotient to the sign bound where it can.
+    let (res, conds) = solve_result_and_conditions("y*sqrt(x) = 2");
+    assert_eq!(res, "{ 4 / y^2 }");
+    assert!(conds.contains(&"y".to_string()), "conds: {conds:?}");
+
+    // Negative RHS flips the satisfiable side: `−2/y ≥ 0` ⟺ `y < 0`.
+    let (res, conds) = solve_result_and_conditions("y*sqrt(x) = -2");
+    assert_eq!(res, "{ 4 / y^2 }");
+    assert!(
+        conds.iter().any(|c| c.contains("-2 / y")),
+        "conds: {conds:?}"
+    );
+
+    // Fully general: `a·√x = b` carries `b/a ≥ 0`.
+    let (res, conds) = solve_result_and_conditions("a*sqrt(x) = b");
+    assert_eq!(res, "{ b^2 / a^2 }");
+    assert!(
+        conds.iter().any(|c| c.contains("b / a")),
+        "conds: {conds:?}"
+    );
+}
+
+#[test]
+fn provably_vacuous_symbolic_condition_is_not_published() {
+    // `a²·√x = 1` ⟹ `√x = 1/a²`, and `1/a² ≥ 0` is provably always true —
+    // publishing it would be noise the sign prover gates out.
+    let (res, conds) = solve_result_and_conditions("a^2*sqrt(x) = 1");
+    assert_eq!(res, "{ 1 / a^4 }");
+    assert!(
+        !conds.iter().any(|c| c.contains("1 / a")),
+        "vacuous condition published: {conds:?}"
+    );
+}
+
+#[test]
+fn symbolic_coefficient_neighbors_stay_untouched() {
+    // Parameter cancels: the factored `y·(√(x+1) − 1)` is not a scaled-radical
+    // TERM (the cofactor multiplies a sum), so no condition is invented.
+    let (res, conds) = solve_result_and_conditions("y*sqrt(x+1) = y");
+    assert_eq!(res, "{ 0 }");
+    assert!(
+        !conds.iter().any(|c| c.contains('/')),
+        "no quotient condition may appear: {conds:?}"
+    );
+    // A cofactor CONTAINING the solve variable is not a coefficient.
+    let (res, _) = solve_result_and_conditions("y*sqrt(x) = x");
+    assert!(res.starts_with("solve("), "stays residual: {res}");
+    // The symbolic-coefficient INEQUALITY keeps declining (empty display is
+    // the pre-existing parametric-inequality presentation, unchanged).
+    let (_, conds) = solve_result_and_conditions("y*sqrt(x) < 2");
+    assert!(
+        !conds.iter().any(|c| c.contains("2 / y")),
+        "the inequality consumer must not divide by a symbolic sign: {conds:?}"
+    );
+}
