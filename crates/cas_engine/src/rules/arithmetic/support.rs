@@ -2,9 +2,13 @@
 //! de la **API del motor de cancelación**.
 //!
 //! Los 18 helpers alcanzados desde ≥12 de los 25 entries `define_rule!`
-//! (inventario `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`) viven aquí, en tres
-//! grupos: veredicto de equivalencia-para-cancelación (`exprs_match_for_*`,
-//! `exprs_equal_up_to_*`), candidato/colección (`collect_add_terms`,
+//! (inventario `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`) viven aquí — más
+//! `canonicalize_nested_integer_powers`, promovida en D1c-1 (2026-08-02): es
+//! el canonicalizador-para-comparar del grupo veredicto y era el único
+//! «arrastre» del disparador de cubos. Tres grupos: veredicto de
+//! equivalencia-para-cancelación (`exprs_match_for_*`,
+//! `exprs_equal_up_to_*`, `canonicalize_nested_integer_powers`),
+//! candidato/colección (`collect_add_terms`,
 //! `collect_signed_mul_factors`, `signed_term_expr`,
 //! `normalize_signed_add_term`, `strip_term_negation`,
 //! `term_has_matrix_product_factor`) y rewrite/entorno (`build_signed_sum_expr`,
@@ -3680,5 +3684,73 @@ pub(super) fn signed_term_expr(
     match sign {
         Sign::Pos => expr,
         Sign::Neg => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+pub(super) fn canonicalize_nested_integer_powers(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let rebuilt = match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Add(lhs, rhs))
+        }
+        Expr::Sub(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Sub(lhs, rhs))
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Mul(lhs, rhs))
+        }
+        Expr::Div(lhs, rhs) => {
+            let lhs = canonicalize_nested_integer_powers(ctx, lhs);
+            let rhs = canonicalize_nested_integer_powers(ctx, rhs);
+            ctx.add(Expr::Div(lhs, rhs))
+        }
+        Expr::Pow(base, exp) => {
+            let base = canonicalize_nested_integer_powers(ctx, base);
+            let exp = canonicalize_nested_integer_powers(ctx, exp);
+            let pow = ctx.add(Expr::Pow(base, exp));
+            cas_math::rational_canonicalization_support::try_rewrite_nested_pow_canonical_expr(
+                ctx, pow,
+            )
+            .map(|rewrite| rewrite.rewritten)
+            .unwrap_or(pow)
+        }
+        Expr::Neg(inner) => {
+            let inner = canonicalize_nested_integer_powers(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Function(name, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| canonicalize_nested_integer_powers(ctx, arg))
+                .collect();
+            ctx.add(Expr::Function(name, args))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|arg| canonicalize_nested_integer_powers(ctx, arg))
+                .collect();
+            ctx.add(Expr::Matrix { rows, cols, data })
+        }
+        Expr::Hold(inner) => {
+            let inner = canonicalize_nested_integer_powers(ctx, inner);
+            ctx.add(Expr::Hold(inner))
+        }
+        Expr::SessionRef(id) => ctx.add(Expr::SessionRef(id)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => expr,
+    };
+
+    if rebuilt == expr {
+        expr
+    } else {
+        rebuilt
     }
 }

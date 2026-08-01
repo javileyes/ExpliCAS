@@ -43,7 +43,7 @@ cada migración (subir a API, bajar a exclusivo, o quedar interno del núcleo).
 
 | # | disparador | cierre | ∩API | excl | arrastre |
 |---|---|---:|---:|---:|---:|
-| 1 | SubtractExpandedSumDiffCubesQuotient | 3 | 2 | 0 | **1** |
+| 1 | SubtractExpandedSumDiffCubesQuotient | 3 | 2 | 0 | ~~1~~ **0** ✔ D1c-1 |
 | 2 | CancelExactAdditivePairs | 18 | 15 | 1 | **2** |
 | 3 | ExpandTrigSineProductTripleAngle | 28 | 18 | 6 | **4** |
 | 4 | ExpandOddHalfPower | 14 | 2 | 8 | **4** |
@@ -64,9 +64,19 @@ peldaño, y `pct_aristas_intra_fichero` del directorio (baseline 36,4%,
 propósito: la mitad de su arrastre son builders `build_general_phase_shift_*`
 que probablemente pidan su propio submódulo del núcleo, no la API.
 
-## Qué sigue (D1b)
+## Estado de ejecución
 
-Formalizar la frontera del núcleo: los 18 de la API como superficie declarada
-del módulo `cancellation` (hoy `support.rs` + vecinos), los mega-entries como
-sus dueños, y los 148 de arrastre clasificados por peldaño en D1c. La
-cirugía empieza por el disparador #1 (arrastre 1) para pagar el molde barato.
+- **D1b (2026-08-02, `cfa6430ca`)**: los 18 de la API consolidados
+  físicamente en `support.rs` con frontera declarada en su cabecera.
+- **D1c-1 (2026-08-02)**: disparador #1 migrado — su único arrastre
+  (`canonicalize_nested_integer_powers`) PROMOVIDO a la API (19 helpers: es
+  el canonicalizador-para-comparar del grupo veredicto). Cierre de Cubes
+  ⊆ API; arrastre global 148 → 147.
+- **Matización del criterio operativo**: los `define_rule!` viven en el
+  CATÁLOGO del padre (diseño del troceo P2) y resuelven por su glob — para
+  ellos el invariante «solo importa la API» se verifica con el CIERRE medido
+  (`--per-entry`: arrastre 0), no con grep de imports. El grep aplicará a
+  disparadores con fichero propio si D1c los saca del catálogo.
+- Pendiente D1c: los 11 restantes por arrastre ascendente (2, 4, 4, 6, 8,
+  12, 13, 13, 16, 21, 92). Cada peldaño decide por helper: promover a API /
+  bajar a exclusivo / dejar interno del núcleo.

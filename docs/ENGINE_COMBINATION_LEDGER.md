@@ -114,10 +114,11 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 808 (newest first)
+Active entries: 809 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,powers}.rs` + inventario D1 — primer peldaño de la... | ARQUITECTURA (D1c-1: primer disparador migrado — el arrastre de cubos era API sin nombre)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23432,3 +23433,12 @@ Active entries: 808 (newest first)
 - retained learning:
   - **Un glob re-export en el padre convierte los moves intra-directorio en transparentes** — y a la vez es exactamente lo que D1c debe ELIMINAR por disparador (imports explícitos) para que «solo importa la API» sea un invariante verificable con grep, no una esperanza. El glob compra baratura de mudanza al precio de invisibilidad del acoplamiento: útil DURANTE la consolidación, deuda DESPUÉS.
   - **La herramienta de verificación se elige por la TOPOLOGÍA del move** (monolito→dir vs intra-dir): reutilizar el verificador cómodo con la referencia equivocada da un veredicto absurdo en vez de un fallo ruidoso — el «sobran 713» era la herramienta gritando que la pregunta estaba mal hecha.
+
+## 2026-08-02 - ARQUITECTURA (D1c-1: primer disparador migrado — el arrastre de cubos era API sin nombre)
+
+- area: `rules/arithmetic/{support,powers}.rs` + inventario D1 — primer peldaño de la migración de disparadores, elegido por arrastre mínimo (1). `SubtractExpandedSumDiffCubesQuotientRule` ya ERA «detecta y delega» (su plan vive en `algebra::fractions::try_plan_sum_diff_of_cubes_in_num`); su único arrastre, `canonicalize_nested_integer_powers`, es el canonicalizador-para-comparar del grupo veredicto — se PROMUEVE a la API (19 helpers) moviéndolo de `powers.rs` a `support.rs`. Cierre del disparador ⊆ API (arrastre 0); arrastre global 148 → 147. Matización de criterio anotada en el inventario: los `define_rule!` del CATÁLOGO del padre verifican su invariante por CIERRE medido (`--per-entry` → arrastre 0), no por grep de imports (resuelven por el glob del catálogo, diseño del troceo P2).
+- status: `retained`. Move certificado (713 fns dir-completo, 0 faltan/sobran/cambiados); sondas del disparador byte-idénticas pre/post (4 formas de cubos → 0, incluida la de coeficientes 27a³); workspace 12.816/0/372 EXACTO al baseline; clippy -D warnings limpio; cadena make verde; huella = metadata + los dos top-5 temporales ya caracterizados.
+- decision: retener. Siguiente peldaño D1c-2 por arrastre: `CancelExactAdditivePairsRule` (2). Los peldaños trig gordos (16, 21, 92) al final, con PhaseShift esperando su submódulo propio.
+- retained learning:
+  - **El «arrastre» de un disparador puede ser API sin bautizar**: si el helper compartido es semánticamente del grupo veredicto/candidato/rewrite, la migración correcta es PROMOVER, no duplicar ni re-importar — y la promoción abarata gratis los cierres de todos los demás entries que lo compartían.
+  - **El primer peldaño barato paga el molde entero** (sondas pre → move → verificación dir-completa → sondas post → cierre re-medido): el mismo guion vale para los 11 restantes con coste marginal decreciente.
