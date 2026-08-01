@@ -91,6 +91,16 @@ ledger (`SANEAMIENTO_LEDGER.md`); P0s se atienden antes de seguir.
 ## Orden y gobernanza
 
 D0 → D1 → re-evaluar (D2 o D4 según lo que D1 enseñe) → D3 al final.
+
+**Re-evaluación EJECUTADA (2026-08-02, tras D1c-8):** gana **D4**. Lo que D1
+enseñó y decide: (a) `ambient_pipeline_value_domain` es API de facto del
+motor de cancelación (15/25 entries) — el eje de dominio ya está entretejido
+en la costura recién formalizada; (b) el principio 4 (universalidad) ordena:
+D4 alimenta Fase 2+ (complejo) sin re-abrir rutas, D2 es navegabilidad sin
+urgencia nueva. Orden vigente: **cerrar el bloque angular de D1c (cirugía L,
+análisis de entrada hecho: 113 helpers en 7 ficheros, phase_shift.rs con 55
+como ancla; scoping propio) → D4 → D2 → D3.** El bloque angular y D4 son
+intercambiables si un P0 o el scoping angular lo aconsejan.
 El proceso operativo es el de la skill `auto-mejora` (fuentes de verdad,
 cadena de validación, lecciones); este doc solo aporta el QUÉ y el orden.
 Melones explícitamente FUERA: C5 (oscilación expand↔factor — doctrina no
