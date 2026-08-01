@@ -101,7 +101,7 @@ impl SciValue {
         let digits_num = v.numer().to_string().len() as i64;
         let digits_den = v.denom().to_string().len() as i64;
         let shift = BigInt::from(digits_num - digits_den);
-        let m = v / pow10_rational(&shift);
+        let m = v / pow10_rational(&shift)?;
         Some(SciValue::normalized(m, shift, negative, 0.0))
     }
 
@@ -127,39 +127,43 @@ impl SciValue {
         SciValue::normalized(self.m.recip(), -&self.exp10, self.negative, self.err_ulps)
     }
 
-    /// `self^e` for `e > 0` by binary exponentiation (square-and-multiply).
+    /// `self^e` by binary exponentiation (square-and-multiply); `e = 0` is 1.
     fn powi(&self, e: u64) -> SciValue {
-        let mut acc: Option<SciValue> = None;
+        if e == 0 {
+            return SciValue::normalized(BigRational::one(), BigInt::zero(), false, 0.0);
+        }
         let mut base = self.clone();
         let mut rest = e;
-        loop {
+        // Square up to the lowest set bit and seed the accumulator there — a
+        // positive exponent always has one, so no Option (no panic path).
+        while rest & 1 == 0 {
+            base = base.mul(&base);
+            rest >>= 1;
+        }
+        let mut acc = base.clone();
+        rest >>= 1;
+        while rest > 0 {
+            base = base.mul(&base);
             if rest & 1 == 1 {
-                acc = Some(match &acc {
-                    Some(a) => a.mul(&base),
-                    None => base.clone(),
-                });
+                acc = acc.mul(&base);
             }
             rest >>= 1;
-            if rest == 0 {
-                break;
-            }
-            base = base.mul(&base);
         }
-        acc.expect("e > 0 always sets the accumulator")
+        acc
     }
 }
 
-fn pow10_rational(e: &BigInt) -> BigRational {
-    let magnitude = e
-        .magnitude()
-        .to_u32()
-        .expect("digit-count shifts are small");
+/// `10^e` exact, or `None` when `|e|` does not even fit `u32` — an exponent
+/// that size means materializing gigabytes of digits, so the caller declines
+/// instead of attempting it (the sci lane exists precisely to avoid that).
+fn pow10_rational(e: &BigInt) -> Option<BigRational> {
+    let magnitude = e.magnitude().to_u32()?;
     let p = BigInt::from(10).pow(magnitude);
-    if e.is_negative() {
+    Some(if e.is_negative() {
         BigRational::new(BigInt::one(), p)
     } else {
         BigRational::from_integer(p)
-    }
+    })
 }
 
 /// Exact `n!` as a sci value: running BigInt product, stripped to
@@ -366,7 +370,7 @@ mod tests {
         let sci = sci_of("2^500");
         let f64_reference =
             crate::decimal_display::approx_display_rational(2.0f64.powi(500)).expect("finite");
-        let scale = pow10_rational(&sci.exp10);
+        let scale = pow10_rational(&sci.exp10).expect("test exponent fits u32");
         assert_eq!(&sci.mantissa * &scale, f64_reference, "2^500 lanes differ");
     }
 

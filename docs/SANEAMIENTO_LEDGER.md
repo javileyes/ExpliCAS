@@ -357,6 +357,19 @@ que la hizo invisible es el que hay que atacar de raíz — un filtro obsoleto n
 falla, *acierta con cero*, y el verde de un instrumento vacío es
 indistinguible del verde de uno sano.
 
+**Tercer miembro de la clase (2026-08-01, tanda de lints):**
+`lint_limit_presimplify.sh` anclaba su slice auditado a la DISPOSICIÓN de
+`limits_support.rs` (un bracket `const … #[cfg(test)]`); el troceo en
+submódulos mudó el pipeline a `limits_support/general.rs` y el bracket quedó
+atrás, dejando el slice en dos líneas vacías. La diferencia instructiva: este
+**falló CERRADO** («not found» → exit 1) y por eso se vio en días, mientras
+los filtros `--exact` fallaban ABIERTO (verde vacío) y sobrevivieron un mes.
+Re-anclado con marcadores BEGIN/END pegados al código del pipeline — la misma
+receta que `ChildTest::here`: el ancla viaja con la mudanza — y verificado
+contra las tres roturas (marcador borrado, referencia denegada, fn fuera del
+slice). Regla general que deja la clase: **un ancla que no viaja con el código
+es deuda; un detector que no falla cerrado es deuda invisible.**
+
 ### L5 — Atribución de tiempo de CI → CERRADO 2026-07-31
 La sospecha se confirma, y por más margen del previsto. Suma de tiempos de test
 de los 361 binarios: **265 s (4,4 min)**, no los ~19 min medidos el 07-28.

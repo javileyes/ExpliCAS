@@ -5,6 +5,10 @@ use crate::runtime::Step;
 use cas_ast::Context;
 use cas_math::limit_types::Approach;
 use cas_parser::parse;
+// The canonical rule name, not the literal: dispatch matches on this constant
+// (`rule_dispatch.rs`), so the wire anchor lives in `rule_names.rs` — these
+// tests call the generator directly and gain nothing from re-spelling it.
+use cas_solver_core::rule_names::RULE_CONSERVAR_LIMITE_RESIDUAL;
 
 fn substep_titles(before_src: &str, after_src: &str) -> Vec<String> {
     substep_titles_for_rule("Evaluar límite finito", before_src, after_src)
@@ -456,7 +460,7 @@ fn residual_limit_suggests_one_sided_limits_without_claiming_dne() {
     let mut ctx = Context::new();
     let before = parse("1/x", &mut ctx).expect("parse");
     let point = parse("0", &mut ctx).expect("parse");
-    let mut step = Step::new_compact("desc", "Conservar límite residual", before, before);
+    let mut step = Step::new_compact("desc", RULE_CONSERVAR_LIMITE_RESIDUAL, before, before);
     step.meta_mut().limit_point = Some(point);
     let subs = generate_limit_residual_substeps(&ctx, &step);
     assert_eq!(
@@ -474,7 +478,7 @@ fn residual_limit_suggests_one_sided_limits_without_claiming_dne() {
     assert!(title.contains("si difieren"), "{title}");
 
     // An infinity / one-sided residual carries no finite limit_point → no hint.
-    let step2 = Step::new_compact("desc", "Conservar límite residual", before, before);
+    let step2 = Step::new_compact("desc", RULE_CONSERVAR_LIMITE_RESIDUAL, before, before);
     assert!(
         generate_limit_residual_substeps(&ctx, &step2).is_empty(),
         "no hint without a finite point"

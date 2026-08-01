@@ -3147,6 +3147,15 @@ pub(super) fn eval_limit_matrix_componentwise(
     }
 }
 
+// ── LINT SLICE presimplify_safe: BEGIN ──────────────────────────────────────
+// Everything from here to the END marker is the allowlist-only presimplify
+// pipeline audited by scripts/lint_limit_presimplify.sh (no rationalization,
+// no expansion, no general simplifier, no domain assumptions). The markers
+// are the lint's anchors — they moved here WITH the code when the old anchor
+// (a const/cfg(test) bracket in limits_support.rs) was left behind by the
+// submodule split, which silently emptied the audited slice. Keep them glued
+// to the pipeline if it moves again; the lint fails closed without them.
+
 /// Multiply two expressions, dropping a unit factor (`1·e → e`).
 pub(super) fn mul_drop_unit(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     if expr_is_one(ctx, a) {
@@ -3264,3 +3273,4 @@ fn presimplify_recursive(ctx: &mut Context, expr: ExprId, depth: usize) -> ExprI
 pub(crate) fn presimplify_safe_for_limit(ctx: &mut Context, expr: ExprId) -> ExprId {
     presimplify_recursive(ctx, expr, 0)
 }
+// ── LINT SLICE presimplify_safe: END ────────────────────────────────────────

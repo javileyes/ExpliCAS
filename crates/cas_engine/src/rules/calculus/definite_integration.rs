@@ -2917,7 +2917,7 @@ fn collect_rational_pole_carriers(
             // (Rioboo–Trager), whose interval freedom the integrand
             // certificate already decides — and its bound variable would read
             // here as an undecidable "constant" and veto a sound evaluation.
-            if ctx.sym_name(fn_id) == "root_sum" {
+            if ctx.is_call_named(expr, "root_sum") {
                 return;
             }
             if args.len() == 1

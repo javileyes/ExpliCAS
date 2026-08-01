@@ -251,12 +251,15 @@ pub(crate) fn log2_estimate(x: &BigInt) -> f64 {
     if bits == 0 {
         return 0.0;
     }
-    if bits <= 53 {
-        return (x.magnitude().to_u64().expect("fits") as f64).log2();
+    let shift = bits.saturating_sub(53);
+    match (x.magnitude() >> shift).to_u64() {
+        Some(top) => (top as f64).log2() + shift as f64,
+        // Unreachable — the shift leaves at most 53 bits — but total, and the
+        // fallback is still CORRECT within 1 (bits-1 ≤ log2|x| < bits), so a
+        // broken invariant degrades precision instead of poisoning the
+        // resource gate this estimate feeds.
+        None => bits as f64,
     }
-    let shift = bits - 53;
-    let top = (x.magnitude() >> shift).to_u64().expect("53 bits fit");
-    (top as f64).log2() + shift as f64
 }
 
 /// Stirling bound on `digits(n!)`, padded up — a resource gate, so

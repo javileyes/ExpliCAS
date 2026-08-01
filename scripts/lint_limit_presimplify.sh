@@ -14,7 +14,14 @@
 
 set -euo pipefail
 
-FILE="crates/cas_math/src/limits_support.rs"
+# The audited slice is delimited by BEGIN/END marker comments that live GLUED
+# to the pipeline's code, so a module move carries them along. The previous
+# anchor (a `const … #[cfg(test)]` bracket in limits_support.rs) was layout
+# coupling: the submodule split moved the pipeline to limits_support/general.rs,
+# the bracket stayed behind, and the audited slice silently became two lines.
+FILE="crates/cas_math/src/limits_support/general.rs"
+BEGIN_MARK='LINT SLICE presimplify_safe: BEGIN'
+END_MARK='LINT SLICE presimplify_safe: END'
 
 if [[ ! -f "$FILE" ]]; then
   echo "❌ presimplify source not found: $FILE"
@@ -35,11 +42,12 @@ else
   search_fixed() { grep -nF "$1" "$2"; }
 fi
 
-START_LINE="$(search_regex '^const PRESIMPLIFY_MAX_DEPTH:' "$FILE" | head -n1 | cut -d: -f1)"
-END_LINE="$(search_regex '^#\[cfg\(test\)\]' "$FILE" | awk -F: -v start="$START_LINE" '$1 > start { print $1; exit }')"
+START_LINE="$(search_fixed "$BEGIN_MARK" "$FILE" | head -n1 | cut -d: -f1)"
+END_LINE="$(search_fixed "$END_MARK" "$FILE" | head -n1 | cut -d: -f1)"
 
-if [[ -z "$START_LINE" || -z "$END_LINE" ]]; then
+if [[ -z "$START_LINE" || -z "$END_LINE" || "$END_LINE" -le "$START_LINE" ]]; then
   echo "❌ could not isolate presimplify_safe_for_limit in $FILE"
+  echo "   (the BEGIN/END lint-slice markers must bracket the pipeline)"
   exit 1
 fi
 

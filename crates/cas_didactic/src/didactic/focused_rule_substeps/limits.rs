@@ -124,7 +124,7 @@ pub(crate) fn generate_limit_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
     )]
 }
 
-/// Narrate a "Conservar límite residual" step (a finite-point limit the safe
+/// Narrate a «Conservar límite residual» step (a finite-point limit the safe
 /// policy does not decide) with an HONEST method hint: compute the one-sided
 /// limits to investigate.
 ///
