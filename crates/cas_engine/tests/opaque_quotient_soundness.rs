@@ -24,9 +24,11 @@ fn opaque_quotient_with_engine_callbacks_must_not_return_constant() {
         |base_ctx, sub_frac| {
             let mut simplifier = cas_engine::Simplifier::with_default_rules();
             simplifier.context = base_ctx.clone();
-            let mut options = cas_engine::SimplifyOptions::default();
-            options.time_budget_ms =
-                Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS);
+            let options = cas_engine::SimplifyOptions {
+                time_budget_ms:
+                    Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS),
+                ..Default::default()
+            };
             let (simplified, _) = simplifier.simplify_with_options(sub_frac, options);
             Some((simplifier.context, simplified))
         },
@@ -34,9 +36,11 @@ fn opaque_quotient_with_engine_callbacks_must_not_return_constant() {
         |expanded_ctx, expanded_num, expanded_den| {
             let mut simplifier = cas_engine::Simplifier::with_default_rules();
             simplifier.context = expanded_ctx;
-            let mut options = cas_engine::SimplifyOptions::default();
-            options.time_budget_ms =
-                Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS);
+            let options = cas_engine::SimplifyOptions {
+                time_budget_ms:
+                    Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS),
+                ..Default::default()
+            };
             let (simplified_num, _) =
                 simplifier.simplify_with_options(expanded_num, options.clone());
             let (simplified_den, _) = simplifier.simplify_with_options(expanded_den, options);

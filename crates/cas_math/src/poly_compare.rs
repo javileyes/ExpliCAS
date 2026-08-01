@@ -62,7 +62,6 @@ pub(crate) fn poly_is_zero(ctx: &Context, expr: ExprId) -> bool {
 ///
 /// `Infinity`/`Undefined`/`Matrix` are NEVER atomized: an `∞` indeterminate
 /// would "prove" `∞ − ∞ = 0`. Their presence bails the whole check.
-
 pub(crate) fn poly_is_zero_opaque(ctx: &mut Context, expr: ExprId) -> bool {
     if poly_is_zero(ctx, expr) {
         return true;

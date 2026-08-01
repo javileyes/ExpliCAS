@@ -70,29 +70,6 @@ pub(crate) fn as_fn1(ctx: &Context, id: ExprId, name: &str) -> Option<ExprId> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cas_parser::parse;
-
-    #[test]
-    fn binary_destructure_works() {
-        let mut ctx = Context::new();
-        let add = parse("a+b", &mut ctx).expect("parse");
-        let sub = parse("a-b", &mut ctx).expect("parse");
-        let mul = parse("a*b", &mut ctx).expect("parse");
-        let div = parse("a/b", &mut ctx).expect("parse");
-        let pow = parse("a^3", &mut ctx).expect("parse");
-
-        assert!(as_add(&ctx, add).is_some());
-        assert!(as_sub(&ctx, sub).is_some());
-        assert!(as_mul(&ctx, mul).is_some());
-        assert!(as_div(&ctx, div).is_some());
-        assert!(as_pow(&ctx, pow).is_some());
-        assert!(as_add(&ctx, pow).is_none());
-    }
-}
-
 /// Destruct a unary call to `builtin`, seeing through a `__hold` barrier.
 ///
 /// A deliberate exception to this module's convention: the `as_*` helpers
@@ -151,5 +128,28 @@ pub fn unary_builtin_arg_no_hold(
             Some(args[0])
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_parser::parse;
+
+    #[test]
+    fn binary_destructure_works() {
+        let mut ctx = Context::new();
+        let add = parse("a+b", &mut ctx).expect("parse");
+        let sub = parse("a-b", &mut ctx).expect("parse");
+        let mul = parse("a*b", &mut ctx).expect("parse");
+        let div = parse("a/b", &mut ctx).expect("parse");
+        let pow = parse("a^3", &mut ctx).expect("parse");
+
+        assert!(as_add(&ctx, add).is_some());
+        assert!(as_sub(&ctx, sub).is_some());
+        assert!(as_mul(&ctx, mul).is_some());
+        assert!(as_div(&ctx, div).is_some());
+        assert!(as_pow(&ctx, pow).is_some());
+        assert!(as_add(&ctx, pow).is_none());
     }
 }

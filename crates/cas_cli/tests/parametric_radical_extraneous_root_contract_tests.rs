@@ -153,3 +153,64 @@ fn numeric_and_constant_controls_are_untouched() {
     // Log-domain filter (the doc-comment example of the shared filter).
     assert_eq!(solve("ln(x)+ln(x+5) = 0"), "{ 1/2·(sqrt(29) - 5) }");
 }
+
+#[test]
+fn rational_coefficient_radical_publishes_the_range_condition() {
+    // Frontier-audit 2026-07-14 F10 m3, named stepping stone «coeficiente ≠1»:
+    // the affine spellings `a·√f + b = y` published the squared root WITHOUT
+    // the parameter-range condition, so for `y` outside the range the root is
+    // extraneous (`2√x + 1 = y` at `y = 0` gives `x = 1/4`, but
+    // `2·√(1/4) + 1 = 2 ≠ 0`). The split collector now carries the rational
+    // coefficient as data and the publisher divides by it — the sign stays
+    // folded, so a negative coefficient flips the displayed bound direction.
+    let (res, conds) = solve_result_and_conditions("2*sqrt(x)+1 = y");
+    assert_eq!(res, "{ (1/2·(y - 1))^2 }");
+    assert!(conds.contains(&"y - 1".to_string()), "conds: {conds:?}");
+
+    let (_, conds) = solve_result_and_conditions("2*sqrt(x)-1 = y");
+    assert!(conds.contains(&"y + 1".to_string()), "conds: {conds:?}");
+
+    // Negative coefficient: `−2√x + 5 = y` ⟹ `√x = (5−y)/2 ≥ 0` ⟹ `y ≤ 5`.
+    let (_, conds) = solve_result_and_conditions("-2*sqrt(x)+5 = y");
+    assert!(conds.contains(&"5 - y".to_string()), "conds: {conds:?}");
+
+    // Coefficient born inside the radicand (`√(4x) = 2√x`).
+    let (_, conds) = solve_result_and_conditions("sqrt(4*x)+1 = y");
+    assert!(conds.contains(&"y - 1".to_string()), "conds: {conds:?}");
+}
+
+#[test]
+fn factored_normal_form_is_peeled_before_the_split() {
+    // `√x/2 + 1 − y` simplifies to the FACTORED `(1/2)·(√x + 2 − 2y)`, which
+    // hid the radical from the term walk — the publisher peels the positive
+    // rational factor (a `d = 0` invariant) before splitting.
+    let (res, conds) = solve_result_and_conditions("sqrt(x)/2 + 1 = y");
+    assert_eq!(res, "{ (2·y - 2)^2 }");
+    assert!(conds.contains(&"y - 1".to_string()), "conds: {conds:?}");
+
+    let (_, conds) = solve_result_and_conditions("(sqrt(x) - 2*y)/2 = 0");
+    assert!(conds.contains(&"y".to_string()), "conds: {conds:?}");
+}
+
+#[test]
+fn coefficient_spellings_out_of_scope_stay_untouched() {
+    // SYMBOLIC coefficient: not a rational scale — the term stays in `rest`
+    // and no range condition is invented (its sound condition needs a sign
+    // split on `y`; named stepping stone, next cycle's candidate).
+    let (res, conds) = solve_result_and_conditions("y*sqrt(x) = 2");
+    assert_eq!(res, "{ 4 / y^2 }");
+    // The pre-existing `y ≠ 0` (division) stays; what must NOT appear is a
+    // range condition built from the symbolic division (`2/y ≥ 0`), which the
+    // rational-only collector cannot justify.
+    assert!(
+        !conds.iter().any(|c| c.contains("/ y") || c.contains("2/y")),
+        "no unsound blanket condition may appear: {conds:?}"
+    );
+    // Numeric thresholds decide by value, not by published condition.
+    assert_eq!(solve("2*sqrt(x)+1 = 0"), "No solution");
+    assert_eq!(solve("-2*sqrt(x)+5 = 7"), "No solution");
+    // The coefficiented inequality keeps its upstream owner (`[0, 4)`), and
+    // the unit inequality keeps the case-split owner.
+    assert_eq!(solve("2*sqrt(x) < 4"), "[0, 4)");
+    assert_eq!(solve("sqrt(x+1) <= x"), "[phi, infinity)");
+}

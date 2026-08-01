@@ -8,10 +8,10 @@ fn strategy_simplify_options() -> crate::phase::SimplifyOptions {
     // esos Simplifier ad-hoc nacen desconectados del presupuesto del eval y
     // su molino medido era ~150 s por invocación (ver la constante en
     // cas_math::div_expand_cancel_support).
-    let mut options = crate::phase::SimplifyOptions::default();
-    options.time_budget_ms =
-        Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS);
-    options
+    crate::phase::SimplifyOptions {
+        time_budget_ms: Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS),
+        ..Default::default()
+    }
 }
 
 fn format_pull_constant_from_fraction_desc(kind: PullConstantFromFractionKind) -> &'static str {

@@ -362,8 +362,11 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "calculus_integrate_compact_contract"
         ].command
         self.assertIn("integrate_contract_tests", integrate_compact_command)
+        # The `--exact` filter carries the test's MODULE PATH (the harness was
+        # split into modules; a bare name matches nothing and libtest exits 0
+        # having run 0 tests), so assert the qualified spelling.
         self.assertIn(
-            "integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution",
+            "substitution::integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution",
             integrate_compact_command,
         )
         integrate_command = MODULE.SUITES["calculus_integrate_contract"].command
@@ -374,7 +377,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         ].command
         self.assertIn("diff_step_contract_tests", diff_exhaustive_command)
         self.assertIn(
-            "inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
+            "inverse_trig::inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
             diff_exhaustive_command,
         )
         self.assertIn("--ignored", diff_exhaustive_command)
@@ -432,7 +435,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         ].command
         self.assertIn("integrate_contract_tests", integrate_exhaustive_command)
         self.assertIn(
-            "integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
+            "verification::integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
             integrate_exhaustive_command,
         )
         self.assertIn("--ignored", integrate_exhaustive_command)

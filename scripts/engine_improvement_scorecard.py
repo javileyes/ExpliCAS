@@ -2704,13 +2704,27 @@ def parse_algorithmic_backend_mode_boundary(output: str) -> dict[str, Any]:
     return metrics
 
 
-def cargo_test_source_path(command: list[str]) -> pathlib.Path | None:
+def cargo_test_source_paths(command: list[str]) -> list[pathlib.Path]:
+    """Every source file of the suite's cargo test target.
+
+    A target is either a single `tests/<name>.rs` or a DIRECTORY
+    `tests/<name>/` rooted at `main.rs` — the harvest campaigns split the big
+    contract suites into the latter, and the single-file resolver silently
+    returned None for them, dropping the `ignored_tests` observability key
+    from the scorecard. `#[ignore]` attributes live in submodule files too,
+    so the directory form scans all of them.
+    """
     package = command_arg_value(command, "-p")
     test_name = command_arg_value(command, "--test")
     if not package or not test_name:
-        return None
-    path = ROOT / "crates" / package / "tests" / f"{test_name}.rs"
-    return path if path.exists() else None
+        return []
+    file_path = ROOT / "crates" / package / "tests" / f"{test_name}.rs"
+    if file_path.exists():
+        return [file_path]
+    dir_path = ROOT / "crates" / package / "tests" / test_name
+    if dir_path.is_dir():
+        return sorted(dir_path.rglob("*.rs"))
+    return []
 
 
 def command_arg_value(command: list[str], flag: str) -> str | None:
@@ -2733,14 +2747,14 @@ def parse_ignored_rust_tests(source: str) -> list[dict[str, str]]:
 
 
 def ignored_cargo_tests_for_suite(spec: SuiteSpec) -> list[dict[str, str]]:
-    source_path = cargo_test_source_path(spec.command)
-    if source_path is None:
-        return []
-    try:
-        source = source_path.read_text()
-    except OSError:
-        return []
-    return parse_ignored_rust_tests(source)
+    ignored: list[dict[str, str]] = []
+    for source_path in cargo_test_source_paths(spec.command):
+        try:
+            source = source_path.read_text()
+        except OSError:
+            continue
+        ignored.extend(parse_ignored_rust_tests(source))
+    return ignored
 
 
 def sanitize_residual_problem_cases(raw_cases: Any) -> list[dict[str, Any]]:

@@ -467,7 +467,16 @@ pub(super) fn try_solve_radical_inequality(
     let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
     let (d, _) = simplifier.simplify(diff);
 
-    let (s, f, rest) = collect_radical_split(&simplifier.context, d, var)?;
+    let (s, coeff, f, rest) = collect_radical_split(&simplifier.context, d, var)?;
+    // A coefficiented radical (`2√x + 1 < y`) is OUTSIDE this handler's scope:
+    // its numeric cases already normalize to the unit form upstream
+    // (`2√x < 4` → `[0, 4)`), so widening here would duplicate an owner, and
+    // the parametric ones were never solved by anyone. Decline keeps today's
+    // behavior byte-identical; the equation-side range-condition publisher is
+    // the coefficient-aware consumer.
+    if !num_traits::One::is_one(&coeff) {
+        return None;
+    }
     // The radicand and the remainder must be sqrt-free (no nested / second radical
     // or a coefficiented radical hiding in `rest`).
     if expr_contains_sqrt(&simplifier.context, f) {

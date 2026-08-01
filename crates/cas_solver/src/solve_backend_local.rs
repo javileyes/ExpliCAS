@@ -76,13 +76,19 @@ enum MonotonicFn {
     Log,
 }
 
-/// Split `d` into a single square-root term `±√f` (radicand containing `var`) and
-/// the remaining signed terms. Returns `(sign, f, rest_terms)` or None when there
-/// is not exactly one such radical.
+/// Split `d` into a single square-root term `±c·√f` (radicand containing `var`,
+/// `c` a POSITIVE rational magnitude — the coefficient's sign is folded into the
+/// term sign) and the remaining signed terms. Returns `(sign, c, f, rest_terms)`
+/// or None when there is not exactly one such radical.
 /// A signed additive term `(sign, expr)` in a decomposition.
 type SignedTerm = (i8, ExprId);
-/// `(radical_sign, radicand, remaining_signed_terms)` from [`collect_radical_split`].
-type RadicalSplit = (i8, ExprId, Vec<SignedTerm>);
+/// `(radical_sign, coeff_magnitude, radicand, remaining_signed_terms)` from
+/// [`collect_radical_split`]. The coefficient travels as DATA so each consumer
+/// decides its own scope: the range-condition publisher divides by it; the
+/// inequality case-split declines on `≠ 1` (its coefficiented numeric cases
+/// already normalize upstream — `2√x < 4` → `[0, 4)` — and the parametric ones
+/// were never its own).
+type RadicalSplit = (i8, num_rational::BigRational, ExprId, Vec<SignedTerm>);
 
 /// Local backend facade selected as the active backend.
 #[derive(Debug, Clone, Copy, Default)]

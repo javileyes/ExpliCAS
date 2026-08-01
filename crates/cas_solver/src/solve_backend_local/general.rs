@@ -1865,7 +1865,20 @@ fn solve_local_core_inner(
     if eq.op == cas_ast::RelOp::Eq {
         let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
         let (d, _) = simplifier.simplify(diff);
-        if let Some((s, _f, rest)) = collect_radical_split(&simplifier.context, d, var) {
+        // The simplifier's factored normal form can wrap the whole difference in
+        // a POSITIVE rational factor (`√x/2 + 1 − y → (1/2)·(√x + 2 − 2y)`) that
+        // hides the radical from the term walk; `d = 0` is invariant under it,
+        // so peel before splitting. Local to this Eq-only publisher on purpose:
+        // peeling inside the shared collector would silently widen the
+        // inequality consumer, which would then need an op-flip audit.
+        let d = {
+            let mut d = d;
+            while let Some(inner) = ctx_top_positive_rational_factor(&simplifier.context, d) {
+                d = inner;
+            }
+            d
+        };
+        if let Some((s, coeff, _f, rest)) = collect_radical_split(&simplifier.context, d, var) {
             if !rest.is_empty()
                 && !rest
                     .iter()
@@ -1879,11 +1892,20 @@ fn solve_local_core_inner(
                         simplifier.context.add(Expr::Sub(r, term))
                     };
                 }
-                // `s·√f = −rest` ⟹ `√f = −rest/s`; with `s = ±1`, `g = −r` (s>0) or `g = r` (s<0).
+                // `s·c·√f = −rest` ⟹ `√f = −rest/(s·c)`; `c` is a POSITIVE rational
+                // magnitude (sign folded into `s`), so dividing by it never flips the
+                // `≥ 0` range condition — `2√x − 1 = y` carries `(y+1)/2 ≥ 0` exactly
+                // as the unit spelling carries `y + 1 ≥ 0`.
                 let g = if s >= 0 {
                     simplifier.context.add(Expr::Neg(r))
                 } else {
                     r
+                };
+                let g = if coeff == num_rational::BigRational::from_integer(1.into()) {
+                    g
+                } else {
+                    let inv = simplifier.context.add(Expr::Number(coeff.recip()));
+                    simplifier.context.add(Expr::Mul(inv, g))
                 };
                 let (g, _) = simplifier.simplify(g);
                 let cond = ImplicitCondition::NonNegative(g);
