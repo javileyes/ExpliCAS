@@ -11,17 +11,6 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 
 ## Abiertos
 
-### L3 — `metamorphic_simplification_tests.rs` es infraestructura, no casos
-- **Origen:** P5 (2026-07-31), decidido NO trocear.
-- **Qué:** 18.923 líneas con **139 tests y 316 helpers**. La proporción está
-  invertida respecto a los otros monolitos: el contenido real es la maquinaria
-  (carga de CSV, chequeo numérico, chequeo estructural, clasificadores).
-- **Por qué importa:** el troceo mecánico por bloques `#[test]` aquí no aporta
-  —dejaría un `main.rs` de 18k líneas—. Necesita mover maquinaria a módulos,
-  que es cirugía.
-- **Acción propuesta:** pasada propia que extraiga la infraestructura por
-  responsabilidad, con tests verdes entre cada extracción.
-
 ### L6 — El grafo de llamadas del orquestador es una bola sin costuras
 - **Origen:** P1, medición previa al troceo (2026-07-31).
 - **Qué:** las 692 fns de producción de `orchestrator.rs` tienen 1.795 aristas
@@ -151,8 +140,18 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   manglings conocidos. Decisión grabada en el doc-comment del canónico.
 - **Lo que queda:** las 14 variantes de `collect_add_terms` son todas
   singletons; ahí no hay dedup posible, solo el trabajo caso por caso de decidir
-  si cada nombre miente. Y el barrido de helpers de TEST (`solve_display` ×22,
-  `simplify_str` ×19…) sigue pendiente, con el mismo método: diffear primero.
+  si cada nombre miente.
+- **Barrido de helpers de TEST ejecutado 2026-08-01:** `solve_display` 22
+  definiciones → 7 variantes (un cluster de 8 idénticas y otro de 7),
+  `simplify_str` 19 → 5, `create_full_simplifier` 9 → 8 (deriva casi total,
+  no fusionable), `parse_wire`/`run_cli` singletons. Consolidado el cluster de
+  8 en `tests/inequality_utils/mod.rs` — en módulo PROPIO y no en
+  `test_utils`, porque los wrappers del engine incluyen `test_utils` bajo
+  `extern crate cas_engine as cas_solver` y todo lo que entre ahí debe
+  resolver bajo ambas identidades (`display_solution_set` no existe en la
+  superficie del engine; el primer intento rompió los 3 wrappers y se movió).
+  Los clusters restantes (7×solve_display, 6/4/4×simplify_str) quedan medidos
+  y anotados para una pasada igual.
 
 ### L16 — El input del 7/3 ahora CUELGA, y el presupuesto no lo poda
 - **Origen:** destapado por el fix de L15 (2026-08-01).
@@ -203,6 +202,19 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 ---
 
 ## Cerrados
+
+### L3 — Harness metamórfico → CERRADO 2026-08-01 (`6789317fa`)
+La «cirugía» que P5 declinó resultó mecánica con el utillaje de P1-P7:
+18.923 → main.rs de 1.358 + 9 submódulos por familia de infraestructura, 455
+fns idénticas contra HEAD, reparto exacto 74 passed / 65 ignored conservado en
+los DOS binarios. Dos trampas nuevas cazadas por los gates: atributos
+`cfg_attr` MULTILÍNEA que dejaban 5 `#[test]` huérfanos (extractor corregido
+con balance de corchetes), y el wrapper cross-crate de cas_engine con
+`extern crate cas_engine as cas_solver` — un consumidor por `#[path]`+ALIAS
+invisible a cualquier escaneo de imports, que además soporta los repros de
+PERFORMANCE_TRACK_PLAN (se conserva apuntado al nuevo main.rs). Nota: ese
+wrapper compila la suite DOS veces por corrida de workspace — coste conocido,
+no tocado.
 
 ### L17 — CERRADO: barrido de la clase L15 — el segundo inquilino estaba en el gate de cero exacto
 - **Origen:** ciclos 2026-08-01 (2ª tanda); fix `a31bff030`.

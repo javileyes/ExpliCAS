@@ -8,20 +8,9 @@
 //! docs/AUDITORIA_FRONTERA_2026-07-09.md; the factor-sign split on the RAW tree
 //! also closes the `(1-x)*ln(x) > 0` P1 echo member.
 
-use cas_ast::{Equation, RelOp};
-use cas_parser::parse;
-use cas_solver::api::solve;
-use cas_solver::command_api::solve::display_solution_set;
-use cas_solver::runtime::Simplifier;
-
-fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
-    let mut simplifier = Simplifier::with_default_rules();
-    let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");
-    let rhs = parse(rhs, &mut simplifier.context).expect("parse rhs");
-    let eq = Equation { lhs, rhs, op };
-    let (set, _) = solve(&eq, "x", &mut simplifier).expect("solve");
-    display_solution_set(&simplifier.context, &set)
-}
+mod inequality_utils;
+use cas_ast::RelOp;
+use inequality_utils::solve_display;
 
 #[test]
 fn shared_root_product_with_ln_factor_splits_on_factor_signs() {

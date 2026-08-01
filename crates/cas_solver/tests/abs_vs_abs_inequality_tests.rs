@@ -6,11 +6,13 @@
 //! of docs/AUDITORIA_FRONTERA_2026-07-09.md. Both sides are non-negative, so the
 //! relation reduces EXACTLY to the polynomial inequality `f² − g² {op} 0`.
 
+mod inequality_utils;
 use cas_ast::{Equation, RelOp};
 use cas_parser::parse;
 use cas_solver::api::solve;
 use cas_solver::command_api::solve::display_solution_set;
 use cas_solver::runtime::Simplifier;
+use inequality_utils::solve_display;
 
 fn solve_result(lhs: &str, op: RelOp, rhs: &str) -> Result<String, String> {
     let mut simplifier = Simplifier::with_default_rules();
@@ -38,15 +40,6 @@ fn non_polynomial_abs_vs_abs_declines_honestly() {
             "{lhs}: wrong decline: {err}"
         );
     }
-}
-
-fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
-    let mut simplifier = Simplifier::with_default_rules();
-    let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");
-    let rhs = parse(rhs, &mut simplifier.context).expect("parse rhs");
-    let eq = Equation { lhs, rhs, op };
-    let (set, _) = solve(&eq, "x", &mut simplifier).expect("solve");
-    display_solution_set(&simplifier.context, &set)
 }
 
 #[test]

@@ -8,11 +8,13 @@
 //! correct for `>` / `>=`; `=`, `<`, `<=` carry the sign guard as the
 //! established single-case Conditional.
 
+mod inequality_utils;
 use cas_ast::{Equation, RelOp};
 use cas_parser::parse;
 use cas_solver::api::solve;
 use cas_solver::command_api::solve::display_solution_set;
 use cas_solver::runtime::Simplifier;
+use inequality_utils::solve_display;
 
 fn solve_result(lhs: &str, op: RelOp, rhs: &str) -> Result<String, String> {
     let mut simplifier = Simplifier::with_default_rules();
@@ -106,15 +108,6 @@ fn additive_wrapper_declines_and_owners_are_unchanged() {
         solve_display("abs(x)", RelOp::Eq, "a^2 + 1"),
         "{ a^2 + 1, -a^2 - 1 }"
     );
-}
-
-fn solve_display(lhs: &str, op: RelOp, rhs: &str) -> String {
-    let mut simplifier = Simplifier::with_default_rules();
-    let lhs = parse(lhs, &mut simplifier.context).expect("parse lhs");
-    let rhs = parse(rhs, &mut simplifier.context).expect("parse rhs");
-    let eq = Equation { lhs, rhs, op };
-    let (set, _) = solve(&eq, "x", &mut simplifier).expect("solve");
-    display_solution_set(&simplifier.context, &set)
 }
 
 #[test]
