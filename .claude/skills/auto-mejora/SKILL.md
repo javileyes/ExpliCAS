@@ -373,7 +373,8 @@ de F13 cambiaron el reparto por completo:
 | `nonaffine_trig_principal_drop_contract_tests` | 185 s | **1 s** |
 
 Los dos últimos corren hoy el mismo número de tests que entonces (80 y 3), así
-que el speedup es real y no un filtro que se los salte. Como suites lentas de
+que el speedup es real y no un filtro que se los salte. *(2026-08-01: 363
+binarios tras los contratos nuevos de la cosecha; mismo orden de magnitud.)* Como suites lentas de
 verdad quedan solo `steps_divergence_gate_tests` y `cli_contract_tests`, que
 entre las dos son el 46% del tiempo de test.
 
@@ -530,6 +531,11 @@ repitas en bucle).
   frontera racionales se miden sobre polinomios expandidos.
 - `numeric_value` solo casa literales: usa `numeric_eval::as_rational_const`
   para formas plegables (`x^(2-1)`, `6-3*2`) en matchers y traducciones.
+  *(Reincidencia 2026-08-01, con disfraz: `cas_ast::views::as_rational_const`
+  es el NO plegador — mismo nombre, otro módulo. La comparación de la tabla
+  u-du usó views:: sobre la derivada cruda `u^(2-1)` y declinaba todo; mordido
+  ANTES de releer esta línea. Ante dos fns homónimas, la de numeric_eval es la
+  que pliega.)*
 - Las políticas de aceptación pública escritas para la primera familia de
   un método bloquean a sucesores mejor portados: exprésalas como
   intención (qué conjuntos de condiciones son confiables).
@@ -705,7 +711,11 @@ repitas en bucle).
   `poly_is_zero_opaque`; los `uc{N}` de dsolve resultaron inalcanzables — se
   documenta, no se toca un frente cerrado).
 - **Temps sintéticos (`__opq*`, `__polyzero_*`): sembrar SIEMPRE contra
-  `collect_variables` del árbol** — las rondas anidadas heredan los nombres
+  `collect_variables` del árbol — y el implementador canónico es
+  `cas_ast::fresh_names`** (2026-08-01, `99d8af1a0`): DOS primitivas con la
+  distinción documentada — `alloc_indexed_name` (uno-a-uno, primer libre) y
+  `fresh_suffix_base` (base de LOTE max+1 para esquemas `base+i`; con HUECOS
+  en taken el primer-libre colisiona en i=1). No dupliques el patrón: delega. — las rondas anidadas heredan los nombres
   del nivel exterior, la colisión FUSIONA átomos distintos y una división
   "exacta" colapsa fracciones no constantes a constantes. Patrón:
   `fresh_suffix_base`/used-names sembrado (quedan 3-4 implementadores por
@@ -733,7 +743,12 @@ repitas en bucle).
   no-polinómica + huella del after: potencia directa / recíproca en
   denominador / c·ln(|base|)) reutilizando claves de locale existentes.
   Hallazgo de ruteo: las formas feas y los hangs de bases desplazadas venían
-  TODOS del clúster trig recibiendo lo que nadie reclamaba.
+  TODOS del clúster trig recibiendo lo que nadie reclamaba. El precedente
+  completo del patrón sonda→ruta→narración→contrato es la familia u-du
+  2026-08-01: uⁿ, 1/uᵐ, ln|u| (abs delegado a la decidibilidad de signo),
+  tabla F(u) ∈ {exp,sin,cos,sinh,cosh}, u anidadas (composición triple) — y
+  las DEFINIDAS llegaron gratis porque la ruta definida reusa el backend
+  (verificar antes de construir).
 - **Cuarentena → certificación → borrado** (los 3 predicados sec³/csc³ del
   §11 de julio): un `pub` sin refs NO lo certifica el compilador; la
   certificación manual es 0 refs en el workspace + capacidad viva por otra
@@ -741,6 +756,48 @@ repitas en bucle).
   procedencia entendida (`git log -S`). Borrado con delta de suite −1 EXACTO
   reconciliado por nombre. Los deltas de suite siempre exactos y nombrados:
   un delta que no sabes explicar es un fallo que no sabes que tienes.
+- **Cuando una regla de PREPARACIÓN destroza una forma, el fix va en su GATE,
+  no en el router** (Werner/ProductToSum 2026-08-01): los hijos se normalizan
+  antes que el padre, así que ninguna ruta del router llega a ver jamás la
+  forma original — colgar la ruta "antes" en el router no hace nada. El gate
+  semántico correcto: Werner declina cuando un ángulo CONTIENE una llamada a
+  función (esos productos son candidatos u-du); los ángulos lineales siguen
+  siendo suyos. Primer intento (router) falló exactamente así.
+- **La dualidad de forma canónica se cubre por CAPAS, o la gemela queda ciega**
+  (exp(u) ≡ `Pow(E, u)`, 2026-08-01): la ruta de la tabla u-du la cubrió en el
+  NARRADOR y la RUTA siguió ciega — ∫cos·sin·e^(sin²) residual con narrador
+  listo. Al cubrir una dualidad de canon, grep TODAS las capas que casan esa
+  forma (ruta, narrador, verificador, huella). Segunda ceguera del mismo
+  episodio: la derivada CRUDA de `differentiate_symbolic_expr` trae `u^(2-1)`
+  sin plegar — toda comparación estructural sobre su salida pliega antes
+  (`normalize_power_factor`).
+- **Antes de construir mecanismo, buscar la fontanería existente** (L16(b),
+  2026-08-01): el tope para los simplify anidados de estrategia no exigió
+  sistema nuevo — `SimplifyOptions.time_budget_ms` → deadline cooperativo con
+  salida honesta YA existía; conectarlo (1 constante, 8 call-sites) bajó el
+  molino de ~150 s a 2,2 s con el mismo veredicto. El coste de un mecanismo
+  nuevo se paga solo tras demostrar que el existente no llega.
+- **El harness elige la CONFIGURACIÓN; un pin corre donde vive la propiedad
+  que fija** (contrato Werner 2026-08-01): `simplified_integral` corre un
+  Simplifier directo sin orquestador y con Double Angle off — ahí la expansión
+  múltiple-ángulo destroza el par ANTES de Werner (preexistente), y el pin
+  "por el harness cómodo" nació roto. Se reescribió sobre el CLI real.
+  Hermana de «forma INTERNA vs presentación»: allí la superficie, aquí la
+  configuración entera.
+- **Al unificar N copias, las diferencias de semántica son REQUISITOS a
+  nombrar, no ruido a limar** (fresh_names 2026-08-01): el unificador migró
+  poly_compare al primer-libre y habría REINTRODUCIDO la colisión clase-L15
+  que venía a impedir (huecos en taken + esquema base+i) — cazado por
+  invariante antes de commitear, convertido en las dos primitivas + test de
+  huecos. Espejo del lado-unificador de «cuando la copia hace otra cosa,
+  renombrar».
+- **Utillaje de edición por script, dos trampas nuevas** (2026-08-01): un test
+  insertado "al final del fichero" puede aterrizar DENTRO del cuerpo de la
+  última fn — compila y JAMÁS se descubre; «0 passed, N filtered» con el
+  filtro correcto es la pista (el insertador asumió un `mod tests` final
+  inexistente). Y el apply mecánico se gatea tras CADA apply, no solo el
+  primero: un `mod tests` que espeja callbacks recibió el reemplazo sin
+  `super::` y el rojo llegó tarde, en la suite.
 - **Al editar el ledger/docs por script, cortar por el SIGUIENTE encabezado
   real** — un slice usó "### L5" como frontera y casó con el L5 CERRADO de
   más abajo, borrando media sección de abiertas; el recuento automático
@@ -796,6 +853,16 @@ mitad— y con el discriminante `error_kind` para no confundir contención con
 regresión. La lección de fondo: una cadena de validación cara se convierte, sin
 que nadie lo decida, en el bucle de iteración, y entonces el coste no se paga
 una vez por ciclo sino una por intento.
+**2026-08-01: pasada B como CIERRE DE SESIÓN (handoff a contexto limpio)**,
+tras la campaña estructural completa (los 6 god-files + P7 + L3 desmontados,
+50 commits) y su cosecha (P0 7/3 cerrado con clase barrida, familia u-du
+entera con narración, L16 a+b ejecutadas, fresh_names canónico). Entraron 6
+lecciones nuevas, 3 se extendieron con instancias (as_rational_const con su
+reincidencia-disfrazada, temps→canónico, triple-cerrojo→precedente u-du) y la
+tabla de tiempos ganó nota de vigencia. El disparador es el que esta sección
+recomienda: contexto por agotarse ⟹ el skill ES el handoff, y cada lección que
+no esté aquí se re-paga en la siguiente sesión.
+
 **2026-07-29: pasada B disparada por el caso más incómodo — esta skill contenía
 una guía FALSA y la seguí tres ciclos.** El discriminante «`stderr_fragility` es
 contención» venía de la pasada anterior, era una generalización razonable de
