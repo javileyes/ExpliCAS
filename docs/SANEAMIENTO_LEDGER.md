@@ -204,6 +204,27 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 
 ## Cerrados
 
+### L17 — CERRADO: barrido de la clase L15 — el segundo inquilino estaba en el gate de cero exacto
+- **Origen:** ciclos 2026-08-01 (2ª tanda); fix `a31bff030`.
+- **Qué:** auditados los 6 generadores de variables sintéticas del workspace
+  (la clase del bug 7/3). Dos ya sembraban anti-colisión
+  (`polynomial_identity_support`, `verification_algebraic` — tercer
+  implementador del mismo patrón, candidato a unificar); los `uc{N}` de dsolve
+  son **inalcanzables** (cualquier símbolo de usuario en la ODE declina la
+  ruta antes de crear los frescos — sondeado con control); y
+  `poly_compare::poly_is_zero_opaque` tenía el agujero real: sus átomos
+  `__polyzero_*` de nombre fijo fusionaban con variables homónimas del árbol y
+  el gate declaraba cero `sin(x) − __polyzero_atom_0` (test escrito en rojo
+  primero).
+- **Alcance honesto:** no se encontró ruta pública que lo dispare hoy (solve,
+  cancel y powfold idénticos al control), pero el gate alimenta decisiones
+  drop/keep y la doctrina es exactitud en el gate, no confianza en los
+  consumidores. Cerrado con el patrón de bases desplazadas de L15.
+- **Pendiente menor anotado:** unificar los TRES implementadores del patrón
+  «nombre fresco esquivando el árbol» (engine, verification_algebraic,
+  poly_compare + el de div_expand) en un helper de cas_ast — misma familia
+  L13, sin urgencia.
+
 ### L11 — Detectores sec/csc de potencia impar → CERRADO 2026-08-01 (borrados)
 La cuarentena se resolvió haciendo el trabajo que el informe de saneamiento del
 2026-07-02 (§11, Clase A) dejaba encargado a «la campaña de universalidad»:
