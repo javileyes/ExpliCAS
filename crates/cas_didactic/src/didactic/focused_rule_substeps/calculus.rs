@@ -2971,3 +2971,144 @@ pub(super) fn generate_symbolic_power_substitution_substeps(
         },
     ]
 }
+
+/// Narración de la TABLA u-du simbólica (`symbolic_derivative_table_antiderivative`):
+/// integrando `s·u′·F(u)` con F ∈ {exp, sin, cos, sinh, cosh} y `u` compuesta
+/// no polinómica (`∫cos(x)·cos(sin(x)) = sin(sin(x))`). Mismos cerrojos que la
+/// ruta y huella del after (`c·G(u)`, con Neg opcional) para no narrar pasos
+/// de dueños ajenos. Los kernels POLINÓMICOS conservan su narrador de tabla.
+pub(super) fn generate_symbolic_table_substitution_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if matches!(
+        ctx.get(after),
+        Expr::Function(after_fn, after_args)
+            if ctx.sym_name(*after_fn) == "integrate" && after_args.len() == 2
+    ) {
+        return Vec::new();
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym).to_string();
+
+    let table = |b: BuiltinFn| -> Option<(&'static str, BuiltinFn, bool)> {
+        match b {
+            BuiltinFn::Exp => Some(("Usar la regla de exp(u) -> exp(u)", BuiltinFn::Exp, false)),
+            BuiltinFn::Cos => Some(("Usar la regla de cos(u) -> sin(u)", BuiltinFn::Sin, false)),
+            BuiltinFn::Sin => Some(("Usar la regla de sin(u) -> -cos(u)", BuiltinFn::Cos, true)),
+            BuiltinFn::Sinh => Some((
+                "Usar la regla de sinh(u) -> cosh(u)",
+                BuiltinFn::Cosh,
+                false,
+            )),
+            BuiltinFn::Cosh => Some((
+                "Usar la regla de cosh(u) -> sinh(u)",
+                BuiltinFn::Sinh,
+                false,
+            )),
+            _ => None,
+        }
+    };
+
+    let mut found: Option<(ExprId, &'static str, BuiltinFn)> = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, args[0]) {
+        // exp(u) canonizado como Pow(E, u) cuenta como exterior Exp
+        let outer_inner: Option<(BuiltinFn, ExprId)> = match ctx.get(factor) {
+            Expr::Function(f_id, f_args) if f_args.len() == 1 => {
+                ctx.builtin_of(*f_id).map(|b| (b, f_args[0]))
+            }
+            Expr::Pow(base, exp)
+                if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) =>
+            {
+                Some((BuiltinFn::Exp, *exp))
+            }
+            _ => None,
+        };
+        let Some((builtin, inner)) = outer_inner else {
+            continue;
+        };
+        let Some((title, anti, _)) = table(builtin) else {
+            continue;
+        };
+        if !contains_named_var(ctx, inner, &var_name) {
+            continue;
+        }
+        if Polynomial::from_expr(ctx, inner, &var_name).is_ok() {
+            continue;
+        }
+        found = Some((inner, title, anti));
+        break;
+    }
+    let Some((inner, title, anti_builtin)) = found else {
+        return Vec::new();
+    };
+
+    // Huella: el after contiene G(inner) (bajo Neg/coeficiente opcionales).
+    let core = match ctx.get(after) {
+        Expr::Neg(i) => *i,
+        _ => after,
+    };
+    let fingerprint = cas_math::expr_nary::mul_leaves(ctx, core)
+        .into_iter()
+        .any(|f| {
+            // el motor canoniza exp(u) como Pow(E, u): las dos formas cuentan
+            if anti_builtin == BuiltinFn::Exp {
+                if let Expr::Pow(base, exp) = ctx.get(f) {
+                    if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E))
+                        && cas_ast::ordering::compare_expr(ctx, *exp, inner)
+                            == std::cmp::Ordering::Equal
+                    {
+                        return true;
+                    }
+                }
+            }
+            matches!(
+                ctx.get(f),
+                Expr::Function(g_id, g_args)
+                    if g_args.len() == 1
+                        && ctx.builtin_of(*g_id) == Some(anti_builtin)
+                        && cas_ast::ordering::compare_expr(ctx, g_args[0], inner)
+                            == std::cmp::Ordering::Equal
+            )
+        });
+    if !fingerprint {
+        return Vec::new();
+    }
+
+    let mut scratch = ctx.clone();
+    let Some(derivative) = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        inner,
+        &var_name,
+    ) else {
+        return Vec::new();
+    };
+    let derivative = simplify_expr_in_context(&mut scratch, derivative);
+
+    vec![
+        SubStep::keyed(
+            "usub.identify_u_du",
+            vec![],
+            format!("u = {}", display_expr(ctx, inner)),
+            format!("du = {} dx", display_expr(&scratch, derivative)),
+        )
+        .with_before_latex(format!("u = {}", latex_expr(ctx, inner)))
+        .with_after_latex(format!("du = {}\\,dx", latex_expr(&scratch, derivative))),
+        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after)),
+    ]
+}

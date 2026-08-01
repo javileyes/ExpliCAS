@@ -887,6 +887,115 @@ fn build_scaled_power_antiderivative(
     Some(mul2_raw(ctx, coefficient_expr, power))
 }
 
+/// Tabla u-du con u SIMBÓLICA: `∫ s·u′·F(u) dx = s·G(u)` para
+/// F ∈ {exp, sin, cos, sinh, cosh} y `u` NO polinómica (los kernels
+/// polinómicos tienen dueño en `polynomial_derivative_table`).
+///
+/// El caso que la motiva: `∫cos(x)·cos(sin(x))` — la regla product-to-sum
+/// trataba `sin(x)` como ángulo independiente, destrozaba la forma u-du y el
+/// residual quedaba con el integrando transformado. Esta ruta se cuelga en el
+/// router ANTES de ese destructor. Mismo criterio exacto que las hermanas:
+/// cofactor ≡ s·u′ por multiconjunto de factores, o declina.
+pub(super) fn symbolic_derivative_table_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+    for (table_index, factor) in factors.iter().enumerate() {
+        let outer_inner = match ctx.get(*factor) {
+            Expr::Function(fn_id, args) if args.len() == 1 => {
+                ctx.builtin_of(*fn_id).map(|b| (b, args[0]))
+            }
+            _ => None,
+        };
+        let Some((builtin, inner)) = outer_inner else {
+            continue;
+        };
+        if !matches!(
+            builtin,
+            BuiltinFn::Exp | BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Sinh | BuiltinFn::Cosh
+        ) {
+            continue;
+        }
+        if !contains_named_var(ctx, inner, var) {
+            continue;
+        }
+        if Polynomial::from_expr(ctx, inner, var).is_ok() {
+            continue;
+        }
+        if crate::expr_complexity::node_count_tree(ctx, inner) > 64 {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, f)| (idx != table_index).then_some(*f))
+            .collect();
+        let cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+
+        let Some(derivative) =
+            crate::symbolic_differentiation_support::differentiate_symbolic_expr(ctx, inner, var)
+        else {
+            continue;
+        };
+        let Some((cof_factors, cof_coef)) =
+            crate::trig_power_identity_support::extract_as_product(ctx, cofactor)
+        else {
+            continue;
+        };
+        let Some((der_factors, der_coef)) =
+            crate::trig_power_identity_support::extract_as_product(ctx, derivative)
+        else {
+            continue;
+        };
+        if der_coef.is_zero() || cof_factors.len() != der_factors.len() {
+            continue;
+        }
+        let mut cof_sorted = cof_factors;
+        let mut der_sorted = der_factors;
+        cof_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
+        der_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
+        if cof_sorted
+            .iter()
+            .zip(der_sorted.iter())
+            .any(|(c, d)| compare_expr(ctx, *c, *d) != Ordering::Equal)
+        {
+            continue;
+        }
+        let scale = cof_coef / der_coef;
+
+        let (anti_builtin, negate) = match builtin {
+            BuiltinFn::Exp => (BuiltinFn::Exp, false),
+            BuiltinFn::Cos => (BuiltinFn::Sin, false),
+            BuiltinFn::Sin => (BuiltinFn::Cos, true),
+            BuiltinFn::Sinh => (BuiltinFn::Cosh, false),
+            BuiltinFn::Cosh => (BuiltinFn::Sinh, false),
+            _ => unreachable!(),
+        };
+        let coefficient = if negate { -scale } else { scale };
+        let anti = ctx.call_builtin(anti_builtin, vec![inner]);
+        if coefficient == BigRational::one() {
+            return Some(anti);
+        }
+        let minus_one = BigRational::from_integer((-1).into());
+        if coefficient == minus_one {
+            return Some(ctx.add(Expr::Neg(anti)));
+        }
+        let coefficient_expr = ctx.add(Expr::Number(coefficient));
+        return Some(mul2_raw(ctx, coefficient_expr, anti));
+    }
+    None
+}
+
 /// Potencia con exponente racional viendo a través de `Neg`: el parser
 /// guarda `u^(-3)` como `Pow(u, Neg(3))` y `polynomial_power_factor` (que
 /// solo casa `Number`) devolvía None — por eso `∫cos·(sin+2)^(-3)` ni entraba

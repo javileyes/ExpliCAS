@@ -19,6 +19,46 @@ fn format_product_to_sum_werner_desc() -> &'static str {
     "2·sin(A)·cos(B) → sin(A+B) + sin(A-B) (Werner)"
 }
 
+/// ¿Algún factor sin/cos tiene un ÁNGULO que contiene una llamada a función?
+///
+/// `cos(x)·cos(sin(x))` es un candidato u-du (u = sin(x), du = cos(x) dx):
+/// aplicarle Werner trata `sin(x)` como ángulo independiente, destroza la
+/// forma y deja un residual intransitable (`∫cos(sin(x)+x)+…`). Con ángulos
+/// así la preparación correcta es NO transformar y dejar que la tabla u-du
+/// simbólica del backend reclame el producto. Los ángulos lineales o
+/// polinómicos (3x, 5x, x+1) no contienen funciones y Werner sigue siendo su
+/// dueño.
+fn any_trig_factor_has_function_call_angle(ctx: &Context, expr: ExprId) -> bool {
+    fn contains_function_call(ctx: &Context, e: ExprId) -> bool {
+        match ctx.get(e) {
+            cas_ast::Expr::Function(_, _) => true,
+            cas_ast::Expr::Add(l, r)
+            | cas_ast::Expr::Sub(l, r)
+            | cas_ast::Expr::Mul(l, r)
+            | cas_ast::Expr::Div(l, r)
+            | cas_ast::Expr::Pow(l, r) => {
+                contains_function_call(ctx, *l) || contains_function_call(ctx, *r)
+            }
+            cas_ast::Expr::Neg(i) | cas_ast::Expr::Hold(i) => contains_function_call(ctx, *i),
+            _ => false,
+        }
+    }
+    cas_math::expr_nary::mul_leaves(ctx, expr)
+        .into_iter()
+        .any(|f| {
+            matches!(
+                ctx.get(f),
+                cas_ast::Expr::Function(fn_id, args)
+                    if args.len() == 1
+                        && matches!(
+                            ctx.builtin_of(*fn_id),
+                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                        )
+                        && contains_function_call(ctx, args[0])
+            )
+        })
+}
+
 /// Product-to-sum identity for trigonometric products (Werner formulas).
 ///
 /// `2 * sin(A) * cos(B) → sin(A+B) + sin(A-B)`
@@ -45,6 +85,9 @@ impl Rule for ProductToSumRule {
         expr: ExprId,
         _parent_ctx: &ParentContext,
     ) -> Option<Rewrite> {
+        if any_trig_factor_has_function_call_angle(ctx, expr) {
+            return None;
+        }
         let rewrite = try_rewrite_product_to_sum_werner_expr(ctx, expr)
             .or_else(|| try_rewrite_product_to_sum_no_coefficient_expr(ctx, expr))?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_product_to_sum_werner_desc()))

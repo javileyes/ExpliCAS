@@ -677,6 +677,14 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        // Tabla u-du simbólica (∫s·u′·F(u), F ∈ {exp,sin,cos,sinh,cosh}, u no
+        // polinómica): ANTES de product-to-sum, que trata el u interno como
+        // ángulo independiente y destroza la forma (∫cos·cos(sin(x)) quedaba
+        // residual con el integrando transformado).
+        if let Some(integral) = symbolic_derivative_table_antiderivative(ctx, expr, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = trig_product_to_sum_antiderivative(ctx, l, r, var) {
             return Some(integral);
         }

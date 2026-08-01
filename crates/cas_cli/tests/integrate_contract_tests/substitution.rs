@@ -1984,3 +1984,40 @@ fn integrate_contract_shifted_log_u_du_abs_semantics() {
         "ln(|sinh(x) + 3|)"
     );
 }
+#[test]
+fn integrate_contract_symbolic_table_u_du_trig_outer() {
+    // Tabla u-du simbólica (F ∈ {sin,cos,…} con u compuesta): antes, Werner
+    // trataba sin(x) como ángulo independiente y el residual quedaba con el
+    // integrando destrozado (∫cos(sin(x)+x)+…).
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*cos(sin(x)), x)"),
+        "sin(sin(x))"
+    );
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*sin(sin(x)), x)"),
+        "-cos(sin(x))"
+    );
+    // regla de la cadena en el du: cos(2x) = (1/2)·d(sin(2x))/dx
+    assert_eq!(
+        simplified_integral("integrate(cos(2*x)*cos(sin(2*x)), x)"),
+        "1/2 * sin(sin(2 * x))"
+    );
+}
+#[test]
+fn integrate_contract_werner_keeps_linear_angle_products() {
+    // El gate de Werner declina solo con ángulos que contienen funciones; los
+    // lineales siguen siendo suyos. Por el PIPELINE real (CLI): el harness
+    // `simplified_integral` corre otra configuración (sin orquestador y con
+    // Double Angle desactivada) donde la expansión múltiple-ángulo destroza
+    // el par ANTES de Werner — preexistente y ajeno a este gate.
+    let (wire, _) = cli_eval_json_with_stderr("integrate(sin(3*x)*cos(5*x), x)");
+    let result = wire["result"].as_str().expect("result");
+    assert!(
+        !result.contains("integrate("),
+        "Werner debe seguir integrando el par lineal, got {result}"
+    );
+    assert!(
+        result.contains("cos(8"),
+        "esperaba la forma Werner con cos(8x), got {result}"
+    );
+}

@@ -2026,3 +2026,25 @@ fn integrate_contract_div_u_du_narrates_reciprocal_and_log_rules() {
         "expected ln|u| substep, got {log_substeps:?}"
     );
 }
+#[test]
+fn integrate_contract_symbolic_table_narrates_u_du_and_rule() {
+    for (input, rule_title) in [
+        (
+            "integrate(cos(x)*cos(sin(x)), x)",
+            "Usar la regla de cos(u) -> sin(u)",
+        ),
+        (
+            "integrate(cos(x)*exp(sin(x)), x)",
+            "Usar la regla de exp(u) -> exp(u)",
+        ),
+    ] {
+        let substeps = integration_substeps(input);
+        assert_u_du_substep_labels(&substeps, input);
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == rule_title),
+            "expected '{rule_title}' for {input}, got {substeps:?}"
+        );
+    }
+}
