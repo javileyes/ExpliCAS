@@ -5,9 +5,9 @@
 //! `1/ln(x) > 2` → `(0, e^(1/2))`. The denominator sign-split closes families F7 AND
 //! F5 of docs/AUDITORIA_FRONTERA_2026-07-09.md with one handler.
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::RelOp;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 #[test]
 fn reciprocal_of_abs_affine_vs_nonzero_const_splits_on_denominator_sign() {

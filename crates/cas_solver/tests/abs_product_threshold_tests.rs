@@ -7,9 +7,9 @@
 //! docs/AUDITORIA_FRONTERA_2026-07-09.md; the fix falls back to the already-parsed
 //! branch POLYNOMIAL (canonical expanded form) when the raw solve is not concrete.
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::RelOp;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 #[test]
 fn product_of_two_abs_below_threshold_keeps_the_interior_interval() {

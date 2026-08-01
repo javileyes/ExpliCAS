@@ -6,9 +6,9 @@
 //! where EITHER side is undefined cannot satisfy the relation; both sides' implicit
 //! domains must shrink interval results (family F9, docs/AUDITORIA_FRONTERA_2026-07-09.md).
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::RelOp;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 #[test]
 fn ln_vs_ln_inequality_intersects_rhs_domain() {

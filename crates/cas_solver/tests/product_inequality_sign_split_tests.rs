@@ -8,9 +8,9 @@
 //! docs/AUDITORIA_FRONTERA_2026-07-09.md; the factor-sign split on the RAW tree
 //! also closes the `(1-x)*ln(x) > 0` P1 echo member.
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::RelOp;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 #[test]
 fn shared_root_product_with_ln_factor_splits_on_factor_signs() {

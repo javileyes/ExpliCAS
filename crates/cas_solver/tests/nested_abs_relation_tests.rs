@@ -6,9 +6,9 @@
 //! docs/AUDITORIA_FRONTERA_2026-07-09.md. The fix partitions ℝ at the INNER abs
 //! zeros, reduces each region to a plain abs relation, clips and unions.
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::RelOp;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 #[test]
 fn nested_abs_vs_variable_rhs_partitions_at_inner_zeros() {

@@ -1,4 +1,4 @@
-//! Helper compartido de los binarios de contrato de inecuaciones.
+//! Helpers compartidos de los binarios de contrato de solve (display).
 //!
 //! Vive en su propio módulo (y no en `test_utils`) a propósito: los wrappers
 //! de compatibilidad de cas_engine incluyen `test_utils` bajo
@@ -24,4 +24,12 @@ pub fn solve_display(lhs: &str, op: cas_ast::RelOp, rhs: &str) -> String {
     let eq = cas_ast::Equation { lhs, rhs, op };
     let (set, _) = cas_solver::api::solve(&eq, "x", &mut simplifier).expect("solve");
     cas_solver::command_api::solve::display_solution_set(&simplifier.context, &set)
+}
+
+/// Sabor ECUACIÓN del helper: `lhs = rhs` para `x`.
+///
+/// Eran 7 copias byte-idénticas con la firma `(lhs, rhs)`; delega en
+/// [`solve_display`] con `RelOp::Eq`.
+pub fn solve_eq_display(lhs: &str, rhs: &str) -> String {
+    solve_display(lhs, cas_ast::RelOp::Eq, rhs)
 }

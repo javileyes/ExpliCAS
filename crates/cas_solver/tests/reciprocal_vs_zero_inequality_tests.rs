@@ -6,9 +6,9 @@
 //! which inverted the boundary equation into a non-real endpoint. Family F6 of
 //! docs/AUDITORIA_FRONTERA_2026-07-09.md.
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::RelOp;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 #[test]
 fn reciprocal_of_ln_vs_zero_reduces_to_denominator_sign() {

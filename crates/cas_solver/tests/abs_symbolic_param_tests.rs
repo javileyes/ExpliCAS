@@ -8,13 +8,13 @@
 //! correct for `>` / `>=`; `=`, `<`, `<=` carry the sign guard as the
 //! established single-case Conditional.
 
-mod inequality_utils;
+mod solve_display_utils;
 use cas_ast::{Equation, RelOp};
 use cas_parser::parse;
 use cas_solver::api::solve;
 use cas_solver::command_api::solve::display_solution_set;
 use cas_solver::runtime::Simplifier;
-use inequality_utils::solve_display;
+use solve_display_utils::solve_display;
 
 fn solve_result(lhs: &str, op: RelOp, rhs: &str) -> Result<String, String> {
     let mut simplifier = Simplifier::with_default_rules();

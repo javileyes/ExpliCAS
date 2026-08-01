@@ -551,3 +551,26 @@ fn integrate_contract_definite_integral_shows_how_the_antiderivative_was_found()
         "the method must sit BETWEEN finding and evaluating: {titles:?}"
     );
 }
+#[test]
+fn integrate_contract_definite_over_symbolic_u_du_family() {
+    // La vía u-du simbólica sirve también a las definidas (mismo backend).
+    // El primer caso es deliberadamente el input del wrong answer L15: la
+    // indefinida devolvía 7/3 por la colisión de temps opacos; hoy 7/3 es la
+    // respuesta CORRECTA de la definida en [0, π/2] (8/3 − 1/3).
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*(sin(x)+1)^2, x, 0, pi/2)"),
+        "7/3"
+    );
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*exp(sin(x)), x, 0, pi/2)"),
+        "e - 1"
+    );
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*cos(sin(x)), x, 0, pi)"),
+        "0"
+    );
+    assert_eq!(
+        simplified_integral("integrate(sec(x)^2*tan(x)^3, x, 0, pi/4)"),
+        "1/4"
+    );
+}
