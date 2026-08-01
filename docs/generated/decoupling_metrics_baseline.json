@@ -1,0 +1,375 @@
+{
+ "commit": "aa6244597",
+ "d1_arithmetic": {
+  "entries": 25,
+  "helpers": 713,
+  "cierre_por_tema": {
+   "(resto)": {
+    "entries": 13,
+    "necesita": 661,
+    "exclusivos": 499
+   },
+   "trigonometry": {
+    "entries": 5,
+    "necesita": 151,
+    "exclusivos": 15
+   },
+   "hyperbolic": {
+    "entries": 2,
+    "necesita": 42,
+    "exclusivos": 13
+   },
+   "logarithms": {
+    "entries": 2,
+    "necesita": 34,
+    "exclusivos": 3
+   },
+   "exponents": {
+    "entries": 2,
+    "necesita": 14,
+    "exclusivos": 8
+   },
+   "algebra": {
+    "entries": 1,
+    "necesita": 3,
+    "exclusivos": 0
+   }
+  },
+  "helpers_compartidos_entre_temas": 162,
+  "pct_aristas_intra_fichero": 36.4,
+  "api_de_facto_top": [
+   {
+    "fn": "exprs_equal_up_to_add_term_order",
+    "entries": 16
+   },
+   {
+    "fn": "collect_add_terms",
+    "entries": 16
+   },
+   {
+    "fn": "run_default_simplify",
+    "entries": 15
+   },
+   {
+    "fn": "ambient_pipeline_value_domain",
+    "entries": 15
+   },
+   {
+    "fn": "signed_term_expr",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_equal_up_to_add_term_multiset_for_cancellation",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_equal_up_to_same_denominator",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_match_for_cancellation_leaf",
+    "entries": 15
+   },
+   {
+    "fn": "collect_signed_mul_factors",
+    "entries": 15
+   },
+   {
+    "fn": "term_has_matrix_product_factor",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_equal_up_to_mul_factor_order_and_sign",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_match_for_cancellation_uncached",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_match_for_cancellation",
+    "entries": 15
+   },
+   {
+    "fn": "exprs_match_after_default_simplify",
+    "entries": 14
+   },
+   {
+    "fn": "build_signed_sum_expr",
+    "entries": 13
+   }
+  ]
+ },
+ "d2_orchestrator": {
+  "fns": 692,
+  "ficheros": 11,
+  "pct_aristas_intra_fichero": 28.1,
+  "support_fan_in": {
+   "aristas": 606,
+   "modulos_que_lo_usan": 9,
+   "fns_llamadoras": 305,
+   "primitivas_usadas": 41
+  },
+  "visibilidad_interna": {
+   "pub(super)": 548,
+   "pub(crate)": 0
+  },
+  "flujos_cross_top": [
+   {
+    "de": "zero_detection",
+    "a": "support",
+    "aristas": 132
+   },
+   {
+    "de": "trig_angles",
+    "a": "support",
+    "aristas": 115
+   },
+   {
+    "de": "trig",
+    "a": "support",
+    "aristas": 101
+   },
+   {
+    "de": "pairing",
+    "a": "support",
+    "aristas": 71
+   },
+   {
+    "de": "fractions",
+    "a": "support",
+    "aristas": 64
+   },
+   {
+    "de": "hyperbolic",
+    "a": "support",
+    "aristas": 47
+   },
+   {
+    "de": "pairing",
+    "a": "trig_angles",
+    "aristas": 42
+   },
+   {
+    "de": "radicals_powers",
+    "a": "support",
+    "aristas": 42
+   }
+  ]
+ },
+ "d3_cas_math": {
+  "familias": [
+   "integration",
+   "differentiation",
+   "limits",
+   "poly",
+   "series",
+   "solve_support",
+   "trig",
+   "numeric",
+   "(resto)"
+  ],
+  "imports_cross_familia": [
+   {
+    "de": "trig",
+    "a": "(resto)",
+    "ficheros": 59
+   },
+   {
+    "de": "(resto)",
+    "a": "poly",
+    "ficheros": 50
+   },
+   {
+    "de": "integration",
+    "a": "(resto)",
+    "ficheros": 45
+   },
+   {
+    "de": "(resto)",
+    "a": "numeric",
+    "ficheros": 36
+   },
+   {
+    "de": "numeric",
+    "a": "(resto)",
+    "ficheros": 29
+   },
+   {
+    "de": "poly",
+    "a": "(resto)",
+    "ficheros": 15
+   },
+   {
+    "de": "integration",
+    "a": "numeric",
+    "ficheros": 13
+   },
+   {
+    "de": "limits",
+    "a": "(resto)",
+    "ficheros": 12
+   },
+   {
+    "de": "limits",
+    "a": "numeric",
+    "ficheros": 12
+   },
+   {
+    "de": "differentiation",
+    "a": "(resto)",
+    "ficheros": 11
+   },
+   {
+    "de": "(resto)",
+    "a": "trig",
+    "ficheros": 10
+   },
+   {
+    "de": "trig",
+    "a": "numeric",
+    "ficheros": 8
+   },
+   {
+    "de": "integration",
+    "a": "poly",
+    "ficheros": 7
+   },
+   {
+    "de": "integration",
+    "a": "differentiation",
+    "ficheros": 5
+   },
+   {
+    "de": "limits",
+    "a": "poly",
+    "ficheros": 5
+   },
+   {
+    "de": "differentiation",
+    "a": "numeric",
+    "ficheros": 4
+   },
+   {
+    "de": "poly",
+    "a": "numeric",
+    "ficheros": 4
+   },
+   {
+    "de": "numeric",
+    "a": "poly",
+    "ficheros": 4
+   },
+   {
+    "de": "differentiation",
+    "a": "poly",
+    "ficheros": 3
+   },
+   {
+    "de": "limits",
+    "a": "differentiation",
+    "ficheros": 2
+   }
+  ],
+  "modulos_puente_top": [
+   {
+    "modulo": "limits_support",
+    "familias_que_importa": 5
+   },
+   {
+    "modulo": "symbolic_integration_support",
+    "familias_que_importa": 5
+   },
+   {
+    "modulo": "general_integration_backend",
+    "familias_que_importa": 4
+   },
+   {
+    "modulo": "symbolic_differentiation_support",
+    "familias_que_importa": 4
+   },
+   {
+    "modulo": "root_forms",
+    "familias_que_importa": 3
+   },
+   {
+    "modulo": "abs_support",
+    "familias_que_importa": 2
+   },
+   {
+    "modulo": "arithmetic_cancel_support",
+    "familias_que_importa": 2
+   },
+   {
+    "modulo": "difference_of_squares_support",
+    "familias_que_importa": 2
+   },
+   {
+    "modulo": "div_expand_cancel_support",
+    "familias_que_importa": 2
+   },
+   {
+    "modulo": "factor",
+    "familias_que_importa": 2
+   }
+  ],
+  "crates": {
+   "cas_android_ffi": {
+    "lineas_src": 296,
+    "pub_fns": 2
+   },
+   "cas_api_models": {
+    "lineas_src": 3934,
+    "pub_fns": 8
+   },
+   "cas_ast": {
+    "lineas_src": 6087,
+    "pub_fns": 30
+   },
+   "cas_cli": {
+    "lineas_src": 3974,
+    "pub_fns": 14
+   },
+   "cas_didactic": {
+    "lineas_src": 45514,
+    "pub_fns": 18
+   },
+   "cas_engine": {
+    "lineas_src": 201783,
+    "pub_fns": 69
+   },
+   "cas_formatter": {
+    "lineas_src": 11587,
+    "pub_fns": 31
+   },
+   "cas_math": {
+    "lineas_src": 181228,
+    "pub_fns": 738
+   },
+   "cas_parser": {
+    "lineas_src": 2463,
+    "pub_fns": 3
+   },
+   "cas_session": {
+    "lineas_src": 6029,
+    "pub_fns": 13
+   },
+   "cas_session_core": {
+    "lineas_src": 3913,
+    "pub_fns": 40
+   },
+   "cas_solver": {
+    "lineas_src": 97597,
+    "pub_fns": 169
+   },
+   "cas_solver_core": {
+    "lineas_src": 75872,
+    "pub_fns": 140
+   },
+   "cas_wasm": {
+    "lineas_src": 416,
+    "pub_fns": 3
+   }
+  }
+ }
+}

@@ -57,8 +57,10 @@ La costura más densa en deuda Y en bugs (la clase 7/3 vivía aquí al lado).
 - Los shortcuts de regresión (sedimento VIVO — 0 dead_code) se agrupan por el
   invariante que protegen; cada grupo con el contrato que lo justifica; el
   que quede sin justificación medible → cuarentena→certificación.
-- Éxito medible: % de aristas intra-módulo sube de 34% por peldaños; ninguna
-  pérdida en suite/huella.
+- Éxito medible: % de aristas intra-módulo sube por peldaños; ninguna
+  pérdida en suite/huella. *(D0 2026-08-01: la cifra canónica es 28,1% —
+  partición física por fichero; el «34%» era la partición por regex sin
+  `support` separado. Ver `DESACOPLO_D0_BASELINE_2026-08.md`.)*
 
 ### D3 — Partir CRATES (el desacoplo que compra compilación)
 El troceo de ficheros no toca tiempos de cargo (la unidad es el crate);
@@ -67,7 +69,10 @@ cas_math sigue siendo 180k con cadena de 380k aguas abajo.
 - Candidatos naturales: kernels de cálculo (integración+diferenciación+
   policies) y poly/multipoly como crates propios.
 - Éxito medible: tocar integración deja de recompilar la cadena entera;
-  segundos de `--timings` antes/después.
+  segundos de `--timings` antes/después. *(D0 2026-08-01: baseline medido —
+  editar cas_math y validar workspace cuesta 26 s (test targets dominan;
+  libs solo 4,3 s); suelo sano 0,9 s. Techo de mejora ~20 s/iteración: real
+  pero sin urgencia — el orden «D3 al final» queda revalidado.)*
 - Va DESPUÉS de D1/D2 a propósito: partir crates con las costuras sucias
   congela la suciedad en fronteras públicas.
 
