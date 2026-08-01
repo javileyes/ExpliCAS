@@ -165,7 +165,15 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
   con sustitución u=1+sin evidente.
 - **Hallazgo agravante:** `--budget standard` NO poda el bucle (exit 124 con
   presupuesto activo) — hay trabajo no medido por el sistema de presupuesto.
-- **Pista (b) ESCOPADA 2026-08-01 (mecanismo exacto, sin parche):** el
+- **Pista (b) EJECUTADA 2026-08-01 (`44c14f861`, vía 1):** tope temporal
+  `STRATEGY_SIMPLIFY_TIME_BUDGET_MS = 1500` en los 8 call-sites de los
+  callbacks estrategia-0/2 (la fontanería `time_budget_ms` → deadline
+  cooperativo ya existía; solo faltaba conectarla). Éxito medido: el e2e del
+  molino pasa de ~150 s a **2,2 s** con el mismo veredicto sano, y entra a la
+  suite como guardia permanente (deja de ser #[ignore]). Queda latente la
+  pista (c) — abstención de estrategia-2 con abstracción parcial — como
+  optimización adicional, ya sin urgencia: el tope acota el coste.
+- **Pista (b) ESCOPADA 2026-08-01 (mecanismo exacto, ejecutada arriba):** el
   `Budget` (`cas_solver_core::budget_model`, fachada en `cas_engine::budget`)
   es un objeto POSEÍDO que se cobra explícitamente (`charge`/`scope` RAII) —
   no hay thread-local. Los `Simplifier::with_default_rules()` que las reglas
