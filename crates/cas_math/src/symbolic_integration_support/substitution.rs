@@ -887,6 +887,37 @@ fn build_scaled_power_antiderivative(
     Some(mul2_raw(ctx, coefficient_expr, power))
 }
 
+/// Normaliza un factor para la comparación cofactor ≡ s·u′ de las rutas u-du:
+/// la derivada CRUDA de `differentiate_symbolic_expr` trae la aritmética de
+/// exponentes sin plegar (`u^(2-1)`), y `u^1 ≠ u` estructuralmente. Pliega el
+/// exponente racional y quita el `^1`; el resto queda intacto.
+fn normalize_power_factor(ctx: &mut Context, factor: ExprId) -> ExprId {
+    let Expr::Pow(base, exp) = ctx.get(factor) else {
+        return factor;
+    };
+    let (base, exp) = (*base, *exp);
+    // numeric_eval, no views: la derivada cruda trae `2-1` como Sub sin
+    // plegar, y el extractor estructural devuelve None sobre eso (lección ya
+    // escrita en la skill; mordida aquí una vez más antes de releerla).
+    let Some(value) = crate::numeric_eval::as_rational_const(ctx, exp) else {
+        return factor;
+    };
+    if value == BigRational::one() {
+        return base;
+    }
+    if matches!(ctx.get(exp), Expr::Number(_)) {
+        return factor;
+    }
+    let folded = ctx.add(Expr::Number(value));
+    ctx.add(Expr::Pow(base, folded))
+}
+
+fn normalize_power_factors(ctx: &mut Context, factors: &mut [ExprId]) {
+    for f in factors.iter_mut() {
+        *f = normalize_power_factor(ctx, *f);
+    }
+}
+
 /// Tabla u-du con u SIMBÓLICA: `∫ s·u′·F(u) dx = s·G(u)` para
 /// F ∈ {exp, sin, cos, sinh, cosh} y `u` NO polinómica (los kernels
 /// polinómicos tienen dueño en `polynomial_derivative_table`).
@@ -906,9 +937,15 @@ pub(super) fn symbolic_derivative_table_antiderivative(
         return None;
     }
     for (table_index, factor) in factors.iter().enumerate() {
+        // exp(u) vive canonizado como Pow(E, u): las dos formas cuentan como
+        // exterior Exp (misma dualidad que ya cubría el narrador — la ruta se
+        // quedó ciega al wrapper y ∫cos·sin·e^(sin²) caía a residual).
         let outer_inner = match ctx.get(*factor) {
             Expr::Function(fn_id, args) if args.len() == 1 => {
                 ctx.builtin_of(*fn_id).map(|b| (b, args[0]))
+            }
+            Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(Constant::E)) => {
+                Some((BuiltinFn::Exp, *exp))
             }
             _ => None,
         };
@@ -962,6 +999,8 @@ pub(super) fn symbolic_derivative_table_antiderivative(
         }
         let mut cof_sorted = cof_factors;
         let mut der_sorted = der_factors;
+        normalize_power_factors(ctx, &mut cof_sorted);
+        normalize_power_factors(ctx, &mut der_sorted);
         cof_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
         der_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
         if cof_sorted
@@ -982,7 +1021,12 @@ pub(super) fn symbolic_derivative_table_antiderivative(
             _ => unreachable!(),
         };
         let coefficient = if negate { -scale } else { scale };
-        let anti = ctx.call_builtin(anti_builtin, vec![inner]);
+        let anti = if anti_builtin == BuiltinFn::Exp {
+            let e_const = ctx.add(Expr::Constant(Constant::E));
+            ctx.add(Expr::Pow(e_const, inner))
+        } else {
+            ctx.call_builtin(anti_builtin, vec![inner])
+        };
         if coefficient == BigRational::one() {
             return Some(anti);
         }
@@ -1048,6 +1092,8 @@ pub(super) fn symbolic_power_substitution_div_antiderivative(
     }
     let mut cof_sorted = cof_factors;
     let mut der_sorted = der_factors;
+    normalize_power_factors(ctx, &mut cof_sorted);
+    normalize_power_factors(ctx, &mut der_sorted);
     cof_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
     der_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
     if cof_sorted
@@ -1114,6 +1160,8 @@ fn symbolic_power_substitution_from_base(
 
     let mut cof_sorted = cof_factors;
     let mut der_sorted = der_factors;
+    normalize_power_factors(ctx, &mut cof_sorted);
+    normalize_power_factors(ctx, &mut der_sorted);
     cof_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
     der_sorted.sort_by(|a, b| compare_expr(ctx, *a, *b));
     if cof_sorted
@@ -3055,5 +3103,29 @@ fn collect_chain_substitution_candidates(
         }
         Expr::Neg(inner) => collect_chain_substitution_candidates(ctx, inner, var, out, seen),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod symbolic_table_tests {
+    use super::*;
+
+    #[test]
+    fn nested_symbolic_u_matches_through_raw_derivative_powers() {
+        // Regresión doble: (a) exp(u) canonizado como Pow(E,u) cuenta como
+        // exterior Exp también en la RUTA (no solo en el narrador); (b) la
+        // derivada CRUDA trae `u^(2-1)` sin plegar y la comparación debe
+        // plegar con numeric_eval::as_rational_const (views:: devuelve None
+        // sobre Sub — lección de la skill, mordida aquí antes de releerla).
+        let mut ctx = Context::new();
+        let integrand =
+            cas_parser::parse("cos(x)*sin(x)*exp(sin(x)^2)", &mut ctx).expect("integrand");
+        let out = symbolic_derivative_table_antiderivative(&mut ctx, integrand, "x")
+            .expect("la tabla u-du debe casar cofactor = (1/2)·d(sin^2)/dx");
+        let rendered = cas_formatter::render_expr(&ctx, out);
+        assert!(
+            rendered.contains("1/2") && rendered.contains("sin(x)^2"),
+            "esperaba (1/2)·e^(sin(x)^2), got {rendered}"
+        );
     }
 }

@@ -2021,3 +2021,17 @@ fn integrate_contract_werner_keeps_linear_angle_products() {
         "esperaba la forma Werner con cos(8x), got {result}"
     );
 }
+#[test]
+fn integrate_contract_symbolic_table_nested_u() {
+    // u COMPUESTA anidada: la ruta pliega la derivada cruda (u^(2-1)) con el
+    // extractor plegador y reconoce exp canonizada como Pow(E, u).
+    assert_eq!(
+        simplified_integral("integrate(cos(x)*sin(x)*exp(sin(x)^2), x)"),
+        "1/2 * e^(sin(x)^2)"
+    );
+    // composición TRIPLE: u = sin(x^2), du = 2x·cos(x^2) dx
+    assert_eq!(
+        simplified_integral("integrate(2*x*cos(x^2)*exp(sin(x^2)), x)"),
+        "e^sin(x^2)"
+    );
+}
