@@ -24,6 +24,16 @@ use num_traits::Zero;
 use std::cell::Cell;
 use std::cmp::Ordering;
 
+/// Tope temporal para los SIMPLIFY ANIDADOS de las estrategias 0/2.
+///
+/// L16(b): esos `Simplifier` ad-hoc nacen desconectados del presupuesto del
+/// eval (el `Budget` es poseído, no thread-local), así que su trabajo era
+/// invisible e ilimitado — el molino medido de la estrategia-2 rondaba los
+/// 150 s POR INVOCACIÓN sobre formas trig expandidas. Un simplify anidado
+/// legítimo tarda milisegundos; al agotar el tope el pipeline devuelve la
+/// expresión sin simplificar (salida honesta) y la estrategia declina.
+pub const STRATEGY_SIMPLIFY_TIME_BUDGET_MS: u64 = 1500;
+
 /// Intermediate state after replacing shared opaque calls with temporary vars.
 #[derive(Debug, Clone)]
 pub struct OpaqueSubstitutionPlan {

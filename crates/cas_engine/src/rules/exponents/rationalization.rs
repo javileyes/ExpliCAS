@@ -7,6 +7,17 @@ use cas_math::root_den_rationalize_support::RootDenRationalizeRewriteKind;
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
+fn strategy_simplify_options() -> crate::phase::SimplifyOptions {
+    // L16(b): tope temporal para el simplify anidado de las estrategias —
+    // esos Simplifier ad-hoc nacen desconectados del presupuesto del eval y
+    // su molino medido era ~150 s por invocación (ver la constante en
+    // cas_math::div_expand_cancel_support).
+    let mut options = crate::phase::SimplifyOptions::default();
+    options.time_budget_ms =
+        Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS);
+    options
+}
+
 // =============================================================================
 // RationalizeLinearSqrtDenRule: 1/(sqrt(t)+c) → (sqrt(t)-c)/(t-c²)
 // =============================================================================
@@ -44,15 +55,18 @@ define_rule!(
             |base_ctx, sub_frac| {
                 let mut simplifier = crate::Simplifier::with_default_rules();
                 simplifier.context = base_ctx.clone();
-                let (simplified, _) = simplifier.simplify(sub_frac);
+                let (simplified, _) =
+                    simplifier.simplify_with_options(sub_frac, strategy_simplify_options());
                 Some((simplifier.context, simplified))
             },
             crate::expand::expand,
             |expanded_ctx, expanded_num, expanded_den| {
                 let mut simplifier = crate::Simplifier::with_default_rules();
                 simplifier.context = expanded_ctx;
-                let (simplified_num, _) = simplifier.simplify(expanded_num);
-                let (simplified_den, _) = simplifier.simplify(expanded_den);
+                let (simplified_num, _) =
+                    simplifier.simplify_with_options(expanded_num, strategy_simplify_options());
+                let (simplified_den, _) =
+                    simplifier.simplify_with_options(expanded_den, strategy_simplify_options());
                 Some((simplifier.context, simplified_num, simplified_den))
             },
         ) {

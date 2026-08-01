@@ -10,8 +10,9 @@ const NUM: &str = "4*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^2 + 4*cos(x/2)*(c
 const DEN: &str = "cos(x/2)*(cos(x/2))^6 + 3*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^2 + 3*cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^4 + cos(x/2)*(cos(x/2))^6*(sin(x/2)/cos(x/2))^6";
 
 #[test]
-#[ignore = "lento (~150 s): la estrategia-2 expand-then-compare muele trig; las regresiones rápidas del invariante viven en cas_math::div_expand_cancel_support::tests"]
 fn opaque_quotient_with_engine_callbacks_must_not_return_constant() {
+    // 2,2 s desde que los simplify de estrategia llevan tope temporal
+    // (L16(b), STRATEGY_SIMPLIFY_TIME_BUDGET_MS); antes ~150 s de molino.
     let mut ctx = cas_ast::Context::new();
     let num = parse(NUM, &mut ctx).expect("num");
     let den = parse(DEN, &mut ctx).expect("den");
@@ -23,15 +24,22 @@ fn opaque_quotient_with_engine_callbacks_must_not_return_constant() {
         |base_ctx, sub_frac| {
             let mut simplifier = cas_engine::Simplifier::with_default_rules();
             simplifier.context = base_ctx.clone();
-            let (simplified, _) = simplifier.simplify(sub_frac);
+            let mut options = cas_engine::SimplifyOptions::default();
+            options.time_budget_ms =
+                Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS);
+            let (simplified, _) = simplifier.simplify_with_options(sub_frac, options);
             Some((simplifier.context, simplified))
         },
         cas_engine::expand,
         |expanded_ctx, expanded_num, expanded_den| {
             let mut simplifier = cas_engine::Simplifier::with_default_rules();
             simplifier.context = expanded_ctx;
-            let (simplified_num, _) = simplifier.simplify(expanded_num);
-            let (simplified_den, _) = simplifier.simplify(expanded_den);
+            let mut options = cas_engine::SimplifyOptions::default();
+            options.time_budget_ms =
+                Some(cas_math::div_expand_cancel_support::STRATEGY_SIMPLIFY_TIME_BUDGET_MS);
+            let (simplified_num, _) =
+                simplifier.simplify_with_options(expanded_num, options.clone());
+            let (simplified_den, _) = simplifier.simplify_with_options(expanded_den, options);
             Some((simplifier.context, simplified_num, simplified_den))
         },
     );
@@ -54,7 +62,7 @@ fn opaque_quotient_with_engine_callbacks_must_not_return_constant() {
 }
 
 #[test]
-#[ignore = "diagnóstico (~180 s): compara la simplificación con nombre neutro vs __opq0; debe dar el MISMO resultado"]
+#[ignore = "diagnóstico (~85 s): simplify TOP-LEVEL directo del monstruo trig — coste de orquestación fuera del alcance de L16(b); compara nombre neutro vs __opq0, deben dar el MISMO resultado"]
 fn nested_simplifier_name_sensitivity_probe() {
     for (name, src) in [("q", "(4*q*q^6*(sin(x/2)/q)^2 + 4*q*q^6*(sin(x/2)/q)^4 + 20/3*q*q^6*(sin(x/2)/q)^3 + q*q*(2*sin(x/2)^5 + q^3*(sin(x/2-x/2) + 2*q*sin(x/2))))/(q*q^6 + 3*q*q^6*(sin(x/2)/q)^2 + 3*q*q^6*(sin(x/2)/q)^4 + q*q^6*(sin(x/2)/q)^6)"), ("__opq0", "(4*__opq0*__opq0^6*(sin(x/2)/__opq0)^2 + 4*__opq0*__opq0^6*(sin(x/2)/__opq0)^4 + 20/3*__opq0*__opq0^6*(sin(x/2)/__opq0)^3 + __opq0*__opq0*(2*sin(x/2)^5 + __opq0^3*(sin(x/2-x/2) + 2*__opq0*sin(x/2))))/(__opq0*__opq0^6 + 3*__opq0*__opq0^6*(sin(x/2)/__opq0)^2 + 3*__opq0*__opq0^6*(sin(x/2)/__opq0)^4 + __opq0*__opq0^6*(sin(x/2)/__opq0)^6)")] {
         let mut simplifier = cas_engine::Simplifier::with_default_rules();
