@@ -2811,51 +2811,123 @@ pub(super) fn generate_symbolic_power_substitution_substeps(
     };
     let var_name = ctx.sym_name(*var_sym).to_string();
 
-    // Pow(base, n) con n racional, base con la variable y NO polinómica.
-    let factors = cas_math::expr_nary::mul_leaves(ctx, args[0]);
-    if factors.len() < 2 {
-        return Vec::new();
-    }
+    // (base, n) del integrando: Mul con Pow(base, n racional) — incluido n<0 —
+    // o Div cuyo denominador es Pow(base, m>0) o la base directa (n = −1).
+    // Base con la variable, NO polinómica y, en el brazo Div, no una función
+    // desnuda (esas tienen dueños con narración propia).
     let mut found: Option<(ExprId, num_rational::BigRational)> = None;
-    for factor in &factors {
-        let Expr::Pow(base, exp) = ctx.get(*factor) else {
-            continue;
-        };
-        let Some(exponent) = cas_ast::views::as_rational_const(ctx, *exp, 8) else {
-            continue;
-        };
-        if !contains_named_var(ctx, *base, &var_name) {
-            continue;
+    let factors = cas_math::expr_nary::mul_leaves(ctx, args[0]);
+    if factors.len() >= 2 {
+        for factor in &factors {
+            let Expr::Pow(base, exp) = ctx.get(*factor) else {
+                continue;
+            };
+            let Some(exponent) = cas_ast::views::as_rational_const(ctx, *exp, 8) else {
+                continue;
+            };
+            if !contains_named_var(ctx, *base, &var_name) {
+                continue;
+            }
+            if Polynomial::from_expr(ctx, *base, &var_name).is_ok() {
+                continue;
+            }
+            found = Some((*base, exponent));
+            break;
         }
-        if Polynomial::from_expr(ctx, *base, &var_name).is_ok() {
-            continue;
+    }
+    if found.is_none() {
+        if let Expr::Div(_, den) = ctx.get(args[0]) {
+            let (cand, m) = match ctx.get(*den) {
+                Expr::Pow(b, e) => match cas_ast::views::as_rational_const(ctx, *e, 8) {
+                    Some(m) if m > num_rational::BigRational::from_integer(0.into()) => (*b, m),
+                    _ => (*den, num_rational::BigRational::from_integer(1.into())),
+                },
+                _ => (*den, num_rational::BigRational::from_integer(1.into())),
+            };
+            if !matches!(ctx.get(cand), Expr::Function(_, _))
+                && contains_named_var(ctx, cand, &var_name)
+                && Polynomial::from_expr(ctx, cand, &var_name).is_err()
+            {
+                found = Some((cand, -m));
+            }
         }
-        found = Some((*base, exponent));
-        break;
     }
     let Some((base, exponent)) = found else {
         return Vec::new();
     };
 
-    // Huella del after: `c·base^(n+1)` (c racional opcional) sobre la MISMA base.
+    // Huella del after sobre la MISMA base: `c·base^(n+1)` (n≠−1, con la
+    // potencia en factor directo o en denominador recíproco) o `c·ln(|base|)`
+    // para n=−1. Sin huella no se narra: es lo que garantiza que el paso lo
+    // produjo esta ruta y no un dueño ajeno.
+    let minus_one = num_rational::BigRational::from_integer((-1).into());
+    let is_log_case = exponent == minus_one;
     let expected_exp = exponent + num_rational::BigRational::from_integer(1.into());
-    let after_factors = cas_math::expr_nary::mul_leaves(ctx, after);
-    let mut pow_matches = false;
-    for factor in &after_factors {
-        let Expr::Pow(after_base, after_exp) = ctx.get(*factor) else {
-            continue;
-        };
-        let Some(after_exponent) = cas_ast::views::as_rational_const(ctx, *after_exp, 8) else {
-            continue;
-        };
-        if after_exponent == expected_exp
-            && cas_ast::ordering::compare_expr(ctx, *after_base, base) == std::cmp::Ordering::Equal
-        {
-            pow_matches = true;
-            break;
+
+    fn strip_neg(ctx: &Context, e: ExprId) -> ExprId {
+        match ctx.get(e) {
+            Expr::Neg(i) => *i,
+            _ => e,
         }
     }
-    if !pow_matches {
+    fn has_power_of(
+        ctx: &Context,
+        e: ExprId,
+        base: ExprId,
+        wanted: &num_rational::BigRational,
+    ) -> bool {
+        for factor in cas_math::expr_nary::mul_leaves(ctx, e) {
+            if wanted == &num_rational::BigRational::from_integer(1.into())
+                && cas_ast::ordering::compare_expr(ctx, factor, base) == std::cmp::Ordering::Equal
+            {
+                return true;
+            }
+            if let Expr::Pow(b, x) = ctx.get(factor) {
+                if let Some(v) = cas_ast::views::as_rational_const(ctx, *x, 8) {
+                    if &v == wanted
+                        && cas_ast::ordering::compare_expr(ctx, *b, base)
+                            == std::cmp::Ordering::Equal
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    let core = strip_neg(ctx, after);
+    let fingerprint = if is_log_case {
+        // c·ln(base) o c·ln(|base|)
+        cas_math::expr_nary::mul_leaves(ctx, core)
+            .into_iter()
+            .any(|f| {
+                let Expr::Function(fn_id2, ln_args) = ctx.get(f) else {
+                    return false;
+                };
+                if ctx.sym_name(*fn_id2) != "ln" || ln_args.len() != 1 {
+                    return false;
+                }
+                let mut arg = ln_args[0];
+                if let Expr::Function(abs_id, abs_args) = ctx.get(arg) {
+                    if ctx.sym_name(*abs_id) == "abs" && abs_args.len() == 1 {
+                        arg = abs_args[0];
+                    }
+                }
+                cas_ast::ordering::compare_expr(ctx, arg, base) == std::cmp::Ordering::Equal
+            })
+    } else if expected_exp > num_rational::BigRational::from_integer(0.into()) {
+        has_power_of(ctx, core, base, &expected_exp)
+    } else {
+        // negativo: potencia en factor directo (Pow con exponente negativo) o
+        // en el denominador de un Div
+        has_power_of(ctx, core, base, &expected_exp)
+            || match ctx.get(core) {
+                Expr::Div(_, d) => has_power_of(ctx, *d, base, &(-expected_exp.clone())),
+                _ => false,
+            }
+    };
+    if !fingerprint {
         return Vec::new();
     }
 
@@ -2879,12 +2951,23 @@ pub(super) fn generate_symbolic_power_substitution_substeps(
         )
         .with_before_latex(format!("u = {}", latex_expr(ctx, base)))
         .with_after_latex(format!("du = {}\\,dx", latex_expr(&scratch, derivative))),
-        SubStep::new(
-            "Usar regla de potencia para integrales",
-            display_expr(ctx, args[0]),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, args[0]))
-        .with_after_latex(latex_expr(ctx, after)),
+        if is_log_case {
+            SubStep::keyed(
+                "usub.rule_ln_abs_inner_derivative",
+                vec![],
+                display_expr(ctx, args[0]),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after))
+        } else {
+            SubStep::new(
+                "Usar regla de potencia para integrales",
+                display_expr(ctx, args[0]),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after))
+        },
     ]
 }

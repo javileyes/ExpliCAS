@@ -1999,3 +1999,30 @@ fn integrate_contract_shifted_trig_power_narrates_u_du() {
         "expected power-rule application substep for {input}, got {substeps:?}"
     );
 }
+#[test]
+fn integrate_contract_div_u_du_narrates_reciprocal_and_log_rules() {
+    // La extensión Div de la vía u-du narra con evidencia: identificar u/du y
+    // la regla aplicada (potencia para m>1, ln|u| para m=1).
+    let substeps = integration_substeps("integrate(cos(x)/(sin(x)+2)^2, x)");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Identificar u y du"),
+        "expected u/du substep, got {substeps:?}"
+    );
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar regla de potencia para integrales"),
+        "expected power-rule substep, got {substeps:?}"
+    );
+
+    let log_substeps = integration_substeps("integrate(cosh(x)/(sinh(x)+3), x)");
+    assert_u_du_substep_labels(&log_substeps, "integrate(cosh(x)/(sinh(x)+3), x)");
+    assert!(
+        log_substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar la regla de ln|u| con derivada interna"),
+        "expected ln|u| substep, got {log_substeps:?}"
+    );
+}
