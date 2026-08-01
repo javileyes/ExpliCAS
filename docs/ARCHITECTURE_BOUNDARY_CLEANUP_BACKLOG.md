@@ -194,7 +194,7 @@ Every move set should keep this green:
 2. `make ci`
 3. relevant focused tests for the moved subsystem
 4. if solve/eval boundaries move, re-run:
-   - `cargo test --release -p cas_solver --test metamorphic_simplification_tests metatest_unified_benchmark -- --ignored --exact --nocapture`
+   - `cargo test --release -p cas_solver --test metamorphic_simplification_tests runners::metatest_unified_benchmark -- --ignored --exact --nocapture`
 
 ## Done Criteria
 

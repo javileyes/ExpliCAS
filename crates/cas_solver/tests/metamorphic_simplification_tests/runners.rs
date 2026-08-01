@@ -115,6 +115,11 @@ pub(super) fn shuffle_expr_seeded(ctx: &mut Context, expr: ExprId, seed: u64) ->
     }
 }
 
+/// Filter for [`metatest_child_raw_pressure_proof`], captured where the test
+/// lives so moving the test moves the filter. See `ChildTest` in `main.rs`.
+pub(super) const CHILD_RAW_PRESSURE_PROOF: ChildTest =
+    ChildTest::here(module_path!(), "metatest_child_raw_pressure_proof");
+
 #[test]
 #[ignore]
 pub(super) fn metatest_child_raw_pressure_proof() {
@@ -133,6 +138,10 @@ pub(super) fn metatest_child_raw_pressure_proof() {
         .expect("spawn raw pressure child worker");
     handle.join().expect("raw pressure child worker panicked");
 }
+
+/// Filter for [`metatest_child_nf_convergence`] — see [`CHILD_RAW_PRESSURE_PROOF`].
+pub(super) const CHILD_NF_CONVERGENCE: ChildTest =
+    ChildTest::here(module_path!(), "metatest_child_nf_convergence");
 
 #[test]
 #[ignore]
@@ -3829,6 +3838,11 @@ fn run_unified_benchmark(shortcut_mode: MetatestShortcutMode, enforce_clean: boo
 }
 
 fn run_unified_benchmark_threaded(shortcut_mode: MetatestShortcutMode, enforce_clean: bool) {
+    // Every suite here delegates combos to child processes. A filter that names
+    // no test makes the child exit 0 with nothing done, and the benchmark then
+    // reports whatever that emptiness happens to mean per classifier — so check
+    // the filters BEFORE spending the run.
+    assert_child_test_filters_resolve();
     let handle = std::thread::Builder::new()
         .stack_size(METATEST_WORKER_STACK_SIZE_BYTES)
         .spawn(move || run_unified_benchmark(shortcut_mode, enforce_clean))

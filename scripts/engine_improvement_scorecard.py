@@ -310,7 +310,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_solver",
             "--test",
             "metamorphic_simplification_tests",
-            "metatest_unified_benchmark",
+            "runners::metatest_unified_benchmark",
             "--",
             "--ignored",
             "--exact",
@@ -336,7 +336,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_solver",
             "--test",
             "metamorphic_simplification_tests",
-            "metatest_unified_benchmark_nf_first",
+            "runners::metatest_unified_benchmark_nf_first",
             "--",
             "--ignored",
             "--exact",
@@ -363,7 +363,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_solver",
             "--test",
             "metamorphic_simplification_tests",
-            "metatest_csv_combinations_small",
+            "csv_pairs::metatest_csv_combinations_small",
             "--",
             "--exact",
             "--nocapture",
@@ -385,7 +385,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_solver",
             "--test",
             "metamorphic_simplification_tests",
-            "metatest_csv_contextual_pairs_strict",
+            "csv_pairs::metatest_csv_contextual_pairs_strict",
             "--",
             "--ignored",
             "--exact",
@@ -408,7 +408,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_solver",
             "--test",
             "metamorphic_simplification_tests",
-            "metatest_csv_contextual_radical_pairs",
+            "csv_pairs::metatest_csv_contextual_radical_pairs",
             "--",
             "--ignored",
             "--exact",
@@ -474,7 +474,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_solver",
             "--test",
             "diff_step_contract_tests",
-            "inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
+            "inverse_trig::inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
             "--",
             "--ignored",
             "--exact",
@@ -628,7 +628,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_cli",
             "--test",
             "integrate_contract_tests",
-            "integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution",
+            "substitution::integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution",
             "--",
             "--exact",
             "--nocapture",
@@ -762,7 +762,7 @@ SUITES: dict[str, SuiteSpec] = {
             "cas_cli",
             "--test",
             "integrate_contract_tests",
-            "integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
+            "verification::integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
             "--",
             "--ignored",
             "--exact",
@@ -8388,6 +8388,38 @@ PARSERS = {
 }
 
 
+_RUNNING_N_TESTS_RE = re.compile(r"^running (\d+) tests?$", re.M)
+
+
+def suite_filter(spec: "SuiteSpec") -> str:
+    """The test-name filter a suite passes to cargo, for error messages."""
+    cmd = list(spec.command)
+    if "--test" in cmd:
+        after = cmd[cmd.index("--test") + 2 :]
+        if after and not after[0].startswith("-"):
+            return f"the filter {after[0]!r}"
+    return "the suite's command"
+
+
+def ran_no_tests(output: str) -> bool:
+    """True when cargo ran the suite but libtest matched nothing.
+
+    A `--exact` filter that no longer names a test does NOT fail: libtest prints
+    «running 0 tests», reports `0 passed`, and exits 0. Every parser here then
+    reads zeros and `suite_status` calls that a pass — so a suite can go dead in
+    a refactor and keep reporting green for as long as nobody looks. It happened:
+    splitting `metamorphic_simplification_tests` into modules (`6789317fa`) put a
+    module path in front of five test names, and five scorecard suites went on
+    "passing" while measuring nothing.
+
+    Every `running N tests` banner in the output must be counted, not just the
+    first: a suite may build more than one binary, and it is dead only if NONE
+    of them ran anything.
+    """
+    counts = [int(n) for n in _RUNNING_N_TESTS_RE.findall(output)]
+    return bool(counts) and all(n == 0 for n in counts)
+
+
 def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
     if returncode != 0:
         return "fail"
@@ -12767,6 +12799,17 @@ def main() -> int:
             }
             status = "fail"
             overall_exit = 1
+        elif ran_no_tests(output):
+            # Nothing ran, so there is nothing to score. Reporting the parser's
+            # zeros as a pass is how five suites stayed green while dead.
+            metrics = {"parse_error": "no tests matched the suite's filter"}
+            status = "fail"
+            overall_exit = 1
+            print(
+                f"  ✘ {spec.name}: libtest matched 0 tests — {suite_filter(spec)} "
+                "names nothing. Check the test's module path "
+                "(`cargo test … -- --list`)."
+            )
         else:
             try:
                 metrics = PARSERS[spec.parser](output)

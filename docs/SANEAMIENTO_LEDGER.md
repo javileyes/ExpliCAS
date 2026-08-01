@@ -329,6 +329,34 @@ subcadena y no necesitaban cambio.
 referencias: es un archivo histórico y reescribirlo falsearía lo ejecutado
 entonces.
 
+**Reabierta y vuelta a cerrar 2026-08-01.** La barrida de julio miró los
+comandos escritos en prosa y paró ahí; quedaban vivas dos poblaciones que no se
+escriben a mano:
+
+- **Cinco filtros `--exact` dentro del propio arnés.** Los clasificadores
+  metamórficos lanzan cada combo en un proceso HIJO reinvocando su binario, y
+  el nombre iba como literal. Con el filtro muerto libtest imprime «running 0
+  tests» y **sale 0**, así que cada clasificador leyó ese vacío como dato: las
+  suites mul/div anotaron 13.021 «inconclusive / missing_child_payload», y
+  `prove_zero_from_engine_texts_in_child_process` —que solo mira el exit
+  status— lo leyó como **PROVED**. Un arnés de soundness devolviendo verde
+  falso. Ahora ningún sitio escribe el nombre: cada test hijo se declara con
+  `ChildTest::here(module_path!(), …)` **junto a su propio `#[test]`**, y el
+  test no-`#[ignore]` `child_test_filters_still_name_their_tests` los resuelve
+  en cada `cargo test`.
+- **Ocho de las trece suites `--exact` del scorecard.** Incluidas
+  `simplify_strict` y `simplify_nf_first`, es decir el instrumento con el que
+  se valida cada ciclo de mejora. Como cargo salía 0, `suite_status` las daba
+  por **pass** midiendo cero. Corregidas las trece (verificadas contra
+  `--list`, no adivinadas) y añadido `ran_no_tests()`, que convierte «no
+  encajó ningún test» en `fail` en vez de en un pass vacío.
+
+**Lección (la misma de L3, ahora con un caso peor):** cerrar una entrada
+mirando solo donde se escribe a mano subestima el alcance. Y el modo de fallo
+que la hizo invisible es el que hay que atacar de raíz — un filtro obsoleto no
+falla, *acierta con cero*, y el verde de un instrumento vacío es
+indistinguible del verde de uno sano.
+
 ### L5 — Atribución de tiempo de CI → CERRADO 2026-07-31
 La sospecha se confirma, y por más margen del previsto. Suma de tiempos de test
 de los 361 binarios: **265 s (4,4 min)**, no los ~19 min medidos el 07-28.

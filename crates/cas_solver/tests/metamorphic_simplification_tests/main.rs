@@ -1014,6 +1014,125 @@ const METATEST_CHILD_SUBSTITUTION_PROOF_ENV: &str = "METATEST_CHILD_SUBSTITUTION
 const METATEST_CHILD_SUBSTITUTION_MODE_ENV: &str = "METATEST_CHILD_SUBSTITUTION_MODE";
 const METATEST_CHILD_SUBSTITUTION_OUTCOME_ENV: &str = "METATEST_CHILD_SUBSTITUTION_OUTCOME";
 
+// =============================================================================
+// Child-process test filters
+// =============================================================================
+//
+// Several classifiers run one combo in a CHILD process — the parent re-invokes
+// its own binary with `--exact <test name>`. The name libtest matches is the
+// test's MODULE PATH, so it changed under everything when this harness was split
+// out of one 18.9k-line file into modules (`6789317fa`), and a filter that names
+// nothing does not fail: libtest prints «running 0 tests» and exits 0. Every
+// classifier read that empty success as data — the mul/div suites booked 13 021
+// «inconclusive / missing_child_payload», and the raw-pressure proof, which only
+// checks the exit status, read it as PROVED.
+//
+// So no call site spells a child's name any more. Each child test declares
+// itself with [`ChildTest::here`] NEXT TO its own `#[test] fn`, capturing
+// `module_path!()` where it actually lives; move the test and its filter moves
+// with it. `assert_child_test_filters_resolve` then refuses to start a benchmark
+// whose filters do not name exactly one test each, so the silent shape cannot
+// come back.
+
+/// A test this harness re-invokes as a child process.
+#[derive(Clone, Copy)]
+struct ChildTest {
+    /// `module_path!()` AT THE TEST's definition — never written by hand.
+    module_path: &'static str,
+    name: &'static str,
+}
+
+impl ChildTest {
+    /// Declare a child test. Call it in the module that defines the test:
+    /// `ChildTest::here(module_path!(), "metatest_child_…")`.
+    const fn here(module_path: &'static str, name: &'static str) -> Self {
+        Self { module_path, name }
+    }
+
+    /// The `--exact` filter libtest matches: the module path WITHOUT the test
+    /// binary's crate root, plus the test name.
+    fn filter(&self) -> String {
+        match self.module_path.split_once("::") {
+            Some((_crate_root, inner)) => format!("{inner}::{}", self.name),
+            // The test sits at the crate root: libtest lists it bare.
+            None => self.name.to_string(),
+        }
+    }
+}
+
+/// Every child test the harness spawns. Kept as one list so the pre-flight check
+/// below covers all of them without each runner remembering to opt in.
+fn all_child_tests() -> Vec<ChildTest> {
+    vec![
+        runners::CHILD_NF_CONVERGENCE,
+        runners::CHILD_RAW_PRESSURE_PROOF,
+        numeric_check::CHILD_NF_FIRST_ADD_SUB,
+        numeric_check::CHILD_NF_FIRST_MUL_DIV,
+        substitution_runs::CHILD_SUBSTITUTION_COMBO,
+    ]
+}
+
+/// Guards the child filters on every `cargo test` — NOT `#[ignore]`d on purpose.
+///
+/// The benchmarks that depend on these filters are all `--ignored`, so a stale
+/// one could sit undetected until someone ran a sweep by hand. This costs five
+/// `--list` spawns of an already-built binary and turns that wait into a
+/// compile-time-ish check.
+#[test]
+fn child_test_filters_still_name_their_tests() {
+    assert_child_test_filters_resolve();
+}
+
+/// The check above can only cover the children it knows about, so nobody may
+/// spell one inline again: a hand-written name is precisely what survived the
+/// module split with no compiler and no test to notice.
+#[test]
+fn no_child_spawn_hardcodes_a_test_name() {
+    for (file, src) in [
+        ("general.rs", include_str!("general.rs")),
+        ("numeric_check.rs", include_str!("numeric_check.rs")),
+        ("runners.rs", include_str!("runners.rs")),
+        ("substitution_runs.rs", include_str!("substitution_runs.rs")),
+        ("support.rs", include_str!("support.rs")),
+    ] {
+        assert!(
+            !src.contains(".arg(\"metatest_child"),
+            "{file} passes a child test name as a literal — spawn it through a \
+             `ChildTest` declared next to the test with `module_path!()`, or the \
+             next module move silently turns this classifier into a no-op"
+        );
+    }
+}
+
+/// Refuse to produce numbers a stale filter would have invented.
+///
+/// `--list --exact <filter>` is the same matcher the spawn uses, so this asks
+/// libtest itself rather than re-deriving the rule.
+fn assert_child_test_filters_resolve() {
+    let current_exe = std::env::current_exe().expect("test binary path");
+    for child in all_child_tests() {
+        let filter = child.filter();
+        let out = std::process::Command::new(&current_exe)
+            .arg("--list")
+            .arg("--exact")
+            .arg(&filter)
+            .output()
+            .unwrap_or_else(|e| panic!("could not list tests of {current_exe:?}: {e}"));
+        let listed = String::from_utf8_lossy(&out.stdout);
+        let matches = listed
+            .lines()
+            .filter(|l| l.trim_end().ends_with(": test"))
+            .count();
+        assert_eq!(
+            matches, 1,
+            "child-process filter `{filter}` names {matches} tests, not 1 — the child would \
+             run nothing, exit 0, and its empty result would be booked as real data. \
+             `{}` moved: update the `ChildTest::here(module_path!(), …)` next to it.",
+            child.name
+        );
+    }
+}
+
 struct ComboProgressSnapshot {
     processed_combos: usize,
     total_combos: usize,

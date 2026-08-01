@@ -647,10 +647,10 @@ Comandos canónicos:
 
 ```bash
 cargo test --release -p cas_solver --test metamorphic_simplification_tests \
-  metatest_unified_benchmark -- --ignored --exact --nocapture
+  runners::metatest_unified_benchmark -- --ignored --exact --nocapture
 
 cargo test --release -p cas_solver --test metamorphic_simplification_tests \
-  metatest_unified_benchmark_nf_first -- --ignored --exact --nocapture
+  runners::metatest_unified_benchmark_nf_first -- --ignored --exact --nocapture
 ```
 
 ### Presión Metamórfica De Cálculo
@@ -753,7 +753,7 @@ Para ver el **informe detallado con clasificación por niveles**:
 
 ```bash
 METATEST_VERBOSE=1 cargo test --release -p cas_solver \
-    --test metamorphic_simplification_tests metatest_csv_combinations_mul \
+    --test metamorphic_simplification_tests csv_pairs::metatest_csv_combinations_mul \
     -- --nocapture --ignored 2>&1
 ```
 
@@ -868,7 +868,7 @@ reproducible:
 ```bash
 METATEST_VERBOSE=1 METATEST_PROGRESS_EVERY=100 METATEST_MAX_COMBOS=500 \
   cargo test --release -p cas_solver \
-  --test metamorphic_simplification_tests metatest_csv_combinations_mul \
+  --test metamorphic_simplification_tests csv_pairs::metatest_csv_combinations_mul \
   -- --ignored --exact --nocapture
 ```
 
@@ -877,7 +877,7 @@ Y para saltar directamente a la cola del orden actual:
 ```bash
 METATEST_VERBOSE=1 METATEST_COMBO_START=6000 METATEST_MAX_COMBOS=500 \
   cargo test --release -p cas_solver \
-  --test metamorphic_simplification_tests metatest_csv_combinations_mul \
+  --test metamorphic_simplification_tests csv_pairs::metatest_csv_combinations_mul \
   -- --ignored --exact --nocapture
 ```
 
@@ -1352,12 +1352,12 @@ Comandos recomendados:
 ```bash
 # Curated regression suite
 cargo test --release -p cas_solver \
-    --test metamorphic_simplification_tests metatest_csv_substitution_structural \
+    --test metamorphic_simplification_tests csv_pairs::metatest_csv_substitution_structural \
     -- --ignored --exact --nocapture
 
 # Raw pressure suite
 cargo test --release -p cas_solver \
-    --test metamorphic_simplification_tests metatest_csv_substitution_structural_raw \
+    --test metamorphic_simplification_tests csv_pairs::metatest_csv_substitution_structural_raw \
     -- --ignored --exact --nocapture
 ```
 

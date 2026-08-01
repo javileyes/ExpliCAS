@@ -1557,7 +1557,7 @@ pub(super) fn classify_nf_first_add_sub_combo_in_child_process(
     ));
 
     let mut child = match std::process::Command::new(current_exe)
-        .arg("metatest_child_nf_first_add_sub_classify")
+        .arg(CHILD_NF_FIRST_ADD_SUB.filter())
         .arg("--ignored")
         .arg("--exact")
         .arg("--nocapture")
@@ -1636,7 +1636,7 @@ pub(super) fn classify_nf_first_mul_div_combo_in_child_process(
     ));
 
     let mut child = match std::process::Command::new(current_exe)
-        .arg("metatest_child_nf_first_mul_div_classify")
+        .arg(CHILD_NF_FIRST_MUL_DIV.filter())
         .arg("--ignored")
         .arg("--exact")
         .arg("--nocapture")
@@ -1760,6 +1760,10 @@ pub(super) fn classify_nf_first_mul_div_combo_in_child_process(
     }
 }
 
+/// Filter for [`metatest_child_nf_first_add_sub_classify`] — see `ChildTest`.
+pub(super) const CHILD_NF_FIRST_ADD_SUB: ChildTest =
+    ChildTest::here(module_path!(), "metatest_child_nf_first_add_sub_classify");
+
 #[test]
 #[ignore]
 fn metatest_child_nf_first_add_sub_classify() {
@@ -1803,6 +1807,10 @@ fn metatest_child_nf_first_add_sub_classify() {
         .join()
         .expect("nf-first add/sub child worker panicked");
 }
+
+/// Filter for [`metatest_child_nf_first_mul_div_classify`] — see `ChildTest`.
+pub(super) const CHILD_NF_FIRST_MUL_DIV: ChildTest =
+    ChildTest::here(module_path!(), "metatest_child_nf_first_mul_div_classify");
 
 #[test]
 #[ignore]

@@ -201,7 +201,9 @@ pub(super) fn prove_zero_from_engine_texts_in_child_process(lhs: &str, rhs: &str
     };
 
     let mut child = match std::process::Command::new(current_exe)
-        .arg("metatest_child_raw_pressure_proof")
+        // `super::`, not `crate::`: cas_engine's compatibility wrapper includes
+        // this harness one module deeper, where `crate::runners` does not exist.
+        .arg(super::runners::CHILD_RAW_PRESSURE_PROOF.filter())
         .arg("--ignored")
         .arg("--exact")
         .arg("--nocapture")

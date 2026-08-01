@@ -909,7 +909,9 @@ pub(super) fn nf_converges_in_child_process(lhs: &str, rhs: &str) -> bool {
     };
 
     let mut child = match std::process::Command::new(current_exe)
-        .arg("metatest_child_nf_convergence")
+        // `super::`, not `crate::`: cas_engine's compatibility wrapper includes
+        // this harness one module deeper, where `crate::runners` does not exist.
+        .arg(super::runners::CHILD_NF_CONVERGENCE.filter())
         .arg("--ignored")
         .arg("--exact")
         .arg("--nocapture")

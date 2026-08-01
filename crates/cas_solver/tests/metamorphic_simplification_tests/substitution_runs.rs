@@ -243,7 +243,7 @@ fn classify_substitution_combo_in_child_process(
     ));
 
     let mut child = match std::process::Command::new(current_exe)
-        .arg("metatest_child_substitution_combo_classify")
+        .arg(CHILD_SUBSTITUTION_COMBO.filter())
         .arg("--ignored")
         .arg("--exact")
         .arg("--nocapture")
@@ -347,6 +347,10 @@ fn classify_substitution_combo_in_child_process(
         }
     }
 }
+
+/// Filter for [`metatest_child_substitution_combo_classify`] — see `ChildTest`.
+pub(super) const CHILD_SUBSTITUTION_COMBO: ChildTest =
+    ChildTest::here(module_path!(), "metatest_child_substitution_combo_classify");
 
 #[test]
 #[ignore]
