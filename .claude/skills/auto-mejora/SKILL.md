@@ -42,6 +42,13 @@ contexto — son tu memoria externa):
    backlog restante. Si existe uno reciente, su cola P0 manda sobre la
    fuente 6 para soundness.
 
+9. `docs/AUDITORIA_PARETO_ARQUITECTURA_2026-07-31.md` — la campaña
+   estructural ejecutada (los 6 god-files desmontados + P7) con el protocolo
+   move-vs-cirugía, y `docs/SANEAMIENTO_LEDGER.md` (L1-L17) — sospechosos
+   observados sin actuar, cerrados con evidencia. Si un ciclo va a MOVER
+   código o sanear duplicados/muertos, estas dos mandan sobre la intuición:
+   el qué ya está medido y las trampas ya están pagadas.
+
 > ⚠️ **Las fuentes de verdad se pudren.** Sus afirmaciones de CAPACIDAD (porcentajes,
 > "X a ~0%", "X inalcanzable", "no implementado", items `[ ]`) reflejan lo que era
 > verdad cuando se escribieron y ENVEJECEN sin avisar. Antes de dejar que una afirmación
@@ -333,6 +340,18 @@ make engine-scorecard           # guardrail, 18 suites
 make engine-scorecard-pressure  # 3 suites
 make wasm-check                 # cargo check wasm32 de cas_wasm (~1 min): tipos/cfg para Pages
 ```
+**Tres gates extra nacidos de la campaña estructural (2026-07/08):**
+- Tras tocar VISIBILIDADES o mover código: `cargo test --workspace --no-run`.
+  `cargo build --workspace` verde NO implica que compilen los targets de test
+  (el caso `register`: su único consumidor era un test de OTRO crate — dos
+  commits con la suite incompilable y el build limpio).
+- `timeout X cmd | head` devuelve el exit del HEAD: un hang parece éxito.
+  Para medir cuelgues, redirige a fichero y lee `$?` del comando, sin tubería.
+- Con una suite `--workspace` compilando en BACKGROUND, no edites el árbol:
+  el build puede capturar estados mixtos. Si hay que tocar (p.ej. un fmt
+  olvidado), mata la suite, arregla y relanza — cuesta menos que dudar del
+  resultado.
+
 Si falla un test existente, primero juzga la intención: si fijaba como
 residual algo que tu ciclo convierte en soportado, actualiza el contrato;
 si fija soundness (condiciones, dominios), tu cambio es el problema.
@@ -639,6 +658,95 @@ repitas en bucle).
   canonicalización mueve el primero y no el segundo; un cambio de display, al
   revés. Aserta sobre la superficie cuya propiedad quieres fijar y dilo en el
   comentario.
+
+- **La recomendación de un audit ESTRUCTURAL también es hipótesis: medir antes
+  de mover** (4 de 7 puntos corregidos por la medición, 2026-07-31): el grafo
+  del orquestador es una BOLA (627/692 fns en un grupo — trocear compra
+  navegabilidad y reparto de churn, NO desacoplamiento); `rules/arithmetic` no
+  es un archivador sino UN motor de cancelación (cierre transitivo: trig
+  necesita 151 helpers y solo 15 son suyos); la API "inflada" de cas_math se
+  usa 88/91 fuera del crate; y los "duplicados" eran 15 variantes de 18. Las
+  herramientas baratas que deciden: grafo de llamadas + propagación de
+  etiquetas, cierre transitivo por tema, grep de consumidores, diff
+  normalizado de copias.
+- **Movimiento puro ≠ cirugía, y el canal de fallo del move es la RESOLUCIÓN
+  DE NOMBRES, no la semántica** (40+ commits de campaña: cero regresiones
+  semánticas; todos los tropiezos fueron E0583/E0425/E0433/E0603 — ruidosos).
+  Protocolo: commits de move sin un rename siquiera, verificación de cuerpos
+  BYTE A BYTE contra el commit padre, cirugías aparte y pequeñas. Los dos
+  fallos SILENCIOSOS a vigilar: un módulo generado llamado `core` ensombrece
+  el crate `core` de Rust (contrastar nombres contra core/std/alloc/test), y
+  el estrechamiento de visibilidad cuyo único consumidor es un test ajeno.
+- **Catálogo de trampas de mudanza** (cada una costó una iteración, ninguna
+  dos): `tests/<n>.rs` con submódulos = E0583 → `tests/<n>/main.rs` (conserva
+  el nombre del target y los `--test <bin>` documentados); `super::` vive
+  también en PRODUCCIÓN y al bajar un nivel exige `super::super::` (grep
+  ANTES de mover); los módulos de test no siempre se llaman `tests`; una fn
+  puede usarse SIN llamarse (`reduce(gcd_usize)` la pasa como valor); los
+  atributos MULTILÍNEA (`#[cfg_attr(…)]`) rompen el paseo-hacia-atrás ingenuo
+  de un extractor — 5 tests casi des-testeados en silencio; el reparto EXACTO
+  passed/ignored del baseline es el gate que lo caza. Regla transversal: al
+  decidir visibilidad o pertenencia con herramienta, SOBREAPROXIMAR — pasarse
+  es inocuo, quedarse corto rompe.
+- **Los wrappers de compatibilidad cross-crate son consumidores INVISIBLES**:
+  `#[path = "../../otro_crate/..."]` + `extern crate cas_engine as cas_solver`
+  recompilan la MISMA fuente bajo otra identidad — ningún grep de imports los
+  ve, y todo lo que entre en un módulo compartido por ellos debe resolver bajo
+  AMBAS identidades (un helper con `command_api::solve::…` rompió 3 wrappers;
+  vive en módulo propio fuera del alias). Antes de mover un fichero de tests,
+  `grep -rn '#\[path' crates/*/tests`.
+- **Los "duplicados" derivan: diffear antes de fusionar, RENOMBRAR cuando la
+  copia hace otra cosa** (`unary_builtin_arg`: 14 definiciones, CUATRO
+  semánticas — sin-hold, through-hold ×2, through-abs). La deriva cobró como
+  P0 real: el fix anti-colisión de temps existía en
+  `polynomial_identity_support` (engine) y NUNCA viajó a la copia de cas_math
+  → `integrate(cos(x)·(sin(x)+1)²) = 7/3`. Corolario: tras arreglar una
+  instancia, barrer la CLASE entera (el 2º inquilino estaba en
+  `poly_is_zero_opaque`; los `uc{N}` de dsolve resultaron inalcanzables — se
+  documenta, no se toca un frente cerrado).
+- **Temps sintéticos (`__opq*`, `__polyzero_*`): sembrar SIEMPRE contra
+  `collect_variables` del árbol** — las rondas anidadas heredan los nombres
+  del nivel exterior, la colisión FUSIONA átomos distintos y una división
+  "exacta" colapsa fracciones no constantes a constantes. Patrón:
+  `fresh_suffix_base`/used-names sembrado (quedan 3-4 implementadores por
+  unificar en cas_ast). El diagnóstico decisivo fue la prueba del NOMBRE: la
+  misma expresión con la variable `q` simplifica bien; llamada `__opq0`,
+  colapsa.
+- **Un wrong answer puede ser la VÁLVULA DE ESCAPE de una búsqueda
+  patológica**: al cerrar el 7/3, el input pasó de mentir en segundos a moler
+  >240 s — eso es revelación, no regresión (mejor hang honesto que respuesta
+  falsa instantánea). Y el hang se mata por el lado bueno: añadiendo la ruta
+  correcta TEMPRANA en el router (la u-du simbólica), no apresurando la
+  orquestación (doctrina C5). Pendiente medido: `--budget standard` NO poda la
+  estrategia-2 de div_expand_cancel (L16b).
+- **El wrapper ciega otra vez, ahora en el EXPONENTE** (3ª aparición de la
+  familia: coeficiente≠1, wrapper afín, y ahora `Neg`): el parser guarda
+  `u^(-3)` como `Pow(u, Neg(3))` y `polynomial_power_factor` solo casa
+  `Number` — la potencia negativa NI SE RECONOCÍA y caía al molino. Todo
+  matcher de forma pela wrappers antes de casar; `as_rational_const` es el
+  extractor robusto.
+- **Ruta nueva sin robar dueños: triple cerrojo + huella** (u-du simbólica,
+  2 rondas + narrador): (base no-función-desnuda) + (base no-polinómica) +
+  (cofactor ≡ s·u′ EXACTO por multiconjunto de factores) deja a cada dueño
+  sus casos; se cuelga ANTES del clúster que muele y DESPUÉS de los dueños
+  específicos; y el NARRADOR re-detecta con su propio doble cerrojo (base
+  no-polinómica + huella del after: potencia directa / recíproca en
+  denominador / c·ln(|base|)) reutilizando claves de locale existentes.
+  Hallazgo de ruteo: las formas feas y los hangs de bases desplazadas venían
+  TODOS del clúster trig recibiendo lo que nadie reclamaba.
+- **Cuarentena → certificación → borrado** (los 3 predicados sec³/csc³ del
+  §11 de julio): un `pub` sin refs NO lo certifica el compilador; la
+  certificación manual es 0 refs en el workspace + capacidad viva por otra
+  ruta (sondeada AHORA, no recordada) + ningún frente vivo la nombra +
+  procedencia entendida (`git log -S`). Borrado con delta de suite −1 EXACTO
+  reconciliado por nombre. Los deltas de suite siempre exactos y nombrados:
+  un delta que no sabes explicar es un fallo que no sabes que tienes.
+- **Al editar el ledger/docs por script, cortar por el SIGUIENTE encabezado
+  real** — un slice usó "### L5" como frontera y casó con el L5 CERRADO de
+  más abajo, borrando media sección de abiertas; el recuento automático
+  post-edición (`awk` de abiertas/cerradas) lo delató al instante. Toda
+  edición estructural de docs lleva su verificación de recuento, igual que el
+  código.
 
 ## Meta-mantenimiento: revisiones periódicas (docs y esta skill)
 
