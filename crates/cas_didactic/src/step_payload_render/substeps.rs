@@ -57,39 +57,14 @@ fn render_substep_side(explicit_latex: Option<String>, fallback_expr: &str) -> S
 /// fallback is an unstyled but truthful one, and the emitter that wants
 /// typeset math declares it with `.with_before_latex` / `.with_after_latex`.
 fn render_substep_fallback_latex(fallback_expr: &str) -> String {
-    format!("\\text{{{}}}", escape_for_text_mode(fallback_expr))
-}
-
-/// Escape the characters TeX would otherwise consume inside `\text{…}`.
-/// `^` matters most — it is exactly what display exponents carry, and raw it is
-/// a hard MathJax error (`'^' allowed only in math mode`). Braces matter
-/// because an unbalanced one breaks the whole row's rendering, not just its own
-/// line.
-///
-/// The escapes were verified against MathJax 3 itself (the renderer the web
-/// loads, `web/index.html:18`) rather than assumed: `\char94` and
-/// `\textasciicircum` both FAIL there — the first prints literally inside
-/// `\text{}`, the second is math-mode-only — while `\unicode{xNN}` renders the
-/// exact glyph and is in MathJax's autoload map, so `tex-svg` pulls it in
-/// without extra configuration.
-fn escape_for_text_mode(fallback_expr: &str) -> String {
-    let mut out = String::with_capacity(fallback_expr.len());
-    for ch in fallback_expr.chars() {
-        match ch {
-            '\\' => out.push_str("\\unicode{x5C}"),
-            '^' => out.push_str("\\unicode{x5E}"),
-            '~' => out.push_str("\\unicode{x7E}"),
-            '{' => out.push_str("\\{"),
-            '}' => out.push_str("\\}"),
-            '$' => out.push_str("\\$"),
-            '&' => out.push_str("\\&"),
-            '#' => out.push_str("\\#"),
-            '%' => out.push_str("\\%"),
-            '_' => out.push_str("\\_"),
-            _ => out.push(ch),
-        }
-    }
-    out
+    // ONE text-mode escape table for the whole engine: this used to keep a
+    // second, identical copy, and both copies were wrong the same way — see
+    // `cas_formatter::escape_for_text_mode` for the table MathJax 3 actually
+    // implements and for the glyphs each candidate escape paints.
+    format!(
+        "\\text{{{}}}",
+        cas_formatter::escape_for_text_mode(fallback_expr)
+    )
 }
 
 #[cfg(test)]
@@ -108,22 +83,26 @@ mod tests {
     /// Replaces `render_substep_side_preserves_latexish_fallbacks`, which
     /// pinned the defect: a fallback that merely LOOKED like LaTeX was handed
     /// to MathJax raw. A fallback is display text and is published as text —
-    /// an emitter that wants typeset math must declare it.
+    /// an emitter that wants typeset math must declare it. Each backslash
+    /// leaves `\text{…}` to be drawn in math mode, the one spelling MathJax
+    /// paints as an actual backslash.
     #[test]
     fn render_substep_side_never_declares_a_fallback_to_be_latex() {
         let rendered = render_substep_side(None, "\\frac{1}{\\sqrt{x} - 1}");
         assert_eq!(
             rendered,
-            "\\text{\\unicode{x5C}frac\\{1\\}\\{\\unicode{x5C}sqrt\\{x\\} - 1\\}}"
+            "\\text{}\\unicode{x5C}\\text{frac\\{1\\}\\{}\\unicode{x5C}\\text{sqrt\\{x\\} - 1\\}}"
         );
     }
 
     /// The witness from the audit: display exponents used to be typeset with
-    /// the opening parenthesis as the exponent (`x^{(}`).
+    /// the opening parenthesis as the exponent (`x^{(}`). Wrapping in `\text{}`
+    /// is what defuses the `^`; escaping it on TOP of that was the second
+    /// defect, and it showed the reader `x\unicode{x5E}(2 - 1)`.
     #[test]
-    fn render_substep_side_escapes_display_exponents() {
+    fn render_substep_side_leaves_display_exponents_raw_inside_text_mode() {
         let rendered = render_substep_side(None, "y·2·x^(2 - 1)");
-        assert_eq!(rendered, "\\text{y·2·x\\unicode{x5E}(2 - 1)}");
+        assert_eq!(rendered, "\\text{y·2·x^(2 - 1)}");
     }
 
     /// An unbalanced brace does not degrade one line, it breaks the whole row.

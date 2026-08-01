@@ -130,40 +130,76 @@ fn is_honest_residual(rule: &str) -> bool {
     )
 }
 
-/// `_`, `^` and `~` inside a `\text{…}` group are a HARD MathJax error
-/// (`'_' allowed only in math mode`), and a hard error does not degrade one
-/// line — it kills the rendering of the whole expression. Verified against
-/// MathJax 3 itself, the renderer `web/index.html:18` loads.
+/// Spellings MathJax 3's text-mode parser does not implement, and therefore
+/// ECHOES: whatever appears here reaches the reader as source. Measured against
+/// the renderer `web/index.html:18` loads, by typesetting each candidate and
+/// looking at the glyphs it painted.
+const UNSUPPORTED_INSIDE_TEXT_MODE: &[&str] = &[
+    "\\_",
+    "\\&",
+    "\\#",
+    "\\%",
+    "\\unicode",
+    "\\char",
+    "\\backslash",
+    "\\textbackslash",
+    "\\textasciicircum",
+    "\\textasciitilde",
+];
+
+/// What a `\text{…}` group must not contain, in the two ways it can go wrong.
 ///
-/// Returns the offending characters found in text mode.
-fn unescaped_specials_in_text_mode(latex: &str) -> Vec<char> {
+/// This gate used to enforce the OPPOSITE of the truth — it flagged `_`, `^`
+/// and `~` as «a hard MathJax error», so the engine escaped them and the escape
+/// itself became the defect. Inside `\text{…}` those three are ORDINARY
+/// characters that render as themselves; it is math mode that rejects them
+/// bare, and that is the confusion the old comment froze into a test. What
+/// actually reaches the reader broken is:
+///
+/// * a bare `$`, which closes the inline delimiter early («Math not terminated
+///   in text box») and takes the whole row down, not just its own line;
+/// * an escape from [`UNSUPPORTED_INSIDE_TEXT_MODE`], which MathJax echoes —
+///   `y·x\unicode{x5E}2` was published where `y·x^2` was meant, and `root\_sum`
+///   displayed its backslash.
+///
+/// Returns one label per defect found.
+fn text_mode_rendering_defects(latex: &str) -> Vec<String> {
     let chars: Vec<char> = latex.chars().collect();
     let mut found = Vec::new();
     let mut i = 0;
     while i < chars.len() {
-        if chars[i..].starts_with(&['\\', 't', 'e', 'x', 't', '{']) {
-            let mut depth = 1;
-            let mut j = i + 6;
-            let mut escaped = false;
-            while j < chars.len() && depth > 0 {
-                let ch = chars[j];
-                if escaped {
-                    escaped = false;
-                } else {
-                    match ch {
-                        '\\' => escaped = true,
-                        '{' => depth += 1,
-                        '}' => depth -= 1,
-                        '_' | '^' | '~' => found.push(ch),
-                        _ => {}
-                    }
-                }
-                j += 1;
-            }
-            i = j;
-        } else {
+        if !chars[i..].starts_with(&['\\', 't', 'e', 'x', 't', '{']) {
             i += 1;
+            continue;
         }
+        let mut depth = 1;
+        let mut j = i + 6;
+        while j < chars.len() && depth > 0 {
+            match chars[j] {
+                // A backslash opens a control sequence: name it, then step over
+                // the whole thing so its argument is not read as text.
+                '\\' => {
+                    let rest: String = chars[j..].iter().take(24).collect();
+                    if let Some(cmd) = UNSUPPORTED_INSIDE_TEXT_MODE
+                        .iter()
+                        .find(|cmd| rest.starts_with(**cmd))
+                    {
+                        found.push((*cmd).to_string());
+                    }
+                    j += 2;
+                    while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                        j += 1;
+                    }
+                    continue;
+                }
+                '{' => depth += 1,
+                '}' => depth -= 1,
+                '$' => found.push("$".to_string()),
+                _ => {}
+            }
+            j += 1;
+        }
+        i = j;
     }
     found
 }
@@ -435,12 +471,12 @@ fn inspect_row(input: &str, report: &mut QualityReport) {
                 .violations
                 .push(format!("[{input}] {label} has unbalanced braces: {latex}"));
         }
-        let specials = unescaped_specials_in_text_mode(latex);
-        if !specials.is_empty() {
-            text_mode_specials += specials.len();
+        let defects = text_mode_rendering_defects(latex);
+        if !defects.is_empty() {
+            text_mode_specials += defects.len();
             report.violations.push(format!(
-                "[{input}] {label} puts {specials:?} raw inside \\text{{…}} — a hard MathJax \
-                 error that kills the whole expression's rendering: {latex}"
+                "[{input}] {label} carries {defects:?} inside \\text{{…}} — MathJax either \
+                 breaks the row or echoes the source to the reader: {latex}"
             ));
         }
     };

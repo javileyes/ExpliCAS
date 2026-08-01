@@ -10,7 +10,13 @@
     <script>
         MathJax = {
             tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
-            svg: { fontCache: 'global' }
+            svg: { fontCache: 'global' },
+            // `mathjax-ignore` marks the subtrees that hold RAW result text
+            // (the giant `<pre>` of a big polynomial / bignum): hundreds of KB
+            // of plain digits that MathJax would scan for nothing. Excluding
+            // them by class is what lets every card be typeset whole — the
+            // alternative (skipping the card) silently left its steps raw.
+            options: { ignoreHtmlClass: 'tex2jax_ignore|mathjax-ignore' }
         };
     </script>
     <script src="build-config.js"></script>
@@ -3583,7 +3589,7 @@
                             </div>
                             <div class="result-math" data-latex="${escapeHtml(result.result_latex || result.result || '')}" data-result="${escapeHtml(result.result || '')}">
                                 ${isPolyResult
-                        ? `<pre class="poly-output">${escapeHtml(result.result)}</pre>`
+                        ? `<pre class="poly-output mathjax-ignore">${escapeHtml(result.result)}</pre>`
                         : `$${result.result_latex || escapeHtml(result.result)}$`
                     }
                             </div>
@@ -3620,18 +3626,15 @@
             // Scroll to new card
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+            // The whole card is typeset, giant results included: the ONLY part
+            // that must not reach MathJax is the raw `<pre>` of the result, and
+            // that one opts out by class (see `mathjax-ignore` in the config).
+            // Carving the exclusion out of the DOM instead — typesetting only
+            // the header of a giant-result card — starved everything else in
+            // it (steps, sub-steps, equivalence residual), which then showed
+            // its LaTeX source verbatim: `${\color{red}{\text{bignum}(...`.
             if (window.MathJax) {
-                if (isPolyResult) {
-                    // The big result lives in an escaped <pre> and must not
-                    // reach MathJax, but the HEADER (the user's own input
-                    // echo) is small and deserves typesetting — skipping the
-                    // whole card left it showing raw `$\frac{1001!}{1000!}$`.
-                    // (Steps typeset themselves on expand, as always.)
-                    const header = card.querySelector('.expression-header');
-                    if (header) MathJax.typesetPromise([header]);
-                } else {
-                    MathJax.typesetPromise([card]);
-                }
+                MathJax.typesetPromise([card]);
             }
         }
 
