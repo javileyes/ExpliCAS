@@ -288,6 +288,50 @@ fn test_eval_parametric_linear_degenerate_branch() {
     );
     assert_eq!(r("solve(x^2=4, x)"), "{ -2, 2 }");
 }
+
+#[test]
+fn test_eval_parametric_content_factor_branch() {
+    // The higher-degree sibling of the linear recovery: a var-free PARAMETRIC
+    // content factor of a polynomial product was divided away with both the
+    // guard and the `= 0 ⇒ ℝ` branch (`y·(x−1)·(x+2) = 0 → {−2, 1}` hid that
+    // y = 0 makes the equation `0 = 0`, i.e. ALL reals). Detected on the RAW
+    // tree — the simplifier expands the product into a sum, destroying the
+    // very structure being matched.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(y*(x-1)*(x+2)=0, x)"),
+        "{ -2, 1 } if y != 0; All real numbers if y = 0"
+    );
+    // An EMPTY incumbent is the same class: for y = 0 the true set is ℝ.
+    assert_eq!(
+        r("solve(y*(x^2+1)=0, x)"),
+        "No solution if y != 0; All real numbers if y = 0"
+    );
+    // Compound and multi-parameter contents ride the same split.
+    assert_eq!(
+        r("solve((y+1)*(x-1)*(x+2)=0, x)"),
+        "{ -2, 1 } if y + 1 != 0; All real numbers if y + 1 = 0"
+    );
+    assert_eq!(
+        r("solve(a*b*(x-1)=0, x)"),
+        "{ 1 } if a·b != 0; All real numbers if a·b = 0"
+    );
+    // Controls: numeric and transcendental-constant contents can never be
+    // zero-or-not (no branch), an all-var product keeps its owner, and a
+    // RADICAL factor declines (its zero branch needs the expression's domain,
+    // not ℝ — named stepping stone).
+    assert_eq!(r("solve(2*(x-1)*(x+2)=0, x)"), "{ -2, 1 }");
+    assert_eq!(r("solve(pi*(x-1)*(x+2)=0, x)"), "{ -2, 1 }");
+    assert_eq!(r("solve(x*(x-1)*(x+2)=0, x)"), "{ -2, 0, 1 }");
+    assert_eq!(r("solve(y*sqrt(x+1)*(x-2)=0, x)"), "{ -1, 2 }");
+}
 #[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {
     // An identity equation whose solution is all reals RESTRICTED by a domain condition must show

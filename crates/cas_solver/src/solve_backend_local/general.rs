@@ -2232,6 +2232,14 @@ fn solve_local_core_inner(
     } else {
         set
     };
+    // Its higher-degree sibling: a var-free PARAMETRIC content factor of a polynomial product
+    // (`y·(x−1)·(x+2) = 0 → {−2, 1}`) was divided away with both the guard and the `= 0 ⇒ ℝ`
+    // branch. Ordered after the linear recovery so the single-numeric-root case keeps its owner.
+    let set = if matches!(set, SolutionSet::Discrete(_) | SolutionSet::Empty) {
+        try_parametric_content_factor_branch(simplifier, eq, var, &set).unwrap_or(set)
+    } else {
+        set
+    };
     Ok((set, steps))
 }
 

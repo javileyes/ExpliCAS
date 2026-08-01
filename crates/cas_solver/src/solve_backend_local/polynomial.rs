@@ -1008,3 +1008,102 @@ pub(super) fn try_solve_polynomial_with_cubic_factor(
     roots.extend(cubic_roots);
     Some(SolutionSet::Discrete(roots))
 }
+
+/// Recover the degenerate `content = 0` branch of a PARAMETRIC polynomial product: the sibling of
+/// [`try_parametric_linear_degenerate_branch`] for higher degrees. `y·(x−1)·(x+2) = 0` solved to a
+/// bare `{−2, 1}` — the polynomial path divides the var-free parametric factor away, silently
+/// dropping the `y = 0 ⇒ ℝ` case the TWO-factor spelling correctly emits. Fires only when:
+/// - the simplified difference is a top-level product with ≥ 1 var-free PARAMETRIC factor
+///   (symbolic, not a rational constant — `2·(x−1)(x+2)` needs no branch), and
+/// - every var-carrying factor is POLYNOMIAL in `var` (total domain, so the `content = 0` branch
+///   is exactly ℝ — a radical factor's zero branch would need the expression's domain instead,
+///   which stays a named stepping stone), and
+/// - the incumbent is the unconditional shape the division produced (`Discrete`/`Empty`).
+pub(super) fn try_parametric_content_factor_branch(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    var: &str,
+    incumbent: &SolutionSet,
+) -> Option<SolutionSet> {
+    use cas_ast::{Case, ConditionPredicate, ConditionSet};
+    use cas_math::numeric_eval::as_rational_const;
+    use cas_math::polynomial::Polynomial;
+    use cas_solver_core::isolation_utils::contains_var;
+    use num_traits::Zero;
+
+    if !matches!(eq.op, cas_ast::RelOp::Eq) {
+        return None;
+    }
+    if !matches!(incumbent, SolutionSet::Discrete(_) | SolutionSet::Empty) {
+        return None;
+    }
+    // RAW tree on purpose: the simplifier EXPANDS `y·(x−1)·(x+2)` into the sum
+    // `y·x² + y·x − 2y`, destroying exactly the product structure this hook
+    // detects (the recurring «si simplify colapsa la estructura, árbol CRUDO»
+    // discipline). The zero side must be a literal 0 for the raw other side to
+    // BE the product.
+    let zero_side = |ctx: &Context, e: ExprId| {
+        cas_math::numeric_eval::as_rational_const(ctx, e).is_some_and(|c| c.is_zero())
+    };
+    let product = if zero_side(&simplifier.context, eq.rhs) {
+        eq.lhs
+    } else if zero_side(&simplifier.context, eq.lhs) {
+        eq.rhs
+    } else {
+        return None;
+    };
+
+    // Split the top-level product into var-free and var-carrying factors.
+    fn collect_factors(ctx: &Context, e: ExprId, out: &mut Vec<ExprId>) {
+        match ctx.get(e) {
+            Expr::Mul(a, b) => {
+                let (a, b) = (*a, *b);
+                collect_factors(ctx, a, out);
+                collect_factors(ctx, b, out);
+            }
+            Expr::Neg(inner) => {
+                let inner = *inner;
+                collect_factors(ctx, inner, out);
+            }
+            _ => out.push(e),
+        }
+    }
+    let mut factors = Vec::new();
+    collect_factors(&simplifier.context, product, &mut factors);
+    if factors.len() < 2 {
+        return None;
+    }
+    let (var_free, var_carrying): (Vec<ExprId>, Vec<ExprId>) = factors
+        .into_iter()
+        .partition(|&f| !contains_var(&simplifier.context, f, var));
+    if var_free.is_empty() || var_carrying.is_empty() {
+        return None;
+    }
+    // Every var-carrying factor must be polynomial (total domain).
+    for &q in &var_carrying {
+        Polynomial::from_expr(&simplifier.context, q, var).ok()?;
+    }
+    // The content: product of the var-free factors. Parametric only — a
+    // rational constant can never be zero-or-not, and a content still
+    // carrying `var` was not var-free by construction.
+    let mut content = var_free[0];
+    for &f in &var_free[1..] {
+        content = simplifier.context.add(Expr::Mul(content, f));
+    }
+    let (content, _) = simplifier.simplify(content);
+    if as_rational_const(&simplifier.context, content).is_some() {
+        return None;
+    }
+    if cas_ast::collect_variables(&simplifier.context, content).is_empty() {
+        return None;
+    }
+    let nonzero_case = Case::new(
+        ConditionSet::single(ConditionPredicate::NonZero(content)),
+        incumbent.clone(),
+    );
+    let zero_case = Case::new(
+        ConditionSet::single(ConditionPredicate::EqZero(content)),
+        SolutionSet::AllReals,
+    );
+    Some(SolutionSet::Conditional(vec![nonzero_case, zero_case]))
+}
