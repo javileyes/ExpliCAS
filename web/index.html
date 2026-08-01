@@ -1296,27 +1296,48 @@
 
             .input-wrapper {
                 flex-wrap: wrap;
+                /* Tighter than the desktop 12px: six chips share ONE row here,
+                   and every pixel of gap comes straight out of their width. */
+                gap: 8px;
             }
 
-            /* Mode selects fold behind the gear (the fold rules themselves are
-               global now); the default bar is just input + gear + Evaluar, and
-               unfolded the selects sit two per row. */
-            .options-toggle {
-                height: 48px;
-            }
-
-            .mode-control {
-                flex: 1 1 45%;
-                height: 48px;
-            }
-
+            /* The phone bar is a stack of whole rows, top to bottom: the input
+               alone, the modes two by two, the six action chips in one row of
+               equal shares, and Evaluar across the bottom. Each group sums to
+               exactly one line, so nothing ever trails into the next group's
+               row. */
             .input-clear-wrap {
                 flex: 1 1 100%;
                 order: -1;
             }
 
+            .mode-control {
+                flex: 1 1 45%;
+                /* Without this the desktop min-width (168px) beats the 45%
+                   basis — two of them no longer fit a 375px phone and the four
+                   selects unfold as four full-width rows. */
+                min-width: 0;
+                height: 48px;
+                /* Half a phone row has to hold LABEL + value + the native
+                   dropdown arrow: trim the chrome around them so «NÚMEROS
+                   exact» still reads whole on a 320px screen. */
+                gap: 6px;
+                padding: 0 8px;
+            }
+
+            .mode-label {
+                font-size: 0.72em;
+            }
+
+            .mode-select {
+                font-size: 0.9em;
+            }
+
+            /* (the six action chips get their shared row in the keypad block
+               below, after the last of their base rules) */
+
             .submit-btn {
-                flex: 1 1 130px;
+                flex: 1 1 100%;
             }
 
             .container {
@@ -2140,23 +2161,10 @@
             border-left-color: #10b981 !important;
         }
 
-        @media (max-width: 720px) {
-            /* In the wrapped mobile input bar the ƒ() button joins the
-               [ƒ() ⚙️ Evaluar] row under the full-width field. */
-            .fn-insert-btn {
-                height: 48px;
-                padding: 0 16px;
-            }
-
-            .decl-open-btn {
-                height: 48px;
-                padding: 0 12px;
-            }
-
-            .imag-unit-btn {
-                height: 48px;
-            }
-        }
+        /* On phones these three join the single row of six action chips; that
+           row is sized in one place, in the keypad's own max-width block far
+           below — it is the only spot that comes after every chip's base
+           rule. Nothing about it is restated here. */
 
         /* ===== On-screen math keypad (calculator keyboard) =====
            Lives INSIDE the fixed .input-bar, below the input row, so the
@@ -2351,7 +2359,26 @@
         }
 
         @media (max-width: 720px) {
-            .kb-toggle-btn {
+            /* The six action chips (⌨️ x≔ ƒ≔ ƒ() i ⚙️) as ONE row of equal
+               shares. It has to live HERE, below every one of their base
+               rules: a media query adds no specificity, so from the input-bar
+               block above, `flex-shrink: 0`, the wider paddings and the i
+               chip's 44px floor would each win on source order and break the
+               row back into two. */
+            .kb-toggle-btn,
+            .decl-open-btn,
+            .fn-insert-btn,
+            .imag-unit-btn,
+            .options-toggle {
+                /* A basis of ~1/7 of the bar is what makes the row BREAK where
+                   it should: six of them plus gaps still fit one line, but the
+                   sliver left beside two mode selects does not fit even one —
+                   with a 0 basis they would instead squeeze in there, since an
+                   empty hypothetical size always "fits". */
+                flex: 1 1 14%;
+                min-width: 0;
+                padding: 0 4px;
+                justify-content: center;
                 height: 48px;
             }
 
@@ -5101,6 +5128,7 @@
             }
             input.focus();
             input.setSelectionRange(selStart, selEnd);
+            kbCaretScroll();
         }
 
         function insertFnTemplate(catIndex, itemIndex, element) {
@@ -5310,6 +5338,40 @@
             if (document.activeElement !== input) input.focus();
         }
 
+        // Typing on the DEVICE keyboard scrolls the field to follow the caret;
+        // a programmatic edit (setRangeText / setSelectionRange — every key of
+        // the on-screen keypad, every ƒ() template, every inserted variable)
+        // does NOT, so a long expression kept growing out of sight past the
+        // right edge. Measure the text up to the caret and scroll it back into
+        // view by hand, keeping a character or two of context on either side.
+        let kbTextMeter = null;
+
+        function kbCaretScroll() {
+            const pos = input.selectionEnd;
+            if (pos == null) return;
+            if (!kbTextMeter) {
+                const canvas = document.createElement('canvas');
+                kbTextMeter = canvas.getContext ? canvas.getContext('2d') : null;
+                if (!kbTextMeter) return;
+            }
+            const cs = window.getComputedStyle(input);
+            // The `font` shorthand is empty in some engines — compose it.
+            kbTextMeter.font = cs.font && cs.font.trim()
+                ? cs.font
+                : `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+            const x = kbTextMeter.measureText(input.value.slice(0, pos)).width;
+            const view = input.clientWidth
+                - (parseFloat(cs.paddingLeft) || 0)
+                - (parseFloat(cs.paddingRight) || 0);
+            if (view <= 0) return;
+            const margin = Math.min(24, view / 3);
+            if (x > input.scrollLeft + view - margin) {
+                input.scrollLeft = x - view + margin;
+            } else if (x < input.scrollLeft + margin) {
+                input.scrollLeft = Math.max(0, x - margin);
+            }
+        }
+
         function kbInsertText(text, caretBack) {
             kbFocusInput();
             const s = (input.selectionStart != null) ? input.selectionStart : input.value.length;
@@ -5319,6 +5381,7 @@
                 const p = Math.max(0, input.selectionStart - caretBack);
                 input.setSelectionRange(p, p);
             }
+            kbCaretScroll();
         }
 
         function kbFnKey(name) {
@@ -5328,6 +5391,7 @@
             const sel = input.value.slice(s, e);
             if (sel) {
                 input.setRangeText(name + '(' + sel + ')', s, e, 'end');
+                kbCaretScroll();
             } else {
                 kbInsertText(name + '()', 1);
             }
@@ -5339,6 +5403,7 @@
             const e = (input.selectionEnd != null) ? input.selectionEnd : 0;
             if (s !== e) input.setRangeText('', s, e, 'start');
             else if (s > 0) input.setRangeText('', s - 1, s, 'start');
+            kbCaretScroll();
         }
 
         function kbMoveCaret(dir) {
@@ -5349,6 +5414,7 @@
                 ? (s === e ? Math.max(0, s - 1) : s)
                 : (s === e ? Math.min(input.value.length, e + 1) : e);
             input.setSelectionRange(pos, pos);
+            kbCaretScroll();
         }
 
         function kbHandleKey(spec) {
