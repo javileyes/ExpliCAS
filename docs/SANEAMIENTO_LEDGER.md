@@ -168,6 +168,13 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 - **Doctrina aplicable:** familia C5 («HANG de oscilación expand↔factor — fix
   de orquestación, no apresurar»). No se parchea en caliente: mejor un hang
   honesto que una respuesta incorrecta instantánea.
+- **Pista (a) AMPLIADA 2026-08-01 (`974698e5b`):** la vía u-du simbólica
+  cubre también Div y potencias negativas (`∫s·u′/uᵐ`, con `m=1` → `s·ln(|u|)`
+  y el abs delegado a la decidibilidad de signo). Mueren de rebote el hang de
+  `∫cos·(sin+2)^(-3)` (el exponente `Neg` ni se reconocía como potencia) y las
+  formas de medio ángulo de `∫cos/(sin+2)²` y `∫cos/(sin+2)`. Los dueños
+  existentes (exp, trig desnudo, polinómicos) conservan sus rutas por triple
+  cerrojo.
 - **Pista (a) EJECUTADA 2026-08-01 (`79ed4ce58`):** la vía u-du simbólica
   (`symbolic_power_substitution_from_base`: deriva la base con el
   diferenciador completo y exige cofactor = s·u' exacto) caza esta familia
