@@ -80,6 +80,29 @@ mod tests {
     }
 
     #[test]
+    fn wire_eval_value_domain_axis_no_cross_eval_contamination() {
+        // D4-2 (2026-08-02): the site alternates the value-domain axis
+        // BETWEEN evals in the same process. Logarithmic antiderivatives
+        // depend on the axis (`ln|u|` real / `ln(u)` complex principal
+        // branch, decided in `cas_math::integration_value_domain`), so every
+        // cache in the pipeline must key by it and the ambient guard must
+        // restore on exit. This pins the absence of cross-eval contamination
+        // in BOTH directions (real -> complex -> real).
+        let real = super::eval_full_wire("integrate(1/x, x)", r#"{}"#);
+        assert!(real.contains("ln(|x|)"), "real axis lost the abs: {real}");
+        let complex = super::eval_full_wire("integrate(1/x, x)", r#"{"complex": "on"}"#);
+        assert!(
+            complex.contains("ln(x)") && !complex.contains("ln(|x|)"),
+            "complex axis must emit the principal branch: {complex}"
+        );
+        let real_again = super::eval_full_wire("integrate(1/x, x)", r#"{}"#);
+        assert!(
+            real_again.contains("ln(|x|)"),
+            "real axis contaminated by the previous complex eval: {real_again}"
+        );
+    }
+
+    #[test]
     fn engine_version_is_nonempty() {
         assert!(!super::engine_version().is_empty());
     }
