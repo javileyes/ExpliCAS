@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 818 (newest first)
+Active entries: 819 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -128,6 +128,7 @@ Active entries: 818 (newest first)
 - 2026-08-02 | `retained` | `rules/arithmetic/{phase_shift,trig,trig_angles}.rs` + inventario D1 — último... | ARQUITECTURA (D1c-11 — CIERRE DE D1: la familia angular se declara y los 12 disparadores quedan a cero)
 - 2026-08-02 | `retained` | `cas_math::integration_value_domain` (nuevo) + 16 emisores migrados + `ln_abs... | UNIVERSALIDAD (D4-1: las primitivas logarítmicas declaran su eje — ln(u) con rama principal bajo complex)
 - 2026-08-02 | `retained` | auditoría dirigida de la parte 2 del plan D4 («los PROBADORES internos hereda... | UNIVERSALIDAD (D4-2: los probadores heredan el eje — auditoría con hallazgo negativo, fijada como contrato de no-contaminación)
+- 2026-08-02 | `retained` | auditoría de los dos peldaños restantes de D4 + extensión del contrato — (b) ... | UNIVERSALIDAD (D4-3 — CIERRE DE D4: los abs de dominio y la narración ya eran coherentes; dos hallazgos negativos más, pineados)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23537,3 +23538,12 @@ Active entries: 818 (newest first)
 - retained learning:
   - **Una auditoría con hallazgo negativo se cierra con el CONTRATO que lo fija, no con la frase «está bien»**: el test de no-contaminación cuesta 15 líneas y convierte «lo verifiqué hoy» en «no puede regresar mañana» — la diferencia entre una nota de sesión y un invariante.
   - **El punto de contaminación de un eje por-eval no es el REPL sino el proceso multi-eval real** (el sitio wasm alterna opts por evaluación): al auditar un canal ambiente nuevo, buscar primero el transporte donde el eje CAMBIA más rápido — ahí viven las claves de memo que importan.
+
+## 2026-08-02 - UNIVERSALIDAD (D4-3 — CIERRE DE D4: los abs de dominio y la narración ya eran coherentes; dos hallazgos negativos más, pineados)
+
+- area: auditoría de los dos peldaños restantes de D4 + extensión del contrato — (b) la clase «abs de DOMINIO» NO EXISTE como problema: las rutas de inversas ya emiten formas sin abs en ambos ejes (`∫1/(x·√(x²−1)) → arctan(√(x²−1))` — no `arcsec|x|`; `∫1/√(x²−1) → acosh(x)` — no `ln|x+√…|`), y el único abs de VALOR (`∫√(x²)`) sigue al simplificador coherentemente por eje: `x·|x|/2` real (donde `√(x²) → |x|`), `x·√(x²)/2` complex (donde no colapsa) — la primitiva difiere por eje exactamente en ese colapso y nada más. (c) la narración educational bajo complex SIGUE AL EMISOR (los steps de `∫tan` muestran `−ln(cos x)` sin abs): no hay claves de locale con «valor absoluto» horneado — la sospecha del peldaño era falsa (mi grep de auditoría dio solo falsos positivos de LaTeX). Ambos negativos pineados en el contrato D4 (4 asserts nuevos: acosh ambos ejes + el par √(x²)).
+- status: `retained`. **D4 COMPLETA en sus tres peldaños nombrados**: (a) probadores/memos heredan el eje + contrato de no-contaminación (D4-2); (b) abs de dominio sano, pineado (este); (c) narración coherente, verificada (este). Suite/clippy/cadena verdes; huella patrón conocido.
+- decision: retener. D4 cerrada ⟹ por el plan re-evaluado sigue **D2** (el orquestador: support como API interna documentada — el molde declarativo de D1 aplica directo — y los shortcuts de regresión agrupados por invariante) y D3 al final. El arnés D0 ya tiene el baseline D2 (28,1% intra física, 606 aristas a support, 548 pub(super)).
+- retained learning:
+  - **Un peldaño nombrado por sospecha se cierra con el sondeo aunque el resultado sea «ya estaba bien»** — dos de los tres peldaños de D4 eran hallazgos negativos, y los tres costaron una sesión corta: el precio de auditar un eje entero es pequeño cuando el arnés (sondas por pares real/complex) existe; el precio de NO auditarlo es descubrir el ln|u| complejo en producción.
+  - **La coherencia por-eje de un resultado compuesto se hereda del simplificador, no se re-decide en cada emisor** (`∫√(x²)`): el emisor publica la forma neutra y el colapso `√(x²) → |x|` ocurre —o no— aguas abajo según el eje; pinear el PAR de salidas fija la coherencia de las dos capas de una vez.

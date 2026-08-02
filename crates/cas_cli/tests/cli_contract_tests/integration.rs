@@ -446,4 +446,14 @@ fn test_eval_integrate_complex_axis_principal_branch_logs() {
         assert_eq!(r(input, "real"), expected, "real: {input}");
         assert_eq!(r(input, "complex"), expected, "complex: {input}");
     }
+    // DOMAIN/VALUE-abs class (D4-3 audit, both negative findings pinned):
+    // inverse-trig routes already emit abs-free forms on both axes (acosh,
+    // not ln|x+√…|), and the one VALUE-abs antiderivative follows the
+    // simplifier's axis coherently — `sqrt(x²)` collapses to `|x|` only on
+    // the real axis, so the antiderivative differs per axis by that same
+    // collapse and nothing else.
+    assert_eq!(r("integrate(1/sqrt(x^2-1), x)", "real"), "acosh(x)");
+    assert_eq!(r("integrate(1/sqrt(x^2-1), x)", "complex"), "acosh(x)");
+    assert_eq!(r("integrate(sqrt(x^2), x)", "real"), "1/2·x·|x|");
+    assert_eq!(r("integrate(sqrt(x^2), x)", "complex"), "1/2·x·sqrt(x^2)");
 }
