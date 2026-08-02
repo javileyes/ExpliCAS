@@ -101,6 +101,19 @@ urgencia nueva. Orden vigente: **cerrar el bloque angular de D1c (cirugía L,
 análisis de entrada hecho: 113 helpers en 7 ficheros, phase_shift.rs con 55
 como ancla; scoping propio) → D4 → D2 → D3.** El bloque angular y D4 son
 intercambiables si un P0 o el scoping angular lo aconsejan.
+
+**ESTADO FINAL DE LA TANDA (2026-08-02, `dbad4dcd0`):** D0 ✓ (arnés +
+baseline con 3 correcciones al plan); D1 ✓ COMPLETA (D1a/b/c1-11 — los 12
+disparadores a cero bajo el invariante auditable); P0 grafía-volteada ✓;
+D4 ✓ COMPLETA (ln(u) rama principal bajo complex + herencia del eje
+verificada y pineada + abs de dominio/narración sanos); D2 ✓ (D2-1 API del
+pipeline declarada; D2-2 justificación de los 127 shortcuts medida por tres
+fuentes, mapeo fino escopado como L18). **D3 queda deliberadamente
+pendiente**: la medición D0 le quitó la urgencia (bucle editar→validar
+26 s de techo; el orden «al final» revalidado) — se abre con su `--timings`
+en frío como primer paso cuando toque. Estado vivo:
+`DESACOPLO_D1_INVENTARIO_2026-08.md`, `DESACOPLO_D2_SHORTCUTS_2026-08.md`,
+`DESACOPLO_D0_BASELINE_2026-08.md`, L18 en `SANEAMIENTO_LEDGER.md`.
 El proceso operativo es el de la skill `auto-mejora` (fuentes de verdad,
 cadena de validación, lecciones); este doc solo aporta el QUÉ y el orden.
 Melones explícitamente FUERA: C5 (oscilación expand↔factor — doctrina no
