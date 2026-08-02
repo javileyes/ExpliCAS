@@ -5,7 +5,11 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
 pub(crate) fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
-    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
+    // D4: the wrapping decision lives in `integration_value_domain` — under
+    // the complex axis the antiderivative is `ln(arg)` (principal branch),
+    // on the real axis `ln(|arg|)`. This helper is sugar over that single
+    // chokepoint; do not hand-build `Ln(Abs(…))` in integration routes.
+    let abs_arg = crate::integration_value_domain::ln_antiderivative_arg(ctx, arg);
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
 }
 

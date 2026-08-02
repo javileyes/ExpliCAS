@@ -320,7 +320,7 @@ pub(super) fn trig_cot_eighth_affine_antiderivative(
 
 pub(super) fn trig_abs_log_term(ctx: &mut Context, builtin: BuiltinFn, arg: ExprId) -> ExprId {
     let inner = ctx.call_builtin(builtin, vec![arg]);
-    let abs_inner = ctx.call_builtin(BuiltinFn::Abs, vec![inner]);
+    let abs_inner = crate::integration_value_domain::ln_antiderivative_arg(ctx, inner);
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_inner])
 }
 
@@ -331,7 +331,7 @@ pub(super) fn reciprocal_trig_abs_log_term(
 ) -> ExprId {
     let log_arg = build_reciprocal_trig_log_argument(ctx, reciprocal_builtin, arg)
         .expect("sec/csc log argument");
-    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![log_arg]);
+    let abs_arg = crate::integration_value_domain::ln_antiderivative_arg(ctx, log_arg);
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
 }
 

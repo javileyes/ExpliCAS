@@ -350,9 +350,11 @@ fn build_multi_quadratic_term_antiderivative(
     } else {
         let alpha_expr = ctx.add(Expr::Number(term.alpha.clone()));
         // For a real-root quadratic, q changes sign, so the log-derivative part
-        // needs ln|q|; an irreducible quadratic is strictly positive, ln(q).
+        // needs ln|q| on the real axis; an irreducible quadratic is strictly
+        // positive, ln(q). Under the complex axis both branches are plain
+        // (principal-branch antiderivative) — the chokepoint decides.
         let log_denominator = if is_real_root {
-            ctx.call_builtin(BuiltinFn::Abs, vec![term.factor_expr])
+            crate::integration_value_domain::ln_antiderivative_arg(ctx, term.factor_expr)
         } else {
             term.factor_expr
         };
@@ -667,7 +669,7 @@ pub(super) fn general_rational_partial_fraction_antiderivative(
                 if coefficient.is_zero() {
                     continue;
                 }
-                let abs_pole = ctx.call_builtin(BuiltinFn::Abs, vec![pole]);
+                let abs_pole = crate::integration_value_domain::ln_antiderivative_arg(ctx, pole);
                 let log_pole = ctx.call_builtin(BuiltinFn::Ln, vec![abs_pole]);
                 let coefficient_expr = ctx.add(Expr::Number(coefficient));
                 let piece = build_backend_product(ctx, coefficient_expr, log_pole);
@@ -1961,7 +1963,7 @@ fn rootsum_logarithmic_antiderivative(
             // c·ln|x − w(c)| + NonZero(x − w(c)).
             let pole_expr = ctx.add(Expr::Number(pole));
             let shifted = build_backend_difference(ctx, variable_expr, pole_expr);
-            let abs = ctx.call_builtin(BuiltinFn::Abs, vec![shifted]);
+            let abs = crate::integration_value_domain::ln_antiderivative_arg(ctx, shifted);
             let ln = ctx.call_builtin(BuiltinFn::Ln, vec![abs]);
             let coeff = ctx.add(Expr::Number(root));
             let term = build_backend_product(ctx, coeff, ln);
@@ -2381,7 +2383,7 @@ fn cbrt_cubic_factor_antiderivative(
 
     // A * ln|x - c| (the real pole).
     if !is_zero3(&a) {
-        let abs_pole = ctx.call_builtin(BuiltinFn::Abs, vec![pole]);
+        let abs_pole = crate::integration_value_domain::ln_antiderivative_arg(ctx, pole);
         let ln_pole = ctx.call_builtin(BuiltinFn::Ln, vec![abs_pole]);
         let a_expr = triple_to_expr(ctx, &a);
         let piece = build_backend_product(ctx, a_expr, ln_pole);
@@ -2516,7 +2518,7 @@ fn even_quartic_real_resolvent_antiderivative(
         if !b_num.is_zero() {
             let coeff = b_num.mul(&scalar(&half))?;
             let body = if positive {
-                let abs_quad = ctx.call_builtin(BuiltinFn::Abs, vec![quad]);
+                let abs_quad = crate::integration_value_domain::ln_antiderivative_arg(ctx, quad);
                 ctx.call_builtin(BuiltinFn::Ln, vec![abs_quad])
             } else {
                 ctx.call_builtin(BuiltinFn::Ln, vec![quad])
@@ -2539,8 +2541,8 @@ fn even_quartic_real_resolvent_antiderivative(
             let radius = ctx.call_builtin(BuiltinFn::Sqrt, vec![u_expr]);
             let pole_minus = build_backend_difference(ctx, variable_expr, radius);
             let pole_plus = build_backend_sum(ctx, variable_expr, radius);
-            let abs_minus = ctx.call_builtin(BuiltinFn::Abs, vec![pole_minus]);
-            let abs_plus = ctx.call_builtin(BuiltinFn::Abs, vec![pole_plus]);
+            let abs_minus = crate::integration_value_domain::ln_antiderivative_arg(ctx, pole_minus);
+            let abs_plus = crate::integration_value_domain::ln_antiderivative_arg(ctx, pole_plus);
             let ln_minus = ctx.call_builtin(BuiltinFn::Ln, vec![abs_minus]);
             let ln_plus = ctx.call_builtin(BuiltinFn::Ln, vec![abs_plus]);
             let log_diff = build_backend_difference(ctx, ln_minus, ln_plus);
@@ -2927,7 +2929,7 @@ fn try_heurisch_sine_log_derivative_probe(
         );
     };
 
-    let abs_denominator = ctx.call_builtin(BuiltinFn::Abs, vec![denominator]);
+    let abs_denominator = crate::integration_value_domain::ln_antiderivative_arg(ctx, denominator);
     let antiderivative = ctx.call_builtin(BuiltinFn::Ln, vec![abs_denominator]);
     let mut candidate = AlgorithmicIntegrationCandidate::unverified(
         integrand,
@@ -3154,7 +3156,7 @@ fn build_affine_denominator_remainder_antiderivative(
         return ctx.num(0);
     }
 
-    let abs_denominator = ctx.call_builtin(BuiltinFn::Abs, vec![denominator]);
+    let abs_denominator = crate::integration_value_domain::ln_antiderivative_arg(ctx, denominator);
     let log_denominator = ctx.call_builtin(BuiltinFn::Ln, vec![abs_denominator]);
     let antiderivative_scale =
         divide_backend_coefficient_by_slope(ctx, remainder, denominator_slope);
@@ -3635,7 +3637,8 @@ fn build_indefinite_square_denominator_linear_numerator_antiderivative(
     let log_derivative_part = if is_zero(ctx, variable_coefficient) {
         ctx.num(0)
     } else {
-        let abs_denominator = ctx.call_builtin(BuiltinFn::Abs, vec![denominator]);
+        let abs_denominator =
+            crate::integration_value_domain::ln_antiderivative_arg(ctx, denominator);
         let log_denominator = ctx.call_builtin(BuiltinFn::Ln, vec![abs_denominator]);
         let halved_coefficient = halve_backend_coefficient(ctx, variable_coefficient);
         let antiderivative_scale =
@@ -3667,8 +3670,8 @@ fn build_indefinite_square_denominator_reciprocal_antiderivative(
 ) -> ExprId {
     let left_pole = build_backend_difference(ctx, variable_expr, radius);
     let right_pole = build_backend_sum(ctx, variable_expr, radius);
-    let abs_left = ctx.call_builtin(BuiltinFn::Abs, vec![left_pole]);
-    let abs_right = ctx.call_builtin(BuiltinFn::Abs, vec![right_pole]);
+    let abs_left = crate::integration_value_domain::ln_antiderivative_arg(ctx, left_pole);
+    let abs_right = crate::integration_value_domain::ln_antiderivative_arg(ctx, right_pole);
     let log_left = ctx.call_builtin(BuiltinFn::Ln, vec![abs_left]);
     let log_right = ctx.call_builtin(BuiltinFn::Ln, vec![abs_right]);
     let log_difference = build_backend_difference(ctx, log_left, log_right);

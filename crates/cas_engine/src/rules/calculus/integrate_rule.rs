@@ -5,93 +5,108 @@ use cas_ast::{Context, Expr, ExprId};
 use super::integration_derivative_cofactor_routes::polynomial_trig_reciprocal_derivative_root_gate_rewrite;
 use super::integration_result_pipeline::standard_integration_rewrite;
 
-define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
-    if let Some(mut definite_call) =
-        crate::symbolic_calculus_call_support::try_extract_definite_integrate_call(ctx, expr)
-    {
-        // Matrix target: DEFINITE integration goes componentwise too (F3,
-        // Fase 3 — mirror of the indefinite V7b arm below), all-or-nothing and
-        // conditions-conservative: an entry whose definite evaluation declines,
-        // still carries an integrate node, or emits assumptions/conditions
-        // declines the WHOLE call — never a half-evaluated vector.
-        if matches!(ctx.get(definite_call.target), cas_ast::Expr::Matrix { .. }) {
+define_rule!(
+    IntegrateRule,
+    "Symbolic Integration",
+    |ctx, expr, parent_ctx| {
+        // D4 (eje de dominio): arma el eje ambiente de las rutas de integración.
+        // Bajo ComplexEnabled los emisores logarítmicos publican ln(u) con rama
+        // principal (ln|u| no es primitiva compleja); el default RealOnly deja
+        // todo camino no armado byte-idéntico. La doctrina vive en
+        // `cas_math::integration_value_domain`.
+        let _vd_guard =
+            cas_math::integration_value_domain::arm(parent_ctx.value_domain().is_complex_enabled());
+        if let Some(mut definite_call) =
+            crate::symbolic_calculus_call_support::try_extract_definite_integrate_call(ctx, expr)
+        {
+            // Matrix target: DEFINITE integration goes componentwise too (F3,
+            // Fase 3 — mirror of the indefinite V7b arm below), all-or-nothing and
+            // conditions-conservative: an entry whose definite evaluation declines,
+            // still carries an integrate node, or emits assumptions/conditions
+            // declines the WHOLE call — never a half-evaluated vector.
+            if matches!(ctx.get(definite_call.target), cas_ast::Expr::Matrix { .. }) {
+                let rewritten = crate::matrix_rule_support::map_matrix_components(
+                    ctx,
+                    definite_call.target,
+                    |ctx, entry| {
+                        let entry_call =
+                            crate::symbolic_calculus_call_support::DefiniteIntegralCall {
+                                target: entry,
+                                var_expr: definite_call.var_expr,
+                                var_name: definite_call.var_name.clone(),
+                                lower: definite_call.lower,
+                                upper: definite_call.upper,
+                            };
+                        let rewrite = super::definite_integration::definite_integration_rewrite(
+                            ctx,
+                            &entry_call,
+                        )?;
+                        if !rewrite.required_conditions.is_empty()
+                            || !rewrite.assumption_events.is_empty()
+                            || contains_integrate_call(ctx, rewrite.new_expr)
+                        {
+                            return None;
+                        }
+                        Some(rewrite.new_expr)
+                    },
+                )?;
+                return Some(
+                    crate::rule::Rewrite::new(rewritten)
+                        .desc("Integrar cada componente del vector en el intervalo")
+                        .budget_exempt(),
+                );
+            }
+            if let Some(folded) =
+                fold_var_power_quotient(ctx, definite_call.target, &definite_call.var_name)
+            {
+                definite_call.target = folded;
+            }
+            return super::definite_integration::definite_integration_rewrite(ctx, &definite_call);
+        }
+        let mut call = try_extract_integrate_call(ctx, expr)?;
+        // Vector/matrix target: integrate componentwise (Fase 2 V7b), ALL-OR-NOTHING and
+        // conditions-conservative: a component whose antiderivative carries required
+        // conditions, still contains an integrate node (residual fallback), or fails
+        // outright declines the WHOLE call — never a half-integrated matrix, and never a
+        // silently dropped domain condition.
+        if matches!(ctx.get(call.target), cas_ast::Expr::Matrix { .. }) {
+            let var = call.var_name.clone();
             let rewritten = crate::matrix_rule_support::map_matrix_components(
                 ctx,
-                definite_call.target,
+                call.target,
                 |ctx, entry| {
-                    let entry_call = crate::symbolic_calculus_call_support::DefiniteIntegralCall {
-                        target: entry,
-                        var_expr: definite_call.var_expr,
-                        var_name: definite_call.var_name.clone(),
-                        lower: definite_call.lower,
-                        upper: definite_call.upper,
-                    };
-                    let rewrite = super::definite_integration::definite_integration_rewrite(
-                        ctx,
-                        &entry_call,
-                    )?;
-                    if !rewrite.required_conditions.is_empty()
-                        || !rewrite.assumption_events.is_empty()
-                        || contains_integrate_call(ctx, rewrite.new_expr)
+                    let outcome = super::integration::integrate_with_trace(ctx, entry, &var)?;
+                    if !outcome.required_conditions.is_empty()
+                        || contains_integrate_call(ctx, outcome.result)
                     {
                         return None;
                     }
-                    Some(rewrite.new_expr)
+                    Some(outcome.result)
                 },
             )?;
             return Some(
                 crate::rule::Rewrite::new(rewritten)
-                    .desc("Integrar cada componente del vector en el intervalo")
+                    .desc("Integrar cada componente del vector")
                     .budget_exempt(),
             );
         }
-        if let Some(folded) =
-            fold_var_power_quotient(ctx, definite_call.target, &definite_call.var_name)
-        {
-            definite_call.target = folded;
+        // The simplifier RATIONALIZES a fractional reciprocal power — `1/x^(1/3)`
+        // becomes `x^(2/3)/x`, not `x^(-1/3)` — so the power-rule integrand matcher
+        // (which recognizes `x^n`) missed it and `∫1/x^(1/3)` leaked. Fold a
+        // `(c·)x^a/x^b` integrand back to `c·x^(a-b)` so the power rule applies.
+        if let Some(folded) = fold_var_power_quotient(ctx, call.target, &call.var_name) {
+            call = NamedVarCall {
+                target: folded,
+                var_name: call.var_name,
+            };
         }
-        return super::definite_integration::definite_integration_rewrite(ctx, &definite_call);
-    }
-    let mut call = try_extract_integrate_call(ctx, expr)?;
-    // Vector/matrix target: integrate componentwise (Fase 2 V7b), ALL-OR-NOTHING and
-    // conditions-conservative: a component whose antiderivative carries required
-    // conditions, still contains an integrate node (residual fallback), or fails
-    // outright declines the WHOLE call — never a half-integrated matrix, and never a
-    // silently dropped domain condition.
-    if matches!(ctx.get(call.target), cas_ast::Expr::Matrix { .. }) {
-        let var = call.var_name.clone();
-        let rewritten =
-            crate::matrix_rule_support::map_matrix_components(ctx, call.target, |ctx, entry| {
-                let outcome = super::integration::integrate_with_trace(ctx, entry, &var)?;
-                if !outcome.required_conditions.is_empty()
-                    || contains_integrate_call(ctx, outcome.result)
-                {
-                    return None;
-                }
-                Some(outcome.result)
-            })?;
-        return Some(
-            crate::rule::Rewrite::new(rewritten)
-                .desc("Integrar cada componente del vector")
-                .budget_exempt(),
-        );
-    }
-    // The simplifier RATIONALIZES a fractional reciprocal power — `1/x^(1/3)`
-    // becomes `x^(2/3)/x`, not `x^(-1/3)` — so the power-rule integrand matcher
-    // (which recognizes `x^n`) missed it and `∫1/x^(1/3)` leaked. Fold a
-    // `(c·)x^a/x^b` integrand back to `c·x^(a-b)` so the power rule applies.
-    if let Some(folded) = fold_var_power_quotient(ctx, call.target, &call.var_name) {
-        call = NamedVarCall {
-            target: folded,
-            var_name: call.var_name,
-        };
-    }
-    if let Some(rewrite) = polynomial_trig_reciprocal_derivative_root_gate_rewrite(ctx, &call) {
-        return Some(rewrite);
-    }
+        if let Some(rewrite) = polynomial_trig_reciprocal_derivative_root_gate_rewrite(ctx, &call) {
+            return Some(rewrite);
+        }
 
-    standard_integration_rewrite(ctx, &call)
-});
+        standard_integration_rewrite(ctx, &call)
+    }
+);
 
 /// Exponent of a PURE power of `var` (`x` → 1, `x^k` → k), else None.
 fn pure_var_power(ctx: &Context, expr: ExprId, var: &str) -> Option<num_rational::BigRational> {

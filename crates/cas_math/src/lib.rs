@@ -104,6 +104,7 @@ pub mod hyperbolic_exp_support;
 pub mod hyperbolic_identity_support;
 pub mod hyperbolic_negative_support;
 pub mod infinity_support;
+pub mod integration_value_domain;
 pub mod inv_trig_n_angle_support;
 pub mod inverse_trig_composition_support;
 pub mod limit_types;

@@ -86,7 +86,7 @@ pub(super) fn trig_odd_power_companion_substitution_antiderivative(
         }
         let exponent = companion_pow + 2 * i;
         let piece = if exponent == -1 {
-            let abs_u = ctx.call_builtin(BuiltinFn::Abs, vec![u]);
+            let abs_u = crate::integration_value_domain::ln_antiderivative_arg(ctx, u);
             let ln = ctx.call_builtin(BuiltinFn::Ln, vec![abs_u]);
             scale_rational_term(ctx, &outer * &c, ln)
         } else {
@@ -1106,7 +1106,7 @@ pub(super) fn symbolic_power_substitution_div_antiderivative(
     let scale = cof_coef / der_coef;
 
     if m == BigRational::one() {
-        let abs = ctx.call_builtin(BuiltinFn::Abs, vec![base]);
+        let abs = crate::integration_value_domain::ln_antiderivative_arg(ctx, base);
         let ln = ctx.call_builtin(BuiltinFn::Ln, vec![abs]);
         if scale == BigRational::one() {
             return Some(ln);

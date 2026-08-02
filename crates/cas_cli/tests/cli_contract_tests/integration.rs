@@ -397,3 +397,53 @@ fn test_eval_symmetric_surd_even_quartic_integral_verifies() {
         "expected the arctan pair over Q(sqrt(5)): {real_resolvent}"
     );
 }
+
+#[test]
+fn test_eval_integrate_complex_axis_principal_branch_logs() {
+    // D4 (eje de dominio, 2026-08-02): under `--value-domain complex` the
+    // logarithmic antiderivatives use the PRINCIPAL BRANCH (`ln(u)`) — `ln|u|`
+    // is not a complex antiderivative (|·| is not analytic), and the rest of
+    // the engine already treats symbols as complex-valued under this axis
+    // (`solve(x²=−1) → {i,−i}`, `sqrt(x²)` stays). Real axis stays `ln|u|`.
+    // The single decision point is `cas_math::integration_value_domain`.
+    let r = |input: &str, vd: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--value-domain", vd, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    for (input, real, complex) in [
+        ("integrate(1/x, x)", "ln(|x|)", "ln(x)"),
+        ("integrate(cos(x)/sin(x), x)", "ln(|sin(x)|)", "ln(sin(x))"),
+        ("integrate(1/(x-1), x)", "ln(|x - 1|)", "ln(x - 1)"),
+        ("integrate(tan(x), x)", "-ln(|cos(x)|)", "-ln(cos(x))"),
+        (
+            "integrate(sec(x), x)",
+            "ln(|tan(x) + sec(x)|)",
+            "ln(tan(x) + sec(x))",
+        ),
+        (
+            "integrate(1/(x^2-1), x)",
+            "1/2·ln(|(x - 1) / (x + 1)|)",
+            "1/2·ln((x - 1) / (x + 1))",
+        ),
+        ("integrate(coth(x), x)", "ln(|sinh(x)|)", "ln(sinh(x))"),
+    ] {
+        assert_eq!(r(input, "real"), real, "real axis drifted: {input}");
+        assert_eq!(r(input, "complex"), complex, "complex axis: {input}");
+    }
+    // Provably-positive arguments never carried the abs — identical on both
+    // axes; polynomial antiderivatives are axis-independent; the definite
+    // FTC value matches on both axes (the imaginary parts of the principal
+    // branch cancel: ln(−1)−ln(−2) = −ln 2).
+    for (input, expected) in [
+        ("integrate(x/(x^2+1), x)", "1/2·ln(x^2 + 1)"),
+        ("integrate(2*x*(x^2+1)^3, x)", "1/4·(x^2 + 1)^4"),
+        ("integrate(1/x, x, -2, -1)", "-ln(2)"),
+    ] {
+        assert_eq!(r(input, "real"), expected, "real: {input}");
+        assert_eq!(r(input, "complex"), expected, "complex: {input}");
+    }
+}
