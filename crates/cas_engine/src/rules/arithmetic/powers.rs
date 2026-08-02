@@ -664,39 +664,6 @@ pub(super) fn build_complete_square_candidate_for_var_for_cancellation(
     Some((candidate_raw, nonzero_expr, build_route))
 }
 
-pub(super) fn is_sqrt_two_for_cancellation(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
-        {
-            extract_i64_integer(ctx, args[0]) == Some(2)
-        }
-        Expr::Pow(base, exp) => {
-            extract_i64_integer(ctx, *base) == Some(2) && is_positive_one_half_expr(ctx, *exp)
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn divide_by_sqrt_two_fast_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    let two = ctx.num(2);
-    let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
-
-    if extract_i64_integer(ctx, expr) == Some(1) {
-        return Some(ctx.add(Expr::Div(sqrt_two, two)));
-    }
-
-    if let Some(stripped) = split_out_small_integer_factor_for_cancellation(ctx, expr, 2) {
-        return Some(smart_mul(ctx, stripped, sqrt_two));
-    }
-
-    let scaled = smart_mul(ctx, expr, sqrt_two);
-    Some(ctx.add(Expr::Div(scaled, two)))
-}
-
 pub(super) fn try_build_structural_difference_squares_zero_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,

@@ -6166,3 +6166,68 @@ pub(super) fn try_find_trig_phase_shift_cancellation_match(
 
     None
 }
+
+pub(super) fn build_pi_over_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    denominator: i64,
+) -> cas_ast::ExprId {
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let denom = ctx.num(denominator);
+    ctx.add(Expr::Div(pi, denom))
+}
+
+pub(super) fn expr_contains_pi_constant(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(c) => matches!(c, cas_ast::Constant::Pi),
+        Expr::Add(lhs, rhs)
+        | Expr::Sub(lhs, rhs)
+        | Expr::Mul(lhs, rhs)
+        | Expr::Div(lhs, rhs)
+        | Expr::Pow(lhs, rhs) => {
+            expr_contains_pi_constant(ctx, *lhs) || expr_contains_pi_constant(ctx, *rhs)
+        }
+        Expr::Neg(inner) => expr_contains_pi_constant(ctx, *inner),
+        Expr::Function(_, args) => args.iter().any(|arg| expr_contains_pi_constant(ctx, *arg)),
+        _ => false,
+    }
+}
+
+pub(super) fn is_positive_one_half_expr(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n) if *n == BigRational::new(BigInt::from(1), BigInt::from(2))
+    )
+}
+
+pub(super) fn divide_by_sqrt_two_fast_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let two = ctx.num(2);
+    let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
+
+    if extract_i64_integer(ctx, expr) == Some(1) {
+        return Some(ctx.add(Expr::Div(sqrt_two, two)));
+    }
+
+    if let Some(stripped) = split_out_small_integer_factor_for_cancellation(ctx, expr, 2) {
+        return Some(smart_mul(ctx, stripped, sqrt_two));
+    }
+
+    let scaled = smart_mul(ctx, expr, sqrt_two);
+    Some(ctx.add(Expr::Div(scaled, two)))
+}
+
+pub(super) fn is_sqrt_two_for_cancellation(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
+        {
+            extract_i64_integer(ctx, args[0]) == Some(2)
+        }
+        Expr::Pow(base, exp) => {
+            extract_i64_integer(ctx, *base) == Some(2) && is_positive_one_half_expr(ctx, *exp)
+        }
+        _ => false,
+    }
+}

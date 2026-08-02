@@ -341,22 +341,6 @@ pub(super) fn is_positive_one_expr(ctx: &cas_ast::Context, expr: cas_ast::ExprId
     matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::one())
 }
 
-pub(super) fn extract_literal_rational_for_cancellation(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<BigRational> {
-    match ctx.get(expr) {
-        Expr::Number(n) => Some(n.clone()),
-        Expr::Neg(inner) => extract_literal_rational_for_cancellation(ctx, *inner).map(|n| -n),
-        Expr::Div(numerator, denominator) => {
-            let numerator = extract_literal_rational_for_cancellation(ctx, *numerator)?;
-            let denominator = extract_literal_rational_for_cancellation(ctx, *denominator)?;
-            Some(numerator / denominator)
-        }
-        _ => None,
-    }
-}
-
 pub(super) fn scale_with_add_sign(scale: BigRational, sign: Sign) -> BigRational {
     match sign {
         Sign::Pos => scale,
@@ -413,13 +397,6 @@ pub(super) fn collect_direct_additive_linear_variable_names(
     names.into_iter().collect()
 }
 
-pub(super) fn is_positive_one_half_expr(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    matches!(
-        ctx.get(expr),
-        Expr::Number(n) if *n == BigRational::new(BigInt::from(1), BigInt::from(2))
-    )
-}
-
 pub(super) fn extract_positive_half_scaled_base_expr(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -430,73 +407,6 @@ pub(super) fn extract_positive_half_scaled_base_expr(
         Expr::Mul(lhs, rhs) if is_positive_one_half_expr(ctx, *rhs) => Some(*lhs),
         _ => None,
     }
-}
-
-pub(super) fn expr_contains_pi_constant(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Constant(c) => matches!(c, cas_ast::Constant::Pi),
-        Expr::Add(lhs, rhs)
-        | Expr::Sub(lhs, rhs)
-        | Expr::Mul(lhs, rhs)
-        | Expr::Div(lhs, rhs)
-        | Expr::Pow(lhs, rhs) => {
-            expr_contains_pi_constant(ctx, *lhs) || expr_contains_pi_constant(ctx, *rhs)
-        }
-        Expr::Neg(inner) => expr_contains_pi_constant(ctx, *inner),
-        Expr::Function(_, args) => args.iter().any(|arg| expr_contains_pi_constant(ctx, *arg)),
-        _ => false,
-    }
-}
-
-pub(super) fn build_pi_over_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    denominator: i64,
-) -> cas_ast::ExprId {
-    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-    let denom = ctx.num(denominator);
-    ctx.add(Expr::Div(pi, denom))
-}
-
-pub(super) fn split_out_small_integer_factor_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-    value: i64,
-) -> Option<cas_ast::ExprId> {
-    let factors = flatten_mul_chain(ctx, expr);
-    if let Some(index) = factors
-        .iter()
-        .position(|factor| extract_i64_integer(ctx, *factor) == Some(value))
-    {
-        return Some(
-            factors
-                .into_iter()
-                .enumerate()
-                .filter_map(|(i, factor)| (i != index).then_some(factor))
-                .fold(ctx.num(1), |acc, factor| smart_mul(ctx, acc, factor)),
-        );
-    }
-
-    for (index, factor) in factors.iter().copied().enumerate() {
-        let Expr::Number(n) = ctx.get(factor) else {
-            continue;
-        };
-        let divisor = BigRational::from_integer(value.into());
-        let quotient = n / &divisor;
-        if !quotient.is_integer() {
-            continue;
-        }
-
-        let quotient_id = ctx.add(Expr::Number(quotient));
-        let rebuilt = factors
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(i, existing)| if i == index { quotient_id } else { existing })
-            .fold(ctx.num(1), |acc, factor| smart_mul(ctx, acc, factor));
-        return Some(rebuilt);
-    }
-
-    None
 }
 
 pub(super) fn extract_scaled_double_sine_product_for_cancellation(
@@ -641,37 +551,6 @@ pub(super) fn extract_exact_double_sine_product_args_from_signed_expr(
         Expr::Neg(inner) => extract_exact_double_sine_product_args(ctx, inner),
         _ => extract_exact_double_sine_product_args(ctx, expr),
     }
-}
-
-pub(super) fn strip_common_factor_from_term(
-    ctx: &mut cas_ast::Context,
-    term_expr: cas_ast::ExprId,
-    common_factor: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    let term_factors = flatten_mul_chain(ctx, term_expr);
-    let common_factors = flatten_mul_chain(ctx, common_factor);
-    if term_factors.is_empty() || common_factors.is_empty() {
-        return None;
-    }
-
-    let mut used = vec![false; term_factors.len()];
-    for common in common_factors {
-        let matched_index = term_factors
-            .iter()
-            .enumerate()
-            .find_map(|(index, factor)| {
-                (!used[index] && compare_expr(ctx, *factor, common) == Ordering::Equal)
-                    .then_some(index)
-            })?;
-        used[matched_index] = true;
-    }
-
-    let residual_factors: Vec<_> = term_factors
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, factor)| (!used[index]).then_some(factor))
-        .collect();
-    Some(build_mul_expr_from_factors(ctx, &residual_factors))
 }
 
 pub(super) fn extract_two_term_common_scale_difference_cores(
@@ -859,40 +738,6 @@ pub(super) fn try_build_two_term_core_equivalence_rewrite(
     try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
 }
 
-pub(super) fn strip_trivial_one_product_factors_for_core_difference(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> cas_ast::ExprId {
-    let factors = flatten_mul_chain(ctx, expr);
-    if factors.len() <= 1 {
-        return expr;
-    }
-
-    let retained: Vec<_> = factors
-        .iter()
-        .copied()
-        .filter(|factor| !is_one_expr(ctx, *factor))
-        .collect();
-    if retained.len() == factors.len() {
-        expr
-    } else {
-        build_mul_expr_from_factors(ctx, &retained)
-    }
-}
-
-pub(super) fn normalize_core_difference_term(
-    ctx: &mut cas_ast::Context,
-    term_expr: cas_ast::ExprId,
-    term_sign: Sign,
-) -> (cas_ast::ExprId, Sign) {
-    let (term_expr, term_sign) =
-        normalize_signed_add_term_for_fast_match(ctx, term_expr, term_sign);
-    (
-        strip_trivial_one_product_factors_for_core_difference(ctx, term_expr),
-        term_sign,
-    )
-}
-
 pub(super) fn try_build_direct_dirichlet_core_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
@@ -1048,82 +893,6 @@ pub(super) fn try_build_direct_finite_sum_equivalence_rewrite(
     None
 }
 
-pub(super) fn is_simple_symbolic_scale_factor_for_cancellation(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> bool {
-    match ctx.get(expr) {
-        Expr::Variable(_) | Expr::SessionRef(_) => true,
-        Expr::Pow(base, exp) => {
-            matches!(ctx.get(*base), Expr::Variable(_) | Expr::SessionRef(_))
-                && extract_i64_integer(ctx, *exp).is_some_and(|value| value > 0)
-        }
-        _ => false,
-    }
-}
-
-fn distribute_symbolic_scale_sum_term_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    scale_expr: cas_ast::ExprId,
-    term_expr: cas_ast::ExprId,
-) -> cas_ast::ExprId {
-    let Expr::Div(numerator, denominator) = ctx.get(term_expr).clone() else {
-        return smart_mul(ctx, scale_expr, term_expr);
-    };
-
-    if compare_expr(ctx, denominator, scale_expr) == Ordering::Equal {
-        numerator
-    } else {
-        smart_mul(ctx, scale_expr, term_expr)
-    }
-}
-
-fn try_rewrite_single_symbolic_scale_sum_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    let factors = flatten_mul_chain(ctx, expr);
-    if factors.len() != 2 {
-        return None;
-    }
-
-    let (scale_expr, sum_expr) =
-        if is_simple_symbolic_scale_factor_for_cancellation(ctx, factors[0])
-            && matches!(ctx.get(factors[1]), Expr::Add(_, _) | Expr::Sub(_, _))
-        {
-            (factors[0], factors[1])
-        } else if is_simple_symbolic_scale_factor_for_cancellation(ctx, factors[1])
-            && matches!(ctx.get(factors[0]), Expr::Add(_, _) | Expr::Sub(_, _))
-        {
-            (factors[1], factors[0])
-        } else {
-            return None;
-        };
-
-    let sum_terms = AddView::from_expr(ctx, sum_expr).terms;
-    if !(2..=4).contains(&sum_terms.len()) {
-        return None;
-    }
-
-    let distributed_terms: Vec<_> = sum_terms
-        .into_iter()
-        .map(|(term_expr, term_sign)| {
-            let distributed_term =
-                distribute_symbolic_scale_sum_term_for_cancellation(ctx, scale_expr, term_expr);
-            let (normalized_expr, normalized_sign) =
-                normalize_signed_add_term(ctx, distributed_term, Sign::Pos);
-            let combined_sign = match term_sign {
-                Sign::Pos => normalized_sign,
-                Sign::Neg => normalized_sign.negate(),
-            };
-            (normalized_expr, combined_sign)
-        })
-        .collect();
-
-    let distributed_expr = build_signed_sum_expr(ctx, &distributed_terms);
-    (compare_expr(ctx, distributed_expr, expr) != Ordering::Equal).then_some(distributed_expr)
-}
-
 fn collect_distributed_single_symbolic_scale_sum_terms_for_fast_match(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -1225,30 +994,6 @@ pub(super) fn grouped_symbolic_scale_sum_matches_target_for_cancellation(
     }
 
     true
-}
-
-pub(super) fn try_rewrite_simple_symbolic_scale_sum_for_cancellation(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<cas_ast::ExprId> {
-    if let Some(rewritten) = try_rewrite_single_symbolic_scale_sum_for_cancellation(ctx, expr) {
-        return Some(rewritten);
-    }
-
-    let sum_terms = AddView::from_expr(ctx, expr).terms;
-    if !(2..=4).contains(&sum_terms.len()) {
-        return None;
-    }
-
-    let mut rewritten_terms = Vec::with_capacity(sum_terms.len());
-    for (term_expr, term_sign) in sum_terms {
-        let rewritten_term =
-            try_rewrite_single_symbolic_scale_sum_for_cancellation(ctx, term_expr)?;
-        rewritten_terms.push(normalize_signed_add_term(ctx, rewritten_term, term_sign));
-    }
-
-    let rewritten_expr = build_signed_sum_expr(ctx, &rewritten_terms);
-    (compare_expr(ctx, rewritten_expr, expr) != Ordering::Equal).then_some(rewritten_expr)
 }
 
 pub(super) fn extract_unary_builtin_arg(

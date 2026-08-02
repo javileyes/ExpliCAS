@@ -122,9 +122,16 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   (API: **39**). Los 4 trig bajan: TrigSquare 10→9, SumToProduct 12→7,
   DoubleAngleCos 16→8, PhaseShift 88→70. Sondas de los 4 disparadores
   cierran (pythagorean, `sin(x+π/2)−cos x`, doble ángulo, sum-to-product).
-- Pendiente D1c (bloque angular, 2 ciclos): **D1c-10** — clasificar los 12 de
-  general.rs (≈10 neutros de cancelación → promover; 2 π-específicos →
-  angular) y los 2 de powers.rs (¿√2-angular o radical-neutro? decidir por
-  usuarios); **D1c-11** — declarar la familia ANGULAR multi-fichero
-  (phase_shift 58 + trig 8 + trig_angles 9) cerrando TripleAngle† y
-  HypAngleSumDiff†. Residuo angular puro tras D1c-9: **89**.
+- **D1c-10 (2026-08-02)**: los 14 de general/powers clasificados por
+  usuarios+contenido. Hallazgo de criterio: los 5 ambiguos (π×2, √2×2, 1/2)
+  compartían EXACTAMENTE los mismos usuarios — los 5 mega-entries (que
+  alcanzan todo y NO discriminan) y PhaseShift como único disparador ⟹ al
+  leer la estadística de alcance se DESCUENTAN los mega; π, √2 y 1/2 son
+  constantes ANGULARES y van a `phase_shift.rs`. Los 9 neutros de
+  cancelación (escalas simbólicas, factores, diferencias core) a support
+  (API: **48**). Una fn privada necesitó `pub(super)` al mudarse (su
+  llamador quedaba en general.rs) — declarado.
+- Pendiente D1c (último ciclo): **D1c-11** — declarar la familia ANGULAR
+  multi-fichero (phase_shift ~66 + trig 8 + trig_angles 9) cerrando
+  TripleAngle†, HypAngleSumDiff† y los 4 trig. Con ella, los 12 disparadores
+  quedan bajo el invariante: cierre ⊆ API ∪ familia ∪ infra ∪ exclusivos.
