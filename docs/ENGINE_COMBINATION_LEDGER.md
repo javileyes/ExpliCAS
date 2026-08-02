@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 813 (newest first)
+Active entries: 814 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -123,6 +123,7 @@ Active entries: 813 (newest first)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,powers}.rs` + inventario D1 — peldaños #3 ... | ARQUITECTURA (D1c-3/4: la promoción neutra irradia; la familia trig se declara semilla, no API)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,hyperbolic}.rs` + inventario D1 — peldaños #5 (Hyp... | ARQUITECTURA (D1c-5/6: la familia hyperbolic se declara submódulo del núcleo — ciclo 100% declarativo)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,logarithms}.rs` + inventario D1 — peldaños... | ARQUITECTURA (D1c-7/8: la familia log se declara — 8 de 12 disparadores migrados, solo queda el bloque angular)
+- 2026-08-02 | `retained` | `rules/arithmetic/{support,profiling,phase_shift}.rs` + inventario D1 — prime... | ARQUITECTURA (D1c-9: el perfilado es la TERCERA clase de frontera — el bloque angular se parte en tres ciclos M)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23482,3 +23483,12 @@ Active entries: 813 (newest first)
 - retained learning:
   - **Los constructores hermanos delatan API por SIMETRÍA**: `build_signed_add_expr` era arrastre mientras su gemelo `build_signed_sum_expr` era API 13/25 — un par build_X/build_Y con la misma forma y distinto alcance estadístico es UNA pieza de API partida por el muestreo, no dos decisiones.
   - **Las familias se declaran en orden de nitidez, no de tamaño**: hyperbolic y log salieron casi gratis porque su maquinaria ya estaba coalescida en su fichero; el bloque angular quedó al final precisamente porque su maquinaria está REPARTIDA (phase_shift + trig + trig_angles) — la señal de que ahí la declaración sola no bastará.
+
+## 2026-08-02 - ARQUITECTURA (D1c-9: el perfilado es la TERCERA clase de frontera — el bloque angular se parte en tres ciclos M)
+
+- area: `rules/arithmetic/{support,profiling,phase_shift}.rs` + inventario D1 — primer ciclo del bloque angular, que el análisis de entrada (113 helpers en 7 ficheros) partió en tres M en vez de una L. La anomalía «¿por qué el cierre de reglas trig pasa por profiling.rs?» resultó ser INFRA VIVA: instrumentación por sección del `orchestrator_shortcut_profiler` (campaña de perf), gateada por `should_profile_orchestrator_shortcut`, consumida por 7 submódulos — ni API neutra ni familia matemática: **tercera clase de frontera declarada** (cabecera con la doctrina). Moves: 2 helpers de perfil genéricos de support → profiling.rs; 3 angulares de support → phase_shift.rs (su ancla). Declaración: los 9 neutros que vivían en support sin declarar entran a la API (**39**). Los 4 trig bajan: TrigSquare 10→9, SumToProduct 12→7, DoubleAngleCos 16→8, PhaseShift 88→70; residuo angular puro 89 (phase_shift 58, general 12, trig_angles 9, trig 8, powers 2).
+- status: `retained`. Moves certificados (713 fns dir-completo, 0 faltan/sobran/cambiados); sondas de los 4 disparadores trig cierran (`sin²+cos²−1 → 0`, `sin(x+π/2)−cos x → 0`, `cos 2x−cos²+sin² → 0`, `sin 3x+sin x−2·sin 2x·cos x → 0`); suite/clippy/cadena verdes reparto exacto; huella patrón conocido.
+- decision: retener. D1c-10: clasificar los 12 de general (≈10 neutros → promover; 2 π-específicos → angular) y los 2 √2 de powers (decidir por usuarios); D1c-11: familia ANGULAR multi-fichero declarada (phase_shift 58 + trig 8 + trig_angles 9), cerrando los residuales † de TripleAngle y HypAngleSumDiff.
+- retained learning:
+  - **La instrumentación transversal merece frontera propia**: meterla en la API neutra la contamina («¿render de perfil es API del motor?» — no), y llamarla familia matemática miente; la tercera clase (infra declarada, gateada, coste ~0 apagada) deja el invariante limpio: API ∪ familia ∪ infra ∪ exclusivos.
+  - **Una anomalía en el reparto por ficheros es una pregunta, no un defecto**: profiling-en-el-cierre parecía sobreaproximación del detector y era arquitectura real de la campaña de perf — investigar la anomalía ANTES de clasificarla evitó tanto borrarla como consagrarla por accidente.

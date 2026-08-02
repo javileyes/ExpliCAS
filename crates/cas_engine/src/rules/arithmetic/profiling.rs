@@ -1,6 +1,20 @@
-//! `arithmetic`: familia `profiling`.
+//! `arithmetic`: familia `profiling` — declarada en D1c-9 (2026-08-02)
+//! **infraestructura transversal del motor de cancelación** (tercera clase
+//! de frontera: ni API neutra ni familia matemática).
 //!
-//! Ver la cabecera de `arithmetic.rs` para el contexto.
+//! Instrumentación de perfilado por sección conectada al
+//! `orchestrator_shortcut_profiler` (campaña de perf del orquestador),
+//! gateada por `should_profile_orchestrator_shortcut` — coste ~0 cuando el
+//! perfil está apagado. La consumen 7 submódulos del directorio; el camino
+//! phase_shift es el más instrumentado (13 helpers `*_for_profile`/
+//! `profiled_*`), más los dos genéricos traídos de support en D1c-9
+//! (`render_expr_for_orchestrator_profile`,
+//! `run_profiled_orchestrator_option_section`). Un disparador puede
+//! consumir esta familia SIN contar como arrastre: la instrumentación es
+//! frontera declarada, igual que la API neutra y las familias matemáticas
+//! (inventario `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`).
+//!
+//! Ver la cabecera de `arithmetic.rs` para el contexto del troceo.
 
 use super::*;
 
@@ -4321,4 +4335,34 @@ pub(super) fn run_profiled_shared_passthrough_probe(
     } else {
         body()
     }
+}
+
+pub(super) fn render_expr_for_orchestrator_profile(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> String {
+    crate::orchestrator_shortcut_profiler::render_expr_shape_for_orchestrator_profile(ctx, expr)
+}
+
+pub(super) fn run_profiled_orchestrator_option_section<T>(
+    name: &'static str,
+    sample: Option<String>,
+    body: impl FnOnce() -> Option<T>,
+) -> Option<T> {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
+        return body();
+    }
+
+    if let Some(sample) = sample {
+        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(name, sample);
+    }
+
+    let start = Instant::now();
+    let result = body();
+    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
+        name,
+        result.is_some(),
+        start.elapsed(),
+    );
+    result
 }

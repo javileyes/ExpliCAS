@@ -112,7 +112,19 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   `build_signed_add_expr` promovido (API: **30**). Ambos logs a 0. Sondas:
   `ln(|x·y|)−ln|x|−ln|y| → 0`, `ln(x²)−2·ln|x| → 0`, producto y cociente
   directos → 0. Global sin-decidir 127 → **113**.
-- Pendiente D1c: SOLO los 4 trig (TrigSquare 10, SumToProduct 12,
-  DoubleAngleCos 16, PhaseShift 88) + los residuales angulares † — todos
-  convergen en el submódulo de familia angular (phase_shift + trig +
-  trig_angles). Es el peldaño final y el más gordo: PhaseShift lo ancla.
+- **D1c-9 (2026-08-02)**: el análisis de entrada del bloque angular (113
+  helpers en 7 ficheros) lo partió en tres ciclos M. Este primero: la familia
+  **`profiling.rs` declarada como TERCERA CLASE de frontera** — infra
+  transversal del motor (instrumentación por sección del
+  `orchestrator_shortcut_profiler`, gateada; 7 consumidores) — con 2 moves
+  desde support; los 3 angulares de support movidos a `phase_shift.rs` (su
+  ancla); y los 9 neutros que vivían en support sin declarar, declarados
+  (API: **39**). Los 4 trig bajan: TrigSquare 10→9, SumToProduct 12→7,
+  DoubleAngleCos 16→8, PhaseShift 88→70. Sondas de los 4 disparadores
+  cierran (pythagorean, `sin(x+π/2)−cos x`, doble ángulo, sum-to-product).
+- Pendiente D1c (bloque angular, 2 ciclos): **D1c-10** — clasificar los 12 de
+  general.rs (≈10 neutros de cancelación → promover; 2 π-específicos →
+  angular) y los 2 de powers.rs (¿√2-angular o radical-neutro? decidir por
+  usuarios); **D1c-11** — declarar la familia ANGULAR multi-fichero
+  (phase_shift 58 + trig 8 + trig_angles 9) cerrando TripleAngle† y
+  HypAngleSumDiff†. Residuo angular puro tras D1c-9: **89**.
