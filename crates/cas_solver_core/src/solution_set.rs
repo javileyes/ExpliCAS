@@ -485,7 +485,7 @@ fn except_point(ctx: &mut Context, point: ExprId) -> SolutionSet {
 /// Returns `None` when any pair of points cannot be exactly ordered by
 /// [`try_compare_values`] — publishing a mis-ordered union would corrupt the
 /// set, so callers must decline instead.
-pub(crate) fn all_reals_except_points(ctx: &mut Context, points: &[ExprId]) -> Option<SolutionSet> {
+pub fn all_reals_except_points(ctx: &mut Context, points: &[ExprId]) -> Option<SolutionSet> {
     if points.is_empty() {
         return Some(SolutionSet::AllReals);
     }

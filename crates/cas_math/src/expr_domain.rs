@@ -719,11 +719,120 @@ fn is_positive_expr_dominated_by_positives(
     }
 }
 
+/// Structural certificate that an expression denotes a TOTAL continuous real
+/// function of its variables: defined and continuous on ALL of ℝ (per
+/// variable). Conservative by construction — `false` means "no certificate",
+/// not "discontinuous": `Div` (poles), even roots / logs (partial domains),
+/// `tan`-family, and inverse trig with bounded domain all return `false`
+/// even when a particular composition happens to be total (`1/(x²+1)`).
+///
+/// The consumer this was built for is the `!=` DISCRETE BACKSTOP: for `f ≠ g`
+/// with total continuous sides, the solution set is the preimage of an open
+/// set under a continuous function, hence OPEN — a non-empty discrete answer
+/// is mathematically impossible and must be rejected. That theorem only
+/// holds with a certificate this strict (partial domains can contribute
+/// isolated points: `√(−x²) ≠ 1` legitimately answers `{0}`).
+pub fn is_total_continuous_expr(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Variable(_) => true,
+        Expr::Constant(c) => !matches!(
+            c,
+            cas_ast::Constant::Infinity | cas_ast::Constant::Undefined | cas_ast::Constant::I
+        ),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            is_total_continuous_expr(ctx, *l) && is_total_continuous_expr(ctx, *r)
+        }
+        Expr::Neg(e) | Expr::Hold(e) => is_total_continuous_expr(ctx, *e),
+        // No `Div` arm: denominators mean poles unless proven nonvanishing,
+        // which this structural pass does not attempt.
+        Expr::Pow(base, exp) => {
+            // x^n with a literal non-negative integer exponent stays total.
+            let nonneg_integer_exp = matches!(
+                ctx.get(*exp),
+                Expr::Number(n) if n.is_integer() && *n >= BigRational::zero()
+            );
+            if nonneg_integer_exp {
+                return is_total_continuous_expr(ctx, *base);
+            }
+            // a^u with a provably-positive constant base (e^x, 2^x, π^x)
+            // is total in u.
+            let positive_const_base = match ctx.get(*base) {
+                Expr::Number(n) => *n > BigRational::zero(),
+                Expr::Constant(cas_ast::Constant::E | cas_ast::Constant::Pi) => true,
+                _ => false,
+            };
+            positive_const_base && is_total_continuous_expr(ctx, *exp)
+        }
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let total_builtin = [
+                BuiltinFn::Sin,
+                BuiltinFn::Cos,
+                BuiltinFn::Sinh,
+                BuiltinFn::Cosh,
+                BuiltinFn::Tanh,
+                BuiltinFn::Asinh,
+                BuiltinFn::Atan,
+                BuiltinFn::Arctan,
+                BuiltinFn::Exp,
+                BuiltinFn::Abs,
+                BuiltinFn::Cbrt,
+            ]
+            .iter()
+            .any(|f| ctx.is_builtin(*fn_id, *f));
+            total_builtin && is_total_continuous_expr(ctx, args[0])
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use cas_parser::parse;
+
+    #[test]
+    fn total_continuous_certifies_polynomials_and_total_builtins() {
+        let mut ctx = Context::new();
+        for src in [
+            "x^3 + x + 1",
+            "sin(x) + 2",
+            "e^x + cos(x)",
+            "abs(x) * cbrt(x)",
+            "2^x + tanh(x)",
+            "arctan(x^2)",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                is_total_continuous_expr(&ctx, e),
+                "expected total-continuous certificate for {src}"
+            );
+        }
+    }
+
+    #[test]
+    fn total_continuous_declines_partial_domains_and_poles() {
+        let mut ctx = Context::new();
+        // Partial domains can contribute ISOLATED solution points to a `!=`
+        // (`√(−x²) ≠ 1` → {0}), so none of these may certify: even roots,
+        // logs, true poles, reciprocal powers, fractional powers, arcsin.
+        for src in [
+            "sqrt(x) + 1",
+            "ln(x) - 2",
+            "1/x + 3",
+            "tan(x)",
+            "x^(1/2)",
+            "x^(-1)",
+            "arcsin(x)",
+        ] {
+            let e = parse(src, &mut ctx).expect("parse");
+            assert!(
+                !is_total_continuous_expr(&ctx, e),
+                "must not certify partial-domain shape {src}"
+            );
+        }
+    }
 
     #[test]
     fn polynomial_equivalence_detects_reordered_sum() {

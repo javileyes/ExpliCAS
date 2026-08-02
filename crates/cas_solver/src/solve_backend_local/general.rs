@@ -2036,7 +2036,7 @@ fn solve_local_core_inner(
                 SolutionSet::Residual(_) | SolutionSet::Conditional(_) | SolutionSet::Discrete(_)
             ) =>
         {
-            complete
+            adapt_associated_root_recovery_to_op(simplifier, eq, complete, set)
         }
         _ => set,
     };
@@ -2044,7 +2044,10 @@ fn solve_local_core_inner(
     // A BIQUADRATIC `a·x⁴ + b·x² + c` whose `x`-roots are surds (`x⁴-8x²+15 → {±√3, ±√5}`) otherwise
     // leaks a circular residual `solve(x − (8x²−15)^(1/4)=0)`. Solve it by the `z = x²` substitution.
     let set = if matches!(set, SolutionSet::Residual(_) | SolutionSet::Conditional(_)) {
-        try_solve_biquadratic(simplifier, eq, var, opts.value_domain.is_real_only()).unwrap_or(set)
+        match try_solve_biquadratic(simplifier, eq, var, opts.value_domain.is_real_only()) {
+            Some(complete) => adapt_associated_root_recovery_to_op(simplifier, eq, complete, set),
+            None => set,
+        }
     } else {
         set
     };
@@ -2076,11 +2079,13 @@ fn solve_local_core_inner(
         opts.value_domain.is_real_only(),
     ) {
         Some(complete) => match (&set, &complete) {
-            (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _) => complete,
+            (SolutionSet::Residual(_) | SolutionSet::Conditional(_), _) => {
+                adapt_associated_root_recovery_to_op(simplifier, eq, complete, set)
+            }
             (SolutionSet::Discrete(current), SolutionSet::Discrete(c))
                 if c.len() > current.len() =>
             {
-                complete
+                adapt_associated_root_recovery_to_op(simplifier, eq, complete, set)
             }
             _ => set,
         },

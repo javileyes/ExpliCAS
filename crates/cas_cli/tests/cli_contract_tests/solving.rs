@@ -551,6 +551,52 @@ fn test_eval_neq_polynomial_complement() {
     );
     assert_eq!(r("solve(x^4-5*x^2+4 = 0, x)"), "{ -2, -1, 1, 2 }");
 }
+
+#[test]
+fn test_eval_neq_root_recovery_complement() {
+    // The post-pipeline root recoveries (irreducible-cubic Cardano /
+    // trigonometric casus irreducibilis / quartic-factor deflation) solve
+    // the ASSOCIATED `= 0` and used to REPLACE a residual incumbent with its
+    // root set REGARDLESS of the op — publishing, under `!=`, exactly the
+    // points that are NOT solutions (`x³+x+1 ≠ 0 → {cardano root}`,
+    // `x³−3x+1 ≠ 0 → {three trig roots}`, `x⁵−5x³+x²−5 ≠ 0 → {−1, ±√5}`).
+    // The recoveries now adapt to the op: under `!=` a discrete recovery
+    // flips to its exactly-ordered complement (const_value_bounds orders the
+    // trig-root triple), and `=`/order-inequality behavior is untouched.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Cardano single-real-root cubic: complement of one exact radical root.
+    assert_eq!(
+        r("solve(x^3 + x + 1 != 0, x)"),
+        "(-infinity, cbrt(1/6\u{b7}(-sqrt(31/3) - 3)) + cbrt(1/6\u{b7}(sqrt(31/3) - 3))) U (cbrt(1/6\u{b7}(-sqrt(31/3) - 3)) + cbrt(1/6\u{b7}(sqrt(31/3) - 3)), infinity)"
+    );
+    // Casus irreducibilis: three trig roots, exactly value-ordered
+    // (≈ −1.879 < 0.347 < 1.532).
+    assert_eq!(
+        r("solve(x^3 - 3*x + 1 != 0, x)"),
+        "(-infinity, -sin(2/9\u{b7}pi) / sin(pi / 9)) U (-sin(2/9\u{b7}pi) / sin(pi / 9), sin(pi / 9) / sin(4/9\u{b7}pi)) U (sin(pi / 9) / sin(4/9\u{b7}pi), sin(4/9\u{b7}pi) / sin(2/9\u{b7}pi)) U (sin(4/9\u{b7}pi) / sin(2/9\u{b7}pi), infinity)"
+    );
+    // Quartic-factor deflation (quintic = (x+1)(x²−5)(x²−x+1)).
+    assert_eq!(
+        r("solve(x^5 - 5*x^3 + x^2 - 5 != 0, x)"),
+        "(-infinity, -sqrt(5)) U (-sqrt(5), -1) U (-1, sqrt(5)) U (sqrt(5), infinity)"
+    );
+    // The `=` recoveries and the order-inequality path stay untouched.
+    assert_eq!(
+        r("solve(x^5 - 5*x^3 + x^2 - 5 = 0, x)"),
+        "{ -1, sqrt(5), -sqrt(5) }"
+    );
+    assert_eq!(
+        r("solve(x^3+x^2+3 > 0, x)"),
+        "(cbrt(1/6\u{b7}(-sqrt(85) - 83/9)) + cbrt(1/6\u{b7}(sqrt(85) - 83/9)) - 1/3, infinity)"
+    );
+}
 #[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {
     // An identity equation whose solution is all reals RESTRICTED by a domain condition must show

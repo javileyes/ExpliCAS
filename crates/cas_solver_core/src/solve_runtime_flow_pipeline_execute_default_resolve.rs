@@ -65,12 +65,24 @@ where
 {
     let render_expr = &render_expr;
 
+    // `!=` DISCRETE BACKSTOP certificate (see the core pipeline): both sides
+    // structurally total-continuous ⟹ a non-empty discrete strategy answer
+    // to a `!=` equation is impossible and gets rejected as a decline.
+    // Computed ONCE per pipeline entry; partial-domain shapes (`√`, `/`,
+    // `ln`, `tan`…) never certify, so their (possibly legitimately discrete)
+    // answers are untouched.
+    let neq_discrete_backstop = normalized_equation.op == cas_ast::RelOp::Neq && {
+        let ctx = context_ref(state);
+        cas_math::expr_domain::is_total_continuous_expr(ctx, normalized_equation.lhs)
+            && cas_math::expr_domain::is_total_continuous_expr(ctx, normalized_equation.rhs)
+    };
     execute_default_strategy_order_pipeline_with_state(
         state,
         original_equation,
         normalized_equation,
         residual,
         var,
+        neq_discrete_backstop,
         |state, expr, var_name| contains_var(state, expr, var_name),
         |state, residual, var_name| {
             Ok(resolve_var_eliminated_residual_with_default_exclusion_policy_and_unified_step_mapper_with_state(

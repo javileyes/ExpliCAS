@@ -965,6 +965,37 @@ pub(super) fn try_parametric_linear_degenerate_branch(
 /// or `None` when no degree-3 quotient remains (or it has Δ = 0). This closes BOTH the standalone
 /// irreducible cubic (`x³+x²+3 = 0`, `x³-3x+1 = 0`) and the higher-degree case where the cubic factor
 /// was dropped (`x⁴+x³+3x = x·(x³+x²+3)`).
+/// Adapt an ASSOCIATED-`= 0` root recovery (cubic factor / quartic factor /
+/// biquadratic) to the equation's relational op at its replace-the-incumbent
+/// call sites. Those helpers solve `P = 0` and return its root set: under `=`
+/// that IS the answer; under `!=` it is the exact set of NON-solutions —
+/// publishing it verbatim caused the Cardano / casus-irreducibilis / quintic
+/// wrong answers (`x³+x+1 ≠ 0 → {root}`, `x⁵−5x³+x²−5 ≠ 0 → {−1, ±√5}`).
+/// Under `!=` a discrete recovery flips to its complement when the roots
+/// order exactly, otherwise the honest incumbent (residual) stays; a rootless
+/// recovery means the polynomial never vanishes, so `!= 0` holds everywhere.
+/// Order inequalities keep the pre-existing replace behavior untouched
+/// (their sign-analysis path answers before these recoveries fire today).
+pub(super) fn adapt_associated_root_recovery_to_op(
+    simplifier: &mut Simplifier,
+    eq: &Equation,
+    recovered: SolutionSet,
+    incumbent: SolutionSet,
+) -> SolutionSet {
+    match eq.op {
+        cas_ast::RelOp::Neq => match &recovered {
+            SolutionSet::Discrete(roots) => cas_solver_core::solution_set::all_reals_except_points(
+                &mut simplifier.context,
+                roots,
+            )
+            .unwrap_or(incumbent),
+            SolutionSet::Empty => SolutionSet::AllReals,
+            _ => incumbent,
+        },
+        _ => recovered,
+    }
+}
+
 pub(super) fn try_solve_polynomial_with_cubic_factor(
     simplifier: &mut Simplifier,
     eq: &Equation,
