@@ -477,6 +477,58 @@ fn except_point(ctx: &mut Context, point: ExprId) -> SolutionSet {
     ])
 }
 
+/// ℝ minus the given points, as a `Union` of open intervals with
+/// value-ordered, value-deduplicated endpoints (`{1, -2, 3}` →
+/// `(-∞,-2) ∪ (-2,1) ∪ (1,3) ∪ (3,∞)`). This is the `!=` counterpart of a
+/// `Discrete` root set (the n-ary generalization of [`except_point`]).
+///
+/// Returns `None` when any pair of points cannot be exactly ordered by
+/// [`try_compare_values`] — publishing a mis-ordered union would corrupt the
+/// set, so callers must decline instead.
+pub(crate) fn all_reals_except_points(ctx: &mut Context, points: &[ExprId]) -> Option<SolutionSet> {
+    if points.is_empty() {
+        return Some(SolutionSet::AllReals);
+    }
+    // Insertion sort with the fallible exact comparator: n is the root count
+    // of a product split (small), and bailing on the FIRST undecidable pair
+    // is the point — never fall back to structural order here.
+    let mut sorted: Vec<ExprId> = Vec::with_capacity(points.len());
+    for &p in points {
+        let mut insert_at = sorted.len();
+        let mut duplicate = false;
+        for (i, &q) in sorted.iter().enumerate() {
+            match try_compare_values(ctx, p, q)? {
+                Ordering::Less => {
+                    insert_at = i;
+                    break;
+                }
+                Ordering::Equal => {
+                    duplicate = true;
+                    break;
+                }
+                Ordering::Greater => {}
+            }
+        }
+        if !duplicate {
+            sorted.insert(insert_at, p);
+        }
+    }
+    let mut intervals = Vec::with_capacity(sorted.len() + 1);
+    let lo = neg_inf(ctx);
+    intervals.push(interval(lo, BoundType::Open, sorted[0], BoundType::Open));
+    for pair in sorted.windows(2) {
+        intervals.push(interval(pair[0], BoundType::Open, pair[1], BoundType::Open));
+    }
+    let hi = pos_inf(ctx);
+    intervals.push(interval(
+        sorted[sorted.len() - 1],
+        BoundType::Open,
+        hi,
+        BoundType::Open,
+    ));
+    Some(SolutionSet::Union(intervals))
+}
+
 fn outside_roots(
     ctx: &mut Context,
     r1: ExprId,
@@ -1785,5 +1837,52 @@ mod tests {
         let cond = SolutionSet::Conditional(vec![]);
         let with_cond = intersect_solution_sets(&ctx, cond, band);
         assert!(matches!(with_cond, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn all_reals_except_points_orders_dedups_and_builds_open_intervals() {
+        let mut ctx = Context::new();
+        // Unsorted with a value-duplicate: {3, -2, 1, 1} → (-∞,-2)(-2,1)(1,3)(3,∞).
+        let three = ctx.num(3);
+        let minus_two = ctx.num(-2);
+        let one = ctx.num(1);
+        let one_again = ctx.num(1);
+        let set = all_reals_except_points(&mut ctx, &[three, minus_two, one, one_again])
+            .expect("rational points are exactly orderable");
+        let SolutionSet::Union(intervals) = set else {
+            panic!("expected Union of open intervals");
+        };
+        assert_eq!(intervals.len(), 4, "n+1 intervals for 3 distinct points");
+        let finite_bounds: Vec<i32> = vec![
+            get_number(&ctx, intervals[0].max).unwrap().to_integer(),
+            get_number(&ctx, intervals[1].max).unwrap().to_integer(),
+            get_number(&ctx, intervals[2].max).unwrap().to_integer(),
+        ]
+        .into_iter()
+        .map(|n| i32::try_from(n).unwrap())
+        .collect();
+        assert_eq!(finite_bounds, vec![-2, 1, 3], "value-ordered endpoints");
+        assert!(intervals
+            .iter()
+            .all(|i| i.min_type == BoundType::Open && i.max_type == BoundType::Open));
+    }
+
+    #[test]
+    fn all_reals_except_points_empty_input_is_all_reals() {
+        let mut ctx = Context::new();
+        assert!(matches!(
+            all_reals_except_points(&mut ctx, &[]),
+            Some(SolutionSet::AllReals)
+        ));
+    }
+
+    #[test]
+    fn all_reals_except_points_declines_undecidable_order() {
+        // Two plain symbols carry no comparable value: publishing an ordered
+        // union would corrupt the set, so the builder must bail with None.
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        assert!(all_reals_except_points(&mut ctx, &[a, b]).is_none());
     }
 }

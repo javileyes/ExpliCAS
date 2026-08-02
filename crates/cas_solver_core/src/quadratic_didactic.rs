@@ -431,10 +431,48 @@ pub(crate) fn finalize_factorized_zero_product_strategy_solved<TStep>(
     }
 }
 
+/// Finalize a solved factorized zero-product execution for the `!=` shape:
+/// `A·B·… ≠ 0 ⟺ x ∉ {roots of A·B·… = 0}`. The factor solves are the SAME
+/// `factor = 0` sub-solves as the `=` owner; only the final set flips to the
+/// complement (n+1 open intervals). Returns `None` (decline) when the
+/// aggregate is non-discrete — complementing periodic/conditional/residual
+/// factor sets needs dedicated machinery — or when the roots cannot be
+/// exactly value-ordered; callers keep their pre-existing fallback then.
+pub(crate) fn finalize_factorized_zero_product_neq_solved<TStep>(
+    ctx: &mut Context,
+    solved: FactorizedZeroProductExecutionSolved<(SolutionSet, Vec<TStep>), TStep>,
+) -> Option<FactorizedZeroProductStrategySolved<TStep>> {
+    let mut steps = solved.steps;
+    let mut factor_solution_sets = Vec::new();
+    for (solution_set, mut factor_steps) in solved.solved_factors {
+        steps.append(&mut factor_steps);
+        factor_solution_sets.push(solution_set);
+    }
+    let aggregate = aggregate_zero_product_factor_solution_sets(ctx, factor_solution_sets);
+    let solution_set = match aggregate {
+        ZeroProductFactorSolutionAggregate::Discrete(roots) => {
+            crate::solution_set::all_reals_except_points(ctx, &roots)?
+        }
+        // Some factor is identically zero ⟹ the product is identically
+        // zero ⟹ `product ≠ 0` holds nowhere.
+        ZeroProductFactorSolutionAggregate::AllReals => SolutionSet::Empty,
+        ZeroProductFactorSolutionAggregate::NonDiscrete => return None,
+    };
+    Some(FactorizedZeroProductStrategySolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Execute factorized zero-product strategy when applicable:
 /// 1) detect `A*B*... = 0` factors in `sim_poly_expr`,
 /// 2) solve each factor branch,
 /// 3) finalize merged solution set and didactic steps.
+///
+/// Owns BOTH relational shapes of the zero-product property: `= 0`
+/// (union of factor roots) and `!= 0` (complement of factor roots — the
+/// n-ary product under `!=` previously had NO owner and crashed with
+/// «Cycle detected» via the isolation reorientation guard).
 ///
 /// Returns:
 /// - `Some(Ok(...))` when strategy applied and solved.
@@ -446,6 +484,7 @@ pub(crate) fn execute_factorized_zero_product_strategy_if_applicable_with_state<
     E,
     S,
     FContextRef,
+    FContextMut,
     FRenderExpr,
     FSolveFactor,
     FEntryStep,
@@ -458,6 +497,7 @@ pub(crate) fn execute_factorized_zero_product_strategy_if_applicable_with_state<
     zero: ExprId,
     include_items: bool,
     context_ref: FContextRef,
+    context_mut: FContextMut,
     render_expr: FRenderExpr,
     mut solve_factor: FSolveFactor,
     map_entry_item_to_step: FEntryStep,
@@ -465,14 +505,33 @@ pub(crate) fn execute_factorized_zero_product_strategy_if_applicable_with_state<
 ) -> Option<Result<(SolutionSet, Vec<S>), E>>
 where
     FContextRef: Fn(&mut T) -> &Context,
+    FContextMut: Fn(&mut T) -> &mut Context,
     FRenderExpr: Fn(&Context, ExprId) -> String,
     FSolveFactor: FnMut(&mut T, &Equation) -> Result<(SolutionSet, Vec<S>), E>,
     FEntryStep: FnMut(QuadraticExecutionItem) -> S,
     FFactorStep: FnMut(ZeroProductFactorExecutionItem) -> S,
 {
     let factors = split_zero_product_factors(context_ref(state), sim_poly_expr)?;
-    if equation_op != RelOp::Eq {
-        return None;
+    let is_neq = match equation_op {
+        RelOp::Eq => false,
+        RelOp::Neq => true,
+        _ => return None,
+    };
+    if is_neq {
+        // A parametric product (any symbol besides the solve-var, at ANY
+        // nesting depth: `y·(x−1)`, `(y·(x−1))·(x+2)`) keeps its current
+        // owners: the `factor = 0` sub-solves silently peel the parameter,
+        // so the complement would over-claim on the parameter's zero branch
+        // (`y = 0` makes the product identically zero ⟹ `≠ 0` nowhere).
+        // Checking the WHOLE product — not the top-level split factors — is
+        // what closes the nested shape. Pure constants (`2`, `π`) are fine.
+        let probe_ctx = context_ref(state);
+        if cas_ast::traversal::collect_variables(probe_ctx, sim_poly_expr)
+            .iter()
+            .any(|name| name != var)
+        {
+            return None;
+        }
     }
 
     let residual_expr = sim_poly_expr;
@@ -490,8 +549,20 @@ where
         map_factor_item_to_step,
     ) {
         Ok(solved) => solved,
-        Err(e) => return Some(Err(e)),
+        Err(e) => {
+            if is_neq {
+                // A failing `factor = 0` sub-solve under `!=` declines to
+                // the pre-existing fallback instead of surfacing a new
+                // error surface for inputs that never reached this owner.
+                return None;
+            }
+            return Some(Err(e));
+        }
     };
+    if is_neq {
+        let finalized = finalize_factorized_zero_product_neq_solved(context_mut(state), solved)?;
+        return Some(Ok((finalized.solution_set, finalized.steps)));
+    }
     let finalized = finalize_factorized_zero_product_strategy_solved(
         context_ref(state),
         solved,

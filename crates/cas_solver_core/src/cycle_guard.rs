@@ -48,6 +48,22 @@ pub(crate) fn try_enter_equation_fingerprint(
     try_enter(fp)
 }
 
+/// True when the exact `(var, lhs, rhs)` fingerprint is already active in the
+/// current solve stack — re-entering it is guaranteed to be reported as a
+/// cycle. A rewrite that would DELEGATE to an identical equation (e.g. the
+/// `!=` zero-product reorientation when the equation is already in normal
+/// orientation) must check this first and keep its fallback path instead:
+/// self-delegation can never make progress.
+pub(crate) fn equation_fingerprint_active(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> bool {
+    let fp = crate::fingerprint::equation_fingerprint(ctx, lhs, rhs, var);
+    SOLVE_SEEN.with(|s| s.borrow().contains(&fp))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{try_enter, try_enter_equation_fingerprint};

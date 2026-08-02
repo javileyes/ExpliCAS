@@ -320,15 +320,24 @@ where
     // over ℚ and we hand the (proved) factorization to the same path — one
     // call site, so a factorable quadratic gets the factor-by-factor trace
     // instead of a single «applying the quadratic formula» line.
-    let zero_product_subject = try_rational_quadratic_factorization_with_state(
-        state,
-        sim_poly_expr,
-        var,
-        context_mut,
-        &mut simplify_expr,
-        &mut expand_expr,
-    )
-    .unwrap_or(sim_poly_expr);
+    //
+    // Under `!=` only an EXPLICIT product enters the zero-product owner:
+    // expanded quadratics keep their current quadratic-formula owner (same
+    // result via the Δ>0 complement arm), so the induced ℚ-factorization is
+    // skipped — footprint-preserving for every non-product `!=` input.
+    let zero_product_subject = if equation.op == RelOp::Neq {
+        sim_poly_expr
+    } else {
+        try_rational_quadratic_factorization_with_state(
+            state,
+            sim_poly_expr,
+            var,
+            context_mut,
+            &mut simplify_expr,
+            &mut expand_expr,
+        )
+        .unwrap_or(sim_poly_expr)
+    };
 
     if let Some(outcome) = execute_factorized_zero_product_strategy_if_applicable_with_state(
         state,
@@ -338,6 +347,7 @@ where
         zero,
         include_items,
         |state| context_ref(state),
+        |state| context_mut(state),
         |ctx, id| render_expr(ctx, id),
         |state, factor_equation| solve_factor(state, factor_equation),
         map_factorized_entry_item_to_step,

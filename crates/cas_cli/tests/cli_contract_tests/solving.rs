@@ -380,8 +380,8 @@ fn test_eval_flipped_zero_product_neq() {
     // orientation-symmetric, so the isolation guard re-poses the equation in
     // the normal orientation and delegates to the standard Neq-product owner
     // (ℝ minus ALL roots), with a reentry latch instead of a loop when that
-    // owner declines. The TRIPLE product stays a named stepping stone: broken
-    // in BOTH orientations pre-existing (normal errors «Cycle detected»).
+    // owner declines. The n-ary product is owned since the follow-up cycle —
+    // see test_eval_neq_product_nary_complement.
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -413,6 +413,72 @@ fn test_eval_flipped_zero_product_neq() {
         "(-infinity, 1) U (1, infinity)"
     );
     assert_eq!(r("solve(0 = (x-1)*(x+2), x)"), "{ -2, 1 }");
+}
+
+#[test]
+fn test_eval_neq_product_nary_complement() {
+    // The n-ary `product != 0` had NO owner: the zero-product strategy only
+    // accepted `=`, so the normal orientation fell through to isolation,
+    // whose Neq reorientation guard delegated to the IDENTICAL equation —
+    // its fingerprint was still active in the solve stack, so every explicit
+    // product the quadratic owner didn't cover crashed with «Cycle detected»
+    // (`(x−1)(x+2)(x−3) ≠ 0`, and even the non-polynomial pair
+    // `e^x·(x−1) ≠ 0`), while the flipped orientation leaked a lossy
+    // division (`ℝ∖{−2}`). The zero-product owner now owns BOTH relational
+    // shapes: under `!=` it solves the same `factor = 0` branches and
+    // answers the complement (n+1 open intervals, exactly value-ordered),
+    // declining honestly on non-discrete aggregates (trig factors) and
+    // parametric factors, which keep their pre-existing paths.
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // The former «Cycle detected» crashes, both orientations.
+    assert_eq!(
+        r("solve((x-1)*(x+2)*(x-3) != 0, x)"),
+        "(-infinity, -2) U (-2, 1) U (1, 3) U (3, infinity)"
+    );
+    assert_eq!(
+        r("solve(0 != (x-1)*(x+2)*(x-3), x)"),
+        "(-infinity, -2) U (-2, 1) U (1, 3) U (3, infinity)"
+    );
+    assert_eq!(
+        r("solve((x-1)*(x+2)*(x-3)*(x+4) != 0, x)"),
+        "(-infinity, -4) U (-4, -2) U (-2, 1) U (1, 3) U (3, infinity)"
+    );
+    assert_eq!(
+        r("solve(e^x*(x-1) != 0, x)"),
+        "(-infinity, 1) U (1, infinity)"
+    );
+    // Exact surd ordering rides the same complement builder: this input
+    // previously errored («symbolic coefficients not supported»).
+    assert_eq!(
+        r("solve((x-sqrt(2))*(x+1) != 0, x)"),
+        "(-infinity, -1) U (-1, sqrt(2)) U (sqrt(2), infinity)"
+    );
+    // Honest declines keep their current owners/paths byte-identical:
+    // trig factor (non-discrete aggregate; the missing kπ exclusions are a
+    // PRE-EXISTING division-fallback loss, named in the ledger) and the
+    // parametric factor (missing y=0 branch, named family).
+    assert_eq!(
+        r("solve(sin(x)*(x-1) != 0, x)"),
+        "(-infinity, 1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(y*(x-1) != 0, x)"),
+        "(-infinity, 1) U (1, infinity)"
+    );
+    // The parametric gate checks the WHOLE product, not the top-level split
+    // factors: the nested shape `(y·(x−1))·(x+2)` must keep its pre-existing
+    // soft error, NOT publish `ℝ∖{−2,1}` (over-claims on the y=0 branch,
+    // where the product is identically zero). Caught by adversarial sweep.
+    assert!(r("solve((y*(x-1))*(x+2) != 0, x)").is_empty());
+    // The `=` owner is untouched.
+    assert_eq!(r("solve((x-1)*(x+2)*(x-3) = 0, x)"), "{ -2, 1, 3 }");
 }
 #[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {

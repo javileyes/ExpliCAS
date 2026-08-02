@@ -620,7 +620,16 @@ where
             probe_ctx.get(rhs),
             cas_ast::Expr::Number(n) if num_traits::Zero::is_zero(n)
         );
-        if rhs_is_zero_literal && enter_neq_zero_product_reorient() {
+        // Delegating to `(lhs, rhs)` is only a REORIENTATION when the outer
+        // solve entered with the flipped shape (`0 ≠ product`). When the
+        // equation is ALREADY in normal orientation its fingerprint is
+        // active in the solve stack and re-entering it is guaranteed to be
+        // reported as «Cycle detected» — skip the delegation and keep the
+        // pre-existing division fallback instead (that hard error was how
+        // the ownerless n-ary `product ≠ 0` crashed).
+        let self_delegation =
+            crate::cycle_guard::equation_fingerprint_active(&probe_ctx, lhs, rhs, var);
+        if rhs_is_zero_literal && !self_delegation && enter_neq_zero_product_reorient() {
             let normal = Equation {
                 lhs,
                 rhs,
