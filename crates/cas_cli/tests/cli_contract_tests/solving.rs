@@ -480,6 +480,77 @@ fn test_eval_neq_product_nary_complement() {
     // The `=` owner is untouched.
     assert_eq!(r("solve((x-1)*(x+2)*(x-3) = 0, x)"), "{ -2, 1, 3 }");
 }
+
+#[test]
+fn test_eval_neq_polynomial_complement() {
+    // Expanded polynomials of degree ≥ 3 under `!=` had no owner: they fell
+    // through to isolation, whose even-root/abs-split terminal solved the
+    // ASSOCIATED `= 0` and published its ROOTS as the `!=` answer —
+    // `x⁴−5x²+4 ≠ 0 → {±1, ±2}` (the four points that are NOT solutions),
+    // and «No solution» for the rootless `x⁴+x²+1 ≠ 0` (the exact
+    // negation). The polynomial `!=` owner (quadratic_strategy) now solves
+    // the associated equation through the full recursive solver — the
+    // cycle-guard fingerprint includes the relational op, so the
+    // delegation with identical (lhs, rhs) is not a false cycle — and
+    // answers the complement; a provably sign-definite polynomial settles
+    // as AllReals without solving. Non-Discrete associated results decline
+    // honestly (casus irreducibilis / Cardano stay with their current
+    // paths: the isolation-terminal op-loss there is a named next rung).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    // Former wrong answers (roots published as the != solution).
+    assert_eq!(
+        r("solve(x^4 - 5*x^2 + 4 != 0, x)"),
+        "(-infinity, -2) U (-2, -1) U (-1, 1) U (1, 2) U (2, infinity)"
+    );
+    assert_eq!(
+        r("solve(x^6 - 9*x^3 + 8 != 0, x)"),
+        "(-infinity, 1) U (1, 2) U (2, infinity)"
+    );
+    assert_eq!(
+        r("solve((x^2-1)^2 - 4 != 0, x)"),
+        "(-infinity, -sqrt(3)) U (-sqrt(3), sqrt(3)) U (sqrt(3), infinity)"
+    );
+    // Former exact negation: rootless quartic said «No solution».
+    assert_eq!(r("solve(x^4 + x^2 + 1 != 0, x)"), "All real numbers");
+    assert_eq!(r("solve(-x^4 - 1 != 0, x)"), "All real numbers");
+    // Former cbrt-echo residuals (the original stepping stone), both
+    // orientations, plus the expanded shapes of last cycle's leftovers.
+    assert_eq!(
+        r("solve(x^3 - 2*x^2 - 5*x + 6 != 0, x)"),
+        "(-infinity, -2) U (-2, 1) U (1, 3) U (3, infinity)"
+    );
+    assert_eq!(
+        r("solve(0 != x^3 - 2*x^2 - 5*x + 6, x)"),
+        "(-infinity, -2) U (-2, 1) U (1, 3) U (3, infinity)"
+    );
+    assert_eq!(
+        r("solve((x-1)^2*(x+2) != 0, x)"),
+        "(-infinity, -2) U (-2, 1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(x^5 - x != 0, x)"),
+        "(-infinity, -1) U (-1, 0) U (0, 1) U (1, infinity)"
+    );
+    // Controls: degrees ≤ 2 keep their sound owners byte-identical, the
+    // parametric polynomial declines to its current path, and `=` owners
+    // are untouched.
+    assert_eq!(
+        r("solve(3*x+2 != 0, x)"),
+        "(-infinity, -2/3) U (-2/3, infinity)"
+    );
+    assert_eq!(
+        r("solve(x^2+x-2 != 0, x)"),
+        "(-infinity, -2) U (-2, 1) U (1, infinity)"
+    );
+    assert_eq!(r("solve(x^4-5*x^2+4 = 0, x)"), "{ -2, -1, 1, 2 }");
+}
 #[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {
     // An identity equation whose solution is all reals RESTRICTED by a domain condition must show

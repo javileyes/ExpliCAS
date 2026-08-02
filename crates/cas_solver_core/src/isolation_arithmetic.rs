@@ -628,7 +628,7 @@ where
         // pre-existing division fallback instead (that hard error was how
         // the ownerless n-ary `product ≠ 0` crashed).
         let self_delegation =
-            crate::cycle_guard::equation_fingerprint_active(&probe_ctx, lhs, rhs, var);
+            crate::cycle_guard::equation_fingerprint_active(&probe_ctx, lhs, rhs, var, &RelOp::Neq);
         if rhs_is_zero_literal && !self_delegation && enter_neq_zero_product_reorient() {
             let normal = Equation {
                 lhs,

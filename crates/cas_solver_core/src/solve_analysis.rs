@@ -470,8 +470,14 @@ pub(crate) fn try_enter_equation_cycle_guard_with_error<E, FError>(
 where
     FError: FnOnce() -> E,
 {
-    crate::cycle_guard::try_enter_equation_fingerprint(ctx, equation.lhs, equation.rhs, var)
-        .ok_or_else(cycle_error)
+    crate::cycle_guard::try_enter_equation_fingerprint(
+        ctx,
+        equation.lhs,
+        equation.rhs,
+        var,
+        &equation.op,
+    )
+    .ok_or_else(cycle_error)
 }
 
 /// Collect required conditions for an equation from side-inference and

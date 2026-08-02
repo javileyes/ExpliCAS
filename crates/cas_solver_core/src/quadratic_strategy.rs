@@ -356,6 +356,73 @@ where
         return Some(outcome);
     }
 
+    // POLYNOMIAL `!=` OWNER (follow-up of the zero-product `!=` owner): a
+    // pure polynomial of degree ≥ 3 under `!=` used to fall through to
+    // isolation, whose even-root/abs-split terminal solved the ASSOCIATED
+    // `= 0` and published its ROOTS as the `!=` answer
+    // (`x⁴−5x²+4 ≠ 0 → {±1, ±2}`, and «No solution» for the rootless
+    // `x⁴+x²+1 ≠ 0` — the exact negation). Solve the associated equation
+    // through the full recursive solver — its fingerprint differs by op, so
+    // the cycle guard admits the delegation — and answer the complement.
+    // Degrees ≤ 2 keep their sound owners (linear isolation `except_point`,
+    // quadratic Δ-arm complement): zero churn there. `from_expr` fails on
+    // foreign symbols, so parametric polynomials decline to their current
+    // paths, and any non-Discrete/undecidable-order outcome declines too.
+    if equation.op == RelOp::Neq {
+        let is_deep_polynomial =
+            cas_math::polynomial::Polynomial::from_expr(context_ref(state), sim_poly_expr, var)
+                .map(|poly| poly.degree() >= 3)
+                .unwrap_or(false);
+        if is_deep_polynomial {
+            // A provably sign-definite polynomial (`x⁴+x²+1 > 0` for every
+            // real x) settles `P ≠ 0` as AllReals without solving anything:
+            // the recursive sub-solve below cannot see the top-level
+            // positivity preflight, so it would return a conditional
+            // residual there. Neq answers keep REAL semantics in both value
+            // domains (same convention as the quadratic Δ-arm and interval
+            // inequalities), so real-only proving matches the answer set.
+            let positive_everywhere = cas_math::prove_sign::prove_positive_depth_with(
+                context_ref(state),
+                sim_poly_expr,
+                crate::predicate_proofs::DEFAULT_PROOF_DEPTH,
+                true,
+                |_ctx, _expr, _depth| cas_math::tri_proof::TriProof::Unknown,
+            )
+            .is_proven();
+            let sign_definite = positive_everywhere || {
+                let negated = context_mut(state).add(Expr::Neg(sim_poly_expr));
+                cas_math::prove_sign::prove_positive_depth_with(
+                    context_ref(state),
+                    negated,
+                    crate::predicate_proofs::DEFAULT_PROOF_DEPTH,
+                    true,
+                    |_ctx, _expr, _depth| cas_math::tri_proof::TriProof::Unknown,
+                )
+                .is_proven()
+            };
+            if sign_definite {
+                return Some(Ok((SolutionSet::AllReals, Vec::new())));
+            }
+            let associated = Equation {
+                lhs: sim_poly_expr,
+                rhs: zero,
+                op: RelOp::Eq,
+            };
+            if let Ok((assoc_set, assoc_steps)) = solve_factor(state, &associated) {
+                let complement = match assoc_set {
+                    SolutionSet::Discrete(roots) => {
+                        crate::solution_set::all_reals_except_points(context_mut(state), &roots)
+                    }
+                    SolutionSet::Empty => Some(SolutionSet::AllReals),
+                    _ => None,
+                };
+                if let Some(set) = complement {
+                    return Some(Ok((set, assoc_steps)));
+                }
+            }
+        }
+    }
+
     let (a, b, c) =
         prepare_quadratic_candidate_from_simplified_polynomial_with_default_coefficient_extraction_with_state(
             state,
