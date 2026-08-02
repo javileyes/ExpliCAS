@@ -36,6 +36,30 @@ use crate::solve_outcome::{
     TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
 };
 
+thread_local! {
+    /// Reentry latch for the `!=`-zero-product reorientation of the mul
+    /// isolation guard: the re-posed normal-orientation equation goes through
+    /// the FULL solver, and if the standard Neq-product owner declines it
+    /// falls back to this same isolation — the latch turns that second visit
+    /// into the pre-existing division path instead of an infinite loop.
+    static NEQ_ZERO_PRODUCT_REORIENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn enter_neq_zero_product_reorient() -> bool {
+    NEQ_ZERO_PRODUCT_REORIENT.with(|cell| {
+        if cell.get() {
+            false
+        } else {
+            cell.set(true);
+            true
+        }
+    })
+}
+
+fn exit_neq_zero_product_reorient() {
+    NEQ_ZERO_PRODUCT_REORIENT.with(|cell| cell.set(false));
+}
+
 /// Execute additive isolation `(l + r) = rhs` with an optional
 /// linear-collect fast path when both addends contain the solve variable.
 #[allow(clippy::too_many_arguments)]
@@ -580,8 +604,37 @@ where
     // sound exactly when the other side is nonzero; for the `= 0` shape the
     // equation splits per factor instead (zero-product property — same
     // semantics as the strategy-level owner that handles the `A·B = 0`
-    // orientation). Inequalities keep their dedicated sign-split above; `!=`
-    // is left untouched (its correct set needs complement/intersection).
+    // orientation). Inequalities keep their dedicated sign-split above.
+    //
+    // `!=` SIBLING (same class, 2026-08-02): dividing `A·B ≠ 0` by a
+    // variable-carrying factor drops that factor's EXCLUSIONS
+    // (`0 ≠ (x−1)·(x+2)` kept only x ≠ −2). Eq and Neq are
+    // orientation-symmetric, so re-pose the equation in the normal
+    // orientation (product on the LHS) and delegate to the standard
+    // Neq-product owner, which already answers ℝ minus ALL roots. The
+    // reentry latch keeps the pre-existing division fallback for the case
+    // where that owner declines (already wrong today), instead of looping.
+    if op == RelOp::Neq && rhs_contains_variable(state, operands.moved_factor, var) {
+        let probe_ctx = context_snapshot(state);
+        let rhs_is_zero_literal = matches!(
+            probe_ctx.get(rhs),
+            cas_ast::Expr::Number(n) if num_traits::Zero::is_zero(n)
+        );
+        if rhs_is_zero_literal && enter_neq_zero_product_reorient() {
+            let normal = Equation {
+                lhs,
+                rhs,
+                op: RelOp::Neq,
+            };
+            let solved = solve_split_case(state, &normal);
+            exit_neq_zero_product_reorient();
+            let (set, steps) = solved?;
+            return Ok(merge_solved_with_existing_steps_prepend(
+                (set, steps),
+                existing_steps,
+            ));
+        }
+    }
     if op == RelOp::Eq && rhs_contains_variable(state, operands.moved_factor, var) {
         let probe_ctx = context_snapshot(state);
         let rhs_is_zero_literal = matches!(

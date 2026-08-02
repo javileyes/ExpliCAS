@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 821 (newest first)
+Active entries: 822 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -131,6 +131,7 @@ Active entries: 821 (newest first)
 - 2026-08-02 | `retained` | auditoría de los dos peldaños restantes de D4 + extensión del contrato — (b) ... | UNIVERSALIDAD (D4-3 — CIERRE DE D4: los abs de dominio y la narración ya eran coherentes; dos hallazgos negativos más, pineados)
 - 2026-08-02 | `retained` | `orchestrator/{support,general,trig}.rs` — primer ciclo de D2 con el molde D1... | ARQUITECTURA (D2-1: el support del orquestador se declara API del pipeline — y el orquestador NO es un motor con disparadores)
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D2_SHORTCUTS_2026-08.md` + L18 en `SANEAMIENTO_LEDGER.md` — e... | ARQUITECTURA/MEDIDA (D2-2: la justificación de los 127 shortcuts, medida por tres fuentes — y el mapeo fino queda escopado como L18)
+- 2026-08-02 | `retained` | `cas_solver_core/isolation_arithmetic` — el peldaño nombrado por el ciclo P0 ... | SOUNDNESS (el hermano `!=` del producto-cero volteado se cierra por reorientación — y el barrido caza al triple roto en AMBAS orientaciones)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23567,3 +23568,17 @@ Active entries: 821 (newest first)
 - retained learning:
   - **El profiler que una fase declara como infra es el instrumento de la siguiente**: D1c-9 clasificó el perfilado como tercera clase de frontera; D2-2 lo usó como fuente de justificación medible — clasificar bien la infraestructura paga dos veces.
   - **«Justificación medible» tiene tres fuentes de coste creciente (test-que-nombra, corpus-con-profiler, mapeo-fino) — medir las baratas primero acota el trabajo caro**: 53/127 salieron gratis del grep; el corpus dio actividad por sección en una corrida; solo los 74 restantes necesitan el mapeo L, y ya con procedimiento.
+
+## 2026-08-02 - SOUNDNESS (el hermano `!=` del producto-cero volteado se cierra por reorientación — y el barrido caza al triple roto en AMBAS orientaciones)
+
+- area: `cas_solver_core/isolation_arithmetic` — el peldaño nombrado por el ciclo P0 de esta tanda: `0 ≠ (x−1)·(x+2)` publicaba `ℝ∖{−2}` (la división por el factor movido pierde sus EXCLUSIONES, mismo mecanismo que el Eq). El fix evita la maquinaria de complemento/intersección entera: **Eq y Neq son simétricos por orientación**, así que el guard re-pone la ecuación en la orientación normal (producto en LHS) y delega en el dueño estándar del Neq-producto — que ya responde ℝ∖{todas las raíces} — con un LATCH thread-local anti-reentrada: si ese dueño declina, la segunda visita a la isolación cae al fallback división pre-existente en vez de ciclar (el peor caso queda como estaba, jamás peor).
+- status: `retained`. Curados: `0 ≠ (x−1)(x+2) → ℝ∖{−2,1}`, `0 ≠ x(x−1) → ℝ∖{0,1}`. Controles byte-idénticos: la normal (dueño propio intacto), `0 ≠ 2(x−1)`, `0 ≠ e^x·(x−1)` (factor sin raíces), el guard Eq, el paramétrico `0 ≠ y(x−1)` (familia aparte, sin tocar). Contrato CLI de 6 asertos.
+- capture:
+  - **El barrido caza una familia PRE-EXISTENTE peor que el peldaño**: el producto TRIPLE bajo `!=` está roto en AMBAS orientaciones — la normal `(x−1)(x+2)(x−3) ≠ 0` revienta con «Solver error: Cycle detected» (¡el dueño del Neq-producto solo posee el PAR!), la volteada cae a la división lossy (`ℝ∖{−2}`), y la cúbica expandida `≠ 0` publica un eco residual feo (`x − cbrt(…) = 0`). Dueño distinto (Neq-producto n-ario + el detector de ciclos), repro exacto anotado — candidato TOP del siguiente bucle de soundness.
+  - El eco trig `0 ≠ sin·cos → solve(sin(x) − 0/cos(x) ≠ 0, x)` es el camino división pre-existente para familias que el dueño normal declina — feo pero no-peor que antes del fix (el latch garantiza el no-empeoramiento por construcción).
+- observed: suite workspace completa verde reparto exacto (+1 contrato); clippy -D warnings limpio; cadena make verde; huella patrón conocido.
+- decision: retener. Peldaños nombrados: **(primero) el triple/n-ario Neq-producto** (cycle en la normal — es el dueño a ensanchar, no la isolación); el eco división de familias declinadas (`0/cos(x)` — cosmético del fallback); el paramétrico Neq (`0 ≠ y(x−1)` sin rama y=0 → ∅, familia división-por-parámetro ya nombrada).
+- retained learning:
+  - **La simetría de orientación es la maquinaria de complemento más barata**: re-poner `0 ≠ A·B` como `A·B ≠ 0` y delegar cuesta 10 líneas y CERO representación nueva — la pregunta «¿qué conjunto es ℝ∖raíces?» ya la respondía el dueño normal; el guard solo tenía que dejar de contestar él.
+  - **Un latch anti-reentrada convierte una delegación arriesgada en monótonamente-no-peor**: si el delegado declina, la segunda visita ejecuta EXACTAMENTE el camino viejo — el fix nunca puede empeorar un caso, y el bucle es imposible por construcción (patrón reutilizable para toda reorientación puntual).
+  - **El barrido del peldaño es el generador de candidatos del siguiente** (3ª instancia consecutiva): P0-Eq cazó al Neq-par; el Neq-par caza al triple — y esta vez con un CRASH del dueño normal que ningún sondeo de la forma volteada habría atribuido bien.

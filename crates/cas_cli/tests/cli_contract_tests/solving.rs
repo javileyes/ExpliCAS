@@ -341,8 +341,11 @@ fn test_eval_flipped_zero_product_orientation() {
     // `{ -2 }`). Division by a variable-carrying factor is sound exactly when
     // the other side is nonzero; the `= 0` shape now splits per factor at the
     // isolation chokepoint (zero-product), matching the normal orientation.
-    // Sibling gap left OPEN on purpose: `0 != A·B` still loses exclusions
-    // (needs complement/intersection machinery) — named stepping stone.
+    // Sibling `0 != A·B` closed 2026-08-02 (see
+    // test_eval_flipped_zero_product_neq below); the TRIPLE product under
+    // `!=` remains broken in BOTH orientations (normal spelling errors with
+    // «Cycle detected», flipped falls to the lossy division) — pre-existing
+    // n-ary Neq-product family, named stepping stone with exact repro.
     let r = |input: &str| -> String {
         let out = cli()
             .args(["eval", input, "--format", "json"])
@@ -367,6 +370,49 @@ fn test_eval_flipped_zero_product_orientation() {
     assert_eq!(r("solve(0=2*(x-1), x)"), "{ 1 }");
     assert_eq!(r("solve(4=(x-1)*(x+2), x)"), "{ -3, 2 }");
     assert_eq!(r("solve(0=e^x*(x-1), x)"), "{ 1 }");
+}
+
+#[test]
+fn test_eval_flipped_zero_product_neq() {
+    // The `!=` sibling of the flipped zero-product P0 (2026-08-02): dividing
+    // `A·B ≠ 0` by a variable-carrying factor dropped that factor's
+    // EXCLUSIONS (`0 ≠ (x−1)·(x+2)` kept only x ≠ −2). Eq and Neq are
+    // orientation-symmetric, so the isolation guard re-poses the equation in
+    // the normal orientation and delegates to the standard Neq-product owner
+    // (ℝ minus ALL roots), with a reentry latch instead of a loop when that
+    // owner declines. The TRIPLE product stays a named stepping stone: broken
+    // in BOTH orientations pre-existing (normal errors «Cycle detected»).
+    let r = |input: &str| -> String {
+        let out = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+        let wire: Value = serde_json::from_slice(&out.stdout).expect("Invalid wire output");
+        wire["result"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(
+        r("solve(0 != (x-1)*(x+2), x)"),
+        "(-infinity, -2) U (-2, 1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(0 != x*(x-1), x)"),
+        "(-infinity, 0) U (0, 1) U (1, infinity)"
+    );
+    // Controls: normal orientation (its own owner, untouched), constant
+    // factor, rootless factor, and the Eq guard are all UNCHANGED.
+    assert_eq!(
+        r("solve((x-1)*(x+2) != 0, x)"),
+        "(-infinity, -2) U (-2, 1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(0 != 2*(x-1), x)"),
+        "(-infinity, 1) U (1, infinity)"
+    );
+    assert_eq!(
+        r("solve(0 != e^x*(x-1), x)"),
+        "(-infinity, 1) U (1, infinity)"
+    );
+    assert_eq!(r("solve(0 = (x-1)*(x+2), x)"), "{ -2, 1 }");
 }
 #[test]
 fn test_eval_solve_all_reals_inlines_domain_condition() {
