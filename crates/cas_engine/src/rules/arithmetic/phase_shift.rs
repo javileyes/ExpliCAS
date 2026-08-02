@@ -1,6 +1,18 @@
-//! `arithmetic`: familia `phase_shift`.
+//! `arithmetic`: familia `phase_shift` — ANCLA de la **familia ANGULAR del
+//! núcleo de cancelación**, declarada en D1c-11 (2026-08-02).
 //!
-//! Ver la cabecera de `arithmetic.rs` para el contexto.
+//! La familia angular es MULTI-FICHERO: `phase_shift.rs` (este, el ancla),
+//! `trig.rs` y `trig_angles.rs`. Sus fns de nivel superior SON la maquinaria
+//! angular compartida entre los cuatro disparadores trig, los dos residuales
+//! angulares de TripleAngle/HypAngleSumDiff y los mega-entries del motor
+//! (inventario `docs/DESACOPLO_D1_INVENTARIO_2026-08.md`). Incluye desde
+//! D1c-9/10 los extractores angulares traídos de support y las constantes
+//! ANGULARES (π, √2, 1/2 — los invariantes de π/4 y half-angle). Frontera
+//! declarada como `hyperbolic.rs`/`logarithms.rs`: un disparador angular
+//! consume API neutra (`support.rs`) + esta familia (los tres ficheros) +
+//! infra (`profiling.rs`) + sus exclusivos, y nada más.
+//!
+//! Ver la cabecera de `arithmetic.rs` para el contexto del troceo.
 
 use super::*;
 

@@ -131,7 +131,24 @@ que probablemente pidan su propio submódulo del núcleo, no la API.
   cancelación (escalas simbólicas, factores, diferencias core) a support
   (API: **48**). Una fn privada necesitó `pub(super)` al mudarse (su
   llamador quedaba en general.rs) — declarado.
-- Pendiente D1c (último ciclo): **D1c-11** — declarar la familia ANGULAR
-  multi-fichero (phase_shift ~66 + trig 8 + trig_angles 9) cerrando
-  TripleAngle†, HypAngleSumDiff† y los 4 trig. Con ella, los 12 disparadores
-  quedan bajo el invariante: cierre ⊆ API ∪ familia ∪ infra ∪ exclusivos.
+- **D1c-11 (2026-08-02) — CIERRE DE D1c**: la familia ANGULAR declarada
+  multi-fichero (`phase_shift.rs` como ancla + `trig.rs` + `trig_angles.rs`;
+  doctrina en la cabecera del ancla). Con ella, la re-medición final da
+  **0 sin-decidir en los 12 disparadores** — el éxito medible del plan D1
+  cumplido en su formulación refinada.
+
+## El invariante final de D1 (auditable)
+
+Todo disparador del catálogo cumple: **cierre transitivo ⊆ API neutra
+(`support.rs`, 48 declarados) ∪ submódulo de familia declarado
+(`hyperbolic.rs` / `logarithms.rs` / angular = phase_shift+trig+trig_angles)
+∪ infra transversal (`profiling.rs`) ∪ exclusivos propios**. Los 5
+mega-entries son el motor y quedan fuera del invariante por diseño.
+
+Auditoría: `engine_decoupling_closure.py --per-entry` + el cómputo de
+frontera por clases (las listas son las cabeceras de los ficheros — la
+frontera ES el fichero para las familias, la lista de cabecera para la API).
+Al añadir una regla nueva al catálogo, su cierre debe caer dentro de la
+frontera o el arrastre nuevo se decide con el molde de esta campaña:
+promover-neutro (descontando el voto de los mega) / familia / infra /
+exclusivo.

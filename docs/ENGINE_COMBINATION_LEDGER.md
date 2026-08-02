@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 815 (newest first)
+Active entries: 816 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -125,6 +125,7 @@ Active entries: 815 (newest first)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,logarithms}.rs` + inventario D1 — peldaños... | ARQUITECTURA (D1c-7/8: la familia log se declara — 8 de 12 disparadores migrados, solo queda el bloque angular)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,profiling,phase_shift}.rs` + inventario D1 — prime... | ARQUITECTURA (D1c-9: el perfilado es la TERCERA clase de frontera — el bloque angular se parte en tres ciclos M)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,powers,phase_shift}.rs` + inventario D1 — ... | ARQUITECTURA (D1c-10: π, √2 y 1/2 son constantes angulares — y los mega-entries no discriminan)
+- 2026-08-02 | `retained` | `rules/arithmetic/{phase_shift,trig,trig_angles}.rs` + inventario D1 — último... | ARQUITECTURA (D1c-11 — CIERRE DE D1: la familia angular se declara y los 12 disparadores quedan a cero)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23502,3 +23503,12 @@ Active entries: 815 (newest first)
 - retained learning:
   - **En un análisis de alcance, los nodos-que-alcanzan-todo no votan**: los mega-entries aparecen como «usuarios» de cualquier helper y disfrazan de compartido lo que es de familia — descontarlos antes de leer la estadística (el equivalente estructural del slot de ruido de timing en by_cause_family: la señal está en el resto).
   - **Las constantes deciden familia por su GEOMETRÍA, no por su tipo**: π, √2 y 1/2 parecen «numéricos neutros» y son los invariantes de π/4 y half-angle — un helper de constante se clasifica por QUIÉN la necesita y para qué identidad, no por ser un literal.
+
+## 2026-08-02 - ARQUITECTURA (D1c-11 — CIERRE DE D1: la familia angular se declara y los 12 disparadores quedan a cero)
+
+- area: `rules/arithmetic/{phase_shift,trig,trig_angles}.rs` + inventario D1 — último ciclo del bloque angular y de D1c. La familia ANGULAR se declara MULTI-FICHERO (phase_shift.rs como ancla con la doctrina; trig.rs y trig_angles.rs apuntan al ancla): sus fns de nivel superior SON la maquinaria angular, así que la frontera es el fichero — la lista de cabecera queda para la API neutra. Re-medición final: **0 sin-decidir en los 12 disparadores** (incluidos los residuales † de TripleAngle y HypAngleSumDiff). El invariante de D1 queda escrito y AUDITABLE en el inventario: cierre ⊆ API neutra (48) ∪ familia declarada (hyperbolic / log / angular) ∪ infra (profiling) ∪ exclusivos; los 5 mega-entries son el motor y quedan fuera por diseño; regla para catálogo futuro incluida (el arrastre nuevo se decide con el molde: promover-neutro descontando el voto de los mega / familia / infra / exclusivo).
+- status: `retained`. Ciclo declarativo (3 cabeceras); suite/clippy/cadena verdes reparto exacto; huella patrón conocido. Balance del bloque angular completo (D1c-9/10/11): 113 helpers en 7 ficheros → 0 sin-decidir, con 10 moves totales, 1 pub(super) declarado y TRES clases de frontera nuevas (infra, angular multi-fichero, y el matiz de los mega sin voto).
+- decision: retener. **D1 COMPLETO** (D1a inventario, D1b hogar físico de la API, D1c-1..11 los 12 disparadores). Siguiente por plan re-evaluado: **D4** (eje de dominio — `ambient_pipeline_value_domain` ya está en la API del motor, 15/25) → D2 → D3.
+- retained learning:
+  - **Una familia multi-fichero se declara por FICHEROS, no por lista**: cuando las fns de tres ficheros son homogéneamente de la familia, la frontera «el fichero entero» es más auditable que cualquier enumeración — la lista se reserva para el módulo mixto (support), donde la pertenencia no es geográfica.
+  - **El endgame de una migración por peldaños es un INVARIANTE con procedimiento de auditoría y regla para lo nuevo** — sin la regla del catálogo futuro, el arrastre vuelve a acumularse en silencio; el doc que cierra la campaña debe decir cómo se decide el próximo helper, no solo cómo quedaron los de hoy.

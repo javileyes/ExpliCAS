@@ -1,6 +1,8 @@
-//! `arithmetic`: familia `trig`.
+//! `arithmetic`: familia `trig` — parte de la **familia ANGULAR del
+//! núcleo de cancelación** (D1c-11, 2026-08-02); el ancla y la doctrina
+//! viven en la cabecera de `phase_shift.rs`.
 //!
-//! Ver la cabecera de `arithmetic.rs` para el contexto.
+//! Ver la cabecera de `arithmetic.rs` para el contexto del troceo.
 
 use super::*;
 
