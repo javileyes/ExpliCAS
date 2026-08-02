@@ -10,6 +10,20 @@ argumento de la invocación es el número de ciclos a completar, `N`
 (default: 1). Cada ciclo es **una iteración acotada y retenible**, con su
 propio commit y su propio informe. No mezcles dos ciclos en un commit.
 
+> **Gobernanza de API (declarado por el usuario, 2026-08-02): el engine aún
+> NO tiene usuarios externos.** Cualquier superficie pública —firmas de
+> crates, wire format, nombres de comandos CLI, formas de resultado— puede
+> cambiarse sin ceremonia de compatibilidad si eso acerca la universalidad o
+> la calidad educativa de los steps. Lo que SÍ sigue siendo contrato son los
+> PINS de la suite y las huellas (fijan soundness y semántica, no
+> estabilidad de superficie): un cambio de API se hace actualizando sus
+> tests/pins en el mismo ciclo, con el porqué en el ledger — jamás
+> preservando una firma fea «por si alguien la usa». La única superficie con
+> consumidor real es el sitio de Pages, y compila de este mismo repo (se
+> actualiza con el push). Matiz sobre L12 (superficie ancha de cas_math): el
+> coste de tocar 39 ficheros consumidores sigue siendo ESFUERZO interno a
+> presupuestar, pero ya no es un argumento de contrato para no hacerlo.
+
 ## Fuentes de verdad
 
 Lee al arrancar (y vuelve a consultarlas tras cualquier compactación de
