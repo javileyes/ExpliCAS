@@ -3039,3 +3039,31 @@ pub(super) fn is_small_positive_additive_trig_passthrough_core_root(
         && !matches_direct_small_zero_identity_root(ctx, expr)
         && !is_potential_small_trig_zero_identity_root(ctx, expr)
 }
+
+pub(super) fn extract_direct_tangent_addition_target_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return None;
+    }
+
+    let mut first_arg = None;
+    let mut second_arg = None;
+    for (term_expr, term_sign) in view.terms {
+        if term_sign != Sign::Pos {
+            return None;
+        }
+        let arg = extract_unary_builtin_arg_root(ctx, term_expr, BuiltinFn::Tan)?;
+        if first_arg.is_none() {
+            first_arg = Some(arg);
+        } else if second_arg.is_none() {
+            second_arg = Some(arg);
+        } else {
+            return None;
+        }
+    }
+
+    Some((first_arg?, second_arg?))
+}

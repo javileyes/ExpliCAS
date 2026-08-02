@@ -346,35 +346,6 @@ pub(super) fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
 }
 
-pub(super) fn build_root_shortcut_step_from_rewrite(
-    ctx: &Context,
-    before: ExprId,
-    rewrite: &crate::rule::Rewrite,
-    rule_name: &'static str,
-) -> Step {
-    let mut step = Step::with_snapshots(
-        &rewrite.description,
-        rule_name,
-        before,
-        rewrite.new_expr,
-        smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
-        Some(ctx),
-        before,
-        rewrite.new_expr,
-    );
-    step.importance = crate::step::ImportanceLevel::High;
-    {
-        let meta = step.meta_mut();
-        meta.before_local = rewrite.before_local;
-        meta.after_local = rewrite.after_local;
-        meta.assumption_events = rewrite.assumption_events.clone();
-        meta.required_conditions = rewrite.required_conditions.clone();
-        meta.poly_proof = rewrite.poly_proof.clone();
-        meta.substeps = rewrite.substeps.clone();
-    }
-    step
-}
-
 /// SOUNDNESS veto shared by both root-shortcut dispatch macros: returns `true` when a shortcut
 /// `result` for `expr` is unsound and must be skipped so the honest rule pipeline runs instead.
 /// (1) A collapse to `0` of an expression with an EXACT non-zero value at a generic rational point
@@ -649,26 +620,6 @@ pub(super) fn extract_base_plus_constant_root(
         return None;
     };
     (!constant.is_zero()).then_some((base, constant))
-}
-
-pub(super) fn extract_direct_two_linear_shift_product_root(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<(ExprId, Vec<BigRational>)> {
-    let factors = flatten_mul_chain(ctx, expr);
-    if factors.len() != 2 {
-        return None;
-    }
-
-    let (lhs_base, lhs_constant) = extract_base_plus_constant_root(ctx, factors[0])?;
-    let (rhs_base, rhs_constant) = extract_base_plus_constant_root(ctx, factors[1])?;
-    if compare_expr(ctx, lhs_base, rhs_base) != Ordering::Equal {
-        return None;
-    }
-
-    let mut constants = vec![lhs_constant, rhs_constant];
-    constants.sort();
-    Some((lhs_base, constants))
 }
 
 pub(super) fn extract_direct_three_linear_shift_product_root(
@@ -1016,34 +967,6 @@ pub(super) fn build_sophie_germain_quadratic_expr_root(
     )
 }
 
-pub(super) fn extract_direct_tangent_addition_target_root(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<(ExprId, ExprId)> {
-    let view = AddView::from_expr(ctx, expr);
-    if view.terms.len() != 2 {
-        return None;
-    }
-
-    let mut first_arg = None;
-    let mut second_arg = None;
-    for (term_expr, term_sign) in view.terms {
-        if term_sign != Sign::Pos {
-            return None;
-        }
-        let arg = extract_unary_builtin_arg_root(ctx, term_expr, BuiltinFn::Tan)?;
-        if first_arg.is_none() {
-            first_arg = Some(arg);
-        } else if second_arg.is_none() {
-            second_arg = Some(arg);
-        } else {
-            return None;
-        }
-    }
-
-    Some((first_arg?, second_arg?))
-}
-
 pub(super) fn extract_scaled_plain_sine_term_arg_root(
     ctx: &mut Context,
     expr: ExprId,
@@ -1371,85 +1294,6 @@ pub(super) fn build_nonexpanding_locally_simplified_mul_expr_from_factors_root(
     }
 
     build_mul_expr_from_factors_root(ctx, &filtered)
-}
-
-pub(super) fn extract_common_multiplicative_residual_sum_root(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<(ExprId, ExprId)> {
-    let view = AddView::from_expr(ctx, expr);
-    if view.terms.len() != 2 {
-        return None;
-    }
-
-    let factor_lists: Vec<Vec<_>> = view
-        .terms
-        .iter()
-        .map(|(term_expr, _)| flatten_mul_chain(ctx, *term_expr))
-        .collect();
-    if factor_lists.iter().any(Vec::is_empty) {
-        return None;
-    }
-
-    let mut used_by_term = factor_lists
-        .iter()
-        .map(|factors| vec![false; factors.len()])
-        .collect::<Vec<_>>();
-    let mut common = Vec::new();
-
-    for (first_index, first_factor) in factor_lists[0].iter().copied().enumerate() {
-        let Some(second_index) =
-            factor_lists[1]
-                .iter()
-                .enumerate()
-                .find_map(|(candidate_index, factor)| {
-                    (!used_by_term[1][candidate_index]
-                        && compare_expr(ctx, *factor, first_factor) == Ordering::Equal)
-                        .then_some(candidate_index)
-                })
-        else {
-            continue;
-        };
-
-        common.push(first_factor);
-        used_by_term[0][first_index] = true;
-        used_by_term[1][second_index] = true;
-    }
-
-    if common.is_empty() {
-        return None;
-    }
-
-    let residual_terms: Vec<_> = view
-        .terms
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(term_index, (_term_expr, term_sign))| {
-            let residual_factors = factor_lists[term_index]
-                .iter()
-                .copied()
-                .enumerate()
-                .filter_map(|(factor_index, factor)| {
-                    (!used_by_term[term_index][factor_index]).then_some(factor)
-                })
-                .collect::<Vec<_>>();
-            (
-                build_mul_expr_from_factors_root(ctx, &residual_factors),
-                term_sign,
-            )
-        })
-        .collect();
-
-    let common_factor = build_mul_expr_from_factors_root(ctx, &common);
-    let residual_expr = build_signed_sum_expr_root(ctx, &residual_terms);
-    let one = ctx.num(1);
-    if compare_expr(ctx, common_factor, one) == Ordering::Equal
-        || compare_expr(ctx, residual_expr, expr) == Ordering::Equal
-    {
-        return None;
-    }
-    Some((common_factor, residual_expr))
 }
 
 pub(super) fn try_standard_abs_shortcut(

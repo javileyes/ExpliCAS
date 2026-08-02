@@ -1,6 +1,24 @@
-//! Orquestador: familia `support` (troceo P1).
+//! Orquestador: familia `support` (troceo P1) — declarada en D2-1 (2026-08-02)
+//! **API interna del pipeline de shortcuts** del orquestador.
 //!
-//! Ver la cabecera de `orchestrator.rs` para el contexto.
+//! Aquí viven las primitivas COMPARTIDAS entre las familias de shortcuts
+//! (las 41 que la medición de la campaña destapó — llamadas desde ≥4
+//! familias, 606 aristas entrantes — más las promovidas por D2-1:
+//! `extract_common_multiplicative_residual_sum_root`,
+//! `extract_direct_two_linear_shift_product_root`,
+//! `build_root_shortcut_step_from_rewrite`). Doctrina calcada de
+//! `rules/arithmetic/support.rs` (D1): un helper compartido entre familias
+//! con contenido NEUTRO vive aquí y se declara; uno con contenido de
+//! familia vive en el fichero de su familia (el fichero ES la frontera —
+//! `trig`, `trig_angles`, `hyperbolic`, `logs_exp`, `fractions`,
+//! `zero_detection`, `radicals_powers`, `pairing`). Los flujos entre
+//! familias del pipeline (pairing→trig_angles, zero_detection→trig_angles…)
+//! son PARTE DEL DISEÑO del orquestador — este directorio es un pipeline
+//! entrelazado, no un motor con disparadores; la métrica de progreso es el
+//! % de aristas intra (baseline 28,1%, `decoupling_metrics_baseline.json`)
+//! y la auditoría es el callgraph del arnés D0, no un invariante de cierre.
+//!
+//! Ver la cabecera de `orchestrator.rs` para el contexto del troceo.
 
 use super::*;
 
@@ -1882,4 +1900,132 @@ pub(super) fn try_build_chunk_pair_zero_shortcut_steps_root(
     }
 
     Some(stitched_steps)
+}
+
+pub(super) fn extract_common_multiplicative_residual_sum_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return None;
+    }
+
+    let factor_lists: Vec<Vec<_>> = view
+        .terms
+        .iter()
+        .map(|(term_expr, _)| flatten_mul_chain(ctx, *term_expr))
+        .collect();
+    if factor_lists.iter().any(Vec::is_empty) {
+        return None;
+    }
+
+    let mut used_by_term = factor_lists
+        .iter()
+        .map(|factors| vec![false; factors.len()])
+        .collect::<Vec<_>>();
+    let mut common = Vec::new();
+
+    for (first_index, first_factor) in factor_lists[0].iter().copied().enumerate() {
+        let Some(second_index) =
+            factor_lists[1]
+                .iter()
+                .enumerate()
+                .find_map(|(candidate_index, factor)| {
+                    (!used_by_term[1][candidate_index]
+                        && compare_expr(ctx, *factor, first_factor) == Ordering::Equal)
+                        .then_some(candidate_index)
+                })
+        else {
+            continue;
+        };
+
+        common.push(first_factor);
+        used_by_term[0][first_index] = true;
+        used_by_term[1][second_index] = true;
+    }
+
+    if common.is_empty() {
+        return None;
+    }
+
+    let residual_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(term_index, (_term_expr, term_sign))| {
+            let residual_factors = factor_lists[term_index]
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(factor_index, factor)| {
+                    (!used_by_term[term_index][factor_index]).then_some(factor)
+                })
+                .collect::<Vec<_>>();
+            (
+                build_mul_expr_from_factors_root(ctx, &residual_factors),
+                term_sign,
+            )
+        })
+        .collect();
+
+    let common_factor = build_mul_expr_from_factors_root(ctx, &common);
+    let residual_expr = build_signed_sum_expr_root(ctx, &residual_terms);
+    let one = ctx.num(1);
+    if compare_expr(ctx, common_factor, one) == Ordering::Equal
+        || compare_expr(ctx, residual_expr, expr) == Ordering::Equal
+    {
+        return None;
+    }
+    Some((common_factor, residual_expr))
+}
+
+pub(super) fn extract_direct_two_linear_shift_product_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<BigRational>)> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let (lhs_base, lhs_constant) = extract_base_plus_constant_root(ctx, factors[0])?;
+    let (rhs_base, rhs_constant) = extract_base_plus_constant_root(ctx, factors[1])?;
+    if compare_expr(ctx, lhs_base, rhs_base) != Ordering::Equal {
+        return None;
+    }
+
+    let mut constants = vec![lhs_constant, rhs_constant];
+    constants.sort();
+    Some((lhs_base, constants))
+}
+
+pub(super) fn build_root_shortcut_step_from_rewrite(
+    ctx: &Context,
+    before: ExprId,
+    rewrite: &crate::rule::Rewrite,
+    rule_name: &'static str,
+) -> Step {
+    let mut step = Step::with_snapshots(
+        &rewrite.description,
+        rule_name,
+        before,
+        rewrite.new_expr,
+        smallvec::SmallVec::<[crate::step::PathStep; 8]>::new(),
+        Some(ctx),
+        before,
+        rewrite.new_expr,
+    );
+    step.importance = crate::step::ImportanceLevel::High;
+    {
+        let meta = step.meta_mut();
+        meta.before_local = rewrite.before_local;
+        meta.after_local = rewrite.after_local;
+        meta.assumption_events = rewrite.assumption_events.clone();
+        meta.required_conditions = rewrite.required_conditions.clone();
+        meta.poly_proof = rewrite.poly_proof.clone();
+        meta.substeps = rewrite.substeps.clone();
+    }
+    step
 }

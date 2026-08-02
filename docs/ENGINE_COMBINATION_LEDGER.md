@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 819 (newest first)
+Active entries: 820 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -129,6 +129,7 @@ Active entries: 819 (newest first)
 - 2026-08-02 | `retained` | `cas_math::integration_value_domain` (nuevo) + 16 emisores migrados + `ln_abs... | UNIVERSALIDAD (D4-1: las primitivas logarítmicas declaran su eje — ln(u) con rama principal bajo complex)
 - 2026-08-02 | `retained` | auditoría dirigida de la parte 2 del plan D4 («los PROBADORES internos hereda... | UNIVERSALIDAD (D4-2: los probadores heredan el eje — auditoría con hallazgo negativo, fijada como contrato de no-contaminación)
 - 2026-08-02 | `retained` | auditoría de los dos peldaños restantes de D4 + extensión del contrato — (b) ... | UNIVERSALIDAD (D4-3 — CIERRE DE D4: los abs de dominio y la narración ya eran coherentes; dos hallazgos negativos más, pineados)
+- 2026-08-02 | `retained` | `orchestrator/{support,general,trig}.rs` — primer ciclo de D2 con el molde D1... | ARQUITECTURA (D2-1: el support del orquestador se declara API del pipeline — y el orquestador NO es un motor con disparadores)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23547,3 +23548,12 @@ Active entries: 819 (newest first)
 - retained learning:
   - **Un peldaño nombrado por sospecha se cierra con el sondeo aunque el resultado sea «ya estaba bien»** — dos de los tres peldaños de D4 eran hallazgos negativos, y los tres costaron una sesión corta: el precio de auditar un eje entero es pequeño cuando el arnés (sondas por pares real/complex) existe; el precio de NO auditarlo es descubrir el ln|u| complejo en producción.
   - **La coherencia por-eje de un resultado compuesto se hereda del simplificador, no se re-decide en cada emisor** (`∫√(x²)`): el emisor publica la forma neutra y el colapso `√(x²) → |x|` ocurre —o no— aguas abajo según el eje; pinear el PAR de salidas fija la coherencia de las dos capas de una vez.
+
+## 2026-08-02 - ARQUITECTURA (D2-1: el support del orquestador se declara API del pipeline — y el orquestador NO es un motor con disparadores)
+
+- area: `orchestrator/{support,general,trig}.rs` — primer ciclo de D2 con el molde D1 calcado. De las 52 primitivas ≥4-familias del callgraph, 41 ya vivían en support y de las 11 de fuera, OCHO ya vivían en su fichero de familia (el patrón «la topología ya es correcta» por tercera vez) — solo 3 neutros de general.rs se promueven (`extract_common_multiplicative_residual_sum_root`, `extract_direct_two_linear_shift_product_root`, `build_root_shortcut_step_from_rewrite`) y 1 trig mal ubicado se muda a su familia (`extract_direct_tangent_addition_target_root`). La cabecera de support declara la API del pipeline Y la diferencia doctrinal con D1: **el orquestador es un pipeline entrelazado, no un motor con disparadores** — los flujos entre familias (pairing→trig_angles, zero_detection→trig_angles) son parte del diseño; la métrica de progreso es el % de aristas intra (baseline 28,1%) con el callgraph D0 como auditoría, NO un invariante de cierre por disparador (que aquí sería mentira estructural: el grafo es una bola con 98,8% de cohesión en un grupo, medido en la campaña).
+- status: `retained`. Moves certificados (694 fns dir-completo con el padre, 0 faltan/sobran/cambiados); sondas de las áreas tocadas cierran (tangent-addition viva tras el move, cancelación multiplicativa, hyperbolic, telescoping); suite/clippy/cadena verdes; huella patrón conocido.
+- decision: retener. D2-2: los SHORTCUTS DE REGRESIÓN agrupados por el invariante que protegen (el sedimento de nombres kilométricos, 0 dead_code) — análisis de nombres + contrato por grupo; el que quede sin justificación medible → cuarentena→certificación.
+- retained learning:
+  - **El mismo molde, dos doctrinas**: en el motor de cancelación el invariante correcto era el cierre por disparador; en el pipeline del orquestador ese invariante sería falso (la bola no tiene costuras) — la cabecera de una API declarada debe decir TAMBIÉN qué métrica la audita y por qué, o el siguiente ciclo intentará imponer el invariante equivocado al módulo equivocado.
+  - **«La topología ya es correcta» es el resultado MAYORITARIO de las auditorías post-troceo** (3ª vez: hyperbolic D1c-5, log D1c-7, y 8/11 aquí): el troceo por familias de la campaña sembró bien — el trabajo restante es CONTRATO (declarar), no mudanza; presupuestar los ciclos como declarativos salvo evidencia contraria.
