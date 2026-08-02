@@ -11,6 +11,21 @@ Estados: `abierto` · `en curso` · `cerrado` · `descartado`.
 
 ## Abiertos
 
+### L18 — Los 74 shortcuts del orquestador sin test que los nombre (justificación pendiente de mapeo)
+
+- **Observado** (2026-08-02, D2-2): de los 127 `*shortcut*` del orquestador, 53 aparecen
+  nombrados en los tests del troceo; 74 no. NO son candidatos a borrado: el profiler por
+  sección (`CAS_PROFILE_ORCHESTRATOR_SHORTCUTS`) demuestra actividad real por LABEL
+  (`rule.<regla>.try.<detector>`) y los contratos CLI los ejercitan sin nombrarlos.
+- **Qué falta**: el mapeo fn↔label (leyendo el `record_orchestrator_shortcut_*` de cada
+  cuerpo), la corrida del profiler sobre los dos corpus de examples + una pasada de la
+  suite de contratos, y la clasificación (activo / protegido-indirecto / cuarentena con
+  la certificación completa de la campaña).
+- **Procedimiento y datos**: `docs/DESACOPLO_D2_SHORTCUTS_2026-08.md`. Hallazgo de perf
+  colateral anotado allí (detectores 450-583k intentos / 0 hits en el corpus de ceros —
+  frente de perf, no de saneamiento).
+- **Estado**: ABIERTA.
+
 ### L6 — El grafo de llamadas del orquestador es una bola sin costuras
 - **Origen:** P1, medición previa al troceo (2026-07-31).
 - **Qué:** las 692 fns de producción de `orchestrator.rs` tienen 1.795 aristas

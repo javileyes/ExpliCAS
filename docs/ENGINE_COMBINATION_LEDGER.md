@@ -114,7 +114,7 @@ Archived months (rotated, still read by scorecard metrics):
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_04.md)
 - [ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md](ENGINE_COMBINATION_LEDGER_ARCHIVE_2026_05.md)
 
-Active entries: 820 (newest first)
+Active entries: 821 (newest first)
 
 - 2026-08-02 | `retained` | `docs/DESACOPLO_D1_INVENTARIO_2026-08.md` — peldaño (a) de D1 medido con el a... | ARQUITECTURA/MEDIDA (D1a: el inventario separa el motor de sus disparadores y dicta el orden de la cirugía)
 - 2026-08-02 | `retained` | `rules/arithmetic/{support,general,fractions}.rs` — peldaño (b) de D1. Las 11... | ARQUITECTURA (D1b: la API del motor de cancelación gana hogar físico único y frontera declarada)
@@ -130,6 +130,7 @@ Active entries: 820 (newest first)
 - 2026-08-02 | `retained` | auditoría dirigida de la parte 2 del plan D4 («los PROBADORES internos hereda... | UNIVERSALIDAD (D4-2: los probadores heredan el eje — auditoría con hallazgo negativo, fijada como contrato de no-contaminación)
 - 2026-08-02 | `retained` | auditoría de los dos peldaños restantes de D4 + extensión del contrato — (b) ... | UNIVERSALIDAD (D4-3 — CIERRE DE D4: los abs de dominio y la narración ya eran coherentes; dos hallazgos negativos más, pineados)
 - 2026-08-02 | `retained` | `orchestrator/{support,general,trig}.rs` — primer ciclo de D2 con el molde D1... | ARQUITECTURA (D2-1: el support del orquestador se declara API del pipeline — y el orquestador NO es un motor con disparadores)
+- 2026-08-02 | `retained` | `docs/DESACOPLO_D2_SHORTCUTS_2026-08.md` + L18 en `SANEAMIENTO_LEDGER.md` — e... | ARQUITECTURA/MEDIDA (D2-2: la justificación de los 127 shortcuts, medida por tres fuentes — y el mapeo fino queda escopado como L18)
 - 2026-08-01 | `retained` | `solve_backend_local` — `collect_radical_split` reconocía solo el radical DES... | SOUNDNESS (peldaño F10-m3 «coeficiente ≠1»: la condición de rango sobrevive al coeficiente racional y a la forma factorizada): `2·√x + 1 = y` publica `y ≥ 1`
 - 2026-08-01 | `retained` | `solve_backend_local` — continuación directa del ciclo anterior, cazada por s... | SOUNDNESS (hermano simbólico del peldaño F10-m3: la condición de acoplamiento de signos se publica): `y·√x = 2` gana `y > 0`
 - 2026-08-01 | `retained` | dos capas, un candidato. (1) `try_solve_reciprocal_trig_inequality` extiende ... | SOUNDNESS+CAPACIDAD (recíprocas hiperbólicas en inecuaciones por el molde del recíproco trig): `coth(x) > 2` → `(0, atanh(1/2))` exacto
@@ -23557,3 +23558,12 @@ Active entries: 820 (newest first)
 - retained learning:
   - **El mismo molde, dos doctrinas**: en el motor de cancelación el invariante correcto era el cierre por disparador; en el pipeline del orquestador ese invariante sería falso (la bola no tiene costuras) — la cabecera de una API declarada debe decir TAMBIÉN qué métrica la audita y por qué, o el siguiente ciclo intentará imponer el invariante equivocado al módulo equivocado.
   - **«La topología ya es correcta» es el resultado MAYORITARIO de las auditorías post-troceo** (3ª vez: hyperbolic D1c-5, log D1c-7, y 8/11 aquí): el troceo por familias de la campaña sembró bien — el trabajo restante es CONTRATO (declarar), no mudanza; presupuestar los ciclos como declarativos salvo evidencia contraria.
+
+## 2026-08-02 - ARQUITECTURA/MEDIDA (D2-2: la justificación de los 127 shortcuts, medida por tres fuentes — y el mapeo fino queda escopado como L18)
+
+- area: `docs/DESACOPLO_D2_SHORTCUTS_2026-08.md` + L18 en `SANEAMIENTO_LEDGER.md` — el peldaño «shortcuts por invariante» del plan D2, ejecutado como MEDIDA (docs-only). Censo: 127 fns `*shortcut*` ya agrupadas por familia por el troceo. Tres fuentes de justificación medidas: (1) contrato directo — 53/127 nombrados en los tests del orquestador; (2) actividad bajo corpus — el profiler por sección (`CAS_PROFILE_ORCHESTRATOR_SHORTCUTS`, la herramienta que D1c-9 declaró como infra) emite Attempts/Hits por LABEL jerárquico (`rule.<regla>.try.<detector>`) — ~10 secciones con hits reales en el corpus de ceros; (3) los contratos CLI ejercitan sin nombrar. El mapeo fn↔label de los 74 restantes es trabajo L y queda ESCOPADO (L18) con el procedimiento escrito, no abierto con el contexto agotado. HALLAZGO DE PERF colateral anotado sin abrir: detectores con 450-583k intentos y 0 hits en el corpus (0,4-2,4 µs/intento ⟹ ~5-8 s de detección sin producto) — candidato del frente de perf (gates por familia de forma), no de D2.
+- status: `retained` (docs-only; el falso rojo del task del corpus era el `grep -c` sin matches — el exit del filtro, no del corpus: la lección del ledger aplicada en su tercera aparición).
+- decision: retener. D2 queda: D2-1 hecho (API del pipeline declarada), D2-2 medido y escopado (L18). El plan sigue con D3 (crates — baseline editar→validar 26 s del D0) cuando toque; la cola de saneamiento tiene ahora L18 como único abierto nuevo de la tanda.
+- retained learning:
+  - **El profiler que una fase declara como infra es el instrumento de la siguiente**: D1c-9 clasificó el perfilado como tercera clase de frontera; D2-2 lo usó como fuente de justificación medible — clasificar bien la infraestructura paga dos veces.
+  - **«Justificación medible» tiene tres fuentes de coste creciente (test-que-nombra, corpus-con-profiler, mapeo-fino) — medir las baratas primero acota el trabajo caro**: 53/127 salieron gratis del grep; el corpus dio actividad por sección en una corrida; solo los 74 restantes necesitan el mapeo L, y ya con procedimiento.
